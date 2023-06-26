@@ -1,0 +1,24 @@
+[package]
+name = "chapaty"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.68"
+chrono = "0.4.26"
+enum-map = "2.5.0"
+google-cloud-default = {version = "0.4.0", features = ["storage"] }
+google-cloud-storage = "0.11.1"
+polars = {version = "0.30.0", features = ["lazy", "partition_by", "serde", "cum_agg"]}
+prost = "0.11.9"
+prost-types = "0.11.9"
+rayon = "1.7.0"
+regex = "1.8.4"
+serde_json = "1.0.99"
+strum = "0.25.0"
+strum_macros = "0.25.0"
+tokio = { version = "1.28.2", features = ["full"] }
+tonic = "0.9.2"
+
+[build-dependencies]
+tonic-build = "0.9.2"
