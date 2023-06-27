@@ -5,9 +5,9 @@ use super::*;
 /// used for testing.
 ///
 /// # Links
-/// * Binance: https://www.test.com/en
-/// * Git repository to `Test` Public Data: https://github.com/binance/binance-public-data
-/// * `Test` Market Data: https://data.test.vision
+/// * Binance: <https://www.test.com/en>
+/// * Git repository to `Test` Public Data: <https://github.com/binance/binance-public-data>
+/// * `Test` Market Data: <https://data.test.vision>
 pub struct Test {
     bucket: PathBuf,
     producer_kind: ProducerKind,

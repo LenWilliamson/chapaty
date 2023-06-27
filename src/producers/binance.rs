@@ -3,9 +3,9 @@ use super::*;
 
 /// The `Binance` data provider uses market data from the Binance crypto exchange.
 /// # Links
-/// * Binance: https://www.binance.com/en
-/// * Git repository to Binance Public Data: https://github.com/binance/binance-public-data
-/// * Binance Market Data: https://data.binance.vision
+/// * Binance: <https://www.binance.com/en>
+/// * Git repository to Binance Public Data: <https://github.com/binance/binance-public-data>
+/// * Binance Market Data: <https://data.binance.vision>
 pub struct Binance {
     bucket: PathBuf,
     producer_kind: ProducerKind,

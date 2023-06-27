@@ -7,7 +7,7 @@ use crate::{
 // Extern crates
 use polars::prelude::{col, lit, AnyValue, DataFrame, IntoLazy};
 
-/// Computes the volume area described in https://www.vtad.de/lexikon/market-profile/
+/// Computes the volume area described in <https://www.vtad.de/lexikon/market-profile/>
 /// # Arguments
 /// * `dp` - data producer
 /// * `df` - volume profile

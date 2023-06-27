@@ -1,4 +1,4 @@
-# chapaty v0.0.0
+# chapaty v0.1.0
 This crate lets you backtest arbitrary trading strategies and generates a simple P&L report of the following form:
 CW|Date|Strategy|Market|Trade_Direction|Entry|Target|Stop_Loss|Expected_Win_Tik|Expected_Loss_Tik|Expected_Win_Dollar|Expected_Loss_Dollar|CRV|Entry_Timestamp|Target_Timestamp|Stop_Loss_Timestamp|Exit_Price|Status|PL_Tik|PL_Dollar
 --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- 

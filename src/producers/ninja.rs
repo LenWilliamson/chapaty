@@ -5,8 +5,8 @@ use crate::common::functions::ninja_raw_to_ohlc_df;
 /// market data feeds.
 ///
 /// # Links
-/// * Ninjatrader: https://ninjatrader.com/de/
-/// * Ranchodinero: https://www.ranchodinero.com
+/// * Ninjatrader: <https://ninjatrader.com/de/>
+/// * Ranchodinero: <https://www.ranchodinero.com>
 pub struct Ninja {
     bucket: PathBuf,
     producer_kind: ProducerKind,

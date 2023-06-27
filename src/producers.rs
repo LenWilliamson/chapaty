@@ -41,25 +41,25 @@ pub trait DataProducer {
     /// have a header.
     fn has_header(&self);
 
-    /// Returns an owning reference of the Google Cloud Storage `Client`.
-    /// # Example
-    /// ```
-    /// // Initialize a `DataProducer`
-    /// let binance = Binance {
-    ///    client: Arc::new(config::get_google_cloud_client().await),
-    ///    bucket: PathBuf::from(GCS_DATA_BUCKET),
-    ///    producer_kind: ProducerKind::Binance,
-    ///};
-    ///
-    /// // Typically we clone the client, to share some immutable data between threads:
-    /// for _ in 0..10 {
-    /// let clone = binance.get_client_clone();
-    ///
-    /// tokio::spawn(async move || {
-    ///     // Do stuff ...
-    /// });
-    ///
-    /// ```
+    // Returns an owning reference of the Google Cloud Storage `Client`.
+    // # Example
+    // ```
+    // // Initialize a `DataProducer`
+    // let binance = Binance {
+    //    client: Arc::new(config::get_google_cloud_client().await),
+    //    bucket: PathBuf::from(GCS_DATA_BUCKET),
+    //    producer_kind: ProducerKind::Binance,
+    //};
+    //
+    // // Typically we clone the client, to share some immutable data between threads:
+    // for _ in 0..10 {
+    // let clone = binance.get_client_clone();
+    //
+    // tokio::spawn(async move || {
+    //     // Do stuff ...
+    // });
+    //
+    // ```
     // fn get_client_clone(&self) -> Arc<Client>;
 
     /// Returns the Google Cloud Storage bucket name for this `DataProducer`
