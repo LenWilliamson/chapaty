@@ -1,7 +1,16 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
-use chapaty::{enums::{data::LeafDir, strategies::{StopLossKind, TakeProfitKind}}, streams::backtester, bots::{ppp::Ppp, Bot}, producers::profit_loss_report::{StopLoss, TakeProfit}};
+use chapaty::{
+    bot::BotBuilder,
+    config::{self},
+    enums::{
+        data::CandlestickKind,
+        markets::{MarketKind, TimeFrame},
+    },
+};
+
 mod common;
+
 /**
  *
  * Testfall 1:
@@ -94,29 +103,37 @@ mod common;
 #[tokio::test]
 async fn it_test() {
     let start = Instant::now();
-    let pl_only = true;
-    let vol = LeafDir::Ohlc1m;
-    let ohlc = LeafDir::Ohlc60m;
-    let pl_file_name = String::from("pl.csv");
-    let mut bot = Ppp::new();
-        let sl = StopLoss {
-        condition: StopLossKind::PrevLow,
-        offset: 1.0,
+
+    let strategy = common::setup_strategy();
+    let data_provider = common::setup_data_provider();
+    let name = "My First Bot with the new API".to_string();
+    let years = vec![2022];
+    let market_simulation_data = CandlestickKind::Ohlc1h;
+    let markets = vec![MarketKind::EurUsdFuture];
+    let time_interval = common::setup_time_interval();
+    let time_frame = TimeFrame::Daily;
+    let client = config::get_google_cloud_client().await;
+    let bucket = config::GoogleCloudBucket {
+        historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
+        cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let tp = TakeProfit {
-        condition: TakeProfitKind::PrevClose,
-        offset: 0.00005 * 20.0,
-    };
-    bot.set_stop_loss(sl);
-    bot.set_take_profit(tp);
-    let backtester = common::setup();
-    backtester
-        .backtest_bot(Arc::new(bot), pl_only, vol, ohlc, pl_file_name)
-        .await;
+
+    let bot = BotBuilder::new(strategy, data_provider)
+        .with_name(name)
+        .with_years(years)
+        .with_markets(markets)
+        .with_market_simulation_data(market_simulation_data)
+        .with_time_interval(time_interval)
+        .with_time_frame(time_frame)
+        .with_google_cloud_client(client)
+        .with_google_cloud_bucket(bucket)
+        .build()
+        .unwrap();
+
+    let result = bot.backtest().await;
 
     let duration = start.elapsed();
     println!("Time elapsed in streams::chapaty::backtest() is: {duration:?}");
 
     assert_eq!(0, 0);
-    
 }

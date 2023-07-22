@@ -1,32 +1,40 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use chapaty::{
-    common::time_interval::TimeInterval,
-    enums::{
-        markets::{GranularityKind, MarketKind},
-    },
-    producers::{
+
+    data_provider::{
         ninja::Ninja,
+
+        DataProvider,
     },
-    streams::backtester::Backtester,
+    strategy::{ppp::Ppp, Strategy, StopLoss, TakeProfit}, enums::strategies::{StopLossKind, TakeProfitKind}, bot::time_interval::TimeInterval,
 };
 
-pub fn setup() -> Backtester {
-    // Initialze parameter for backtesting the strategy
-    let data_provider = Ninja::new(std::path::PathBuf::from("trust-data"));
-    let dp = Arc::new(data_provider);
-    let years = vec![2022];
-    let market = MarketKind::EurUsd;
-    let granularity = GranularityKind::Daily;
-    let ti: Option<TimeInterval> = None;
-
-
-    let backtester = Backtester {
-        dp,
-        years,
-        market: vec![market],
-        granularity: vec![granularity],
-        ti,
+pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let mut strategy = Ppp::new();
+    let sl = StopLoss {
+        condition: StopLossKind::PrevLow,
+        offset: 1.0,
     };
-    backtester
+    let tp = TakeProfit {
+        condition: TakeProfitKind::PrevClose,
+        offset: 0.00005 * 20.0,
+    };
+    strategy.set_stop_loss(sl);
+    strategy.set_take_profit(tp);
+
+    Arc::new(strategy)
+}
+
+pub fn setup_data_provider() -> Arc<dyn DataProvider + Send + Sync> {
+    Arc::new(Ninja::new())
+}
+
+pub fn setup_time_interval() -> TimeInterval {
+    TimeInterval {
+        start_day: chrono::Weekday::Mon,
+        start_h: 1,
+        end_day: chrono::Weekday::Fri,
+        end_h: 23,
+    }
 }
