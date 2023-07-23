@@ -114,7 +114,7 @@ impl CloudStorageClient {
         file_name: String,
     ) {
         let bytes = serialize_data_frame_map(df_map).into_bytes();
-        self.upload_to_cloud_storage(bytes, file_name);
+        self.upload_to_cloud_storage(bytes, file_name).await;
     }
 
     async fn upload_to_cloud_storage(&self, bytes: Vec<u8>, file_name: String) {

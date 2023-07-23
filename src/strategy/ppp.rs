@@ -133,7 +133,8 @@ impl Strategy for Ppp {
             },
 
             TradeKind::None => {
-                panic!("Cannot compute stop-loss condition for TradeKind::None")
+                dbg!("Cannot compute stop-loss condition for TradeKind::None");
+                -1.0
             }
         }
     }
@@ -157,7 +158,8 @@ impl Strategy for Ppp {
             },
 
             TradeKind::None => {
-                panic!("Cannot compute stop-loss condition for TradeKind::None")
+                dbg!("Cannot compute stop-loss condition for TradeKind::None");
+                -1.0
             }
         }
     }

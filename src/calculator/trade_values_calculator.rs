@@ -106,8 +106,8 @@ fn match_trade_values_with_trade_kind(
         (TradeDataKind::LastTradePrice, MyAnyValue::Float64(row[0].unwrap_float64())),
         (TradeDataKind::LowestTradePriceSinceEntry, MyAnyValue::Float64(row[1].unwrap_float64())),
         (TradeDataKind::HighestTradePriceSinceEntry, MyAnyValue::Float64(row[2].unwrap_float64())),
-        (TradeDataKind::HighestTradePriceSinceEntryTimestamp, MyAnyValue::UInt32(row[3].unwrap_uint32())),
-        (TradeDataKind::LowestTradePriceSinceEntryTimestamp, MyAnyValue::UInt32(row[4].unwrap_uint32())),
+        (TradeDataKind::HighestTradePriceSinceEntryTimestamp, MyAnyValue::Int64(row[3].unwrap_int64())),
+        (TradeDataKind::LowestTradePriceSinceEntryTimestamp, MyAnyValue::Int64(row[4].unwrap_int64())),
     ]
 }
 

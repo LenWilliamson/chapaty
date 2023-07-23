@@ -195,15 +195,13 @@ impl PnLReportDataRow {
         let market = vec![market.to_string()];
         let trade_direction = vec![trade_kind.to_string()];
         let entry = vec![entry_price];
-        let take_profit = vec![trade_pnl.clone()
-            .take_profit
-            .unwrap()
-            .price
+        let take_profit = vec![self
+            .trade
+            .take_prift
             .round_to_n_decimal_places(decimal_places)];
-        let stop_loss = vec![trade_pnl.clone()
+        let stop_loss = vec![self
+            .trade
             .stop_loss
-            .unwrap()
-            .price
             .round_to_n_decimal_places(decimal_places)];
         let expected_win_tick = vec![self.expected_win_in_tick(tick_factor)];
         let expected_loss_tick = vec![self.expected_loss_in_tick(tick_factor)];
@@ -218,20 +216,38 @@ impl PnLReportDataRow {
             .unwrap()
             .format("%Y-%m-%d %H:%M:%S")
             .to_string()];
-        let take_profit_ts = match trade_pnl.clone().take_profit.unwrap().ts {
-            Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
-                .unwrap()
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()],
-            None => vec!["Timeout".to_string()],
-        };
-        let stop_loss_ts = match trade_pnl.stop_loss.clone().unwrap().ts {
-            Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
-                .unwrap()
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()],
-            None => vec!["Timeout".to_string()],
-        };
+        // let take_profit_ts = match trade_pnl.clone().take_profit.unwrap().ts {
+        //     Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
+        //         .unwrap()
+        //         .format("%Y-%m-%d %H:%M:%S")
+        //         .to_string()],
+        //     None => vec!["Timeout".to_string()],
+        // };
+        let take_profit_ts = trade_pnl.clone().take_profit.map_or_else(
+            || vec!["Timeout".to_string()],
+            |pnl| {
+                vec![NaiveDateTime::from_timestamp_opt(pnl.ts.unwrap() / 1000, 0)
+                    .unwrap()
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()]
+            },
+        );
+        // let stop_loss_ts = match trade_pnl.stop_loss.clone().unwrap().ts {
+        //     Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
+        //         .unwrap()
+        //         .format("%Y-%m-%d %H:%M:%S")
+        //         .to_string()],
+        //     None => vec!["Timeout".to_string()],
+        // };
+        let stop_loss_ts = trade_pnl.clone().stop_loss.map_or_else(
+            || vec!["Timeout".to_string()],
+            |pnl| {
+                vec![NaiveDateTime::from_timestamp_opt(pnl.ts.unwrap() / 1000, 0)
+                    .unwrap()
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()]
+            },
+        );
 
         let status = vec![trade_pnl.trade_outcome()];
 

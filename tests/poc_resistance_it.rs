@@ -131,6 +131,7 @@ async fn it_test() {
         .unwrap();
 
     let result = bot.backtest().await;
+    dbg!(result);
 
     let duration = start.elapsed();
     println!("Time elapsed in streams::chapaty::backtest() is: {duration:?}");
