@@ -56,7 +56,7 @@ impl MyLazyFrameOperations for LazyFrame {
                 .alias("weekday"),
         )
     }
-    fn add_hour_col(self, ts_col: &str) -> Self {
+    fn add_hour_col(self, _ts_col: &str) -> Self {
         // self.with_column(
         //     col(&ts_col)
         //         .apply(|x| Ok(Some(get_hour_from_ts(&x))), GetOutput::default())
@@ -64,7 +64,7 @@ impl MyLazyFrameOperations for LazyFrame {
         // )
         self
     }
-    fn add_min_col(self, ts_col: &str) -> Self {
+    fn add_min_col(self, _ts_col: &str) -> Self {
         // self.with_column(
         //     col(&ts_col)
         //         .apply(|x| Ok(Some(get_min_from_ts(&x))), GetOutput::default())

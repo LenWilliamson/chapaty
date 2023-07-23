@@ -62,7 +62,7 @@ impl PreTradeValuesCalculator {
                 let res = self.compute_highest_trade_price();
                 map.insert(PreTradeDataKind::HighestTradePrice, res);
             }
-            _ => panic!("Not yet implemented!"),
+            // _ => panic!("Not yet implemented!"),
         };
 
         map

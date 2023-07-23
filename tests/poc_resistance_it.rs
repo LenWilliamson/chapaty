@@ -108,7 +108,7 @@ async fn it_test() {
     let data_provider = common::setup_data_provider();
     let name = "My First Bot with the new API".to_string();
     let years = vec![2022];
-    let market_simulation_data = CandlestickKind::Ohlc1h;
+    let market_simulation_data = CandlestickKind::Ohlc1m;
     let markets = vec![MarketKind::EurUsdFuture];
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrame::Daily;
@@ -131,7 +131,8 @@ async fn it_test() {
         .unwrap();
 
     let result = bot.backtest().await;
-    dbg!(result);
+    dbg!(result.pnl_statement);
+    dbg!(result.performance_report);
 
     let duration = start.elapsed();
     println!("Time elapsed in streams::chapaty::backtest() is: {duration:?}");

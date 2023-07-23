@@ -8,7 +8,6 @@ use google_cloud_storage::{
     client::Client,
     http::{
         objects::{
-            delete::DeleteObjectRequest,
             download::Range,
             get::GetObjectRequest,
             list::ListObjectsRequest,
@@ -20,7 +19,7 @@ use google_cloud_storage::{
 };
 use polars::prelude::DataFrame;
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 use super::{
@@ -81,7 +80,6 @@ impl CloudStorageClient {
         let year = self.year;
         let _self = Arc::new(self.clone());
         tokio::spawn(async move {
-
             let path_finder = PathFinderBuilder::new()
                 .with_data_provider(bot.get_data_provider().get_data_producer_kind())
                 .with_strategy(bot.get_strategy().get_bot_kind())
@@ -94,7 +92,8 @@ impl CloudStorageClient {
             let file_name = _self.get_file_name_resolver().get_filename();
             let abs_file_path = path_finder.get_absolute_file_path(file_name);
 
-            _self.cache_df_map_with_file_name(&df_map, abs_file_path)
+            _self
+                .cache_df_map_with_file_name(&df_map, abs_file_path)
                 .await;
             df_map
         })
@@ -286,62 +285,62 @@ impl CloudStorageClientBuilder {
     }
 }
 
-/// Wrapper to upload a file to Google Cloud Storage.
-///
-/// # Arguments
-/// * `client` - Google Cloud Storage client
-/// * `file_name` - File name of the bytes to be uploaded
-/// * `bytes` - Content of the file
-pub async fn upload_file(client: &Client, file_name: &PathBuf, bytes: Vec<u8>, bucket: &str) {
-    client
-        .upload_object(
-            &UploadObjectRequest {
-                bucket: bucket.to_string(),
-                ..Default::default()
-            },
-            bytes,
-            &UploadType::Simple(Media {
-                name: file_name.to_str().unwrap().to_string().into(),
-                content_type: std::borrow::Cow::Borrowed("text/csv"),
-                content_length: None,
-            }),
-        )
-        .await
-        .unwrap();
-}
+// /// Wrapper to upload a file to Google Cloud Storage.
+// ///
+// /// # Arguments
+// /// * `client` - Google Cloud Storage client
+// /// * `file_name` - File name of the bytes to be uploaded
+// /// * `bytes` - Content of the file
+// pub async fn upload_file(client: &Client, file_name: &PathBuf, bytes: Vec<u8>, bucket: &str) {
+//     client
+//         .upload_object(
+//             &UploadObjectRequest {
+//                 bucket: bucket.to_string(),
+//                 ..Default::default()
+//             },
+//             bytes,
+//             &UploadType::Simple(Media {
+//                 name: file_name.to_str().unwrap().to_string().into(),
+//                 content_type: std::borrow::Cow::Borrowed("text/csv"),
+//                 content_length: None,
+//             }),
+//         )
+//         .await
+//         .unwrap();
+// }
 
-/// Wrapper to get a list of all files in a Google Cloud Storage bucket.
-///
-/// # Arguments
-/// * `client` - Google Cloud Storage client
-/// * `bucket` - bucket name
-pub async fn get_files_in_bucket(client: &Client, bucket: &str) -> Vec<Object> {
-    let mut lor = client
-        .list_objects(&ListObjectsRequest {
-            bucket: bucket.to_string(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+// /// Wrapper to get a list of all files in a Google Cloud Storage bucket.
+// ///
+// /// # Arguments
+// /// * `client` - Google Cloud Storage client
+// /// * `bucket` - bucket name
+// pub async fn get_files_in_bucket(client: &Client, bucket: &str) -> Vec<Object> {
+//     let mut lor = client
+//         .list_objects(&ListObjectsRequest {
+//             bucket: bucket.to_string(),
+//             ..Default::default()
+//         })
+//         .await
+//         .unwrap();
 
-    let mut res = lor.items.unwrap();
+//     let mut res = lor.items.unwrap();
 
-    // Listen for more objects if the is some next_page_token
-    while let Some(token) = lor.next_page_token {
-        // Start new request
-        lor = client
-            .list_objects(&ListObjectsRequest {
-                bucket: bucket.to_string(),
-                page_token: Some(token),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        res.append(&mut lor.items.unwrap());
-    }
+//     // Listen for more objects if the is some next_page_token
+//     while let Some(token) = lor.next_page_token {
+//         // Start new request
+//         lor = client
+//             .list_objects(&ListObjectsRequest {
+//                 bucket: bucket.to_string(),
+//                 page_token: Some(token),
+//                 ..Default::default()
+//             })
+//             .await
+//             .unwrap();
+//         res.append(&mut lor.items.unwrap());
+//     }
 
-    res
-}
+//     res
+// }
 pub async fn get_files_in_bucket2(
     client: &Client,
     bucket: &str,
@@ -375,27 +374,27 @@ pub async fn get_files_in_bucket2(
     Ok(res)
 }
 
-/// Wrapper to download a file from Google Cloud Storage.
-///
-/// # Arguments
-/// * `client` - Google Cloud Storage client
-/// * `file` - File we want to download
-pub async fn download_file(
-    client: &Client,
-    file: &PathBuf,
-    bucket: &str,
-) -> Result<Vec<u8>, Error> {
-    client
-        .download_object(
-            &GetObjectRequest {
-                bucket: bucket.to_string(),
-                object: file.to_str().unwrap().to_string(),
-                ..Default::default()
-            },
-            &Range::default(),
-        )
-        .await
-}
+// /// Wrapper to download a file from Google Cloud Storage.
+// ///
+// /// # Arguments
+// /// * `client` - Google Cloud Storage client
+// /// * `file` - File we want to download
+// pub async fn download_file(
+//     client: &Client,
+//     file: &PathBuf,
+//     bucket: &str,
+// ) -> Result<Vec<u8>, Error> {
+//     client
+//         .download_object(
+//             &GetObjectRequest {
+//                 bucket: bucket.to_string(),
+//                 object: file.to_str().unwrap().to_string(),
+//                 ..Default::default()
+//             },
+//             &Range::default(),
+//         )
+//         .await
+// }
 
 fn handle_google_cloud_error(error: Error, file: String, bucket: &str) -> ChapatyError {
     if let Error::HttpClient(e) = &error {
@@ -415,18 +414,18 @@ fn is_file_not_found_error(error: &reqwest::Error) -> bool {
         .is_some_and(|s| s == file_not_found_status_code)
 }
 
-/// Wrapper to delete a file in the Google Cloud Storage bucket.
-///
-/// # Arguments
-/// * `client` - Google Cloud Storage client
-/// * `file` - File to be deleted
-pub async fn delete_file(client: &Client, file: &PathBuf, bucket: &str) {
-    client
-        .delete_object(&DeleteObjectRequest {
-            bucket: bucket.to_string(),
-            object: file.to_str().unwrap().to_string(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-}
+// /// Wrapper to delete a file in the Google Cloud Storage bucket.
+// ///
+// /// # Arguments
+// /// * `client` - Google Cloud Storage client
+// /// * `file` - File to be deleted
+// pub async fn delete_file(client: &Client, file: &PathBuf, bucket: &str) {
+//     client
+//         .delete_object(&DeleteObjectRequest {
+//             bucket: bucket.to_string(),
+//             object: file.to_str().unwrap().to_string(),
+//             ..Default::default()
+//         })
+//         .await
+//         .unwrap();
+// }

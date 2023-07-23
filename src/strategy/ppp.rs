@@ -72,7 +72,6 @@ impl Strategy for Ppp {
     }
 
     fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
-        let pre_trade_data_map = pre_trade_values.market_valeus.clone();
         let trading_indicators_map = pre_trade_values.indicator_values.clone();
         // let data = self.pre_trade_data.unwrap();
         *trading_indicators_map
@@ -86,7 +85,6 @@ impl Strategy for Ppp {
     /// * `None` - last traded price = poc
     fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeKind {
         let pre_trade_data_map = pre_trade_values.market_valeus.clone();
-        let trading_indicators_map = pre_trade_values.indicator_values.clone();
         // let data = self.pre_trade_data.unwrap();
         let last_trade_price = *pre_trade_data_map
             .get(&PreTradeDataKind::LastTradePrice)
@@ -104,7 +102,6 @@ impl Strategy for Ppp {
 
     fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
         let pre_trade_data = pre_trade_values.market_valeus.clone();
-        let trading_indicators_map = pre_trade_values.indicator_values.clone();
         // let data = self.pre_trade_data.unwrap();
         let lowest_trad_price = *pre_trade_data
             .get(&PreTradeDataKind::LowestTradePrice)
@@ -171,7 +168,7 @@ impl Strategy for Ppp {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     /// This unit test determines if the `TradeKind` based on the POC and last traded price.
     /// * `Short` - last traded price < poc,
@@ -181,8 +178,8 @@ mod tests {
     /// is computed correctly.
     #[tokio::test]
     async fn test_get_trade_kind() {
-        let bot = Ppp::new();
-        let poc = 100.0;
+        // let bot = Ppp::new();
+        // let poc = 100.0;
 
         // let mut trading_indicators = HashMap::new();
         // trading_indicators.insert(TradingIndicatorKind::Poc(PriceHistogram::Tpo1m), poc);

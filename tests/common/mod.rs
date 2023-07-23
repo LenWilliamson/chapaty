@@ -1,13 +1,10 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use chapaty::{
-
-    data_provider::{
-        ninja::Ninja,
-
-        DataProvider,
-    },
-    strategy::{ppp::Ppp, Strategy, StopLoss, TakeProfit}, enums::strategies::{StopLossKind, TakeProfitKind}, bot::time_interval::TimeInterval,
+    bot::time_interval::TimeInterval,
+    data_provider::{ninja::Ninja, DataProvider},
+    enums::strategies::{StopLossKind, TakeProfitKind},
+    strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit},
 };
 
 pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {

@@ -26,13 +26,13 @@ impl FileNameResolver {
     pub fn get_filename(&self) -> String {
         self.indicator_data_pair.clone().map_or_else(
             || self.simulation_data.to_string(),
-            |v| self.generate_file_name(),
+            |_| self.generate_file_name(),
         )
     }
 
     //resolve_required_data_file_name
     fn generate_file_name(&self) -> String {
-        match self.simulation_data {
+        match self.indicator_data_pair.as_ref().unwrap().data {
             LeafDir::Tick => self.trading_indicator_from_tick_data(),
             LeafDir::AggTrades => self.trading_indicator_from_agg_trades_data(),
             LeafDir::Vol => panic!("Remove this leaf dir"),
