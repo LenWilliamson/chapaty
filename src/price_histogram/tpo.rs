@@ -1,10 +1,6 @@
 use crate::{
-    chapaty,
-    data_provider::DataProvider,
-    enums::{
-        columns::{Columns, OhlcColumnNames},
-        markets::MarketKind,
-    }, converter::any_value::AnyValueConverter, 
+    chapaty, converter::any_value::AnyValueConverter, data_provider::DataProvider,
+    enums::{markets::MarketKind, column_names::DataProviderColumns},
 };
 
 use polars::prelude::{df, DataFrame, NamedFrom};
@@ -42,8 +38,8 @@ impl Tpo {
         let max_digits = self.max_digits;
 
         // Get index of respective columns in `DataFrame`
-        let high_idx = dp.column_name_as_int(&Columns::Ohlc(OhlcColumnNames::High));
-        let low_idx = dp.column_name_as_int(&Columns::Ohlc(OhlcColumnNames::Low));
+        let high_idx = dp.column_name_as_int(&DataProviderColumns::High);
+        let low_idx = dp.column_name_as_int(&DataProviderColumns::Low);
 
         // Get a reference to the respective columns
         let highs = &df.get_columns()[high_idx];

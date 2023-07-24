@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chapaty::{
     bot::time_interval::TimeInterval,
-    data_provider::{ninja::Ninja, DataProvider},
+    data_provider::{cme::Ninja, DataProvider},
     enums::strategies::{StopLossKind, TakeProfitKind},
     strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit},
 };

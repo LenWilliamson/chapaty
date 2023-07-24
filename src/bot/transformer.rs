@@ -143,7 +143,7 @@ impl Transformer {
         &self,
         df_map: chapaty::types::DataFrameMap,
     ) -> chapaty::types::DataFrameMap {
-        AggTradesVolume::new(self.bot.data_provider.clone()).from_df_map(df_map)
+        AggTradesVolume::new().from_df_map(df_map)
     }
 
     fn compute_vol_tick(&self, _data: chapaty::types::DataFrameMap) -> chapaty::types::DataFrameMap {

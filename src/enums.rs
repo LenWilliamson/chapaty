@@ -1,3 +1,5 @@
+pub mod column_names;
+
 pub mod bots {
     use strum_macros::{Display, EnumString};
 
@@ -39,122 +41,6 @@ pub mod bots {
         LowestTradePriceSinceEntryTimestamp,
         HighestTradePriceSinceEntry,
         HighestTradePriceSinceEntryTimestamp,
-    }
-}
-
-pub mod columns {
-    use strum_macros::Display;
-
-    #[derive(Copy, Clone, Debug)]
-    pub enum Columns {
-        Ohlcv(OhlcvColumnNames),
-        Ohlc(OhlcColumnNames),
-        AggTrade(AggTradeColumnNames),
-        Vol(VolumeProfileColumnNames),
-    }
-
-    #[derive(Copy, Clone, Debug, Display)]
-    pub enum PerformanceStatisticColumnNames {
-        Year = 0,
-        Strategy = 1,
-        Market = 2,
-        NetProfit = 3,
-        AvgWinnByTrade = 4,
-        MaxDrawDownAbs = 5,
-        MaxDrawDownRel = 6,
-        PercentageProfitability = 7,
-        RatioAvgWinByAvgLoss = 8,
-        AvgWin = 9,
-        AvgLoss = 10,
-        ProfitFactor = 11,
-        TotalWin = 12,
-        TotalLoss = 13,
-        CleanWin = 14,
-        TimeoutWin = 15,
-        CleanLoss = 16,
-        TimeoutLoss = 17,
-        TotalNumberWinnerTrades = 18,
-        TotalNumberLoserTrades = 19,
-        TotalNumberTrades = 20,
-        NumberWinnerTrades = 21,
-        NumberLoserTrades = 22,
-        NumberTimeoutWinnerTrades = 23,
-        NumberTimeoutLoserTrades = 24,
-        NumberTimeoutTrades = 25,
-        NumberNoEntry = 26,
-    }
-
-    #[derive(Copy, Clone, Debug, Display)]
-    pub enum ProfitAndLossColumnNames {
-        CalendarWeek = 0,
-        Date = 1,
-        Strategy = 2,
-        Market = 3,
-        TradeDirection = 4,
-        Entry = 5,
-        TakeProfit = 6,
-        StopLoss = 7,
-        ExpectedWinTick = 8,
-        ExpectedLossTick = 9,
-        ExpectedWinDollar = 10,
-        ExpectedLossDollar = 11,
-        Crv = 12,
-        EntryTimestamp = 13,
-        TakeProfitTimestamp = 14,
-        StopLossTimestamp = 15,
-        ExitPrice = 16,
-        Status = 17,
-        PlTick = 18,
-        PlDollar = 19,
-    }
-
-    #[derive(Copy, Clone, Debug)]
-    pub enum OhlcvColumnNames {
-        OpenTime = 0,
-        Open = 1,
-        High = 2,
-        Low = 3,
-        Close = 4,
-        Volume = 5,
-        CloseTime = 6,
-        // QuoteAssetVol,
-        // NumberOfTrades,
-        // TakerBuyBaseAssetVol,
-        // TakerBuyQuoteAssetVol,
-        // Ignore,
-    }
-
-    #[derive(Copy, Clone, Debug)]
-    pub enum OhlcColumnNames {
-        OpenTime = 0,
-        Open = 1,
-        High = 2,
-        Low = 3,
-        Close = 4,
-        // Volume = 5,
-        CloseTime = 6,
-        // QuoteAssetVol,
-        // NumberOfTrades,
-        // TakerBuyBaseAssetVol,
-        // TakerBuyQuoteAssetVol,
-        // Ignore,
-    }
-
-    #[derive(Copy, Clone, Debug)]
-    pub enum AggTradeColumnNames {
-        AggTradeId = 0,
-        Price = 1,
-        Quantity = 2,
-        FirstTradeId = 3,
-        LastTradeId = 4,
-        Timestamp = 5,
-        BuyerEqualsMaker = 6,
-        BestTradePriceMatch = 7,
-    }
-    #[derive(Copy, Clone, Debug)]
-    pub enum VolumeProfileColumnNames {
-        Price = 0,
-        Quantity = 1,
     }
 }
 

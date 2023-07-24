@@ -1,16 +1,15 @@
-use std::{convert::identity, sync::Arc};
+use std::convert::identity;
 
 use polars::prelude::LazyFrame;
 
 use crate::{
-    bot::trade::Trade, data_provider::DataProvider,
-    enums::bots::TradeDataKind, lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
+    bot::trade::Trade, enums::bots::TradeDataKind,
+    lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 
 use super::pnl_report_data_row_calculator::TradeAndPreTradeValues;
 
 pub struct TradePnLCalculator {
-    data_provider: Arc<dyn DataProvider>,
     entry_ts: i64,
     trade: Trade,
     market_sim_data_since_entry: LazyFrame,
@@ -175,7 +174,8 @@ impl TradePnLCalculator {
             .trade_and_pre_trade_values
             .trade
             .get(&TradeDataKind::LastTradePrice)
-            .unwrap().clone()
+            .unwrap()
+            .clone()
             .unwrap_float64();
 
         PnL {
@@ -188,7 +188,7 @@ impl TradePnLCalculator {
     fn trade_exit_ts(&self, exit_px: f64) -> Option<i64> {
         self.market_sim_data_since_entry
             .clone()
-            .find_timestamp_when_price_reached(exit_px, self.data_provider.clone())
+            .find_timestamp_when_price_reached(exit_px)
     }
 }
 
@@ -204,7 +204,6 @@ fn is_order_open(timestamp: Option<i64>) -> bool {
 }
 
 pub struct TradePnLCalculatorBuilder {
-    data_provider: Option<Arc<dyn DataProvider>>,
     entry_ts: Option<i64>,
     trade: Option<Trade>,
     market_sim_data_since_entry: Option<LazyFrame>,
@@ -214,18 +213,10 @@ pub struct TradePnLCalculatorBuilder {
 impl TradePnLCalculatorBuilder {
     pub fn new() -> Self {
         Self {
-            data_provider: None,
             entry_ts: None,
             trade: None,
             market_sim_data_since_entry: None,
             trade_and_pre_trade_values: None,
-        }
-    }
-
-    pub fn with_data_provider(self, data_provider: Arc<dyn DataProvider>) -> Self {
-        Self {
-            data_provider: Some(data_provider),
-            ..self
         }
     }
 
@@ -262,7 +253,6 @@ impl TradePnLCalculatorBuilder {
 
     pub fn build(self) -> TradePnLCalculator {
         TradePnLCalculator {
-            data_provider: self.data_provider.clone().unwrap(),
             entry_ts: self.entry_ts.clone().unwrap(),
             trade: self.trade.clone().unwrap(),
             market_sim_data_since_entry: self.market_sim_data_since_entry.clone().unwrap(),

@@ -1,13 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use crate::{
     bot::pre_trade_data::PreTradeData,
     converter::any_value::AnyValueConverter,
-    data_provider::DataProvider,
     enums::{
         self,
         bots::{PreTradeDataKind, TradingIndicatorKind},
-        columns::{Columns, OhlcColumnNames},
+        column_names::DataProviderColumns,
     },
     trading_indicator::price_histogram::PriceHistogram,
 };
@@ -24,7 +23,7 @@ pub struct PreTradeValues {
 
 pub struct PreTradeValuesCalculator {
     pre_trade_data: PreTradeData,
-    data_provider: Arc<dyn DataProvider>,
+
     required_market_sim_values: Vec<PreTradeDataKind>,
     required_indicator_values: Vec<TradingIndicatorKind>,
 }
@@ -102,7 +101,7 @@ impl PreTradeValuesCalculator {
             .get(&indicator)
             .unwrap()
             .clone();
-        let ph = PriceHistogram::new(self.data_provider.clone(), df);
+        let ph = PriceHistogram::new(df);
 
         match indicator {
             TradingIndicatorKind::Poc(_) => ph.poc(),
@@ -114,10 +113,9 @@ impl PreTradeValuesCalculator {
     }
 
     fn compute_last_trade_price(&self) -> f64 {
-        let dp = self.data_provider.clone();
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let close = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Close));
+        let close = DataProviderColumns::Close.to_string();
         let filt = df.lazy().select([col(&close).last()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();
@@ -126,10 +124,9 @@ impl PreTradeValuesCalculator {
     }
 
     fn compute_lowest_trade_price(&self) -> f64 {
-        let dp = self.data_provider.clone();
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let low = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Low));
+        let low = DataProviderColumns::Low.to_string();
         let filt = df.lazy().select([col(&low).min()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();
@@ -138,10 +135,9 @@ impl PreTradeValuesCalculator {
     }
 
     fn compute_highest_trade_price(&self) -> f64 {
-        let dp = self.data_provider.clone();
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let high = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::High));
+        let high = DataProviderColumns::High.to_string();
         let filt = df.lazy().select([col(&high).max()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();
@@ -152,7 +148,7 @@ impl PreTradeValuesCalculator {
 
 pub struct PreTradeValuesCalculatorBuilder {
     pre_trade_data: Option<PreTradeData>,
-    data_provider: Option<Arc<dyn DataProvider>>,
+
     required_market_sim_values: Option<Vec<PreTradeDataKind>>,
     required_indicator_values: Option<Vec<TradingIndicatorKind>>,
 }
@@ -161,7 +157,7 @@ impl From<&PnLReportDataRowCalculator> for PreTradeValuesCalculatorBuilder {
     fn from(value: &PnLReportDataRowCalculator) -> Self {
         Self {
             pre_trade_data: Some(value.pre_trade_data.clone()),
-            data_provider: Some(value.data_provider.clone()),
+
             required_market_sim_values: None,
             required_indicator_values: None,
         }
@@ -192,7 +188,7 @@ impl PreTradeValuesCalculatorBuilder {
     pub fn build(self) -> PreTradeValuesCalculator {
         PreTradeValuesCalculator {
             pre_trade_data: self.pre_trade_data.unwrap(),
-            data_provider: self.data_provider.unwrap(),
+
             required_market_sim_values: self.required_market_sim_values.unwrap(),
             required_indicator_values: self.required_indicator_values.unwrap(),
         }

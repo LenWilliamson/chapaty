@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use polars::{
     lazy::dsl::GetOutput,
@@ -7,13 +7,13 @@ use polars::{
 
 use crate::{
     bot::time_interval::{InInterval, TimeInterval},
+    converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
-    data_provider::DataProvider,
     enums::{
         bots::StrategyKind,
-        columns::{Columns, OhlcColumnNames, PerformanceStatisticColumnNames},
+        column_names::{DataProviderColumns, PerformanceReport},
         markets::TimeFrame,
-    }, converter::any_value::AnyValueConverter, 
+    },
 };
 
 use super::closures::{get_cw_from_ts, get_weekday_from_ts};
@@ -30,15 +30,16 @@ pub trait MyLazyFrameOperations {
         time_interval: TimeInterval,
         time_frame: TimeFrame,
     ) -> Self;
-    fn filter_ts_col_by_price(self, px: f64, dp: Arc<dyn DataProvider>) -> Self;
-    fn drop_rows_before_entry_ts(self, entry_ts: i64, dp: Arc<dyn DataProvider>) -> Self;
-    fn filter_trade_data_kind_values(self, dp: Arc<dyn DataProvider>) -> Self;
-    fn find_timestamp_when_price_reached(self, px: f64, dp: Arc<dyn DataProvider>) -> Option<i64>;
+    fn filter_ts_col_by_price(self, px: f64) -> Self;
+    fn drop_rows_before_entry_ts(self, entry_ts: i64) -> Self;
+    fn filter_trade_data_kind_values(self) -> Self;
+    fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64>;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
+    // TODO rausnehmen
     fn append_strategy_col(self, strategy: StrategyKind) -> Self {
-        let name = &PerformanceStatisticColumnNames::Strategy.to_string();
+        let name = &PerformanceReport::Strategy.to_string();
         self.with_column(lit(strategy.to_string()).alias(name))
     }
 
@@ -93,15 +94,15 @@ impl MyLazyFrameOperations for LazyFrame {
 
     /// # Returns
     /// This function returns a `DaraFrame` with a single column, the `timestamp` column
-    fn filter_ts_col_by_price(self, px: f64, dp: Arc<dyn DataProvider>) -> Self {
-        let high = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::High));
-        let low = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Low));
-        let ots = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::OpenTime));
+    fn filter_ts_col_by_price(self, px: f64) -> Self {
+        let high = DataProviderColumns::High.to_string();
+        let low = DataProviderColumns::Low.to_string();
+        let ots = DataProviderColumns::OpenTime.to_string();
         self.select([col(&ots).filter(col(&low).lt_eq(lit(px)).and(col(&high).gt_eq(lit(px))))])
     }
 
-    fn drop_rows_before_entry_ts(self, entry_ts: i64, dp: Arc<dyn DataProvider>) -> Self {
-        let col_name = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::OpenTime));
+    fn drop_rows_before_entry_ts(self, entry_ts: i64) -> Self {
+        let col_name = DataProviderColumns::OpenTime.to_string();
         self.filter(col(&col_name).gt_eq(lit(entry_ts)))
     }
 
@@ -112,11 +113,11 @@ impl MyLazyFrameOperations for LazyFrame {
     /// * Index 2: highest trade price
     /// * Index 3: timestamp highest trade price
     /// * Index 4: timestamp lowest trade price
-    fn filter_trade_data_kind_values(self, dp: Arc<dyn DataProvider>) -> Self {
-        let ots = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::OpenTime));
-        let high = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::High));
-        let low = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Low));
-        let close = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Close));
+    fn filter_trade_data_kind_values(self) -> Self {
+        let ots = DataProviderColumns::OpenTime.to_string();
+        let high = DataProviderColumns::High.to_string();
+        let low = DataProviderColumns::Low.to_string();
+        let close = DataProviderColumns::Close.to_string();
         self.select([
             col(&close).last(),
             col(&low).min(),
@@ -132,12 +133,8 @@ impl MyLazyFrameOperations for LazyFrame {
         ])
     }
 
-    fn find_timestamp_when_price_reached(self, px: f64, dp: Arc<dyn DataProvider>) -> Option<i64> {
-        let df = self
-            .filter_ts_col_by_price(px, dp)
-            .first()
-            .collect()
-            .unwrap();
+    fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64> {
+        let df = self.filter_ts_col_by_price(px).first().collect().unwrap();
         if is_not_an_empty_frame(&df) {
             Some(df.get(0).unwrap()[0].unwrap_int64())
         } else {

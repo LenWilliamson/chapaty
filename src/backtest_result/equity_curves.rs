@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::enums::markets::MarketKind;
 
-use super::{pnl_statement::PnLStatement, trade_breakdown_report::PnLSnapshot};
+use super::{pnl_statement::PnLStatement, trade_break_down_report::PnLSnapshot};
 
 impl From<PnLStatement> for EquityCurvesReport {
     fn from(value: PnLStatement) -> Self {

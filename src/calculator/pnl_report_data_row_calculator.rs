@@ -1,11 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
-use polars::prelude::{ DataFrame, IntoLazy, LazyFrame};
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 
 use crate::{
     backtest_result::pnl_report::PnLReportDataRow,
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
-
     data_provider::DataProvider,
     enums::{bots::TradeDataKind, markets::MarketKind, MyAnyValue},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
@@ -63,7 +62,6 @@ impl PnLReportDataRowCalculator {
         let entry_ts = get_entry_ts(&values.trade);
         let trade = self.strategy.get_trade(&values.pre_trade);
         let trade_pnl = TradePnLCalculatorBuilder::new()
-            .with_data_provider(self.data_provider.clone())
             .with_entry_ts(entry_ts)
             .with_trade(trade.clone())
             .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(entry_ts))
@@ -84,7 +82,7 @@ impl PnLReportDataRowCalculator {
         self.market_sim_data
             .clone()
             .lazy()
-            .drop_rows_before_entry_ts(entry_ts, self.data_provider.clone())
+            .drop_rows_before_entry_ts(entry_ts)
     }
 
     fn compute_pre_trade_values(&self) -> PreTradeValues {

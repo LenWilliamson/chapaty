@@ -1,8 +1,7 @@
 
 use crate::{
     chapaty,
-    enums::columns::{AggTradeColumnNames, Columns, VolumeProfileColumnNames},
-    data_provider::DataProvider, lazy_frame_operations::closures::round,
+ lazy_frame_operations::closures::round, enums::column_names::{DataProviderColumns, VolumeProfile},
 };
 
 use polars::{
@@ -10,15 +9,14 @@ use polars::{
     prelude::{col, DataFrame, IntoLazy},
 };
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
-use std::sync::Arc;
 
 pub struct AggTradesVolume {
-    data_provider: Arc<dyn DataProvider + Send + Sync>,
+
 }
 
 impl AggTradesVolume {
-    pub fn new(data_provider: Arc<dyn DataProvider + Send + Sync>) -> Self {
-        Self { data_provider }
+    pub fn new() -> Self {
+        Self {  }
     }
 
     pub fn from_df_map(
@@ -60,11 +58,10 @@ impl AggTradesVolume {
     ///
     /// ```
     fn vol_profile(&self, df: DataFrame) -> DataFrame {
-        let dp = self.data_provider.clone();
-        let px = dp.column_name_as_str(&Columns::AggTrade(AggTradeColumnNames::Price));
-        let qx = dp.column_name_as_str(&Columns::AggTrade(AggTradeColumnNames::Quantity));
-        let px_vol = dp.column_name_as_str(&Columns::Vol(VolumeProfileColumnNames::Price));
-        let qx_vol = dp.column_name_as_str(&Columns::Vol(VolumeProfileColumnNames::Quantity));
+        let px = DataProviderColumns::Price.to_string();
+        let qx = DataProviderColumns::Quantity.to_string();
+        let px_vol =  VolumeProfile::Price.to_string();
+        let qx_vol = VolumeProfile::Quantity.to_string();
 
         df.lazy()
             .select([

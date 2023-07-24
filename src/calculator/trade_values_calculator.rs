@@ -1,17 +1,16 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use polars::prelude::{ DataFrame, IntoLazy};
+use polars::prelude::{DataFrame, IntoLazy};
 
 use crate::{
-    data_provider::DataProvider,
+    converter::any_value::AnyValueConverter,
     enums::{bots::TradeDataKind, MyAnyValue},
-    lazy_frame_operations::trait_extensions::MyLazyFrameOperations, converter::any_value::AnyValueConverter,
+    lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 
 use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
 
 pub struct TradeValuesCalculator {
-    data_provider: Arc<dyn DataProvider>,
     market_sim_data: DataFrame,
     entry_price: f64,
 }
@@ -40,7 +39,7 @@ impl TradeValuesCalculator {
         self.market_sim_data
             .clone()
             .lazy()
-            .find_timestamp_when_price_reached(self.entry_price, self.data_provider.clone())
+            .find_timestamp_when_price_reached(self.entry_price)
             .map_or_else(|| None, |entry_ts| Some(self.get_result(entry_ts)))
     }
 
@@ -60,10 +59,7 @@ impl TradeValuesCalculator {
         match_trade_values_with_trade_kind(self.get_trade_values_as_df(entry_ts))
     }
 
-    fn initialize_trade_value_map(
-        &self,
-        entry_ts: i64,
-    ) -> HashMap<TradeDataKind, MyAnyValue> {
+    fn initialize_trade_value_map(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValue> {
         HashMap::from([
             (
                 TradeDataKind::EntryPrice,
@@ -81,7 +77,6 @@ impl TradeValuesCalculator {
     /// * Index 3: timestamp highest trade price
     /// * Index 4: timestamp lowest trade price
     fn get_trade_values_as_df(&self, entry_ts: i64) -> DataFrame {
-        let dp = self.data_provider.clone();
         // let ots = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::OpenTime));
         // let high = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::High));
         // let low = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Low));
@@ -90,23 +85,36 @@ impl TradeValuesCalculator {
         self.market_sim_data
             .clone()
             .lazy()
-            .drop_rows_before_entry_ts(entry_ts, dp.clone())
-            .filter_trade_data_kind_values(dp)
+            .drop_rows_before_entry_ts(entry_ts)
+            .filter_trade_data_kind_values()
             .collect()
             .unwrap()
     }
 }
 
-fn match_trade_values_with_trade_kind(
-    trade_values: DataFrame,
-) -> Vec<(TradeDataKind, MyAnyValue)> {
+fn match_trade_values_with_trade_kind(trade_values: DataFrame) -> Vec<(TradeDataKind, MyAnyValue)> {
     let row = trade_values.get(0).unwrap();
     vec![
-        (TradeDataKind::LastTradePrice, MyAnyValue::Float64(row[0].unwrap_float64())),
-        (TradeDataKind::LowestTradePriceSinceEntry, MyAnyValue::Float64(row[1].unwrap_float64())),
-        (TradeDataKind::HighestTradePriceSinceEntry, MyAnyValue::Float64(row[2].unwrap_float64())),
-        (TradeDataKind::HighestTradePriceSinceEntryTimestamp, MyAnyValue::Int64(row[3].unwrap_int64())),
-        (TradeDataKind::LowestTradePriceSinceEntryTimestamp, MyAnyValue::Int64(row[4].unwrap_int64())),
+        (
+            TradeDataKind::LastTradePrice,
+            MyAnyValue::Float64(row[0].unwrap_float64()),
+        ),
+        (
+            TradeDataKind::LowestTradePriceSinceEntry,
+            MyAnyValue::Float64(row[1].unwrap_float64()),
+        ),
+        (
+            TradeDataKind::HighestTradePriceSinceEntry,
+            MyAnyValue::Float64(row[2].unwrap_float64()),
+        ),
+        (
+            TradeDataKind::HighestTradePriceSinceEntryTimestamp,
+            MyAnyValue::Int64(row[3].unwrap_int64()),
+        ),
+        (
+            TradeDataKind::LowestTradePriceSinceEntryTimestamp,
+            MyAnyValue::Int64(row[4].unwrap_int64()),
+        ),
     ]
 }
 
@@ -119,7 +127,6 @@ fn update_trade_value_map(
 }
 
 pub struct TradeValuesCalculatorBuilder {
-    data_provider: Option<Arc<dyn DataProvider>>,
     market_sim_data: Option<DataFrame>,
     entry_price: Option<f64>,
 }
@@ -127,7 +134,6 @@ pub struct TradeValuesCalculatorBuilder {
 impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
     fn from(value: &PnLReportDataRowCalculator) -> Self {
         Self {
-            data_provider: Some(value.data_provider.clone()),
             market_sim_data: Some(value.market_sim_data.clone()),
             entry_price: None,
         }
@@ -142,10 +148,8 @@ impl TradeValuesCalculatorBuilder {
         }
     }
 
-
     pub fn build(self) -> TradeValuesCalculator {
         TradeValuesCalculator {
-            data_provider: self.data_provider.unwrap(),
             market_sim_data: self.market_sim_data.unwrap(),
             entry_price: self.entry_price.unwrap(),
         }

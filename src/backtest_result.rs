@@ -3,10 +3,10 @@ pub mod metrics;
 pub mod performance_report;
 pub mod pnl_report;
 pub mod pnl_statement;
-pub mod trade_breakdown_report;
+pub mod trade_break_down_report;
 use self::{
     equity_curves::EquityCurvesReport, performance_report::PerformanceReports,
-    pnl_statement::PnLStatement, trade_breakdown_report::TradeBreakDownReports,
+    pnl_statement::PnLStatement, trade_break_down_report::TradeBreakDownReports,
 };
 
 #[derive(Debug)]

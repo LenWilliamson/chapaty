@@ -1,20 +1,18 @@
-use std::sync::Arc;
 
 use crate::{
-    data_provider::DataProvider,
-    enums::columns::{Columns, VolumeProfileColumnNames}, converter::any_value::AnyValueConverter,
+
+    converter::any_value::AnyValueConverter, enums::column_names::VolumeProfile,
 };
 
 use polars::prelude::{col, lit, DataFrame, IntoLazy, AnyValue};
 
 pub struct PriceHistogram {
-    data_provider: Arc<dyn DataProvider>,
     df: DataFrame,
 }
 
 impl PriceHistogram {
-    pub fn new(data_provider: Arc<dyn DataProvider>, df: DataFrame) -> Self {
-        Self { data_provider, df }
+    pub fn new( df: DataFrame) -> Self {
+        Self {  df }
     }
 
     /// This function computes the POC for the given volume profile. The POC is the point of control. Hence,
@@ -23,11 +21,11 @@ impl PriceHistogram {
     /// # Arguments
     /// * `df_vol` - volume profile
     pub fn poc(&self) -> f64 {
-        let dp = self.data_provider.clone();
+
         let df = self.df.clone();
 
-        let qx = &dp.column_name_as_str(&Columns::Vol(VolumeProfileColumnNames::Quantity));
-        let px = &dp.column_name_as_str(&Columns::Vol(VolumeProfileColumnNames::Price));
+        let qx = &VolumeProfile::Quantity.to_string();
+        let px = &VolumeProfile::Price.to_string();
 
         let sorted = df
             .lazy()
@@ -47,9 +45,9 @@ impl PriceHistogram {
     /// * `poc` - peek of control
     pub fn volume_area(&self, std_dev: f64) -> (f64, f64) {
         let poc = self.poc();
-        let dp = self.data_provider.clone();
+
         let df = self.df.clone();
-        let qx_col = dp.column_name_as_int(&Columns::Vol(VolumeProfileColumnNames::Quantity));
+        let qx_col = VolumeProfile::Quantity as usize;
 
         // There could be more than one POC
         // Currently we choose the lowest price if there are multiple POCs
