@@ -1,16 +1,11 @@
 use crate::data_frame_operations::save_df_as_csv;
-use crate::enums::bot::StrategyKind;
-use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
+
 use std::collections::HashMap;
 
+use super::pnl_statement::PnLSnapshot;
+use super::pnl_statement::PnLStatement;
 use crate::enums::markets::MarketKind;
 use polars::prelude::DataFrame;
-use polars::prelude::IntoLazy;
-use polars::prelude::LazyFrame;
-
-use super::equity_curves::{EquityCurve, EquityCurves};
-use super::performance_report::PerformanceReport;
-use super::{pnl_report::PnLReports, pnl_statement::PnLStatement};
 
 #[derive(Debug)]
 
@@ -91,72 +86,5 @@ impl FromIterator<TradeBreakDownReport> for TradeBreakDownReports {
                 builder.append(i)
             })
             .build()
-    }
-}
-
-pub struct PnLSnapshot {
-    pub pnl_reports: PnLReports,
-    pub bot: StrategyKind,
-}
-
-impl From<PnLSnapshot> for TradeBreakDownReport {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            report: value.compute_trade_breakdown_report(),
-        }
-    }
-}
-
-impl From<PnLSnapshot> for PerformanceReport {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            report: value.compute_performance_report(),
-        }
-    }
-}
-
-impl From<PnLSnapshot> for EquityCurves {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            years: value.pnl_reports.years.clone(),
-            curves: value.compute_equity_curves(),
-        }
-    }
-}
-
-impl PnLSnapshot {
-    fn compute_equity_curves(self) -> HashMap<u32, EquityCurve> {
-        self.pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_equity_curve())
-            .collect()
-    }
-
-    fn compute_trade_breakdown_report(self) -> DataFrame {
-        let ldfs: Vec<LazyFrame> = self
-            .pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_trade_breakdown_df())
-            .map(|df| df.lazy())
-            .collect();
-
-        ldfs.concatenate_to_data_frame()
-    }
-
-    pub fn compute_performance_report(self) -> DataFrame {
-        let ldfs: Vec<LazyFrame> = self
-            .pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_performance_report_df())
-            .map(|df| df.lazy())
-            .collect();
-
-        ldfs.concatenate_to_data_frame()
     }
 }

@@ -104,7 +104,7 @@ impl Strategy for Ppp {
 
         match self.get_trade_kind(pre_trade_values) {
             TradeDirectionKind::Long => match self.stop_loss.condition {
-                StopLossKind::PrevPoc => {
+                StopLossKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) - self.stop_loss.offset
                 }
                 StopLossKind::PrevLow => lowest_trad_price - self.stop_loss.offset,
@@ -113,7 +113,7 @@ impl Strategy for Ppp {
             },
 
             TradeDirectionKind::Short => match self.stop_loss.condition {
-                StopLossKind::PrevPoc => {
+                StopLossKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) + self.stop_loss.offset
                 }
                 // PrevLow is counter intutitve
@@ -137,12 +137,12 @@ impl Strategy for Ppp {
         match self.get_trade_kind(pre_trade_values) {
             TradeDirectionKind::Long => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price + self.take_profit.offset,
-                TakeProfitKind::PrevPoc => panic!("PrevPoc not implemented for PPP"),
+                TakeProfitKind::PriceUponTradeEntry => panic!("PrevPoc not implemented for PPP"),
             },
 
             TradeDirectionKind::Short => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price - self.take_profit.offset,
-                TakeProfitKind::PrevPoc => panic!("PrevPoc not implemented for PPP"),
+                TakeProfitKind::PriceUponTradeEntry => panic!("PrevPoc not implemented for PPP"),
             },
 
             TradeDirectionKind::None => {

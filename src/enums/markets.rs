@@ -28,14 +28,6 @@ pub enum MarketKind {
 }
 
 impl MarketKind {
-    /// Returns the number of decimal places for the `market`.
-    ///
-    /// # Arguments
-    /// * `market` - where we want to know the number of decimal places
-    ///
-    /// # Example
-    /// * `MarketKind::BtcUsdt` for Binance has two decimal digits for cents, e.g. `1258.33`
-    /// * `MarketKind::EurUsd` for Ninja has five decimal digits for ticks, e.g. `1.39455`
     pub fn decimal_places(&self) -> i32 {
         match self {
             MarketKind::BtcUsdt => 2,
@@ -62,18 +54,6 @@ impl MarketKind {
         }
     }
 
-    /// This function returns the tik to dollar conversion factor for a market that uses tiks as units. Otherwise we return `None`.
-    ///
-    /// # Arguments
-    /// * `market` - we want to get tik step size
-    ///
-    /// # Examples
-    /// ```
-    /// // BtcUsdt does not use tiks as unit
-    /// assert_eq!(tik_to_dollar_conversion_factor(MarketKind::BtcUsdt).is_some(), false)
-    /// // EurUsd uses tiks as unit
-    /// assert_eq!(tik_to_dollar_conversion_factor(MarketKind::EurUsd).is_some(), true)
-    /// ```
     pub fn tik_to_dollar_conversion_factor(&self) -> Option<f64> {
         match self {
             MarketKind::BtcUsdt => None,

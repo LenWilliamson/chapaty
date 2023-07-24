@@ -24,11 +24,10 @@ pub enum TimeFrameKind {
     Daily,
 }
 
-
 #[derive(Debug, Copy, Clone,Display, EnumString)]
 pub enum StopLossKind {
-    #[strum(serialize = "PrevPoc")]
-    PrevPoc,
+    #[strum(serialize = "PriceUponTradeEntry")]
+    PriceUponTradeEntry,
     #[strum(serialize = "PrevLow")]
     PrevLow,
     #[strum(serialize = "PrevHigh")]
@@ -39,6 +38,6 @@ pub enum StopLossKind {
 pub enum TakeProfitKind {
     #[strum(serialize = "PrevClose")]
     PrevClose,
-    #[strum(serialize = "PrevPoc")]
-    PrevPoc,
+    #[strum(serialize = "PriceUponTradeEntry")]
+    PriceUponTradeEntry,
 }

@@ -8,7 +8,9 @@ use crate::calculator::trade_pnl_calculator::TradePnL;
 use crate::converter::market_decimal_places::MyDecimalPlaces;
 use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::bot::StrategyKind;
-use crate::enums::column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind};
+use crate::enums::column_names::{
+    self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind,
+};
 
 use super::metrics::{
     accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
@@ -159,19 +161,19 @@ impl PnLReport {
         let total_loss = total_loss(pl.clone());
 
         df!(
-        &PerformanceReportColumnKind::Year.to_string() => &vec![self.year],
-        &PerformanceReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
-        &PerformanceReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
-        &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
-        &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
-        &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
-        &PerformanceReportColumnKind::MaxDrawDownRel.to_string() => &vec![max_draw_down_rel(&accumulated_profit)],
-        &PerformanceReportColumnKind::PercentageProfitability.to_string() => &vec![percent_profitability(total_number_winner, total_number_of_trades)],
-        &PerformanceReportColumnKind::RatioAvgWinByAvgLoss.to_string() => &vec![avg_win_by_avg_loose(avg_win, avg_loss)],
-        &PerformanceReportColumnKind::AvgWin.to_string() => &vec![avg_win],
-        &PerformanceReportColumnKind::AvgLoss.to_string() => &vec![avg_loss],
-        &PerformanceReportColumnKind::ProfitFactor.to_string() => &vec![profit_factor(total_win, total_loss)],
-    ).unwrap()
+            &PerformanceReportColumnKind::Year.to_string() => &vec![self.year],
+            &PerformanceReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
+            &PerformanceReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
+            &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
+            &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
+            &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
+            &PerformanceReportColumnKind::MaxDrawDownRel.to_string() => &vec![max_draw_down_rel(&accumulated_profit)],
+            &PerformanceReportColumnKind::PercentageProfitability.to_string() => &vec![percent_profitability(total_number_winner, total_number_of_trades)],
+            &PerformanceReportColumnKind::RatioAvgWinByAvgLoss.to_string() => &vec![avg_win_by_avg_loose(avg_win, avg_loss)],
+            &PerformanceReportColumnKind::AvgWin.to_string() => &vec![avg_win],
+            &PerformanceReportColumnKind::AvgLoss.to_string() => &vec![avg_loss],
+            &PerformanceReportColumnKind::ProfitFactor.to_string() => &vec![profit_factor(total_win, total_loss)],
+        ).unwrap()
     }
 }
 
@@ -396,7 +398,12 @@ impl PnLReportBuilder {
             market: self.market.unwrap(),
             strategy: self.strategy.unwrap(),
             year: self.year.unwrap(),
-            pnl: self.data_rows.unwrap().concatenate_to_data_frame(),
+            pnl: self
+                .data_rows
+                .unwrap()
+                .concatenate_to_data_frame()
+                .with_row_count("#", Some(1))
+                .unwrap(),
         }
     }
 }

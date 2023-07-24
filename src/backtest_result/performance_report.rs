@@ -4,8 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::DataFrame;
 
-use super::pnl_statement::PnLStatement;
-use super::trade_break_down_report::PnLSnapshot;
+use super::pnl_statement::{PnLStatement, PnLSnapshot};
 #[derive(Debug)]
 pub struct PerformanceReports {
     pub markets: Vec<MarketKind>,

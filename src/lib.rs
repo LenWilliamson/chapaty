@@ -21,3 +21,13 @@ pub use enums::{
     data::MarketSimulationDataKind,
     markets::MarketKind,
 };
+
+
+/*
+- PPP Entry flexibel setzen, am besten über Struct
+- Test schreiben
+- Time Frames nutzen
+- StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
+- Bugfix siehe Zettel
+
+*/
