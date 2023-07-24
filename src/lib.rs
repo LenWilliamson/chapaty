@@ -5,7 +5,7 @@ mod chapaty;
 mod cloud_api;
 pub mod config;
 mod converter;
-pub mod data_frame_operations;
+mod data_frame_operations;
 pub mod data_provider;
 pub mod enums;
 mod lazy_frame_operations;
