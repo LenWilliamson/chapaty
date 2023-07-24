@@ -1,9 +1,8 @@
 use std::time::Instant;
 
 use chapaty::{
-    bot::BotBuilder,
     config::{self},
-    enums::{bot::TimeFrameKind, data::CandlestickKind, markets::MarketKind},
+    BotBuilder, MarketSimulationDataKind, MarketKind, TimeFrameKind,
 };
 
 mod common;
@@ -105,7 +104,7 @@ async fn it_test() {
     let data_provider = common::setup_data_provider();
     let name = "chapaty".to_string();
     let years = vec![2022];
-    let market_simulation_data = CandlestickKind::Ohlc1m;
+    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
     let markets = vec![MarketKind::EurUsdFuture];
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;

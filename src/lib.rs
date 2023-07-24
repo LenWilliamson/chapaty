@@ -1,5 +1,5 @@
 mod backtest_result;
-pub mod bot;
+mod bot;
 mod calculator;
 mod chapaty;
 mod cloud_api;
@@ -7,9 +7,17 @@ pub mod config;
 mod converter;
 mod data_frame_operations;
 pub mod data_provider;
-pub mod enums;
+mod enums;
 mod lazy_frame_operations;
 mod price_histogram;
 mod serde;
 pub mod strategy;
 mod trading_indicator;
+
+pub use bot::time_interval::TimeInterval;
+pub use bot::BotBuilder;
+pub use enums::{
+    bot::{StopLossKind, TakeProfitKind, TimeFrameKind},
+    data::MarketSimulationDataKind,
+    markets::MarketKind,
+};

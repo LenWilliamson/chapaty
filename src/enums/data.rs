@@ -3,7 +3,7 @@ use strum_macros::{Display, EnumString};
 use super::{indicator::{TradingIndicatorKind, PriceHistogramKind}, column_names::DataProviderColumnKind};
 
 #[derive(Copy, Clone, Debug, EnumString, PartialEq, Display)]
-pub enum CandlestickKind {
+pub enum MarketSimulationDataKind {
     #[strum(serialize = "ohlc-1m")]
     Ohlc1m,
 
@@ -76,15 +76,15 @@ impl HdbSourceDirKind {
     }
 }
 
-impl From<CandlestickKind> for HdbSourceDirKind {
-    fn from(value: CandlestickKind) -> Self {
+impl From<MarketSimulationDataKind> for HdbSourceDirKind {
+    fn from(value: MarketSimulationDataKind) -> Self {
         match value {
-            CandlestickKind::Ohlc1m => HdbSourceDirKind::Ohlc1m,
-            CandlestickKind::Ohlc30m => HdbSourceDirKind::Ohlc30m,
-            CandlestickKind::Ohlc1h => HdbSourceDirKind::Ohlc1h,
-            CandlestickKind::Ohlcv1m => HdbSourceDirKind::Ohlcv1m,
-            CandlestickKind::Ohlcv30m => HdbSourceDirKind::Ohlcv30m,
-            CandlestickKind::Ohlcv1h => HdbSourceDirKind::Ohlcv1h,
+            MarketSimulationDataKind::Ohlc1m => HdbSourceDirKind::Ohlc1m,
+            MarketSimulationDataKind::Ohlc30m => HdbSourceDirKind::Ohlc30m,
+            MarketSimulationDataKind::Ohlc1h => HdbSourceDirKind::Ohlc1h,
+            MarketSimulationDataKind::Ohlcv1m => HdbSourceDirKind::Ohlcv1m,
+            MarketSimulationDataKind::Ohlcv30m => HdbSourceDirKind::Ohlcv30m,
+            MarketSimulationDataKind::Ohlcv1h => HdbSourceDirKind::Ohlcv1h,
         }
     }
 }

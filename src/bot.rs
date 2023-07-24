@@ -10,7 +10,7 @@ use crate::{
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
-        data::{CandlestickKind, HdbSourceDirKind},
+        data::{MarketSimulationDataKind, HdbSourceDirKind},
         error::ChapatyErrorKind,
         markets::MarketKind, bot::TimeFrameKind,
     },
@@ -41,7 +41,7 @@ pub struct Bot {
     data_provider: Arc<dyn DataProvider + Send + Sync>,
     markets: Vec<MarketKind>,
     years: Vec<u32>,
-    market_simulation_data: CandlestickKind,
+    market_simulation_data: MarketSimulationDataKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
@@ -54,7 +54,7 @@ pub struct BotBuilder {
     data_provider: Arc<dyn DataProvider + Send + Sync>,
     markets: Vec<MarketKind>,
     years: Vec<u32>,
-    market_simulation_data: CandlestickKind,
+    market_simulation_data: MarketSimulationDataKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
@@ -208,7 +208,7 @@ impl BotBuilder {
             data_provider,
             markets: vec![],
             years: vec![],
-            market_simulation_data: CandlestickKind::Ohlc1m,
+            market_simulation_data: MarketSimulationDataKind::Ohlc1m,
             time_interval: None,
             time_frame: TimeFrameKind::Daily,
             save_result_as_csv: false,
@@ -227,7 +227,7 @@ impl BotBuilder {
         Self { markets, ..self }
     }
 
-    pub fn with_market_simulation_data(self, market_simulation_data: CandlestickKind) -> Self {
+    pub fn with_market_simulation_data(self, market_simulation_data: MarketSimulationDataKind) -> Self {
         Self {
             market_simulation_data,
             ..self

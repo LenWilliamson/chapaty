@@ -161,7 +161,7 @@ impl PnLReport {
         df!(
         &PerformanceReportColumnKind::Year.to_string() => &vec![self.year],
         &PerformanceReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
-        &TradeBreakDownReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
+        &PerformanceReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
         &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
         &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
         &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
