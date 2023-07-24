@@ -2,7 +2,7 @@ use std::{io::Cursor, sync::Arc};
 
 use polars::prelude::{CsvReader, SerReader};
 
-use crate::{enums::column_names::DataProviderColumns, data_frame_operations::vol_schema};
+use crate::enums::column_names::DataProviderColumns;
 
 use super::*;
 
@@ -31,22 +31,20 @@ impl Binance {
 }
 
 impl DataProvider for Binance {
-    fn delimiter(&self) -> u8 {
-        b','
-    }
-
     fn get_data_producer_kind(&self) -> ProducerKind {
         self.producer_kind.clone()
     }
 
-    fn schema(&self, data: &LeafDir) -> Schema {
+    fn schema(&self, data: &HdbSourceDir) -> Schema {
         match data {
-            LeafDir::Ohlc1m | LeafDir::Ohlc30m | LeafDir::Ohlc1h => ohlc_schema(),
-            LeafDir::Ohlcv1m | LeafDir::Ohlcv30m | LeafDir::Ohlcv1h => ohlcv_schema(),
-            LeafDir::Tick => panic!("DataKind::Tick not yet implemented for DataProducer Binance"),
-            LeafDir::AggTrades => aggtrades_schema(),
-            LeafDir::Vol => vol_schema(),
-            LeafDir::ProfitAndLoss => panic!("Not implemented by DataProvider. TODO Improve API"),
+            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlc1h => ohlc_schema(),
+            HdbSourceDir::Ohlcv1m | HdbSourceDir::Ohlcv30m | HdbSourceDir::Ohlcv1h => {
+                ohlcv_schema()
+            }
+            HdbSourceDir::Tick => {
+                panic!("DataKind::Tick not yet implemented for DataProducer Binance")
+            }
+            HdbSourceDir::AggTrades => aggtrades_schema(),
         }
     }
 
@@ -65,7 +63,7 @@ impl DataProvider for Binance {
             DataProviderColumns::TakerBuyBaseAssetVol => 9,
             DataProviderColumns::TakerBuyQuoteAssetVol => 10,
             DataProviderColumns::Ignore => 11,
-            
+
             // AggTrades Column names
             DataProviderColumns::AggTradeId => 0,
             DataProviderColumns::Price => 1,
@@ -78,7 +76,7 @@ impl DataProvider for Binance {
         }
     }
 
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &LeafDir) -> DataFrame {
+    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDir) -> DataFrame {
         CsvReader::new(Cursor::new(df_as_bytes))
             .has_header(false)
             .with_schema(Arc::new(self.schema(data)))
@@ -86,18 +84,16 @@ impl DataProvider for Binance {
             .unwrap()
     }
 
-    fn get_ts_col_as_str(&self, data: &LeafDir) -> String {
+    fn get_ts_col_as_str(&self, data: &HdbSourceDir) -> String {
         match data {
-            LeafDir::Ohlc1m
-            | LeafDir::Ohlc30m
-            | LeafDir::Ohlc1h
-            | LeafDir::Ohlcv1m
-            | LeafDir::Ohlcv30m
-            | LeafDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
-            LeafDir::Tick => panic!("Tick data not yet supported."),
-            LeafDir::AggTrades => DataProviderColumns::Timestamp.to_string(),
-            LeafDir::Vol => panic!("No timestamp for volume."),
-            LeafDir::ProfitAndLoss => panic!("Not implemented by DataProvider. TODO Improve API"),
+            HdbSourceDir::Ohlc1m
+            | HdbSourceDir::Ohlc30m
+            | HdbSourceDir::Ohlc1h
+            | HdbSourceDir::Ohlcv1m
+            | HdbSourceDir::Ohlcv30m
+            | HdbSourceDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
+            HdbSourceDir::Tick => panic!("Tick data not yet supported."),
+            HdbSourceDir::AggTrades => DataProviderColumns::Timestamp.to_string(),
         }
     }
 }
@@ -160,5 +156,3 @@ fn aggtrades_schema() -> Schema {
         .into_iter(),
     )
 }
-
-

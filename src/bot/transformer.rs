@@ -4,7 +4,7 @@ use crate::{
     chapaty,
     enums::{
         bots::{PriceHistogram, TradingIndicatorKind},
-        data::LeafDir,
+        data::HdbSourceDir,
         markets::{MarketKind, TimeFrame},
     },
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
@@ -22,7 +22,7 @@ use super::{
 pub struct Transformer {
     bot: Arc<Bot>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    market_sim_data: LeafDir,
+    market_sim_data: HdbSourceDir,
     market: MarketKind,
 }
 
@@ -172,7 +172,7 @@ fn handle_weekly_update(df: DataFrame, df_map: &mut chapaty::types::DataFrameMap
 pub struct TransformerBuilder {
     bot: Arc<Bot>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    market_sim_data: Option<LeafDir>,
+    market_sim_data: Option<HdbSourceDir>,
     market: Option<MarketKind>,
 }
 
@@ -193,7 +193,7 @@ impl TransformerBuilder {
         }
     }
 
-    pub fn with_market_sim_data(self, market_sim_data: LeafDir) -> Self {
+    pub fn with_market_sim_data(self, market_sim_data: HdbSourceDir) -> Self {
         Self {
             market_sim_data: Some(market_sim_data),
             ..self

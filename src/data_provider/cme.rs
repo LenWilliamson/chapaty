@@ -8,7 +8,7 @@ use polars::{
 
 use crate::{
     enums::column_names::DataProviderColumns,
-    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time}, data_frame_operations::vol_schema,
+    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
 };
 
 use super::*;
@@ -131,28 +131,21 @@ fn ninja_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 }
 
 impl DataProvider for Ninja {
-
-    fn delimiter(&self) -> u8 {
-        b';'
-    }
-
     fn get_data_producer_kind(&self) -> ProducerKind {
         self.producer_kind.clone()
     }
 
-    fn schema(&self, data: &LeafDir) -> Schema {
+    fn schema(&self, data: &HdbSourceDir) -> Schema {
         match data {
-            LeafDir::Ohlc1m | LeafDir::Ohlc30m | LeafDir::Ohlc1h => ohlc_schema(),
-            LeafDir::Ohlcv1m | LeafDir::Ohlcv30m | LeafDir::Ohlcv1h => {
+            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlc1h => ohlc_schema(),
+            HdbSourceDir::Ohlcv1m | HdbSourceDir::Ohlcv30m | HdbSourceDir::Ohlcv1h => {
                 panic!("DataKind::Ohlcv not yet implemented for DataProducer Ninja")
             }
-            LeafDir::Tick => panic!("DataKind::Tick not yet implemented for DataProducer Ninja"),
-            LeafDir::AggTrades => {
-                panic!("DataKind::AggTrades not yet implemented for DataProducer Ninja")
+            HdbSourceDir::Tick => {
+                panic!("DataKind::Tick not yet implemented for DataProducer Ninja")
             }
-            LeafDir::Vol => vol_schema(),
-            LeafDir::ProfitAndLoss => {
-                panic!("Not implemented by DataProvider. TODO Improve API")
+            HdbSourceDir::AggTrades => {
+                panic!("DataKind::AggTrades not yet implemented for DataProducer Ninja")
             }
         }
     }
@@ -168,30 +161,26 @@ impl DataProvider for Ninja {
         }
     }
 
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &LeafDir) -> DataFrame {
+    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDir) -> DataFrame {
         let offset = match data {
-            LeafDir::Ohlc1m | LeafDir::Ohlcv1m => 1,
-            LeafDir::Ohlc30m | LeafDir::Ohlcv30m => 30,
-            LeafDir::Ohlc1h | LeafDir::Ohlcv1h => 60,
+            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlcv1m => 1,
+            HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlcv30m => 30,
+            HdbSourceDir::Ohlc1h | HdbSourceDir::Ohlcv1h => 60,
             _ => panic!("We can only compute offset for ohlc data. But not for {data:?}"),
         };
         self.transform_ninja_df(df_as_bytes, offset)
     }
 
-    fn get_ts_col_as_str(&self, data: &LeafDir) -> String {
+    fn get_ts_col_as_str(&self, data: &HdbSourceDir) -> String {
         match data {
-            LeafDir::Ohlc1m
-            | LeafDir::Ohlc30m
-            | LeafDir::Ohlc1h
-            | LeafDir::Ohlcv1m
-            | LeafDir::Ohlcv30m
-            | LeafDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
-            LeafDir::Tick => panic!("Tick data not supported."),
-            LeafDir::AggTrades => panic!("Vol data not supported."),
-            LeafDir::Vol => panic!("No timestamp for volume."),
-            LeafDir::ProfitAndLoss => {
-                panic!("Not implemented by DataProvider. TODO Improve API")
-            }
+            HdbSourceDir::Ohlc1m
+            | HdbSourceDir::Ohlc30m
+            | HdbSourceDir::Ohlc1h
+            | HdbSourceDir::Ohlcv1m
+            | HdbSourceDir::Ohlcv30m
+            | HdbSourceDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
+            HdbSourceDir::Tick => panic!("Tick data not supported."),
+            HdbSourceDir::AggTrades => panic!("Vol data not supported."),
         }
     }
 }

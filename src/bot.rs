@@ -10,7 +10,7 @@ use crate::{
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
-        data::{CandlestickKind, LeafDir},
+        data::{CandlestickKind, HdbSourceDir},
         error::ChapatyError,
         markets::{MarketKind, TimeFrame},
     },
@@ -180,7 +180,7 @@ impl Bot {
             HashSet::new(),
             |mut acc, trading_indicator| {
                 let indicator_data_pair =
-                    IndicatorDataPair::new(*trading_indicator, LeafDir::from(*trading_indicator));
+                    IndicatorDataPair::new(*trading_indicator, HdbSourceDir::from(*trading_indicator));
                 acc.insert(indicator_data_pair);
                 acc
             },

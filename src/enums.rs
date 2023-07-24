@@ -81,7 +81,8 @@ pub mod data {
     }
 
     #[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq, Hash, Display)]
-    pub enum LeafDir {
+    /// Former known as LeafDir
+    pub enum HdbSourceDir {
         #[strum(serialize = "ohlc-1m")]
         Ohlc1m,
 
@@ -105,51 +106,47 @@ pub mod data {
 
         #[strum(serialize = "aggTrades")]
         AggTrades,
-
-        // TODO Löschen
-        Vol,
-        ProfitAndLoss,
     }
 
-    impl From<CandlestickKind> for LeafDir {
+    impl From<CandlestickKind> for HdbSourceDir {
         fn from(value: CandlestickKind) -> Self {
             match value {
-                CandlestickKind::Ohlc1m => LeafDir::Ohlc1m,
-                CandlestickKind::Ohlc30m => LeafDir::Ohlc30m,
-                CandlestickKind::Ohlc1h => LeafDir::Ohlc1h,
-                CandlestickKind::Ohlcv1m => LeafDir::Ohlcv1m,
-                CandlestickKind::Ohlcv30m => LeafDir::Ohlcv30m,
-                CandlestickKind::Ohlcv1h => LeafDir::Ohlcv1h,
+                CandlestickKind::Ohlc1m => HdbSourceDir::Ohlc1m,
+                CandlestickKind::Ohlc30m => HdbSourceDir::Ohlc30m,
+                CandlestickKind::Ohlc1h => HdbSourceDir::Ohlc1h,
+                CandlestickKind::Ohlcv1m => HdbSourceDir::Ohlcv1m,
+                CandlestickKind::Ohlcv30m => HdbSourceDir::Ohlcv30m,
+                CandlestickKind::Ohlcv1h => HdbSourceDir::Ohlcv1h,
             }
         }
     }
 
-    impl From<TradingIndicatorKind> for LeafDir {
+    impl From<TradingIndicatorKind> for HdbSourceDir {
         fn from(value: TradingIndicatorKind) -> Self {
             match value {
                 TradingIndicatorKind::Poc(price_histogram) => match price_histogram {
-                    PriceHistogram::Tpo1m => LeafDir::Ohlc1m,
-                    PriceHistogram::VolAggTrades => LeafDir::AggTrades,
-                    PriceHistogram::VolTick => LeafDir::Tick,
+                    PriceHistogram::Tpo1m => HdbSourceDir::Ohlc1m,
+                    PriceHistogram::VolAggTrades => HdbSourceDir::AggTrades,
+                    PriceHistogram::VolTick => HdbSourceDir::Tick,
                 },
                 TradingIndicatorKind::VolumeAreaLow(price_histogram) => match price_histogram {
-                    PriceHistogram::Tpo1m => LeafDir::Ohlc1m,
-                    PriceHistogram::VolAggTrades => LeafDir::AggTrades,
-                    PriceHistogram::VolTick => LeafDir::Tick,
+                    PriceHistogram::Tpo1m => HdbSourceDir::Ohlc1m,
+                    PriceHistogram::VolAggTrades => HdbSourceDir::AggTrades,
+                    PriceHistogram::VolTick => HdbSourceDir::Tick,
                 },
                 TradingIndicatorKind::VolumeAreaHigh(price_histogram) => match price_histogram {
-                    PriceHistogram::Tpo1m => LeafDir::Ohlc1m,
-                    PriceHistogram::VolAggTrades => LeafDir::AggTrades,
-                    PriceHistogram::VolTick => LeafDir::Tick,
+                    PriceHistogram::Tpo1m => HdbSourceDir::Ohlc1m,
+                    PriceHistogram::VolAggTrades => HdbSourceDir::AggTrades,
+                    PriceHistogram::VolTick => HdbSourceDir::Tick,
                 },
             }
         }
     }
 
-    impl LeafDir {
+    impl HdbSourceDir {
         pub fn split_ohlc_dir_in_parts(&self) -> (String, String) {
             match self {
-                LeafDir::AggTrades | LeafDir::ProfitAndLoss | LeafDir::Tick | LeafDir::Vol => {
+                HdbSourceDir::AggTrades | HdbSourceDir::Tick  => {
                     panic!("Only call this function on LeafDir's of type <Ohlc>")
                 }
                 ohlc_variant => {

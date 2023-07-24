@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use regex::Regex;
 
 use crate::{enums::{
-    bots::StrategyKind, data::LeafDir, markets::MarketKind, producers::ProducerKind,
+    bots::StrategyKind, data::HdbSourceDir, markets::MarketKind, producers::ProducerKind,
 }, bot::time_interval::TimeInterval};
 
 use super::file_path_with_fallback::FilePathWithFallback;
@@ -21,7 +21,7 @@ impl PathFinder {
     pub fn get_file_path_with_fallback(
         &self,
         file_name: String,
-        fallback_dir: &LeafDir,
+        fallback_dir: &HdbSourceDir,
     ) -> FilePathWithFallback {
         let abs_file_path = self.get_absolute_file_path(file_name);
         let fallback_file_name = self.get_fallback_file_name(fallback_dir);
@@ -46,19 +46,19 @@ impl PathFinder {
         file_path
     }
 
-    fn get_fallback_file_name(&self, leaf_dir_kind: &LeafDir) -> String {
+    fn get_fallback_file_name(&self, leaf_dir_kind: &HdbSourceDir) -> String {
         let data_provider = self.data_provider;
         let market = self.market;
         let year = self.year;
         match leaf_dir_kind {
-            LeafDir::AggTrades => {
-                let leaf_dir = LeafDir::AggTrades.to_string();
+            HdbSourceDir::AggTrades => {
+                let leaf_dir = HdbSourceDir::AggTrades.to_string();
                 format!(
                     r"{data_provider}/{leaf_dir}/{market}-aggTrades-{year}(-\d{{1,2}}){{0,2}}\.csv"
                 )
             }
-            LeafDir::Tick => {
-                let leaf_dir = LeafDir::Tick.to_string();
+            HdbSourceDir::Tick => {
+                let leaf_dir = HdbSourceDir::Tick.to_string();
                 format!(r"{data_provider}/{leaf_dir}/{market}-tick-{year}(-\d{{1,2}}){{0,2}}\.csv")
             }
             ohlc_variant => {

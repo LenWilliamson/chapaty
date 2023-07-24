@@ -1,15 +1,15 @@
 use crate::{
     bot::indicator_data_pair::IndicatorDataPair,
-    enums::{bots::TradingIndicatorKind, data::LeafDir},
+    enums::{bots::TradingIndicatorKind, data::HdbSourceDir},
 };
 #[derive(Clone)]
 pub struct FileNameResolver {
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: LeafDir,
+    simulation_data: HdbSourceDir,
 }
 
 impl FileNameResolver {
-    pub fn new(simulation_data: LeafDir) -> Self {
+    pub fn new(simulation_data: HdbSourceDir) -> Self {
         Self {
             indicator_data_pair: None,
             simulation_data,
@@ -33,10 +33,8 @@ impl FileNameResolver {
 
     fn generate_file_name(&self) -> String {
         match self.indicator_data_pair.as_ref().unwrap().data {
-            LeafDir::Tick => self.trading_indicator_from_tick_data(),
-            LeafDir::AggTrades => self.trading_indicator_from_agg_trades_data(),
-            LeafDir::Vol => panic!("Remove this leaf dir"),
-            LeafDir::ProfitAndLoss => panic!("Remove this leaf dir"),
+            HdbSourceDir::Tick => self.trading_indicator_from_tick_data(),
+            HdbSourceDir::AggTrades => self.trading_indicator_from_agg_trades_data(),
             ohlc_variant => self.trading_indicator_from_ohlc_variant(&ohlc_variant),
         }
     }
@@ -57,7 +55,7 @@ impl FileNameResolver {
         }
     }
 
-    fn trading_indicator_from_ohlc_variant(&self, ohlc_variant: &LeafDir) -> String {
+    fn trading_indicator_from_ohlc_variant(&self, ohlc_variant: &HdbSourceDir) -> String {
         match self.indicator_data_pair.clone().unwrap().indicator {
             TradingIndicatorKind::Poc(_)
             | TradingIndicatorKind::VolumeAreaHigh(_)

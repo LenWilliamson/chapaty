@@ -1,7 +1,7 @@
 use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
-    enums::{data::LeafDir, error::ChapatyError, markets::MarketKind},
+    enums::{data::HdbSourceDir, error::ChapatyError, markets::MarketKind},
     serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map},
 };
 use google_cloud_storage::{
@@ -32,7 +32,7 @@ pub struct CloudStorageClient {
     bot: Arc<Bot>,
     file_path_with_fallback: FilePathWithFallback,
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: LeafDir,
+    simulation_data: HdbSourceDir,
     market: MarketKind,
     year: u32,
 }
@@ -205,7 +205,7 @@ pub struct CloudStorageClientBuilder {
     bot: Arc<Bot>,
     file_path_with_fallback: Option<FilePathWithFallback>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: Option<LeafDir>,
+    simulation_data: Option<HdbSourceDir>,
     market: Option<MarketKind>,
     year: Option<u32>,
 }
@@ -245,7 +245,7 @@ impl CloudStorageClientBuilder {
         }
     }
 
-    pub fn with_simulation_data(self, simulation_data: LeafDir) -> Self {
+    pub fn with_simulation_data(self, simulation_data: HdbSourceDir) -> Self {
         Self {
             simulation_data: Some(simulation_data),
             ..self
