@@ -2,6 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     chapaty,
+    converter::any_value::AnyValueConverter,
+    data_frame_operations::is_not_an_empty_frame,
     enums::{
         bots::{PriceHistogram, TradingIndicatorKind},
         data::HdbSourceDir,
@@ -11,7 +13,7 @@ use crate::{
     price_histogram::{
         agg_trades_volume::AggTradesVolume, tick_volume::volume_profile_by_tick_data,
         tpo::TpoBuilder,
-    }, data_frame_operations::is_not_an_empty_frame, converter::any_value::AnyValueConverter,
+    },
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 
@@ -54,11 +56,10 @@ impl Transformer {
     }
 
     fn compute_daily_df_map(&self, lazy_df: LazyFrame) -> chapaty::types::DataFrameMap {
-        let dp = self.bot.data_provider.clone();
         let time_interval = self.bot.time_interval;
         let time_frame = self.bot.time_frame;
 
-        let ts_col = dp.get_ts_col_as_str(&self.market_sim_data).to_string();
+        let ts_col = &self.market_sim_data.get_ts_col_as_str();
         let mut ldf = lazy_df.add_cw_col(&ts_col).add_weekday_col(&ts_col);
 
         if time_interval.is_some() {
@@ -75,11 +76,10 @@ impl Transformer {
     }
 
     fn compute_weekly_df_map(&self, lazy_df: LazyFrame) -> chapaty::types::DataFrameMap {
-        let dp = self.bot.data_provider.clone();
         let time_interval = self.bot.time_interval;
         let time_frame = self.bot.time_frame;
 
-        let ts_col = dp.get_ts_col_as_str(&self.market_sim_data).to_string();
+        let ts_col = &self.market_sim_data.get_ts_col_as_str();
         let mut ldf = lazy_df.add_cw_col(&ts_col);
 
         if time_interval.is_some() {
@@ -146,7 +146,10 @@ impl Transformer {
         AggTradesVolume::new().from_df_map(df_map)
     }
 
-    fn compute_vol_tick(&self, _data: chapaty::types::DataFrameMap) -> chapaty::types::DataFrameMap {
+    fn compute_vol_tick(
+        &self,
+        _data: chapaty::types::DataFrameMap,
+    ) -> chapaty::types::DataFrameMap {
         volume_profile_by_tick_data();
         HashMap::new()
     }

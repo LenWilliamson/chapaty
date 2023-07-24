@@ -13,21 +13,15 @@ use crate::{
 
 use super::*;
 
-/// The `Ninja` data provider uses market data from the `Ninja` exchange and its respective
-/// market data feeds.
-///
-/// # Links
-/// * Ninjatrader: <https://ninjatrader.com/de/>
-/// * Ranchodinero: <https://www.ranchodinero.com>
-pub struct Ninja {
+pub struct Cme {
     producer_kind: ProducerKind,
 }
 
-impl FromStr for Ninja {
+impl FromStr for Cme {
     type Err = enums::error::ChapatyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Ninja" | "ninja" => Ok(Ninja::new()),
+            "Ninja" | "ninja" => Ok(Cme::new()),
             _ => Err(Self::Err::ParseDataProducerError(
                 "Data Producer Does not Exists".to_string(),
             )),
@@ -35,14 +29,9 @@ impl FromStr for Ninja {
     }
 }
 
-impl Ninja {
-    // #[allow(dead_code)]
-    /// Creates a `Ninja` data producer.
-    /// # Arguments
-    /// * `client` - google cloud storage client
-    /// * `bucket` - cloud storage bucket name
+impl Cme {
     pub fn new() -> Self {
-        Ninja {
+        Cme {
             producer_kind: ProducerKind::Cme,
         }
     }
@@ -130,7 +119,7 @@ fn ninja_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
         .unwrap()
 }
 
-impl DataProvider for Ninja {
+impl DataProvider for Cme {
     fn get_data_producer_kind(&self) -> ProducerKind {
         self.producer_kind.clone()
     }
@@ -138,15 +127,7 @@ impl DataProvider for Ninja {
     fn schema(&self, data: &HdbSourceDir) -> Schema {
         match data {
             HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlc1h => ohlc_schema(),
-            HdbSourceDir::Ohlcv1m | HdbSourceDir::Ohlcv30m | HdbSourceDir::Ohlcv1h => {
-                panic!("DataKind::Ohlcv not yet implemented for DataProducer Ninja")
-            }
-            HdbSourceDir::Tick => {
-                panic!("DataKind::Tick not yet implemented for DataProducer Ninja")
-            }
-            HdbSourceDir::AggTrades => {
-                panic!("DataKind::AggTrades not yet implemented for DataProducer Ninja")
-            }
+            _ => panic!("DataProvider <CME> only upports OHLC schema. No schema for <{data}>"),
         }
     }
 
@@ -157,7 +138,7 @@ impl DataProvider for Ninja {
             DataProviderColumns::High => 2,
             DataProviderColumns::Low => 3,
             DataProviderColumns::Close => 4,
-            _ => panic!("No column {col} for DataProvider <CME>"),
+            _ => panic!("DataProvider <CME> does not provide data with column {col}"),
         }
     }
 
@@ -166,22 +147,11 @@ impl DataProvider for Ninja {
             HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlcv1m => 1,
             HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlcv30m => 30,
             HdbSourceDir::Ohlc1h | HdbSourceDir::Ohlcv1h => 60,
-            _ => panic!("We can only compute offset for ohlc data. But not for {data:?}"),
+            _ => panic!(
+                "DataProvider <CME> can only compute offset for OHLC data. But not for {data}"
+            ),
         };
         self.transform_ninja_df(df_as_bytes, offset)
-    }
-
-    fn get_ts_col_as_str(&self, data: &HdbSourceDir) -> String {
-        match data {
-            HdbSourceDir::Ohlc1m
-            | HdbSourceDir::Ohlc30m
-            | HdbSourceDir::Ohlc1h
-            | HdbSourceDir::Ohlcv1m
-            | HdbSourceDir::Ohlcv30m
-            | HdbSourceDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
-            HdbSourceDir::Tick => panic!("Tick data not supported."),
-            HdbSourceDir::AggTrades => panic!("Vol data not supported."),
-        }
     }
 }
 
@@ -189,12 +159,12 @@ impl DataProvider for Ninja {
 fn ohlc_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new("ots", DataType::Int64),
-            Field::new("open", DataType::Float64),
-            Field::new("high", DataType::Float64),
-            Field::new("low", DataType::Float64),
-            Field::new("close", DataType::Float64),
-            Field::new("cts", DataType::Int64),
+            Field::new(&DataProviderColumns::OpenTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumns::Open.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::High.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::Low.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::Close.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::CloseTime.to_string(), DataType::Int64),
         ]
         .into_iter(),
     )

@@ -47,7 +47,7 @@ pub mod bots {
 pub mod data {
     use strum_macros::{Display, EnumString};
 
-    use super::bots::{PriceHistogram, TradingIndicatorKind};
+    use super::{bots::{PriceHistogram, TradingIndicatorKind}, column_names::DataProviderColumns};
 
     #[derive(Copy, Clone, Debug, EnumString, PartialEq, Display)]
     pub enum CandlestickKind {
@@ -106,6 +106,21 @@ pub mod data {
 
         #[strum(serialize = "aggTrades")]
         AggTrades,
+    }
+
+    impl HdbSourceDir {
+        pub fn get_ts_col_as_str(&self) -> String {
+            match self {
+                HdbSourceDir::Ohlc1m
+            | HdbSourceDir::Ohlc30m
+            | HdbSourceDir::Ohlc1h
+            | HdbSourceDir::Ohlcv1m
+            | HdbSourceDir::Ohlcv30m
+            | HdbSourceDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
+            HdbSourceDir::Tick => panic!("Tick data not yet supported."),
+            HdbSourceDir::AggTrades => DataProviderColumns::Timestamp.to_string(),
+            }
+        }
     }
 
     impl From<CandlestickKind> for HdbSourceDir {

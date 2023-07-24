@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chapaty::{
     bot::time_interval::TimeInterval,
-    data_provider::{cme::Ninja, DataProvider},
+    data_provider::{cme::Cme, DataProvider},
     enums::strategies::{StopLossKind, TakeProfitKind},
     strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit},
 };
@@ -24,7 +24,7 @@ pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
 }
 
 pub fn setup_data_provider() -> Arc<dyn DataProvider + Send + Sync> {
-    Arc::new(Ninja::new())
+    Arc::new(Cme::new())
 }
 
 pub fn setup_time_interval() -> TimeInterval {

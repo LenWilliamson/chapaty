@@ -37,12 +37,14 @@ impl DataProvider for Binance {
 
     fn schema(&self, data: &HdbSourceDir) -> Schema {
         match data {
-            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlc1h => ohlc_schema(),
-            HdbSourceDir::Ohlcv1m | HdbSourceDir::Ohlcv30m | HdbSourceDir::Ohlcv1h => {
-                ohlcv_schema()
-            }
+            HdbSourceDir::Ohlc1m
+            | HdbSourceDir::Ohlc30m
+            | HdbSourceDir::Ohlc1h
+            | HdbSourceDir::Ohlcv1m
+            | HdbSourceDir::Ohlcv30m
+            | HdbSourceDir::Ohlcv1h => ohlcv_schema(),
             HdbSourceDir::Tick => {
-                panic!("DataKind::Tick not yet implemented for DataProducer Binance")
+                panic!("DataProvider <BINANCE> does not implement DataKind::Tick")
             }
             HdbSourceDir::AggTrades => aggtrades_schema(),
         }
@@ -83,58 +85,36 @@ impl DataProvider for Binance {
             .finish()
             .unwrap()
     }
-
-    fn get_ts_col_as_str(&self, data: &HdbSourceDir) -> String {
-        match data {
-            HdbSourceDir::Ohlc1m
-            | HdbSourceDir::Ohlc30m
-            | HdbSourceDir::Ohlc1h
-            | HdbSourceDir::Ohlcv1m
-            | HdbSourceDir::Ohlcv30m
-            | HdbSourceDir::Ohlcv1h => DataProviderColumns::OpenTime.to_string(),
-            HdbSourceDir::Tick => panic!("Tick data not yet supported."),
-            HdbSourceDir::AggTrades => DataProviderColumns::Timestamp.to_string(),
-        }
-    }
 }
 
 /// Returns the OHLC `Schema` for `Binance`
-fn ohlc_schema() -> Schema {
-    Schema::from_iter(
-        vec![
-            Field::new("ots", DataType::Int64),
-            Field::new("open", DataType::Float64),
-            Field::new("high", DataType::Float64),
-            Field::new("low", DataType::Float64),
-            Field::new("close", DataType::Float64),
-            Field::new("vol", DataType::Float64),
-            Field::new("cts", DataType::Int64),
-            Field::new("qav", DataType::Float64),
-            Field::new("not", DataType::Int64),
-            Field::new("tbbav", DataType::Float64),
-            Field::new("tbqav", DataType::Float64),
-            Field::new("ignore", DataType::Int64),
-        ]
-        .into_iter(),
-    )
-}
-
-/// Returns the OHLCV `Schema` for `Binance`
 fn ohlcv_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new("ots", DataType::Int64),
-            Field::new("open", DataType::Float64),
-            Field::new("high", DataType::Float64),
-            Field::new("low", DataType::Float64),
-            Field::new("close", DataType::Float64),
-            Field::new("vol", DataType::Float64),
-            Field::new("cts", DataType::Int64),
-            Field::new("qav", DataType::Float64),
-            Field::new("not", DataType::Int64),
-            Field::new("tbbav", DataType::Float64),
-            Field::new("tbqav", DataType::Float64),
-            Field::new("ignore", DataType::Int64),
+            Field::new(&DataProviderColumns::OpenTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumns::Open.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::High.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::Low.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::Close.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::Volume.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumns::CloseTime.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumns::QuoteAssetVol.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumns::NumberOfTrades.to_string(),
+                DataType::Int64,
+            ),
+            Field::new(
+                &DataProviderColumns::TakerBuyBaseAssetVol.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumns::TakerBuyQuoteAssetVol.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(&DataProviderColumns::Ignore.to_string(), DataType::Int64),
         ]
         .into_iter(),
     )
@@ -144,14 +124,32 @@ fn ohlcv_schema() -> Schema {
 fn aggtrades_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new("atid", DataType::Int64),
-            Field::new("px", DataType::Float64),
-            Field::new("qx", DataType::Float64),
-            Field::new("ftid", DataType::Int64),
-            Field::new("ltid", DataType::Int64),
-            Field::new("ts", DataType::Int64),
-            Field::new("bm", DataType::Boolean),
-            Field::new("btpm", DataType::Boolean),
+            Field::new(
+                &DataProviderColumns::AggTradeId.to_string(),
+                DataType::Int64,
+            ),
+            Field::new(&DataProviderColumns::Price.to_string(), DataType::Float64),
+            Field::new(
+                &DataProviderColumns::Quantity.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumns::FirstTradeId.to_string(),
+                DataType::Int64,
+            ),
+            Field::new(
+                &DataProviderColumns::LastTradeId.to_string(),
+                DataType::Int64,
+            ),
+            Field::new(&DataProviderColumns::Timestamp.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumns::BuyerEqualsMaker.to_string(),
+                DataType::Boolean,
+            ),
+            Field::new(
+                &DataProviderColumns::BestTradePriceMatch.to_string(),
+                DataType::Boolean,
+            ),
         ]
         .into_iter(),
     )
