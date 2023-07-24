@@ -7,13 +7,13 @@ edition = "2021"
 chrono = "0.4.26"
 futures = "0.3.28"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
-google-cloud-storage = "0.11.1"
-polars = {version = "0.30.0", features = ["lazy", "partition_by", "serde", "cum_agg"]}
+google-cloud-storage = "0.13.0"
+polars = {version = "0.31.1", features = ["lazy", "partition_by", "serde", "cum_agg"]}
 rayon = "1.7.0"
-regex = "1.8.4"
+regex = "1.9.1"
 reqwest = "0.11.18"
-serde = "1.0.171"
-serde_json = "1.0.99"
+serde = "1.0.175"
+serde_json = "1.0.103"
 strum = "0.25.0"
-strum_macros = "0.25.0"
-tokio = { version = "1.28.2", features = ["full"] }
+strum_macros = "0.25.1"
+tokio = { version = "1.29.1", features = ["full"] }

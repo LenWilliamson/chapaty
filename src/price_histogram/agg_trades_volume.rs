@@ -29,34 +29,6 @@ impl AggTradesVolume {
             .collect()
     }
 
-    /// This function computes the volume profile for the given DataFrame and sorts it by price in ascending order.
-    /// The values for the price columns are rounded.
-    ///
-    /// # Arguments
-    /// * `dp` - producer of type `DataProducer`
-    /// * `df` - the `DataFrame` we want to compute the volume profile for
-    /// * `exact` - is `true` if we don't want to round floats to their closest integer values, otherwise `false`
-    ///
-    /// # Example
-    /// Assume `px` and `qx` are some column names.
-    /// Calling this function on the following DataFrame will result into the target.
-    /// ```
-    /// let df = df!(
-    ///    &px => &[1.0, 1.4, 2.49, 2.5, 3.1],
-    ///    &qx => &[1.0, 1.0,  2.0, 3.0, 3.0],
-    /// );
-    ///
-    ///
-    /// let target = df!(
-    ///     &px => &[1.0, 2.0, 3.0],
-    ///     &qx => &[2.0, 2.0, 6.0],
-    /// );
-    ///
-    /// // Calling function to compute volume_profile
-    /// let result = tick::volume_profile(df.unwrap()).unwrap();
-    /// assert_eq!(result.frame_equal(&target.unwrap()), true)
-    ///
-    /// ```
     fn vol_profile(&self, df: DataFrame) -> DataFrame {
         let px = DataProviderColumnKind::Price.to_string();
         let qx = DataProviderColumnKind::Quantity.to_string();

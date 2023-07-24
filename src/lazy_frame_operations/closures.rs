@@ -13,44 +13,6 @@ pub fn round(val: &Series) -> Series {
         .into_series()
 }
 
-/// This function computes the calender week (cw) from given timestamp in the `cw` Series of our DataFrame,
-/// which is itself a contiguous growable collection of Series that have the same length.
-///
-/// # Arguments
-/// * `val` - The `cw` Series of our DataFrame that contains timestamps in milliseconds
-///
-/// # Example
-/// Suppose we have the following DataFrame
-/// ```
-/// // Some DataFrame as a .csv file
-///
-/// // atid     ,px      , qx    ,ftid   ,ltid   ,ts             ,bm     ,btpm   ,cw
-/// // 0        ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,1645300600000
-/// // 1        ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,1645400600000
-///
-/// let mut df: Result<DataFrame> = df!(
-///     "atid" => &[0, 1],
-///     "px" => &[10.00, 20.00],
-///     "qx" => &[1.00, 1.00],
-///     "ftid" => &[0, 0],
-///     "ltid" => &[0, 0],
-///     "ts" => &[1645300600000, 1645400600000],
-///     "bm" => &[false, true],
-///     "btpm" => &[true, true],
-///     "cw" => &[1645300600000, 1645400600000],
-/// );
-///
-/// // Calling our function on the "cw" column of our DataFrame yields a new DataFrame
-/// // where we computed from the timestamp in the "cw" column the actual calender week
-///
-/// df.unwrap().apply("cw", get_cw_from_ts).unwrap();
-///
-/// // This call affects the "cw" Series and yields for this example the new DataFrame
-///
-/// // atid     ,px      , qx    ,ftid   ,ltid   ,ts             ,bm     ,btpm   ,cw
-/// // 0        ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,7
-/// // 1        ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,7
-/// ```
 pub fn get_cw_from_ts(val: &Series) -> Series {
     val.i64()
         .unwrap()
@@ -70,44 +32,6 @@ pub fn get_cw_from_ts(val: &Series) -> Series {
         .into_series()
 }
 
-/// This function computes the weekday (wd) from given timestamp in the `weekday` Series of our DataFrame,
-/// which is itself a contiguous growable collection of Series that have the same length.
-///
-/// # Arguments
-/// * `val` - The `weekday` Series of our DataFrame that contains timestamps in milliseconds
-///
-/// # Example
-/// Suppose we have the following DataFrame
-/// ```
-/// // Some DataFrame as a .csv file
-///
-/// // atid     ,px      , qx    ,ftid   ,ltid   ,ts             ,bm     ,btpm   ,weekday
-/// // 0        ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,1645300600000
-/// // 1        ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,1645400600000
-///
-/// let mut df: Result<DataFrame> = df!(
-///     "atid" => &[0, 1],
-///     "px" => &[10.00, 20.00],
-///     "qx" => &[1.00, 1.00],
-///     "ftid" => &[0, 0],
-///     "ltid" => &[0, 0],
-///     "ts" => &[1645300600000, 1645400600000],
-///     "bm" => &[false, true],
-///     "btpm" => &[true, true],
-///     "weekday" => &[1645300600000, 1645400600000],
-/// );
-///
-/// // Calling our function on the "weekday" column of our DataFrame yields a new DataFrame
-/// // where we computed from the timestamp in the "weekday" column the actual calender week
-///
-/// df.unwrap().apply("weekday", get_weekday_from_ts).unwrap();
-///
-/// // This call affects the "weekday" Series and yields for this example the new DataFrame
-///
-/// // atid     ,px      , qx    ,ftid   ,ltid   ,ts             ,bm     ,btpm   ,weekday
-/// // 0        ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,6
-/// // 1        ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,7
-/// ```
 pub fn get_weekday_from_ts(val: &Series) -> Series {
     val.i64()
         .unwrap()

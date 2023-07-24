@@ -69,7 +69,7 @@ impl Transformer {
         let dfs = ldf
             .collect()
             .unwrap()
-            .partition_by(["cw", "weekday"])
+            .partition_by(["cw", "weekday"], true)
             .unwrap();
 
         self.populate_df_map(dfs)
@@ -86,7 +86,7 @@ impl Transformer {
             ldf = ldf.filter_ts_col_by_time_interval(&ts_col, time_interval.unwrap(), time_frame);
         }
 
-        let dfs: Vec<DataFrame> = ldf.collect().unwrap().partition_by(["cw"]).unwrap();
+        let dfs: Vec<DataFrame> = ldf.collect().unwrap().partition_by(["cw"], true).unwrap();
 
         self.populate_df_map(dfs)
     }

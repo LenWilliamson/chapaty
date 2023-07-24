@@ -25,9 +25,13 @@ pub use enums::{
 
 /*
 - PPP Entry flexibel setzen, am besten über Struct
+- PPP / Strategy Trait aufrümen
+- Offset in Dollar angeben und dann umrechnen
 - Test schreiben
-- Time Frames nutzen
+- Time Frames umsetzen (siehe warning)
 - StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
+- Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
+- Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
 - Bugfix siehe Zettel
 
 */

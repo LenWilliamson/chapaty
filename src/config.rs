@@ -1,4 +1,3 @@
- use google_cloud_default::WithAuthExt;
  use google_cloud_storage::client::{Client, ClientConfig};
 
  pub async fn get_google_cloud_client() -> Client {

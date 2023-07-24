@@ -46,7 +46,6 @@ impl Cme {
     /// Calling `transform_ninja_df` on the INPUT `.csv` with `kperiod = 60` results in OUTPUT. Note, the
     /// INPUT `.csv` does not have any header. We simply put them in this example to clarify how INPUT and
     /// OUTPUT differ from each other.
-    /// ```
     /// // INPUT:
     /// // idx = Index
     /// // id = Uniqe identifier
@@ -61,8 +60,6 @@ impl Cme {
     /// id:     ots             ,open       ,high       ,low        ,close      ,cts
     /// row0:   1661990400000   ,1.0127     ,1.01295    ,1.01265    ,1.01275    ,1661990459999
     /// row1:   1661990460000   ,1.01275    ,1.0129     ,1.01275    ,1.01285    ,1661990519999
-    ///
-    /// ```
     pub fn transform_ninja_df(&self, df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
         let schema = Schema::from_iter(
             vec![

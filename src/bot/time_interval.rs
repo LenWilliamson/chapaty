@@ -18,8 +18,6 @@ pub trait InInterval {
     /// * `ts_in_milliseconds` - **UTC** timestamp in **milliseconds**
     /// * `granularity` - we can filter `in_weekly_time_interval` or `in_daily_time_interval`
     fn in_time_interval(&self, val: &Series, granularity: &TimeFrameKind) -> Series;
-    // fn in_weekly_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool;
-    // fn in_daily_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool;
 }
 
 /// This struct defines the observation period of one calendar week. We align with the rule
@@ -41,12 +39,14 @@ pub trait InInterval {
 /// Let us choose the assumption that we only want to have trades from Monday 01:00UTC until
 /// Friday 23:00UTC. Then we have to set the parameters as follows:
 /// ```
+/// use chapaty::TimeInterval;
+/// 
 /// let time_interval = TimeInterval {
 ///     start_day: chrono::Weekday::Mon,
 ///     start_h: 1,
 ///     end_day: chrono::Weekday::Fri,
 ///     end_h: 23,
-/// }
+/// };
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct TimeInterval {
