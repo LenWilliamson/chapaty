@@ -2,7 +2,6 @@ use std::{io::Cursor, sync::Arc};
 
 use polars::prelude::{CsvReader, SerReader};
 
-// Intern crates
 use super::*;
 
 /// The `Binance` data provider uses market data from the Binance crypto exchange.

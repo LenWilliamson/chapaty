@@ -172,14 +172,6 @@ pub fn sub_time(val: Series, duration: Duration) -> Series {
         .into_series()
 }
 
-// pub fn concatenate_to_data_frame(ldfs: Vec<LazyFrame>) -> DataFrame {
-//     LazyCsvReader::new(PathBuf::from(""))
-//         .with_rechunk(true)
-//         .concat_impl(ldfs)
-//         .unwrap()
-//         .collect()
-//         .unwrap()
-// }
 
 #[cfg(test)]
 mod tests {

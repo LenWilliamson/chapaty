@@ -27,7 +27,6 @@ pub struct Transformer {
 }
 
 impl Transformer {
-    //create_chapaty_data_frame_map
     pub async fn transform_into_df_map(self, dfs: Vec<DataFrame>) -> chapaty::types::DataFrameMap {
         let (tx, rx) = tokio::sync::oneshot::channel();
 

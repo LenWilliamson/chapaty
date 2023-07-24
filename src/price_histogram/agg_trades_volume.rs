@@ -1,11 +1,10 @@
-// Internal crates
+
 use crate::{
     chapaty,
     enums::columns::{AggTradeColumnNames, Columns, VolumeProfileColumnNames},
     data_provider::DataProvider, lazy_frame_operations::closures::round,
 };
 
-// External crates
 use polars::{
     lazy::dsl::GetOutput,
     prelude::{col, DataFrame, IntoLazy},

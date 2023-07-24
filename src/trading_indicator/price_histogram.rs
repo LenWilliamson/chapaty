@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-// Intern crates
 use crate::{
     data_provider::DataProvider,
     enums::columns::{Columns, VolumeProfileColumnNames}, converter::any_value::AnyValueConverter,
 };
 
-// Extern crates
 use polars::prelude::{col, lit, DataFrame, IntoLazy, AnyValue};
 
 pub struct PriceHistogram {
@@ -92,7 +90,6 @@ impl PriceHistogram {
 fn compute(
     df: &DataFrame,
     total_tpo: f64,
-    //poc: f64,
     val: f64,
     vah: f64,
     val_row: u32,

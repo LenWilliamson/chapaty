@@ -30,7 +30,7 @@ impl FileNameResolver {
         )
     }
 
-    //resolve_required_data_file_name
+
     fn generate_file_name(&self) -> String {
         match self.indicator_data_pair.as_ref().unwrap().data {
             LeafDir::Tick => self.trading_indicator_from_tick_data(),

@@ -5,10 +5,8 @@ use crate::enums::{
 };
 
 pub struct Ppp {
-    // entry_condition
     stop_loss: StopLoss,
     take_profit: TakeProfit,
-    // pre_trade_data: Option<&'a HashMap<PreTradeDataKind, f64>>,
     bot_kind: StrategyKind,
 }
 
@@ -23,7 +21,6 @@ impl Ppp {
                 condition: TakeProfitKind::PrevClose,
                 offset: 0.0,
             },
-            // pre_trade_data: None,
             bot_kind: StrategyKind::Ppp,
         }
     }
@@ -73,7 +70,6 @@ impl Strategy for Ppp {
 
     fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
         let trading_indicators_map = pre_trade_values.indicator_values.clone();
-        // let data = self.pre_trade_data.unwrap();
         *trading_indicators_map
             .get(&TradingIndicatorKind::Poc(PriceHistogram::Tpo1m))
             .unwrap()
@@ -85,7 +81,6 @@ impl Strategy for Ppp {
     /// * `None` - last traded price = poc
     fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeKind {
         let pre_trade_data_map = pre_trade_values.market_valeus.clone();
-        // let data = self.pre_trade_data.unwrap();
         let last_trade_price = *pre_trade_data_map
             .get(&PreTradeDataKind::LastTradePrice)
             .unwrap();
@@ -102,7 +97,6 @@ impl Strategy for Ppp {
 
     fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
         let pre_trade_data = pre_trade_values.market_valeus.clone();
-        // let data = self.pre_trade_data.unwrap();
         let lowest_trad_price = *pre_trade_data
             .get(&PreTradeDataKind::LowestTradePrice)
             .unwrap();
@@ -137,7 +131,6 @@ impl Strategy for Ppp {
     }
 
     fn get_tp_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
-        // let data = self.pre_trade_data.unwrap();
         let pre_trade_data = pre_trade_values.market_valeus.clone();
         let lst_trade_price = *pre_trade_data
             .get(&PreTradeDataKind::LastTradePrice)

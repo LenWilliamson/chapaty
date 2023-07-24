@@ -1,9 +1,7 @@
 use std::fmt;
 
-// Intern crates
 use crate::enums::markets::TimeFrame;
 
-// Extern crates
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use polars::prelude::{BooleanChunked, IntoSeries, Series};
 
