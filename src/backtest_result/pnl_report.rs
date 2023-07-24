@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::convert::identity;
 
 use crate::bot::time_frame_snapshot::TimeFrameSnapshot;
+use crate::bot::time_interval::timestamp_in_milli_to_string;
 use crate::bot::trade::Trade;
 use crate::calculator::trade_pnl_calculator::TradePnL;
 use crate::converter::market_decimal_places::MyDecimalPlaces;
@@ -19,7 +20,7 @@ use super::metrics::{
 use crate::enums::columns::{PerformanceStatisticColumnNames, ProfitAndLossColumnNames};
 use crate::enums::markets::MarketKind;
 use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::NaiveDate;
 use polars::df;
 use polars::prelude::NamedFrom;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
@@ -178,181 +179,92 @@ impl PnLReport {
 
 impl PnLReportDataRow {
     fn report_with_trade(self) -> DataFrame {
-        let market = self.market;
-        let cw = self.time_frame_snapshot.get_calendar_week_as_int();
-        let day = self.time_frame_snapshot.get_weekday();
-        let year = self.year;
-        let trade_kind = self.trade.trade_kind;
-        let decimal_places = market.decimal_places();
-        let entry_price = self
-            .trade
-            .entry_price
-            .round_to_n_decimal_places(decimal_places);
+        let tick_factor = self.get_tick_factor();
+        let tick_to_dollar = self.get_tick_to_dollar_conversion_factor();
         let trade_pnl = self.trade_pnl.clone().unwrap();
-        let entry_ts = trade_pnl.trade_entry_ts;
-        let tick_factor = market.tick_step_size().map_or_else(|| 1.0, identity);
-        let tick_to_dollar = market
-            .tik_to_dollar_conversion_factor()
-            .map_or_else(|| 1.0, identity);
-        let calender_week = vec![cw];
-        let date = vec![NaiveDate::from_isoywd_opt(
-            i32::try_from(year).unwrap(),
-            u32::try_from(cw).unwrap(),
-            day,
-        )
-        .unwrap()
-        .format("%Y-%m-%d")
-        .to_string()];
-        let strategy = vec![self.strategy.to_string().to_uppercase()];
-        let market = vec![market.to_string()];
-        let trade_direction = vec![trade_kind.to_string()];
-        let entry = vec![entry_price];
-        let take_profit = vec![self
-            .trade
-            .take_prift
-            .round_to_n_decimal_places(decimal_places)];
-        let stop_loss = vec![self
-            .trade
-            .stop_loss
-            .round_to_n_decimal_places(decimal_places)];
-        let expected_win_tick = vec![self
-            .expected_win_in_tick(tick_factor)
-            .round_to_n_decimal_places(decimal_places)];
-        let expected_loss_tick = vec![self
-            .expected_loss_in_tick(tick_factor)
-            .round_to_n_decimal_places(decimal_places)];
-        let expected_win_dollar =
-            vec![(expected_win_tick[0] * tick_to_dollar).round_to_dollar_cents()];
-        let expected_loss_dollar =
-            vec![(expected_loss_tick[0] * tick_to_dollar).round_to_dollar_cents()];
-        let crv = vec![
-            ((expected_win_tick[0] / expected_loss_tick[0]).abs()).round_to_n_decimal_places(3)
-        ];
-        let entry_ts = vec![NaiveDateTime::from_timestamp_opt(entry_ts / 1000, 0)
-            .unwrap()
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string()];
-        // let take_profit_ts = match trade_pnl.clone().take_profit.unwrap().ts {
-        //     Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
-        //         .unwrap()
-        //         .format("%Y-%m-%d %H:%M:%S")
-        //         .to_string()],
-        //     None => vec!["Timeout".to_string()],
-        // };
-        let take_profit_ts = trade_pnl.clone().take_profit.map_or_else(
-            || vec!["Timeout".to_string()],
-            |pnl| {
-                vec![NaiveDateTime::from_timestamp_opt(pnl.ts.unwrap() / 1000, 0)
-                    .unwrap()
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()]
-            },
-        );
-        // let stop_loss_ts = match trade_pnl.stop_loss.clone().unwrap().ts {
-        //     Some(ts) => vec![NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
-        //         .unwrap()
-        //         .format("%Y-%m-%d %H:%M:%S")
-        //         .to_string()],
-        //     None => vec!["Timeout".to_string()],
-        // };
-        let stop_loss_ts = trade_pnl.clone().stop_loss.map_or_else(
-            || vec!["Timeout".to_string()],
-            |pnl| {
-                vec![NaiveDateTime::from_timestamp_opt(pnl.ts.unwrap() / 1000, 0)
-                    .unwrap()
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()]
-            },
-        );
 
-        let status = vec![trade_pnl.trade_outcome()];
+        let cw = self.time_frame_snapshot.get_calendar_week_as_int();
+        let date = self.get_date();
+        let strategy = self.strategy.to_string().to_uppercase();
+        let market = self.market.to_string();
+        let trade_direction = self.trade.trade_kind.to_string();
+        let entry_price = self.trade.entry_price;
+        let take_profit = self.trade.take_prift;
+        let stop_loss = self.trade.stop_loss;
+        let expected_win_tick = self.expected_win_in_tick(tick_factor);
+        let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
+        let expected_win_dollar = expected_win_tick * tick_to_dollar;
+        let expected_loss_dollar = expected_loss_tick * tick_to_dollar;
+        let crv = (expected_win_tick / expected_loss_tick).abs();
+        let entry_ts = self.get_entry_ts();
+        let take_profit_ts = self.get_take_profit_ts();
+        let stop_loss_ts = self.get_stop_loss_ts();
+        let exit_price = trade_pnl.exit_price();
+        let status = trade_pnl.trade_outcome();
+        let pl_tick = trade_pnl.profit() / tick_factor;
+        let pl_dollar = pl_tick * tick_to_dollar;
 
-        let exit_price = vec![trade_pnl
-            .exit_price()
-            .round_to_n_decimal_places(decimal_places)];
-        let pl_tick =
-            vec![(trade_pnl.profit() / tick_factor).round_to_n_decimal_places(decimal_places)];
-        let pl_dollar = vec![(pl_tick[0] * tick_to_dollar).round_to_dollar_cents()];
+        let n = self.get_decimal_places();
 
         let p_and_l = df!(
-            &ProfitAndLossColumnNames::CalendarWeek.to_string() => &calender_week,
-            &ProfitAndLossColumnNames::Date.to_string() => &date,
-            &ProfitAndLossColumnNames::Strategy.to_string() => &strategy,
-            &ProfitAndLossColumnNames::Market.to_string() => &market,
-            &ProfitAndLossColumnNames::TradeDirection.to_string() => &trade_direction,
-            &ProfitAndLossColumnNames::Entry.to_string() => &entry,
-            &ProfitAndLossColumnNames::TakeProfit.to_string() => &take_profit,
-            &ProfitAndLossColumnNames::StopLoss.to_string() => &stop_loss,
-            &ProfitAndLossColumnNames::ExpectedWinTick.to_string() => &expected_win_tick,
-            &ProfitAndLossColumnNames::ExpectedLossTick.to_string() => &expected_loss_tick,
-            &ProfitAndLossColumnNames::ExpectedWinDollar.to_string() => &expected_win_dollar,
-            &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() => &expected_loss_dollar,
-            &ProfitAndLossColumnNames::Crv.to_string() => &crv,
-            &ProfitAndLossColumnNames::EntryTimestamp.to_string() => &entry_ts,
-            &ProfitAndLossColumnNames::TakeProfitTimestamp.to_string() => &take_profit_ts,
-            &ProfitAndLossColumnNames::StopLossTimestamp.to_string() => &stop_loss_ts,
-            &ProfitAndLossColumnNames::ExitPrice.to_string() => &exit_price,
-            &ProfitAndLossColumnNames::Status.to_string() => &status,
-            &ProfitAndLossColumnNames::PlTick.to_string() => &pl_tick,
-            &ProfitAndLossColumnNames::PlDollar.to_string() => &pl_dollar,
+            &ProfitAndLossColumnNames::CalendarWeek.to_string() =>vec![cw],
+            &ProfitAndLossColumnNames::Date.to_string() =>vec![date],
+            &ProfitAndLossColumnNames::Strategy.to_string() =>vec![strategy],
+            &ProfitAndLossColumnNames::Market.to_string() =>vec![market],
+            &ProfitAndLossColumnNames::TradeDirection.to_string() =>vec![trade_direction],
+            &ProfitAndLossColumnNames::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::ExpectedWinTick.to_string() =>vec![expected_win_tick],
+            &ProfitAndLossColumnNames::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
+            &ProfitAndLossColumnNames::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
+            &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
+            &ProfitAndLossColumnNames::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
+            &ProfitAndLossColumnNames::EntryTimestamp.to_string() =>vec![entry_ts],
+            &ProfitAndLossColumnNames::TakeProfitTimestamp.to_string() =>vec![take_profit_ts],
+            &ProfitAndLossColumnNames::StopLossTimestamp.to_string() =>vec![stop_loss_ts],
+            &ProfitAndLossColumnNames::ExitPrice.to_string() =>vec![exit_price.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::Status.to_string() =>vec![status],
+            &ProfitAndLossColumnNames::PlTick.to_string() =>vec![pl_tick],
+            &ProfitAndLossColumnNames::PlDollar.to_string() =>vec![pl_dollar.round_to_dollar_cents()],
         );
         p_and_l.unwrap()
     }
 
     fn report_without_trade(self) -> DataFrame {
-        let market = self.market;
+        let tick_factor = self.get_tick_factor();
+        let tick_to_dollar = self.get_tick_to_dollar_conversion_factor();
+
         let cw = self.time_frame_snapshot.get_calendar_week_as_int();
-        let day = self.time_frame_snapshot.get_weekday();
-        let year = self.year;
-        let trade_kind = self.trade.trade_kind;
-        let decimal_places = market.decimal_places();
-        let entry_price = self
-            .trade
-            .entry_price
-            .round_to_n_decimal_places(decimal_places);
+        let date = self.get_date();
+        let strategy = self.strategy.to_string().to_uppercase();
+        let market = self.market.to_string();
+        let trade_direction = self.trade.trade_kind.to_string();
+        let entry_price = self.trade.entry_price;
+        let take_profit = self.trade.take_prift;
+        let stop_loss = self.trade.stop_loss;
+        let expected_win_tick = self.expected_win_in_tick(tick_factor);
+        let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
+        let expected_win_dollar = expected_win_tick * tick_to_dollar;
+        let expected_loss_dollar = expected_loss_tick * tick_to_dollar;
+        let crv = (expected_win_tick / expected_loss_tick).abs();
 
-        let tick_factor = market.tick_step_size().map_or_else(|| 1.0, identity);
-        let tick_to_dollar = market
-            .tik_to_dollar_conversion_factor()
-            .map_or_else(|| 1.0, identity);
-        let calender_week = vec![cw];
-        let date = vec![NaiveDate::from_isoywd_opt(
-            i32::try_from(year).unwrap(),
-            u32::try_from(cw).unwrap(),
-            day,
-        )
-        .unwrap()
-        .format("%Y-%m-%d")
-        .to_string()];
-        let strategy = vec![self.strategy.to_string().to_uppercase()];
-        let market = vec![market.to_string()];
-        let trade_direction = vec![trade_kind.to_string()];
-        let entry = vec![entry_price];
+        let n = self.get_decimal_places();
 
-        let expected_win_tick = vec![self.expected_win_in_tick(tick_factor)];
-        let expected_loss_tick = vec![self.expected_loss_in_tick(tick_factor)];
-        let expected_win_dollar =
-            vec![(expected_win_tick[0] * tick_to_dollar).round_to_dollar_cents()];
-        let expected_loss_dollar =
-            vec![(expected_loss_tick[0] * tick_to_dollar).round_to_dollar_cents()];
-        let crv = vec![
-            ((expected_win_tick[0] / expected_loss_tick[0]).abs()).round_to_n_decimal_places(3)
-        ];
-
-        let p_and_l = df!(
-            &ProfitAndLossColumnNames::CalendarWeek.to_string() => &calender_week,
-            &ProfitAndLossColumnNames::Date.to_string() => &date,
-            &ProfitAndLossColumnNames::Strategy.to_string() => &strategy,
-            &ProfitAndLossColumnNames::Market.to_string() => &market,
-            &ProfitAndLossColumnNames::TradeDirection.to_string() => &trade_direction,
-            &ProfitAndLossColumnNames::Entry.to_string() => &entry,
-            &ProfitAndLossColumnNames::TakeProfit.to_string() => vec![self.trade.take_prift.round_to_n_decimal_places(decimal_places)],
-            &ProfitAndLossColumnNames::StopLoss.to_string() => vec![self.trade.stop_loss.round_to_n_decimal_places(decimal_places)],
-            &ProfitAndLossColumnNames::ExpectedWinTick.to_string() => expected_win_tick,
-            &ProfitAndLossColumnNames::ExpectedLossTick.to_string() =>expected_loss_tick,
-            &ProfitAndLossColumnNames::ExpectedWinDollar.to_string() => expected_win_dollar,
-            &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() => expected_loss_dollar,
-            &ProfitAndLossColumnNames::Crv.to_string() => crv,
+        df!(
+            &ProfitAndLossColumnNames::CalendarWeek.to_string() =>vec![cw],
+            &ProfitAndLossColumnNames::Date.to_string() =>vec![date],
+            &ProfitAndLossColumnNames::Strategy.to_string() =>vec![strategy],
+            &ProfitAndLossColumnNames::Market.to_string() =>vec![market],
+            &ProfitAndLossColumnNames::TradeDirection.to_string() =>vec![trade_direction],
+            &ProfitAndLossColumnNames::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
+            &ProfitAndLossColumnNames::ExpectedWinTick.to_string() =>vec![expected_win_tick],
+            &ProfitAndLossColumnNames::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
+            &ProfitAndLossColumnNames::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
+            &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
+            &ProfitAndLossColumnNames::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
             &ProfitAndLossColumnNames::EntryTimestamp.to_string() => &["NoEntry".to_string()],
             &ProfitAndLossColumnNames::TakeProfitTimestamp.to_string() => &["NoEntry".to_string()],
             &ProfitAndLossColumnNames::StopLossTimestamp.to_string() => &["NoEntry".to_string()],
@@ -360,9 +272,56 @@ impl PnLReportDataRow {
             &ProfitAndLossColumnNames::Status.to_string() => &["NoEntry".to_string()],
             &ProfitAndLossColumnNames::PlTick.to_string() => &[0.0],
             &ProfitAndLossColumnNames::PlDollar.to_string() => &[0.0],
-        );
+        )
+        .unwrap()
+    }
 
-        p_and_l.unwrap()
+    fn get_date(&self) -> String {
+        let cw = self.time_frame_snapshot.get_calendar_week_as_int();
+        let day = self.time_frame_snapshot.get_weekday();
+        NaiveDate::from_isoywd_opt(
+            i32::try_from(self.year).unwrap(),
+            u32::try_from(cw).unwrap(),
+            day,
+        )
+        .unwrap()
+        .format("%Y-%m-%d")
+        .to_string()
+    }
+
+    fn get_decimal_places(&self) -> i32 {
+        self.market.decimal_places()
+    }
+
+    fn get_tick_factor(&self) -> f64 {
+        self.market.tick_step_size().map_or_else(|| 1.0, identity)
+    }
+
+    fn get_tick_to_dollar_conversion_factor(&self) -> f64 {
+        self.market
+            .tik_to_dollar_conversion_factor()
+            .map_or_else(|| 1.0, identity)
+    }
+
+    fn get_entry_ts(&self) -> String {
+        let trade_pnl = self.trade_pnl.clone().unwrap();
+        timestamp_in_milli_to_string(trade_pnl.trade_entry_ts)
+    }
+
+    fn get_take_profit_ts(&self) -> String {
+        let trade_pnl = self.trade_pnl.clone().unwrap();
+        trade_pnl.clone().take_profit.map_or_else(
+            || "Timeout".to_string(),
+            |pnl| timestamp_in_milli_to_string(pnl.ts.unwrap()),
+        )
+    }
+
+    fn get_stop_loss_ts(&self) -> String {
+        let trade_pnl = self.trade_pnl.clone().unwrap();
+        trade_pnl.clone().stop_loss.map_or_else(
+            || "Timeout".to_string(),
+            |pnl| timestamp_in_milli_to_string(pnl.ts.unwrap()),
+        )
     }
 
     fn expected_win_in_tick(&self, tick_factor: f64) -> f64 {

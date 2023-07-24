@@ -104,6 +104,13 @@ impl fmt::Display for TimeInterval {
     }
 }
 
+pub fn timestamp_in_milli_to_string(ts: i64) -> String {
+    NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
+        .unwrap()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::lazy_frame_operations::closures::{get_cw_from_ts, get_weekday_from_ts};
