@@ -97,14 +97,13 @@ impl PnLReportsBuilder {
 pub struct PnLReport {
     pub market: MarketKind,
     pub year: u32,
+    pub strategy: StrategyKind,
     pub pnl: DataFrame,
 }
 
 impl PnLReport {
     pub fn as_trade_breakdown_df(self) -> DataFrame {
         let pl = self.pnl;
-        let year = self.year;
-        let market = self.market;
 
         let total_number_of_trades = total_number_trades(pl.clone());
         let total_number_winner = total_number_winner_trades(pl.clone());
@@ -116,8 +115,9 @@ impl PnLReport {
         let clean_loss = total_loss - timeout_loss;
 
         df!(
-            &TradeBreakDownReportColumnKind::Year.to_string() => &vec![year],
-            &TradeBreakDownReportColumnKind::Market.to_string() => &vec![market.to_string()],
+            &TradeBreakDownReportColumnKind::Year.to_string() => &vec![self.year],
+            &TradeBreakDownReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
+            &TradeBreakDownReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
             &TradeBreakDownReportColumnKind::TotalWin.to_string() => &vec![total_win],
             &TradeBreakDownReportColumnKind::TotalLoss.to_string() => &vec![total_loss],
             &TradeBreakDownReportColumnKind::CleanWin.to_string() => &vec![clean_win],
@@ -149,9 +149,6 @@ impl PnLReport {
 
     pub fn as_performance_report_df(self) -> DataFrame {
         let pl = self.pnl;
-        let year = self.year;
-        let market = self.market;
-
         let net_profit = net_profit(pl.clone());
         let total_number_of_trades = total_number_trades(pl.clone());
         let accumulated_profit = accumulated_profit(pl.clone(), 0.0);
@@ -162,8 +159,9 @@ impl PnLReport {
         let total_loss = total_loss(pl.clone());
 
         df!(
-        &PerformanceReportColumnKind::Year.to_string() => &vec![year],
-        &PerformanceReportColumnKind::Market.to_string() => &vec![market.to_string()],
+        &PerformanceReportColumnKind::Year.to_string() => &vec![self.year],
+        &PerformanceReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
+        &TradeBreakDownReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
         &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
         &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
         &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
@@ -335,6 +333,7 @@ impl PnLReportDataRow {
 pub struct PnLReportBuilder {
     market: Option<MarketKind>,
     year: Option<u32>,
+    strategy: Option<StrategyKind>,
     data_rows: Option<Vec<LazyFrame>>,
 }
 
@@ -370,6 +369,7 @@ impl PnLReportBuilder {
         Self {
             market: None,
             year: None,
+            strategy: None,
             data_rows: None,
         }
     }
@@ -386,6 +386,7 @@ impl PnLReportBuilder {
         Self {
             market: Some(row.market),
             year: Some(row.year),
+            strategy: Some(row.strategy),
             data_rows: Some(data_rows),
         }
     }
@@ -393,6 +394,7 @@ impl PnLReportBuilder {
     pub fn build(self) -> PnLReport {
         PnLReport {
             market: self.market.unwrap(),
+            strategy: self.strategy.unwrap(),
             year: self.year.unwrap(),
             pnl: self.data_rows.unwrap().concatenate_to_data_frame(),
         }

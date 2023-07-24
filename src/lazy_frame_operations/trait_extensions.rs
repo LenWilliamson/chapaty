@@ -9,10 +9,7 @@ use crate::{
     bot::time_interval::{InInterval, TimeInterval},
     converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
-    enums::{
-        bot::{StrategyKind, TimeFrameKind},
-        column_names::{DataProviderColumnKind, PerformanceReportColumnKind},
-    },
+    enums::{bot::TimeFrameKind, column_names::DataProviderColumnKind},
 };
 
 use super::closures::{get_cw_from_ts, get_weekday_from_ts};
@@ -22,7 +19,6 @@ pub trait MyLazyFrameOperations {
     fn add_weekday_col(self, ts_col: &str) -> Self;
     fn add_hour_col(self, ts_col: &str) -> Self;
     fn add_min_col(self, ts_col: &str) -> Self;
-    fn append_strategy_col(self, strategy: StrategyKind) -> Self;
     fn filter_ts_col_by_time_interval(
         self,
         ts_col: &str,
@@ -36,12 +32,6 @@ pub trait MyLazyFrameOperations {
 }
 
 impl MyLazyFrameOperations for LazyFrame {
-    // TODO rausnehmen
-    fn append_strategy_col(self, strategy: StrategyKind) -> Self {
-        let name = &PerformanceReportColumnKind::Strategy.to_string();
-        self.with_column(lit(strategy.to_string()).alias(name))
-    }
-
     fn add_cw_col(self, ts_col: &str) -> Self {
         self.with_column(
             col(&ts_col)

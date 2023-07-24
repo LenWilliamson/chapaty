@@ -4,7 +4,6 @@ use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
 use std::collections::HashMap;
 
 use crate::enums::markets::MarketKind;
-use crate::lazy_frame_operations::trait_extensions::MyLazyFrameOperations;
 use polars::prelude::DataFrame;
 use polars::prelude::IntoLazy;
 use polars::prelude::LazyFrame;
@@ -143,7 +142,7 @@ impl PnLSnapshot {
             .reports
             .into_iter()
             .map(|(_, pnl_report)| pnl_report.as_trade_breakdown_df())
-            .map(|df| df.lazy().append_strategy_col(self.bot))
+            .map(|df| df.lazy())
             .collect();
 
         ldfs.concatenate_to_data_frame()
@@ -155,7 +154,7 @@ impl PnLSnapshot {
             .reports
             .into_iter()
             .map(|(_, pnl_report)| pnl_report.as_performance_report_df())
-            .map(|df| df.lazy().append_strategy_col(self.bot))
+            .map(|df| df.lazy())
             .collect();
 
         ldfs.concatenate_to_data_frame()
