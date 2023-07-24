@@ -4,7 +4,7 @@ use polars::{
     prelude::{col, lit, DataFrame, IntoLazy, SeriesMethods},
 };
 
-use crate::{converter::any_value::AnyValueConverter, enums::column_names::PnLReport};
+use crate::{converter::any_value::AnyValueConverter, enums::column_names::PnLReportColumnKind};
 
 /// Percent Profitable = Trefferquote = Gewinner/Gesamttrades
 pub fn percent_profitability(number_winner: u32, number_trades: u32) -> f64 {
@@ -48,7 +48,7 @@ pub fn number_no_entry(df: DataFrame) -> u32 {
 }
 
 fn get_number_of_trades_from_summary(df: DataFrame, trade: &str) -> u32 {
-    let status_col = PnLReport::Status.to_string();
+    let status_col = PnLReportColumnKind::Status.to_string();
 
     let trades = df
         .lazy()
@@ -63,7 +63,7 @@ fn get_number_of_trades_from_summary(df: DataFrame, trade: &str) -> u32 {
 }
 
 pub fn total_number_trades(df: DataFrame) -> u32 {
-    let status_col = PnLReport::Status.to_string();
+    let status_col = PnLReportColumnKind::Status.to_string();
     let counts = status_summary(df);
     let total = counts
         .lazy()
@@ -87,7 +87,7 @@ pub fn avg_win_by_avg_loose(avg_win: f64, avg_loss: f64) -> f64 {
 }
 
 pub fn avg_win(df: DataFrame) -> f64 {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -104,7 +104,7 @@ pub fn avg_win(df: DataFrame) -> f64 {
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
 }
 pub fn avg_loss(df: DataFrame) -> f64 {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -119,7 +119,7 @@ pub fn avg_loss(df: DataFrame) -> f64 {
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
 }
 pub fn total_win(df: DataFrame) -> f64 {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -136,7 +136,7 @@ pub fn total_win(df: DataFrame) -> f64 {
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
 }
 pub fn total_loss(df: DataFrame) -> f64 {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -154,9 +154,9 @@ pub fn total_loss(df: DataFrame) -> f64 {
 }
 
 pub fn timeout_win(df: DataFrame) -> f64 {
-    let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-    let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+    let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -179,9 +179,9 @@ pub fn timeout_win(df: DataFrame) -> f64 {
 }
 
 pub fn timeout_loss(df: DataFrame) -> f64 {
-    let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-    let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+    let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -211,16 +211,16 @@ pub fn profit_factor(total_win: f64, total_loss: f64) -> f64 {
 }
 
 pub fn status_summary(df: DataFrame) -> DataFrame {
-    let status_col = PnLReport::Status.to_string();
+    let status_col = PnLReportColumnKind::Status.to_string();
 
     df[status_col.as_str()].value_counts(true, false).unwrap()
 }
 
 pub fn timeout_summary(df: DataFrame) -> DataFrame {
-    let status_col = PnLReport::Status.to_string();
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
-    let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-    let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+    let status_col = PnLReportColumnKind::Status.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
+    let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+    let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
     let filtered = df
         .lazy()
@@ -248,7 +248,7 @@ pub fn timeout_summary(df: DataFrame) -> DataFrame {
 }
 
 pub fn net_profit(df: DataFrame) -> f64 {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
 
     let res = df
         .lazy()
@@ -264,7 +264,7 @@ pub fn avg_trade(net_profit: f64, number_of_trades: u32) -> f64 {
 }
 
 pub fn accumulated_profit(df: DataFrame, initial: f64) -> Vec<f64> {
-    let pl_dollar_col = PnLReport::PlDollar.to_string();
+    let pl_dollar_col = PnLReportColumnKind::PlDollar.to_string();
     let series = &df[pl_dollar_col.as_str()];
 
     series.rechunk().iter().fold(vec![initial], |mut acc, val| {
@@ -370,8 +370,8 @@ mod tests {
 
     #[test]
     fn test_timeout_summary() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -490,8 +490,8 @@ mod tests {
 
     #[test]
     fn test_timeout_win() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -524,8 +524,8 @@ mod tests {
 
     #[test]
     fn test_timeout_loss() {
-        let take_profit_ts: String = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts: String = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -631,8 +631,8 @@ mod tests {
 
     #[test]
     fn test_number_loser_trades() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -663,8 +663,8 @@ mod tests {
 
     #[test]
     fn test_number_timeout_loser_trades() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -695,8 +695,8 @@ mod tests {
 
     #[test]
     fn test_number_timeout_winner_trades() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[
@@ -727,8 +727,8 @@ mod tests {
 
     #[test]
     fn test_number_winner_trades() {
-        let take_profit_ts = PnLReport::TakeProfitTimestamp.to_string();
-        let stop_loss_ts = PnLReport::StopLossTimestamp.to_string();
+        let take_profit_ts = PnLReportColumnKind::TakeProfitTimestamp.to_string();
+        let stop_loss_ts = PnLReportColumnKind::StopLossTimestamp.to_string();
 
         let df = df!(
             &take_profit_ts => &[

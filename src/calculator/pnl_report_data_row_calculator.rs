@@ -6,7 +6,7 @@ use crate::{
     backtest_result::pnl_report::PnLReportDataRow,
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
     data_provider::DataProvider,
-    enums::{bots::TradeDataKind, markets::MarketKind, MyAnyValue},
+    enums::{trade_and_pre_trade::TradeDataKind, markets::MarketKind, my_any_value::MyAnyValueKind, },
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::Strategy,
 };
@@ -29,7 +29,7 @@ pub struct PnLReportDataRowCalculator {
 
 #[derive(Clone)]
 pub struct TradeAndPreTradeValues {
-    pub trade: HashMap<TradeDataKind, MyAnyValue>,
+    pub trade: HashMap<TradeDataKind, MyAnyValueKind>,
     pub pre_trade: PreTradeValues,
 }
 
@@ -96,7 +96,7 @@ impl PnLReportDataRowCalculator {
     fn compute_trade_values<'a>(
         &self,
         pre_trade_values: &PreTradeValues,
-    ) -> Option<HashMap<TradeDataKind, MyAnyValue>> {
+    ) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
         calculator_builder
             .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
@@ -104,7 +104,7 @@ impl PnLReportDataRowCalculator {
     }
 }
 
-fn get_entry_ts<'a>(trade_values: &HashMap<TradeDataKind, MyAnyValue>) -> i64 {
+fn get_entry_ts<'a>(trade_values: &HashMap<TradeDataKind, MyAnyValueKind>) -> i64 {
     trade_values
         .get(&TradeDataKind::EntryTimestamp)
         .unwrap()

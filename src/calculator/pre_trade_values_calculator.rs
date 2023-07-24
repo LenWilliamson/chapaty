@@ -4,9 +4,9 @@ use crate::{
     bot::pre_trade_data::PreTradeData,
     converter::any_value::AnyValueConverter,
     enums::{
-        self,
-        bots::{PreTradeDataKind, TradingIndicatorKind},
-        column_names::DataProviderColumns,
+        column_names::DataProviderColumnKind,
+        indicator::{PriceHistogramKind, TradingIndicatorKind},
+        trade_and_pre_trade::PreTradeDataKind,
     },
     trading_indicator::price_histogram::PriceHistogram,
 };
@@ -83,10 +83,7 @@ impl PreTradeValuesCalculator {
         match val {
             TradingIndicatorKind::Poc(_) => {
                 let res = self.handle_price_histogram_indicator(val);
-                map.insert(
-                    TradingIndicatorKind::Poc(enums::bots::PriceHistogram::Tpo1m),
-                    res,
-                );
+                map.insert(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m), res);
             }
             _ => panic!("Not yet implemented!"),
         };
@@ -115,7 +112,7 @@ impl PreTradeValuesCalculator {
     fn compute_last_trade_price(&self) -> f64 {
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let close = DataProviderColumns::Close.to_string();
+        let close = DataProviderColumnKind::Close.to_string();
         let filt = df.lazy().select([col(&close).last()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();
@@ -126,7 +123,7 @@ impl PreTradeValuesCalculator {
     fn compute_lowest_trade_price(&self) -> f64 {
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let low = DataProviderColumns::Low.to_string();
+        let low = DataProviderColumnKind::Low.to_string();
         let filt = df.lazy().select([col(&low).min()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();
@@ -137,7 +134,7 @@ impl PreTradeValuesCalculator {
     fn compute_highest_trade_price(&self) -> f64 {
         let df = self.pre_trade_data.market_sim_data.clone();
 
-        let high = DataProviderColumns::High.to_string();
+        let high = DataProviderColumnKind::High.to_string();
         let filt = df.lazy().select([col(&high).max()]).collect().unwrap();
 
         let v = filt.get(0).unwrap();

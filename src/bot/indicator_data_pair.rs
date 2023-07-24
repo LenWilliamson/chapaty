@@ -1,13 +1,13 @@
-use crate::enums::{bots::TradingIndicatorKind, data::HdbSourceDir};
+use crate::enums::{data::HdbSourceDirKind, indicator::TradingIndicatorKind};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct IndicatorDataPair {
     pub indicator: TradingIndicatorKind,
-    pub data: HdbSourceDir,
+    pub data: HdbSourceDirKind,
 }
 
 impl IndicatorDataPair {
-    pub fn new(indicator: TradingIndicatorKind, data: HdbSourceDir) -> Self {
+    pub fn new(indicator: TradingIndicatorKind, data: HdbSourceDirKind) -> Self {
         Self { indicator, data }
     }
 }

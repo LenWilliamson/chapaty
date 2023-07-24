@@ -10,9 +10,8 @@ use crate::{
     converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
     enums::{
-        bots::StrategyKind,
-        column_names::{DataProviderColumns, PerformanceReport},
-        markets::TimeFrame,
+        bot::{StrategyKind, TimeFrameKind},
+        column_names::{DataProviderColumnKind, PerformanceReportColumnKind},
     },
 };
 
@@ -28,7 +27,7 @@ pub trait MyLazyFrameOperations {
         self,
         ts_col: &str,
         time_interval: TimeInterval,
-        time_frame: TimeFrame,
+        time_frame: TimeFrameKind,
     ) -> Self;
     fn filter_ts_col_by_price(self, px: f64) -> Self;
     fn drop_rows_before_entry_ts(self, entry_ts: i64) -> Self;
@@ -39,7 +38,7 @@ pub trait MyLazyFrameOperations {
 impl MyLazyFrameOperations for LazyFrame {
     // TODO rausnehmen
     fn append_strategy_col(self, strategy: StrategyKind) -> Self {
-        let name = &PerformanceReport::Strategy.to_string();
+        let name = &PerformanceReportColumnKind::Strategy.to_string();
         self.with_column(lit(strategy.to_string()).alias(name))
     }
 
@@ -78,7 +77,7 @@ impl MyLazyFrameOperations for LazyFrame {
         self,
         ts_col: &str,
         time_interval: TimeInterval,
-        time_frame: TimeFrame,
+        time_frame: TimeFrameKind,
     ) -> Self {
         self.with_column(
             col(&ts_col)
@@ -95,14 +94,14 @@ impl MyLazyFrameOperations for LazyFrame {
     /// # Returns
     /// This function returns a `DaraFrame` with a single column, the `timestamp` column
     fn filter_ts_col_by_price(self, px: f64) -> Self {
-        let high = DataProviderColumns::High.to_string();
-        let low = DataProviderColumns::Low.to_string();
-        let ots = DataProviderColumns::OpenTime.to_string();
+        let high = DataProviderColumnKind::High.to_string();
+        let low = DataProviderColumnKind::Low.to_string();
+        let ots = DataProviderColumnKind::OpenTime.to_string();
         self.select([col(&ots).filter(col(&low).lt_eq(lit(px)).and(col(&high).gt_eq(lit(px))))])
     }
 
     fn drop_rows_before_entry_ts(self, entry_ts: i64) -> Self {
-        let col_name = DataProviderColumns::OpenTime.to_string();
+        let col_name = DataProviderColumnKind::OpenTime.to_string();
         self.filter(col(&col_name).gt_eq(lit(entry_ts)))
     }
 
@@ -114,10 +113,10 @@ impl MyLazyFrameOperations for LazyFrame {
     /// * Index 3: timestamp highest trade price
     /// * Index 4: timestamp lowest trade price
     fn filter_trade_data_kind_values(self) -> Self {
-        let ots = DataProviderColumns::OpenTime.to_string();
-        let high = DataProviderColumns::High.to_string();
-        let low = DataProviderColumns::Low.to_string();
-        let close = DataProviderColumns::Close.to_string();
+        let ots = DataProviderColumnKind::OpenTime.to_string();
+        let high = DataProviderColumnKind::High.to_string();
+        let low = DataProviderColumnKind::Low.to_string();
+        let close = DataProviderColumnKind::Close.to_string();
         self.select([
             col(&close).last(),
             col(&low).min(),

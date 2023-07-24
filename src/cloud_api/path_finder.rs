@@ -2,14 +2,19 @@ use std::path::PathBuf;
 
 use regex::Regex;
 
-use crate::{enums::{
-    bots::StrategyKind, data::HdbSourceDir, markets::MarketKind, producers::ProducerKind,
-}, bot::time_interval::TimeInterval};
+use crate::{
+    bot::time_interval::TimeInterval,
+    enums::{
+        bot::{DataProviderKind, StrategyKind},
+        data::HdbSourceDirKind,
+        markets::MarketKind,
+    },
+};
 
 use super::file_path_with_fallback::FilePathWithFallback;
 
 pub struct PathFinder {
-    data_provider: ProducerKind,
+    data_provider: DataProviderKind,
     strategy: StrategyKind,
     market: MarketKind,
     year: u32,
@@ -21,7 +26,7 @@ impl PathFinder {
     pub fn get_file_path_with_fallback(
         &self,
         file_name: String,
-        fallback_dir: &HdbSourceDir,
+        fallback_dir: &HdbSourceDirKind,
     ) -> FilePathWithFallback {
         let abs_file_path = self.get_absolute_file_path(file_name);
         let fallback_file_name = self.get_fallback_file_name(fallback_dir);
@@ -46,19 +51,19 @@ impl PathFinder {
         file_path
     }
 
-    fn get_fallback_file_name(&self, leaf_dir_kind: &HdbSourceDir) -> String {
+    fn get_fallback_file_name(&self, leaf_dir_kind: &HdbSourceDirKind) -> String {
         let data_provider = self.data_provider;
         let market = self.market;
         let year = self.year;
         match leaf_dir_kind {
-            HdbSourceDir::AggTrades => {
-                let leaf_dir = HdbSourceDir::AggTrades.to_string();
+            HdbSourceDirKind::AggTrades => {
+                let leaf_dir = HdbSourceDirKind::AggTrades.to_string();
                 format!(
                     r"{data_provider}/{leaf_dir}/{market}-aggTrades-{year}(-\d{{1,2}}){{0,2}}\.csv"
                 )
             }
-            HdbSourceDir::Tick => {
-                let leaf_dir = HdbSourceDir::Tick.to_string();
+            HdbSourceDirKind::Tick => {
+                let leaf_dir = HdbSourceDirKind::Tick.to_string();
                 format!(r"{data_provider}/{leaf_dir}/{market}-tick-{year}(-\d{{1,2}}){{0,2}}\.csv")
             }
             ohlc_variant => {
@@ -70,7 +75,7 @@ impl PathFinder {
 }
 
 pub struct PathFinderBuilder {
-    data_provider: Option<ProducerKind>,
+    data_provider: Option<DataProviderKind>,
     strategy: Option<StrategyKind>,
     market: Option<MarketKind>,
     year: Option<u32>,
@@ -90,7 +95,7 @@ impl PathFinderBuilder {
         }
     }
 
-    pub fn with_data_provider(self, data_provider: ProducerKind) -> Self {
+    pub fn with_data_provider(self, data_provider: DataProviderKind) -> Self {
         Self {
             data_provider: Some(data_provider),
             ..self

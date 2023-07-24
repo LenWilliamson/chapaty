@@ -1,9 +1,9 @@
 use std::fmt;
 
-use crate::enums::markets::TimeFrame;
-
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use polars::prelude::{BooleanChunked, IntoSeries, Series};
+
+use crate::enums::bot::TimeFrameKind;
 
 pub trait InInterval {
     /// This function determines if a **UTC timestamp in milliseconds** is inside the
@@ -17,7 +17,7 @@ pub trait InInterval {
     /// # Arguments
     /// * `ts_in_milliseconds` - **UTC** timestamp in **milliseconds**
     /// * `granularity` - we can filter `in_weekly_time_interval` or `in_daily_time_interval`
-    fn in_time_interval(&self, val: &Series, granularity: &TimeFrame) -> Series;
+    fn in_time_interval(&self, val: &Series, granularity: &TimeFrameKind) -> Series;
     // fn in_weekly_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool;
     // fn in_daily_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool;
 }
@@ -57,14 +57,14 @@ pub struct TimeInterval {
 }
 
 impl InInterval for TimeInterval {
-    fn in_time_interval(&self, val: &Series, time_frame: &TimeFrame) -> Series {
+    fn in_time_interval(&self, val: &Series, time_frame: &TimeFrameKind) -> Series {
         val.i64()
             .unwrap()
             .into_iter()
             .map(|o: Option<i64>| {
                 o.map(|ts: i64| match time_frame {
-                    TimeFrame::Weekly => self.in_weekly_time_interval(ts),
-                    TimeFrame::Daily => self.in_daily_time_interval(ts),
+                    TimeFrameKind::Weekly => self.in_weekly_time_interval(ts),
+                    TimeFrameKind::Daily => self.in_daily_time_interval(ts),
                 })
             })
             .collect::<BooleanChunked>()

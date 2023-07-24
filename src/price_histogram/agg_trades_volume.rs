@@ -1,7 +1,7 @@
 
 use crate::{
     chapaty,
- lazy_frame_operations::closures::round, enums::column_names::{DataProviderColumns, VolumeProfile},
+ lazy_frame_operations::closures::round, enums::column_names::{DataProviderColumnKind, VolumeProfileColumnKind},
 };
 
 use polars::{
@@ -58,10 +58,10 @@ impl AggTradesVolume {
     ///
     /// ```
     fn vol_profile(&self, df: DataFrame) -> DataFrame {
-        let px = DataProviderColumns::Price.to_string();
-        let qx = DataProviderColumns::Quantity.to_string();
-        let px_vol =  VolumeProfile::Price.to_string();
-        let qx_vol = VolumeProfile::Quantity.to_string();
+        let px = DataProviderColumnKind::Price.to_string();
+        let qx = DataProviderColumnKind::Quantity.to_string();
+        let px_vol =  VolumeProfileColumnKind::Price.to_string();
+        let qx_vol = VolumeProfileColumnKind::Quantity.to_string();
 
         df.lazy()
             .select([

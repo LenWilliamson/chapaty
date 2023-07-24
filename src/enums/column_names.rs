@@ -1,7 +1,7 @@
 use strum_macros::{Display, EnumString};
 
 #[derive(Copy, Clone, Debug, Display, EnumString)]
-pub enum DataProviderColumns {
+pub enum DataProviderColumnKind {
     #[strum(serialize = "ots")]
     OpenTime,
     #[strum(serialize = "open")]
@@ -45,7 +45,7 @@ pub enum DataProviderColumns {
 }
 
 #[derive(Copy, Clone, Debug, Display, EnumString)]
-pub enum VolumeProfile {
+pub enum VolumeProfileColumnKind {
     #[strum(serialize = "px")]
     Price = 0,
     #[strum(serialize = "qx")]
@@ -53,7 +53,7 @@ pub enum VolumeProfile {
 }
 
 #[derive(Copy, Clone, Debug, Display)]
-pub enum PnLReport {
+pub enum PnLReportColumnKind {
     CalendarWeek = 0,
     Date = 1,
     Strategy = 2,
@@ -77,7 +77,7 @@ pub enum PnLReport {
 }
 
 #[derive(Copy, Clone, Debug, Display)]
-pub enum PerformanceReport {
+pub enum PerformanceReportColumnKind {
     Year = 0,
     Strategy = 1,
     Market = 2,
@@ -93,7 +93,7 @@ pub enum PerformanceReport {
 }
 
 #[derive(Copy, Clone, Debug, Display)]
-pub enum TradeBreakDownRewport {
+pub enum TradeBreakDownReportColumnKind {
     Year = 0,
     Strategy = 1,
     Market = 2,

@@ -1,7 +1,7 @@
 use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
-    enums::{data::HdbSourceDir, error::ChapatyError, markets::MarketKind},
+    enums::{data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind},
     serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map},
 };
 use google_cloud_storage::{
@@ -32,7 +32,7 @@ pub struct CloudStorageClient {
     bot: Arc<Bot>,
     file_path_with_fallback: FilePathWithFallback,
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: HdbSourceDir,
+    simulation_data: HdbSourceDirKind,
     market: MarketKind,
     year: u32,
 }
@@ -46,9 +46,9 @@ impl CloudStorageClient {
         }
     }
 
-    async fn handle_chapaty_error(&self, error: ChapatyError) -> chapaty::types::DataFrameMap {
+    async fn handle_chapaty_error(&self, error: ChapatyErrorKind) -> chapaty::types::DataFrameMap {
         match error {
-            ChapatyError::FileNotFound(_) => self.compute_df_map_from_hdb().await,
+            ChapatyErrorKind::FileNotFound(_) => self.compute_df_map_from_hdb().await,
             _ => panic!("Cannot download df map. Execution is stopped, caused by: {error:?}"),
         }
     }
@@ -184,7 +184,7 @@ impl CloudStorageClient {
             .collect()
     }
 
-    pub async fn try_download(&self, bucket: &str) -> Result<Vec<u8>, ChapatyError> {
+    pub async fn try_download(&self, bucket: &str) -> Result<Vec<u8>, ChapatyErrorKind> {
         let object = self.file_path_with_fallback.get_file_owned();
         let get_request = GetObjectRequest {
             bucket: bucket.to_string(),
@@ -205,7 +205,7 @@ pub struct CloudStorageClientBuilder {
     bot: Arc<Bot>,
     file_path_with_fallback: Option<FilePathWithFallback>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: Option<HdbSourceDir>,
+    simulation_data: Option<HdbSourceDirKind>,
     market: Option<MarketKind>,
     year: Option<u32>,
 }
@@ -245,7 +245,7 @@ impl CloudStorageClientBuilder {
         }
     }
 
-    pub fn with_simulation_data(self, simulation_data: HdbSourceDir) -> Self {
+    pub fn with_simulation_data(self, simulation_data: HdbSourceDirKind) -> Self {
         Self {
             simulation_data: Some(simulation_data),
             ..self
@@ -288,14 +288,14 @@ impl CloudStorageClientBuilder {
 pub async fn get_files_in_bucket2(
     client: &Client,
     bucket: &str,
-) -> Result<Vec<Object>, ChapatyError> {
+) -> Result<Vec<Object>, ChapatyErrorKind> {
     let mut lor = client
         .list_objects(&ListObjectsRequest {
             bucket: bucket.to_string(),
             ..Default::default()
         })
         .await
-        .map_err(|e| ChapatyError::UnknownGoogleCloudStorageError(e.to_string()))?;
+        .map_err(|e| ChapatyErrorKind::UnknownGoogleCloudStorageError(e.to_string()))?;
 
     let mut res = lor.items.unwrap();
 
@@ -311,22 +311,22 @@ pub async fn get_files_in_bucket2(
             .await
             .unwrap();
         res.append(&mut lor.items.ok_or_else(|| {
-            ChapatyError::UnknownGoogleCloudStorageError("Invalid ListObjectsResponse".to_string())
+            ChapatyErrorKind::UnknownGoogleCloudStorageError("Invalid ListObjectsResponse".to_string())
         })?);
     }
 
     Ok(res)
 }
 
-fn handle_google_cloud_error(error: Error, file: String, bucket: &str) -> ChapatyError {
+fn handle_google_cloud_error(error: Error, file: String, bucket: &str) -> ChapatyErrorKind {
     if let Error::HttpClient(e) = &error {
         if is_file_not_found_error(e) {
-            return ChapatyError::FileNotFound(format!(
+            return ChapatyErrorKind::FileNotFound(format!(
                 "{file} not found in cloud storage bucket <{bucket}>"
             ));
         }
     }
-    ChapatyError::UnknownGoogleCloudStorageError(error.to_string())
+    ChapatyErrorKind::UnknownGoogleCloudStorageError(error.to_string())
 }
 
 fn is_file_not_found_error(error: &reqwest::Error) -> bool {

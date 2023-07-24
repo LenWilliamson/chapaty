@@ -16,11 +16,7 @@ use crate::{
         file_name_resolver::FileNameResolver,
         path_finder::{PathFinder, PathFinderBuilder},
     },
-    enums::{
-        bots::TradingIndicatorKind,
-        error::ChapatyError,
-        markets::{MarketKind, TimeFrame},
-    },
+    enums::{error::ChapatyErrorKind, indicator::TradingIndicatorKind, markets::MarketKind, bot::TimeFrameKind},
 };
 
 use super::{
@@ -52,8 +48,8 @@ impl TradingSession {
 
     fn run_backtesting(&self) -> PnLReport {
         match self.bot.time_frame {
-            TimeFrame::Daily => self.run_backtesting_daily(),
-            TimeFrame::Weekly => self.run_backtesting_weekly(),
+            TimeFrameKind::Daily => self.run_backtesting_daily(),
+            TimeFrameKind::Weekly => self.run_backtesting_weekly(),
         }
     }
 
@@ -76,7 +72,7 @@ impl TradingSession {
     fn get_daily_backtesting_batch_data(
         &self,
         snapshot: TimeFrameSnapshot,
-    ) -> Result<BacktestingBatchData, ChapatyError> {
+    ) -> Result<BacktestingBatchData, ChapatyErrorKind> {
         Ok(BacktestingBatchData {
             time_frame_snapshot: snapshot,
             market_sim_data: self.get_market_sim_data_data(&snapshot)?,
@@ -87,7 +83,7 @@ impl TradingSession {
     fn get_pre_trade_data(
         &self,
         snapshot: &TimeFrameSnapshot,
-    ) -> Result<PreTradeData, ChapatyError> {
+    ) -> Result<PreTradeData, ChapatyErrorKind> {
         let mut builder = PreTradeDataBuilder::new();
 
         builder = if is_on_monday(snapshot) {
@@ -108,13 +104,13 @@ impl TradingSession {
     fn get_market_sim_data_data(
         &self,
         snapshot: &TimeFrameSnapshot,
-    ) -> Result<DataFrame, ChapatyError> {
+    ) -> Result<DataFrame, ChapatyErrorKind> {
         Ok(self
             .data
             .market_sim_data
             .get(snapshot)
             .ok_or_else(|| {
-                ChapatyError::FailedToFetchDataFrameFromMap(format!(
+                ChapatyErrorKind::FailedToFetchDataFrameFromMap(format!(
                     "DataFrame for <{snapshot:?}> is not available in map"
                 ))
             })?
@@ -124,7 +120,7 @@ impl TradingSession {
     fn get_trading_indicator(
         &self,
         time_frame_snapshot: &TimeFrameSnapshot,
-    ) -> Result<HashMap<TradingIndicatorKind, DataFrame>, ChapatyError> {
+    ) -> Result<HashMap<TradingIndicatorKind, DataFrame>, ChapatyErrorKind> {
         self.data
             .trading_indicators
             .iter()
@@ -160,9 +156,9 @@ fn is_on_monday(snapshot: &TimeFrameSnapshot) -> bool {
     snapshot.get_weekday_as_int() == 1
 }
 
-fn df_to_result(df: Option<DataFrame>) -> Result<DataFrame, ChapatyError> {
+fn df_to_result(df: Option<DataFrame>) -> Result<DataFrame, ChapatyErrorKind> {
     df.ok_or_else(|| {
-        ChapatyError::FailedToFetchDataFrameFromMap(
+        ChapatyErrorKind::FailedToFetchDataFrameFromMap(
             "Missing DataFrame for trading indicator".to_string(),
         )
     })

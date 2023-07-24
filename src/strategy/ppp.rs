@@ -1,8 +1,6 @@
+use crate::enums::indicator::PriceHistogramKind;
+
 use super::*;
-use crate::enums::{
-    bots::{PriceHistogram, StrategyKind, TradingIndicatorKind},
-    strategies::{StopLossKind, TakeProfitKind},
-};
 
 pub struct Ppp {
     stop_loss: StopLoss,
@@ -27,7 +25,7 @@ impl Ppp {
 }
 
 impl FromStr for Ppp {
-    type Err = ChapatyError;
+    type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Ppp" => Ok(Ppp::new()),
@@ -48,7 +46,7 @@ impl Strategy for Ppp {
     }
 
     fn register_trading_indicators(&self) -> Vec<TradingIndicatorKind> {
-        vec![TradingIndicatorKind::Poc(PriceHistogram::Tpo1m)]
+        vec![TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m)]
     }
 
     fn get_trade(&self, pre_trade_values: &PreTradeValues) -> Trade {
@@ -71,7 +69,7 @@ impl Strategy for Ppp {
     fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
         let trading_indicators_map = pre_trade_values.indicator_values.clone();
         *trading_indicators_map
-            .get(&TradingIndicatorKind::Poc(PriceHistogram::Tpo1m))
+            .get(&TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
             .unwrap()
     }
 
@@ -79,7 +77,7 @@ impl Strategy for Ppp {
     /// * `Short` - last traded price < entry price
     /// * `Long` - last traded price > entry price
     /// * `None` - last traded price = poc
-    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeKind {
+    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeDirectionKind {
         let pre_trade_data_map = pre_trade_values.market_valeus.clone();
         let last_trade_price = *pre_trade_data_map
             .get(&PreTradeDataKind::LastTradePrice)
@@ -87,11 +85,11 @@ impl Strategy for Ppp {
         let entry_price = self.get_entry_price(pre_trade_values);
 
         if last_trade_price < entry_price {
-            TradeKind::Short
+            TradeDirectionKind::Short
         } else if last_trade_price > entry_price {
-            TradeKind::Long
+            TradeDirectionKind::Long
         } else {
-            TradeKind::None
+            TradeDirectionKind::None
         }
     }
 
@@ -105,7 +103,7 @@ impl Strategy for Ppp {
             .unwrap();
 
         match self.get_trade_kind(pre_trade_values) {
-            TradeKind::Long => match self.stop_loss.condition {
+            TradeDirectionKind::Long => match self.stop_loss.condition {
                 StopLossKind::PrevPoc => {
                     self.get_entry_price(pre_trade_values) - self.stop_loss.offset
                 }
@@ -114,7 +112,7 @@ impl Strategy for Ppp {
                 StopLossKind::PrevHigh => lowest_trad_price - self.stop_loss.offset,
             },
 
-            TradeKind::Short => match self.stop_loss.condition {
+            TradeDirectionKind::Short => match self.stop_loss.condition {
                 StopLossKind::PrevPoc => {
                     self.get_entry_price(pre_trade_values) + self.stop_loss.offset
                 }
@@ -123,8 +121,8 @@ impl Strategy for Ppp {
                 StopLossKind::PrevHigh => highest_trad_price + self.stop_loss.offset,
             },
 
-            TradeKind::None => {
-                dbg!("Cannot compute stop-loss condition for TradeKind::None");
+            TradeDirectionKind::None => {
+                dbg!("Cannot compute stop-loss condition for TradeDirection::None");
                 -1.0
             }
         }
@@ -137,18 +135,18 @@ impl Strategy for Ppp {
             .unwrap();
 
         match self.get_trade_kind(pre_trade_values) {
-            TradeKind::Long => match self.take_profit.condition {
+            TradeDirectionKind::Long => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price + self.take_profit.offset,
                 TakeProfitKind::PrevPoc => panic!("PrevPoc not implemented for PPP"),
             },
 
-            TradeKind::Short => match self.take_profit.condition {
+            TradeDirectionKind::Short => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price - self.take_profit.offset,
                 TakeProfitKind::PrevPoc => panic!("PrevPoc not implemented for PPP"),
             },
 
-            TradeKind::None => {
-                dbg!("Cannot compute stop-loss condition for TradeKind::None");
+            TradeDirectionKind::None => {
+                dbg!("Cannot compute stop-loss condition for TradeDirection::None");
                 -1.0
             }
         }
@@ -183,13 +181,13 @@ mod tests {
         // assert_eq!(
         //     bot.get_trade_kind(&trading_indicators, &pre_trade_data_map)
         //         .unwrap(),
-        //     TradeKind::Short
+        //     TradeDirection::Short
         // );
         // pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 101.0);
         // assert_eq!(
         //     bot.get_trade_kind(&trading_indicators, &pre_trade_data_map)
         //         .unwrap(),
-        //     TradeKind::Long
+        //     TradeDirection::Long
         // );
 
         // pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, poc);

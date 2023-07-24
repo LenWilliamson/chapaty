@@ -5,9 +5,9 @@ use crate::{
     converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
     enums::{
-        bots::{PriceHistogram, TradingIndicatorKind},
-        data::HdbSourceDir,
-        markets::{MarketKind, TimeFrame},
+        data::HdbSourceDirKind,
+        indicator::{PriceHistogramKind, TradingIndicatorKind},
+        markets::MarketKind, bot::TimeFrameKind,
     },
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     price_histogram::{
@@ -24,7 +24,7 @@ use super::{
 pub struct Transformer {
     bot: Arc<Bot>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    market_sim_data: HdbSourceDir,
+    market_sim_data: HdbSourceDirKind,
     market: MarketKind,
 }
 
@@ -45,8 +45,8 @@ impl Transformer {
     fn build_df_map(&self, lazy_df: LazyFrame) -> chapaty::types::DataFrameMap {
         let time_frame = self.bot.get_time_frame_ref();
         let df_map = match time_frame {
-            TimeFrame::Daily => self.compute_daily_df_map(lazy_df),
-            TimeFrame::Weekly => self.compute_weekly_df_map(lazy_df),
+            TimeFrameKind::Daily => self.compute_daily_df_map(lazy_df),
+            TimeFrameKind::Weekly => self.compute_weekly_df_map(lazy_df),
         };
 
         match &self.indicator_data_pair {
@@ -102,8 +102,8 @@ impl Transformer {
 
     fn insert_df_into_df_map(&self, df: DataFrame, df_map: &mut chapaty::types::DataFrameMap) {
         match self.bot.time_frame {
-            TimeFrame::Daily => handle_daily_update(df, df_map),
-            TimeFrame::Weekly => handle_weekly_update(df, df_map),
+            TimeFrameKind::Daily => handle_daily_update(df, df_map),
+            TimeFrameKind::Weekly => handle_weekly_update(df, df_map),
         };
     }
 
@@ -121,13 +121,13 @@ impl Transformer {
 
     fn handle_price_histogram(
         &self,
-        price_histogram: &PriceHistogram,
+        price_histogram: &PriceHistogramKind,
         df_map: chapaty::types::DataFrameMap,
     ) -> chapaty::types::DataFrameMap {
         match price_histogram {
-            PriceHistogram::Tpo1m => self.get_tpo(df_map),
-            PriceHistogram::VolAggTrades => self.compute_vol_agg_trades(df_map),
-            PriceHistogram::VolTick => self.compute_vol_tick(df_map),
+            PriceHistogramKind::Tpo1m => self.get_tpo(df_map),
+            PriceHistogramKind::VolAggTrades => self.compute_vol_agg_trades(df_map),
+            PriceHistogramKind::VolTick => self.compute_vol_tick(df_map),
         }
     }
 
@@ -175,7 +175,7 @@ fn handle_weekly_update(df: DataFrame, df_map: &mut chapaty::types::DataFrameMap
 pub struct TransformerBuilder {
     bot: Arc<Bot>,
     indicator_data_pair: Option<IndicatorDataPair>,
-    market_sim_data: Option<HdbSourceDir>,
+    market_sim_data: Option<HdbSourceDirKind>,
     market: Option<MarketKind>,
 }
 
@@ -196,7 +196,7 @@ impl TransformerBuilder {
         }
     }
 
-    pub fn with_market_sim_data(self, market_sim_data: HdbSourceDir) -> Self {
+    pub fn with_market_sim_data(self, market_sim_data: HdbSourceDirKind) -> Self {
         Self {
             market_sim_data: Some(market_sim_data),
             ..self

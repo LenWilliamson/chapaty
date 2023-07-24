@@ -4,7 +4,7 @@ use polars::prelude::{DataFrame, IntoLazy};
 
 use crate::{
     converter::any_value::AnyValueConverter,
-    enums::{bots::TradeDataKind, MyAnyValue},
+    enums::{trade_and_pre_trade::TradeDataKind, my_any_value::MyAnyValueKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 
@@ -35,7 +35,7 @@ impl TradeValuesCalculator {
     /// If we don't enter the trade in the second week, the `trade_data` object is `None`.
     ///
     /// Collects the data if a trade occurs
-    pub fn compute(&self) -> Option<HashMap<TradeDataKind, MyAnyValue>> {
+    pub fn compute(&self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         self.market_sim_data
             .clone()
             .lazy()
@@ -43,7 +43,7 @@ impl TradeValuesCalculator {
             .map_or_else(|| None, |entry_ts| Some(self.get_result(entry_ts)))
     }
 
-    fn get_result(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValue> {
+    fn get_result(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
         self.get_trade_values_since_entry_timestamp(entry_ts)
             .into_iter()
             .fold(
@@ -55,17 +55,17 @@ impl TradeValuesCalculator {
     fn get_trade_values_since_entry_timestamp(
         &self,
         entry_ts: i64,
-    ) -> Vec<(TradeDataKind, MyAnyValue)> {
+    ) -> Vec<(TradeDataKind, MyAnyValueKind)> {
         match_trade_values_with_trade_kind(self.get_trade_values_as_df(entry_ts))
     }
 
-    fn initialize_trade_value_map(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValue> {
+    fn initialize_trade_value_map(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
         HashMap::from([
             (
                 TradeDataKind::EntryPrice,
-                MyAnyValue::Float64(self.entry_price),
+                MyAnyValueKind::Float64(self.entry_price),
             ),
-            (TradeDataKind::EntryTimestamp, MyAnyValue::Int64(entry_ts)),
+            (TradeDataKind::EntryTimestamp, MyAnyValueKind::Int64(entry_ts)),
         ])
     }
 
@@ -92,36 +92,36 @@ impl TradeValuesCalculator {
     }
 }
 
-fn match_trade_values_with_trade_kind(trade_values: DataFrame) -> Vec<(TradeDataKind, MyAnyValue)> {
+fn match_trade_values_with_trade_kind(trade_values: DataFrame) -> Vec<(TradeDataKind, MyAnyValueKind)> {
     let row = trade_values.get(0).unwrap();
     vec![
         (
             TradeDataKind::LastTradePrice,
-            MyAnyValue::Float64(row[0].unwrap_float64()),
+            MyAnyValueKind::Float64(row[0].unwrap_float64()),
         ),
         (
             TradeDataKind::LowestTradePriceSinceEntry,
-            MyAnyValue::Float64(row[1].unwrap_float64()),
+            MyAnyValueKind::Float64(row[1].unwrap_float64()),
         ),
         (
             TradeDataKind::HighestTradePriceSinceEntry,
-            MyAnyValue::Float64(row[2].unwrap_float64()),
+            MyAnyValueKind::Float64(row[2].unwrap_float64()),
         ),
         (
             TradeDataKind::HighestTradePriceSinceEntryTimestamp,
-            MyAnyValue::Int64(row[3].unwrap_int64()),
+            MyAnyValueKind::Int64(row[3].unwrap_int64()),
         ),
         (
             TradeDataKind::LowestTradePriceSinceEntryTimestamp,
-            MyAnyValue::Int64(row[4].unwrap_int64()),
+            MyAnyValueKind::Int64(row[4].unwrap_int64()),
         ),
     ]
 }
 
 fn update_trade_value_map(
-    mut trade_data_map: HashMap<TradeDataKind, MyAnyValue>,
-    val: (TradeDataKind, MyAnyValue),
-) -> HashMap<TradeDataKind, MyAnyValue> {
+    mut trade_data_map: HashMap<TradeDataKind, MyAnyValueKind>,
+    val: (TradeDataKind, MyAnyValueKind),
+) -> HashMap<TradeDataKind, MyAnyValueKind> {
     trade_data_map.insert(val.0, val.1);
     trade_data_map
 }
@@ -155,7 +155,7 @@ impl TradeValuesCalculatorBuilder {
         }
     }
 
-    pub fn build_and_compute(self) -> Option<HashMap<TradeDataKind, MyAnyValue>> {
+    pub fn build_and_compute(self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         self.build().compute()
     }
 }

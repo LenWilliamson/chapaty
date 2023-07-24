@@ -3,10 +3,7 @@ use std::time::Instant;
 use chapaty::{
     bot::BotBuilder,
     config::{self},
-    enums::{
-        data::CandlestickKind,
-        markets::{MarketKind, TimeFrame},
-    },
+    enums::{bot::TimeFrameKind, data::CandlestickKind, markets::MarketKind},
 };
 
 mod common;
@@ -111,7 +108,7 @@ async fn it_test() {
     let market_simulation_data = CandlestickKind::Ohlc1m;
     let markets = vec![MarketKind::EurUsdFuture];
     let time_interval = common::setup_time_interval();
-    let time_frame = TimeFrame::Daily;
+    let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_client().await;
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),

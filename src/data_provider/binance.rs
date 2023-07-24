@@ -2,16 +2,16 @@ use std::{io::Cursor, sync::Arc};
 
 use polars::prelude::{CsvReader, SerReader};
 
-use crate::enums::column_names::DataProviderColumns;
+use crate::enums::column_names::DataProviderColumnKind;
 
 use super::*;
 
 pub struct Binance {
-    producer_kind: ProducerKind,
+    producer_kind: DataProviderKind,
 }
 
 impl FromStr for Binance {
-    type Err = enums::error::ChapatyError;
+    type Err = enums::error::ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Binance" | "binance" => Ok(Binance::new()),
@@ -25,60 +25,60 @@ impl FromStr for Binance {
 impl Binance {
     pub fn new() -> Self {
         Binance {
-            producer_kind: ProducerKind::Binance,
+            producer_kind: DataProviderKind::Binance,
         }
     }
 }
 
 impl DataProvider for Binance {
-    fn get_data_producer_kind(&self) -> ProducerKind {
+    fn get_data_producer_kind(&self) -> DataProviderKind {
         self.producer_kind.clone()
     }
 
-    fn schema(&self, data: &HdbSourceDir) -> Schema {
+    fn schema(&self, data: &HdbSourceDirKind) -> Schema {
         match data {
-            HdbSourceDir::Ohlc1m
-            | HdbSourceDir::Ohlc30m
-            | HdbSourceDir::Ohlc1h
-            | HdbSourceDir::Ohlcv1m
-            | HdbSourceDir::Ohlcv30m
-            | HdbSourceDir::Ohlcv1h => ohlcv_schema(),
-            HdbSourceDir::Tick => {
+            HdbSourceDirKind::Ohlc1m
+            | HdbSourceDirKind::Ohlc30m
+            | HdbSourceDirKind::Ohlc1h
+            | HdbSourceDirKind::Ohlcv1m
+            | HdbSourceDirKind::Ohlcv30m
+            | HdbSourceDirKind::Ohlcv1h => ohlcv_schema(),
+            HdbSourceDirKind::Tick => {
                 panic!("DataProvider <BINANCE> does not implement DataKind::Tick")
             }
-            HdbSourceDir::AggTrades => aggtrades_schema(),
+            HdbSourceDirKind::AggTrades => aggtrades_schema(),
         }
     }
 
-    fn column_name_as_int(&self, col: &DataProviderColumns) -> usize {
+    fn column_name_as_int(&self, col: &DataProviderColumnKind) -> usize {
         match col {
             // OHLCV Column names
-            DataProviderColumns::OpenTime => 0,
-            DataProviderColumns::Open => 1,
-            DataProviderColumns::High => 2,
-            DataProviderColumns::Low => 3,
-            DataProviderColumns::Close => 4,
-            DataProviderColumns::Volume => 5,
-            DataProviderColumns::CloseTime => 6,
-            DataProviderColumns::QuoteAssetVol => 7,
-            DataProviderColumns::NumberOfTrades => 8,
-            DataProviderColumns::TakerBuyBaseAssetVol => 9,
-            DataProviderColumns::TakerBuyQuoteAssetVol => 10,
-            DataProviderColumns::Ignore => 11,
+            DataProviderColumnKind::OpenTime => 0,
+            DataProviderColumnKind::Open => 1,
+            DataProviderColumnKind::High => 2,
+            DataProviderColumnKind::Low => 3,
+            DataProviderColumnKind::Close => 4,
+            DataProviderColumnKind::Volume => 5,
+            DataProviderColumnKind::CloseTime => 6,
+            DataProviderColumnKind::QuoteAssetVol => 7,
+            DataProviderColumnKind::NumberOfTrades => 8,
+            DataProviderColumnKind::TakerBuyBaseAssetVol => 9,
+            DataProviderColumnKind::TakerBuyQuoteAssetVol => 10,
+            DataProviderColumnKind::Ignore => 11,
 
             // AggTrades Column names
-            DataProviderColumns::AggTradeId => 0,
-            DataProviderColumns::Price => 1,
-            DataProviderColumns::Quantity => 2,
-            DataProviderColumns::FirstTradeId => 3,
-            DataProviderColumns::LastTradeId => 4,
-            DataProviderColumns::Timestamp => 5,
-            DataProviderColumns::BuyerEqualsMaker => 6,
-            DataProviderColumns::BestTradePriceMatch => 7,
+            DataProviderColumnKind::AggTradeId => 0,
+            DataProviderColumnKind::Price => 1,
+            DataProviderColumnKind::Quantity => 2,
+            DataProviderColumnKind::FirstTradeId => 3,
+            DataProviderColumnKind::LastTradeId => 4,
+            DataProviderColumnKind::Timestamp => 5,
+            DataProviderColumnKind::BuyerEqualsMaker => 6,
+            DataProviderColumnKind::BestTradePriceMatch => 7,
         }
     }
 
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDir) -> DataFrame {
+    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
         CsvReader::new(Cursor::new(df_as_bytes))
             .has_header(false)
             .with_schema(Arc::new(self.schema(data)))
@@ -91,30 +91,30 @@ impl DataProvider for Binance {
 fn ohlcv_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(&DataProviderColumns::OpenTime.to_string(), DataType::Int64),
-            Field::new(&DataProviderColumns::Open.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::High.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::Low.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::Close.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::Volume.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::CloseTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::OpenTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Volume.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::CloseTime.to_string(), DataType::Int64),
             Field::new(
-                &DataProviderColumns::QuoteAssetVol.to_string(),
+                &DataProviderColumnKind::QuoteAssetVol.to_string(),
                 DataType::Float64,
             ),
             Field::new(
-                &DataProviderColumns::NumberOfTrades.to_string(),
+                &DataProviderColumnKind::NumberOfTrades.to_string(),
                 DataType::Int64,
             ),
             Field::new(
-                &DataProviderColumns::TakerBuyBaseAssetVol.to_string(),
+                &DataProviderColumnKind::TakerBuyBaseAssetVol.to_string(),
                 DataType::Float64,
             ),
             Field::new(
-                &DataProviderColumns::TakerBuyQuoteAssetVol.to_string(),
+                &DataProviderColumnKind::TakerBuyQuoteAssetVol.to_string(),
                 DataType::Float64,
             ),
-            Field::new(&DataProviderColumns::Ignore.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::Ignore.to_string(), DataType::Int64),
         ]
         .into_iter(),
     )
@@ -125,29 +125,29 @@ fn aggtrades_schema() -> Schema {
     Schema::from_iter(
         vec![
             Field::new(
-                &DataProviderColumns::AggTradeId.to_string(),
+                &DataProviderColumnKind::AggTradeId.to_string(),
                 DataType::Int64,
             ),
-            Field::new(&DataProviderColumns::Price.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Price.to_string(), DataType::Float64),
             Field::new(
-                &DataProviderColumns::Quantity.to_string(),
+                &DataProviderColumnKind::Quantity.to_string(),
                 DataType::Float64,
             ),
             Field::new(
-                &DataProviderColumns::FirstTradeId.to_string(),
+                &DataProviderColumnKind::FirstTradeId.to_string(),
                 DataType::Int64,
             ),
             Field::new(
-                &DataProviderColumns::LastTradeId.to_string(),
+                &DataProviderColumnKind::LastTradeId.to_string(),
                 DataType::Int64,
             ),
-            Field::new(&DataProviderColumns::Timestamp.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::Timestamp.to_string(), DataType::Int64),
             Field::new(
-                &DataProviderColumns::BuyerEqualsMaker.to_string(),
+                &DataProviderColumnKind::BuyerEqualsMaker.to_string(),
                 DataType::Boolean,
             ),
             Field::new(
-                &DataProviderColumns::BestTradePriceMatch.to_string(),
+                &DataProviderColumnKind::BestTradePriceMatch.to_string(),
                 DataType::Boolean,
             ),
         ]

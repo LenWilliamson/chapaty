@@ -3,7 +3,7 @@ use std::convert::identity;
 use polars::prelude::LazyFrame;
 
 use crate::{
-    bot::trade::Trade, enums::bots::TradeDataKind,
+    bot::trade::Trade, enums::trade_and_pre_trade::TradeDataKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 

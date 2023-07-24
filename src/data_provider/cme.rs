@@ -7,18 +7,18 @@ use polars::{
 };
 
 use crate::{
-    enums::column_names::DataProviderColumns,
+    enums::column_names::DataProviderColumnKind,
     lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
 };
 
 use super::*;
 
 pub struct Cme {
-    producer_kind: ProducerKind,
+    producer_kind: DataProviderKind,
 }
 
 impl FromStr for Cme {
-    type Err = enums::error::ChapatyError;
+    type Err = enums::error::ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Ninja" | "ninja" => Ok(Cme::new()),
@@ -32,7 +32,7 @@ impl FromStr for Cme {
 impl Cme {
     pub fn new() -> Self {
         Cme {
-            producer_kind: ProducerKind::Cme,
+            producer_kind: DataProviderKind::Cme,
         }
     }
 
@@ -120,33 +120,33 @@ fn ninja_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 }
 
 impl DataProvider for Cme {
-    fn get_data_producer_kind(&self) -> ProducerKind {
+    fn get_data_producer_kind(&self) -> DataProviderKind {
         self.producer_kind.clone()
     }
 
-    fn schema(&self, data: &HdbSourceDir) -> Schema {
+    fn schema(&self, data: &HdbSourceDirKind) -> Schema {
         match data {
-            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlc1h => ohlc_schema(),
+            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlc1h => ohlc_schema(),
             _ => panic!("DataProvider <CME> only upports OHLC schema. No schema for <{data}>"),
         }
     }
 
-    fn column_name_as_int(&self, col: &DataProviderColumns) -> usize {
+    fn column_name_as_int(&self, col: &DataProviderColumnKind) -> usize {
         match col {
-            DataProviderColumns::OpenTime => 0,
-            DataProviderColumns::Open => 1,
-            DataProviderColumns::High => 2,
-            DataProviderColumns::Low => 3,
-            DataProviderColumns::Close => 4,
+            DataProviderColumnKind::OpenTime => 0,
+            DataProviderColumnKind::Open => 1,
+            DataProviderColumnKind::High => 2,
+            DataProviderColumnKind::Low => 3,
+            DataProviderColumnKind::Close => 4,
             _ => panic!("DataProvider <CME> does not provide data with column {col}"),
         }
     }
 
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDir) -> DataFrame {
+    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
         let offset = match data {
-            HdbSourceDir::Ohlc1m | HdbSourceDir::Ohlcv1m => 1,
-            HdbSourceDir::Ohlc30m | HdbSourceDir::Ohlcv30m => 30,
-            HdbSourceDir::Ohlc1h | HdbSourceDir::Ohlcv1h => 60,
+            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
+            HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlcv30m => 30,
+            HdbSourceDirKind::Ohlc1h | HdbSourceDirKind::Ohlcv1h => 60,
             _ => panic!(
                 "DataProvider <CME> can only compute offset for OHLC data. But not for {data}"
             ),
@@ -159,12 +159,12 @@ impl DataProvider for Cme {
 fn ohlc_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(&DataProviderColumns::OpenTime.to_string(), DataType::Int64),
-            Field::new(&DataProviderColumns::Open.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::High.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::Low.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::Close.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumns::CloseTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::OpenTime.to_string(), DataType::Int64),
+            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Float64),
+            Field::new(&DataProviderColumnKind::CloseTime.to_string(), DataType::Int64),
         ]
         .into_iter(),
     )

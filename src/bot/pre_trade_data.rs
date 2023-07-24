@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use polars::prelude::DataFrame;
 
-use crate::enums::bots::TradingIndicatorKind;
+use crate::enums::indicator::TradingIndicatorKind;
+
+
 
 #[derive(Clone)]
 pub struct PreTradeData {

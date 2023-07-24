@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{chapaty, enums::bots::TradingIndicatorKind};
+use crate::{chapaty, enums::indicator::TradingIndicatorKind};
 
 #[derive(Clone, Default)]
 pub struct ExecutionData {

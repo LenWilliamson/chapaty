@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::enums::{bots::StrategyKind, markets::MarketKind};
+use crate::enums::{bot::StrategyKind, markets::MarketKind};
 
 use super::pnl_report::PnLReports;
 

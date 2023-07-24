@@ -7,8 +7,8 @@ use crate::bot::trade::Trade;
 use crate::calculator::trade_pnl_calculator::TradePnL;
 use crate::converter::market_decimal_places::MyDecimalPlaces;
 use crate::data_frame_operations::save_df_as_csv;
-use crate::enums::bots::StrategyKind;
-use crate::enums::column_names::{self, PerformanceReport, TradeBreakDownRewport};
+use crate::enums::bot::StrategyKind;
+use crate::enums::column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind};
 
 use super::metrics::{
     accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
@@ -116,23 +116,23 @@ impl PnLReport {
         let clean_loss = total_loss - timeout_loss;
 
         df!(
-            &TradeBreakDownRewport::Year.to_string() => &vec![year],
-            &TradeBreakDownRewport::Market.to_string() => &vec![market.to_string()],
-            &TradeBreakDownRewport::TotalWin.to_string() => &vec![total_win],
-            &TradeBreakDownRewport::TotalLoss.to_string() => &vec![total_loss],
-            &TradeBreakDownRewport::CleanWin.to_string() => &vec![clean_win],
-            &TradeBreakDownRewport::TimeoutWin.to_string() => &vec![timeout_win],
-            &TradeBreakDownRewport::CleanLoss.to_string() => &vec![clean_loss],
-            &TradeBreakDownRewport::TimeoutLoss.to_string() => &vec![timeout_loss],
-            &TradeBreakDownRewport::TotalNumberWinnerTrades.to_string() => &vec![total_number_winner],
-            &TradeBreakDownRewport::TotalNumberLoserTrades.to_string() => &vec![total_number_loser_trades(pl.clone())],
-            &TradeBreakDownRewport::TotalNumberTrades.to_string() => &vec![total_number_of_trades],
-            &TradeBreakDownRewport::NumberWinnerTrades.to_string() => &vec![number_winner_trades(pl.clone())],
-            &TradeBreakDownRewport::NumberLoserTrades.to_string() => &vec![number_loser_trades(pl.clone())],
-            &TradeBreakDownRewport::NumberTimeoutWinnerTrades.to_string() => &vec![number_timeout_winner_trades(pl.clone())],
-            &TradeBreakDownRewport::NumberTimeoutLoserTrades.to_string() => &vec![number_timeout_loser_trades(pl.clone())],
-            &TradeBreakDownRewport::NumberTimeoutTrades.to_string() => &vec![number_timeout_trades(pl.clone())],
-            &TradeBreakDownRewport::NumberNoEntry.to_string() => &vec![number_no_entry(pl.clone())],
+            &TradeBreakDownReportColumnKind::Year.to_string() => &vec![year],
+            &TradeBreakDownReportColumnKind::Market.to_string() => &vec![market.to_string()],
+            &TradeBreakDownReportColumnKind::TotalWin.to_string() => &vec![total_win],
+            &TradeBreakDownReportColumnKind::TotalLoss.to_string() => &vec![total_loss],
+            &TradeBreakDownReportColumnKind::CleanWin.to_string() => &vec![clean_win],
+            &TradeBreakDownReportColumnKind::TimeoutWin.to_string() => &vec![timeout_win],
+            &TradeBreakDownReportColumnKind::CleanLoss.to_string() => &vec![clean_loss],
+            &TradeBreakDownReportColumnKind::TimeoutLoss.to_string() => &vec![timeout_loss],
+            &TradeBreakDownReportColumnKind::TotalNumberWinnerTrades.to_string() => &vec![total_number_winner],
+            &TradeBreakDownReportColumnKind::TotalNumberLoserTrades.to_string() => &vec![total_number_loser_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::TotalNumberTrades.to_string() => &vec![total_number_of_trades],
+            &TradeBreakDownReportColumnKind::NumberWinnerTrades.to_string() => &vec![number_winner_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::NumberLoserTrades.to_string() => &vec![number_loser_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::NumberTimeoutWinnerTrades.to_string() => &vec![number_timeout_winner_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::NumberTimeoutLoserTrades.to_string() => &vec![number_timeout_loser_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::NumberTimeoutTrades.to_string() => &vec![number_timeout_trades(pl.clone())],
+            &TradeBreakDownReportColumnKind::NumberNoEntry.to_string() => &vec![number_no_entry(pl.clone())],
         ).unwrap()
     }
 
@@ -162,17 +162,17 @@ impl PnLReport {
         let total_loss = total_loss(pl.clone());
 
         df!(
-        &PerformanceReport::Year.to_string() => &vec![year],
-        &PerformanceReport::Market.to_string() => &vec![market.to_string()],
-        &PerformanceReport::NetProfit.to_string() => &vec![net_profit],
-        &PerformanceReport::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
-        &PerformanceReport::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
-        &PerformanceReport::MaxDrawDownRel.to_string() => &vec![max_draw_down_rel(&accumulated_profit)],
-        &PerformanceReport::PercentageProfitability.to_string() => &vec![percent_profitability(total_number_winner, total_number_of_trades)],
-        &PerformanceReport::RatioAvgWinByAvgLoss.to_string() => &vec![avg_win_by_avg_loose(avg_win, avg_loss)],
-        &PerformanceReport::AvgWin.to_string() => &vec![avg_win],
-        &PerformanceReport::AvgLoss.to_string() => &vec![avg_loss],
-        &PerformanceReport::ProfitFactor.to_string() => &vec![profit_factor(total_win, total_loss)],
+        &PerformanceReportColumnKind::Year.to_string() => &vec![year],
+        &PerformanceReportColumnKind::Market.to_string() => &vec![market.to_string()],
+        &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
+        &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
+        &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
+        &PerformanceReportColumnKind::MaxDrawDownRel.to_string() => &vec![max_draw_down_rel(&accumulated_profit)],
+        &PerformanceReportColumnKind::PercentageProfitability.to_string() => &vec![percent_profitability(total_number_winner, total_number_of_trades)],
+        &PerformanceReportColumnKind::RatioAvgWinByAvgLoss.to_string() => &vec![avg_win_by_avg_loose(avg_win, avg_loss)],
+        &PerformanceReportColumnKind::AvgWin.to_string() => &vec![avg_win],
+        &PerformanceReportColumnKind::AvgLoss.to_string() => &vec![avg_loss],
+        &PerformanceReportColumnKind::ProfitFactor.to_string() => &vec![profit_factor(total_win, total_loss)],
     ).unwrap()
     }
 }
@@ -207,26 +207,26 @@ impl PnLReportDataRow {
         let n = self.get_decimal_places();
 
         df!(
-            &column_names::PnLReport::CalendarWeek.to_string() =>vec![cw],
-            &column_names::PnLReport::Date.to_string() =>vec![date],
-            &column_names::PnLReport::Strategy.to_string() =>vec![strategy],
-            &column_names::PnLReport::Market.to_string() =>vec![market],
-            &column_names::PnLReport::TradeDirection.to_string() =>vec![trade_direction],
-            &column_names::PnLReport::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::ExpectedWinTick.to_string() =>vec![expected_win_tick],
-            &column_names::PnLReport::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
-            &column_names::PnLReport::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
-            &column_names::PnLReport::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
-            &column_names::PnLReport::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
-            &column_names::PnLReport::EntryTimestamp.to_string() =>vec![entry_ts],
-            &column_names::PnLReport::TakeProfitTimestamp.to_string() =>vec![take_profit_ts],
-            &column_names::PnLReport::StopLossTimestamp.to_string() =>vec![stop_loss_ts],
-            &column_names::PnLReport::ExitPrice.to_string() =>vec![exit_price.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::Status.to_string() =>vec![status],
-            &column_names::PnLReport::PlTick.to_string() =>vec![pl_tick],
-            &column_names::PnLReport::PlDollar.to_string() =>vec![pl_dollar.round_to_dollar_cents()],
+            &column_names::PnLReportColumnKind::CalendarWeek.to_string() =>vec![cw],
+            &column_names::PnLReportColumnKind::Date.to_string() =>vec![date],
+            &column_names::PnLReportColumnKind::Strategy.to_string() =>vec![strategy],
+            &column_names::PnLReportColumnKind::Market.to_string() =>vec![market],
+            &column_names::PnLReportColumnKind::TradeDirection.to_string() =>vec![trade_direction],
+            &column_names::PnLReportColumnKind::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::ExpectedWinTick.to_string() =>vec![expected_win_tick],
+            &column_names::PnLReportColumnKind::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
+            &column_names::PnLReportColumnKind::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
+            &column_names::PnLReportColumnKind::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
+            &column_names::PnLReportColumnKind::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
+            &column_names::PnLReportColumnKind::EntryTimestamp.to_string() =>vec![entry_ts],
+            &column_names::PnLReportColumnKind::TakeProfitTimestamp.to_string() =>vec![take_profit_ts],
+            &column_names::PnLReportColumnKind::StopLossTimestamp.to_string() =>vec![stop_loss_ts],
+            &column_names::PnLReportColumnKind::ExitPrice.to_string() =>vec![exit_price.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::Status.to_string() =>vec![status],
+            &column_names::PnLReportColumnKind::PlTick.to_string() =>vec![pl_tick],
+            &column_names::PnLReportColumnKind::PlDollar.to_string() =>vec![pl_dollar.round_to_dollar_cents()],
         ).unwrap()
     }
 
@@ -251,26 +251,26 @@ impl PnLReportDataRow {
         let n = self.get_decimal_places();
 
         df!(
-            &column_names::PnLReport::CalendarWeek.to_string() =>vec![cw],
-            &column_names::PnLReport::Date.to_string() =>vec![date],
-            &column_names::PnLReport::Strategy.to_string() =>vec![strategy],
-            &column_names::PnLReport::Market.to_string() =>vec![market],
-            &column_names::PnLReport::TradeDirection.to_string() =>vec![trade_direction],
-            &column_names::PnLReport::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
-            &column_names::PnLReport::ExpectedWinTick.to_string() =>vec![expected_win_tick],
-            &column_names::PnLReport::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
-            &column_names::PnLReport::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
-            &column_names::PnLReport::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
-            &column_names::PnLReport::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
-            &column_names::PnLReport::EntryTimestamp.to_string() => &["NoEntry".to_string()],
-            &column_names::PnLReport::TakeProfitTimestamp.to_string() => &["NoEntry".to_string()],
-            &column_names::PnLReport::StopLossTimestamp.to_string() => &["NoEntry".to_string()],
-            &column_names::PnLReport::ExitPrice.to_string() => &[0.0],
-            &column_names::PnLReport::Status.to_string() => &["NoEntry".to_string()],
-            &column_names::PnLReport::PlTick.to_string() => &[0.0],
-            &column_names::PnLReport::PlDollar.to_string() => &[0.0],
+            &column_names::PnLReportColumnKind::CalendarWeek.to_string() =>vec![cw],
+            &column_names::PnLReportColumnKind::Date.to_string() =>vec![date],
+            &column_names::PnLReportColumnKind::Strategy.to_string() =>vec![strategy],
+            &column_names::PnLReportColumnKind::Market.to_string() =>vec![market],
+            &column_names::PnLReportColumnKind::TradeDirection.to_string() =>vec![trade_direction],
+            &column_names::PnLReportColumnKind::Entry.to_string() =>vec![entry_price.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::TakeProfit.to_string() =>vec![take_profit.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::StopLoss.to_string() =>vec![stop_loss.round_to_n_decimal_places(n)],
+            &column_names::PnLReportColumnKind::ExpectedWinTick.to_string() =>vec![expected_win_tick],
+            &column_names::PnLReportColumnKind::ExpectedLossTick.to_string() =>vec![expected_loss_tick],
+            &column_names::PnLReportColumnKind::ExpectedWinDollar.to_string() =>vec![expected_win_dollar.round_to_dollar_cents()],
+            &column_names::PnLReportColumnKind::ExpectedLossDollar.to_string() =>vec![expected_loss_dollar.round_to_dollar_cents()],
+            &column_names::PnLReportColumnKind::Crv.to_string() =>vec![crv.round_to_n_decimal_places(3)],
+            &column_names::PnLReportColumnKind::EntryTimestamp.to_string() => &["NoEntry".to_string()],
+            &column_names::PnLReportColumnKind::TakeProfitTimestamp.to_string() => &["NoEntry".to_string()],
+            &column_names::PnLReportColumnKind::StopLossTimestamp.to_string() => &["NoEntry".to_string()],
+            &column_names::PnLReportColumnKind::ExitPrice.to_string() => &[0.0],
+            &column_names::PnLReportColumnKind::Status.to_string() => &["NoEntry".to_string()],
+            &column_names::PnLReportColumnKind::PlTick.to_string() => &[0.0],
+            &column_names::PnLReportColumnKind::PlDollar.to_string() => &[0.0],
         )
         .unwrap()
     }

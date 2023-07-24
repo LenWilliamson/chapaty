@@ -10,9 +10,9 @@ use crate::{
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
-        data::{CandlestickKind, HdbSourceDir},
-        error::ChapatyError,
-        markets::{MarketKind, TimeFrame},
+        data::{CandlestickKind, HdbSourceDirKind},
+        error::ChapatyErrorKind,
+        markets::MarketKind, bot::TimeFrameKind,
     },
     strategy::Strategy,
 };
@@ -43,7 +43,7 @@ pub struct Bot {
     years: Vec<u32>,
     market_simulation_data: CandlestickKind,
     time_interval: Option<TimeInterval>,
-    time_frame: TimeFrame,
+    time_frame: TimeFrameKind,
     save_result_as_csv: bool,
 }
 pub struct BotBuilder {
@@ -56,7 +56,7 @@ pub struct BotBuilder {
     years: Vec<u32>,
     market_simulation_data: CandlestickKind,
     time_interval: Option<TimeInterval>,
-    time_frame: TimeFrame,
+    time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     // news_filter: Option<Vec<EconomicNews>>,
 }
@@ -112,7 +112,7 @@ impl Bot {
         self.strategy.clone()
     }
 
-    pub fn get_time_frame_ref(&self) -> &TimeFrame {
+    pub fn get_time_frame_ref(&self) -> &TimeFrameKind {
         &self.time_frame
     }
 
@@ -179,8 +179,10 @@ impl Bot {
         let map = self.strategy.register_trading_indicators().iter().fold(
             HashSet::new(),
             |mut acc, trading_indicator| {
-                let indicator_data_pair =
-                    IndicatorDataPair::new(*trading_indicator, HdbSourceDir::from(*trading_indicator));
+                let indicator_data_pair = IndicatorDataPair::new(
+                    *trading_indicator,
+                    HdbSourceDirKind::from(*trading_indicator),
+                );
                 acc.insert(indicator_data_pair);
                 acc
             },
@@ -208,7 +210,7 @@ impl BotBuilder {
             years: vec![],
             market_simulation_data: CandlestickKind::Ohlc1m,
             time_interval: None,
-            time_frame: TimeFrame::Daily,
+            time_frame: TimeFrameKind::Daily,
             save_result_as_csv: false,
         }
     }
@@ -239,7 +241,7 @@ impl BotBuilder {
         }
     }
 
-    pub fn with_time_frame(self, time_frame: TimeFrame) -> Self {
+    pub fn with_time_frame(self, time_frame: TimeFrameKind) -> Self {
         Self { time_frame, ..self }
     }
 
@@ -261,9 +263,9 @@ impl BotBuilder {
         Self { bucket, ..self }
     }
 
-    pub fn build(self) -> Result<Bot, ChapatyError> {
+    pub fn build(self) -> Result<Bot, ChapatyErrorKind> {
         let client = self.client.ok_or(
-            ChapatyError::BuildBotError("Google Cloud Client is not initalized. Use BotBuilder::with_google_cloud_client for initalization"
+            ChapatyErrorKind::BuildBotError("Google Cloud Client is not initalized. Use BotBuilder::with_google_cloud_client for initalization"
             .to_string()))?;
 
         Ok(Bot {

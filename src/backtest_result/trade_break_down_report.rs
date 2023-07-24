@@ -1,5 +1,5 @@
 use crate::data_frame_operations::save_df_as_csv;
-use crate::enums::bots::StrategyKind;
+use crate::enums::bot::StrategyKind;
 use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
 use std::collections::HashMap;
 

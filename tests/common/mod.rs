@@ -3,8 +3,8 @@ use std::sync::Arc;
 use chapaty::{
     bot::time_interval::TimeInterval,
     data_provider::{cme::Cme, DataProvider},
-    enums::strategies::{StopLossKind, TakeProfitKind},
-    strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit},
+
+    strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit}, enums::bot::{StopLossKind, TakeProfitKind},
 };
 
 pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {

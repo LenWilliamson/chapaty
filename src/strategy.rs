@@ -1,26 +1,25 @@
 use std::str::FromStr;
 
 use crate::{
+    bot::trade::Trade,
     calculator::pre_trade_values_calculator::PreTradeValues,
     enums::{
-        self,
-        bots::{PreTradeDataKind, StrategyKind, TradingIndicatorKind},
-        error::ChapatyError,
-        trades::TradeKind,
-    }, bot::trade::Trade,
+        bot::{StopLossKind, StrategyKind, TakeProfitKind},
+        error::ChapatyErrorKind, indicator::TradingIndicatorKind, trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
+    },
 };
 
 pub mod ppp;
 
 #[derive(Clone, Copy)]
 pub struct StopLoss {
-    pub condition: enums::strategies::StopLossKind,
+    pub condition: StopLossKind,
     pub offset: f64,
 }
 
 #[derive(Clone, Copy)]
 pub struct TakeProfit {
-    pub condition: enums::strategies::TakeProfitKind,
+    pub condition: TakeProfitKind,
     pub offset: f64,
 }
 
@@ -31,7 +30,7 @@ pub trait Strategy {
     fn required_pre_trade_data(&self) -> Vec<PreTradeDataKind>;
     fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64;
     fn get_trade(&self, pre_trade_values: &PreTradeValues) -> Trade;
-    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeKind;
+    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeDirectionKind;
     fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64;
     fn get_tp_price(&self, pre_trade_values: &PreTradeValues) -> f64;
     fn get_bot_kind(&self) -> StrategyKind;

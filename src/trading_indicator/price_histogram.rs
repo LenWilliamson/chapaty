@@ -1,7 +1,7 @@
 
 use crate::{
 
-    converter::any_value::AnyValueConverter, enums::column_names::VolumeProfile,
+    converter::any_value::AnyValueConverter, enums::column_names::VolumeProfileColumnKind,
 };
 
 use polars::prelude::{col, lit, DataFrame, IntoLazy, AnyValue};
@@ -24,8 +24,8 @@ impl PriceHistogram {
 
         let df = self.df.clone();
 
-        let qx = &VolumeProfile::Quantity.to_string();
-        let px = &VolumeProfile::Price.to_string();
+        let qx = &VolumeProfileColumnKind::Quantity.to_string();
+        let px = &VolumeProfileColumnKind::Price.to_string();
 
         let sorted = df
             .lazy()
@@ -47,7 +47,7 @@ impl PriceHistogram {
         let poc = self.poc();
 
         let df = self.df.clone();
-        let qx_col = VolumeProfile::Quantity as usize;
+        let qx_col = VolumeProfileColumnKind::Quantity as usize;
 
         // There could be more than one POC
         // Currently we choose the lowest price if there are multiple POCs

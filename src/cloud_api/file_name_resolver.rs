@@ -1,15 +1,15 @@
 use crate::{
     bot::indicator_data_pair::IndicatorDataPair,
-    enums::{bots::TradingIndicatorKind, data::HdbSourceDir},
+    enums::{indicator::TradingIndicatorKind, data::HdbSourceDirKind},
 };
 #[derive(Clone)]
 pub struct FileNameResolver {
     indicator_data_pair: Option<IndicatorDataPair>,
-    simulation_data: HdbSourceDir,
+    simulation_data: HdbSourceDirKind,
 }
 
 impl FileNameResolver {
-    pub fn new(simulation_data: HdbSourceDir) -> Self {
+    pub fn new(simulation_data: HdbSourceDirKind) -> Self {
         Self {
             indicator_data_pair: None,
             simulation_data,
@@ -33,8 +33,8 @@ impl FileNameResolver {
 
     fn generate_file_name(&self) -> String {
         match self.indicator_data_pair.as_ref().unwrap().data {
-            HdbSourceDir::Tick => self.trading_indicator_from_tick_data(),
-            HdbSourceDir::AggTrades => self.trading_indicator_from_agg_trades_data(),
+            HdbSourceDirKind::Tick => self.trading_indicator_from_tick_data(),
+            HdbSourceDirKind::AggTrades => self.trading_indicator_from_agg_trades_data(),
             ohlc_variant => self.trading_indicator_from_ohlc_variant(&ohlc_variant),
         }
     }
@@ -55,7 +55,7 @@ impl FileNameResolver {
         }
     }
 
-    fn trading_indicator_from_ohlc_variant(&self, ohlc_variant: &HdbSourceDir) -> String {
+    fn trading_indicator_from_ohlc_variant(&self, ohlc_variant: &HdbSourceDirKind) -> String {
         match self.indicator_data_pair.clone().unwrap().indicator {
             TradingIndicatorKind::Poc(_)
             | TradingIndicatorKind::VolumeAreaHigh(_)
