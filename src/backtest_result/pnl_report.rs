@@ -5,6 +5,7 @@ use crate::bot::time_frame_snapshot::TimeFrameSnapshot;
 use crate::bot::trade::Trade;
 use crate::calculator::trade_pnl_calculator::TradePnL;
 use crate::converter::market_decimal_places::MyDecimalPlaces;
+use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::bots::StrategyKind;
 
 use super::metrics::{
@@ -30,6 +31,17 @@ pub struct PnLReports {
     pub market: MarketKind,
     pub years: Vec<u32>,
     pub reports: HashMap<u32, PnLReport>,
+}
+
+impl PnLReports {
+    pub fn save_as_csv(&self, file_name: &str) {
+        self.reports.iter().for_each(|(year, data)| {
+            save_df_as_csv(
+                &mut data.pnl.clone(),
+                &format!("{file_name}_{}_{year}_pnl", self.market),
+            )
+        })
+    }
 }
 
 impl FromIterator<PnLReport> for PnLReports {
@@ -203,8 +215,12 @@ impl PnLReportDataRow {
             .trade
             .stop_loss
             .round_to_n_decimal_places(decimal_places)];
-        let expected_win_tick = vec![self.expected_win_in_tick(tick_factor)];
-        let expected_loss_tick = vec![self.expected_loss_in_tick(tick_factor)];
+        let expected_win_tick = vec![self
+            .expected_win_in_tick(tick_factor)
+            .round_to_n_decimal_places(decimal_places)];
+        let expected_loss_tick = vec![self
+            .expected_loss_in_tick(tick_factor)
+            .round_to_n_decimal_places(decimal_places)];
         let expected_win_dollar =
             vec![(expected_win_tick[0] * tick_to_dollar).round_to_dollar_cents()];
         let expected_loss_dollar =
@@ -251,9 +267,12 @@ impl PnLReportDataRow {
 
         let status = vec![trade_pnl.trade_outcome()];
 
-        let exit_price = vec![trade_pnl.exit_price()];
-        let pl_tick = vec![trade_pnl.profit() / tick_factor];
-        let pl_dollar = vec![pl_tick[0] * tick_to_dollar];
+        let exit_price = vec![trade_pnl
+            .exit_price()
+            .round_to_n_decimal_places(decimal_places)];
+        let pl_tick =
+            vec![(trade_pnl.profit() / tick_factor).round_to_n_decimal_places(decimal_places)];
+        let pl_dollar = vec![(pl_tick[0] * tick_to_dollar).round_to_dollar_cents()];
 
         let p_and_l = df!(
             &ProfitAndLossColumnNames::CalendarWeek.to_string() => &calender_week,
@@ -270,7 +289,7 @@ impl PnLReportDataRow {
             &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() => &expected_loss_dollar,
             &ProfitAndLossColumnNames::Crv.to_string() => &crv,
             &ProfitAndLossColumnNames::EntryTimestamp.to_string() => &entry_ts,
-            &ProfitAndLossColumnNames::TargetTimestamp.to_string() => &take_profit_ts,
+            &ProfitAndLossColumnNames::TakeProfitTimestamp.to_string() => &take_profit_ts,
             &ProfitAndLossColumnNames::StopLossTimestamp.to_string() => &stop_loss_ts,
             &ProfitAndLossColumnNames::ExitPrice.to_string() => &exit_price,
             &ProfitAndLossColumnNames::Status.to_string() => &status,
@@ -335,7 +354,7 @@ impl PnLReportDataRow {
             &ProfitAndLossColumnNames::ExpectedLossDollar.to_string() => expected_loss_dollar,
             &ProfitAndLossColumnNames::Crv.to_string() => crv,
             &ProfitAndLossColumnNames::EntryTimestamp.to_string() => &["NoEntry".to_string()],
-            &ProfitAndLossColumnNames::TargetTimestamp.to_string() => &["NoEntry".to_string()],
+            &ProfitAndLossColumnNames::TakeProfitTimestamp.to_string() => &["NoEntry".to_string()],
             &ProfitAndLossColumnNames::StopLossTimestamp.to_string() => &["NoEntry".to_string()],
             &ProfitAndLossColumnNames::ExitPrice.to_string() => &[0.0],
             &ProfitAndLossColumnNames::Status.to_string() => &["NoEntry".to_string()],

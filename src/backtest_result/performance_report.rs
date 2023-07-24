@@ -1,3 +1,4 @@
+use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::markets::MarketKind;
 use std::collections::HashMap;
 
@@ -9,6 +10,19 @@ use super::trade_breakdown_report::PnLSnapshot;
 pub struct PerformanceReports {
     pub markets: Vec<MarketKind>,
     pub reports: HashMap<MarketKind, PerformanceReport>,
+}
+
+impl PerformanceReports {
+    pub fn save_as_csv(&self, file_name: &str) {
+        self.reports
+            .iter()
+            .for_each(|(market, performance_report)| {
+                save_df_as_csv(
+                    &mut performance_report.report.clone(),
+                    &format!("{file_name}_{market}_performance_report"),
+                )
+            })
+    }
 }
 #[derive(Debug)]
 pub struct PerformanceReport {

@@ -64,7 +64,6 @@ impl PnLReportDataRowCalculator {
         let trade = self.strategy.get_trade(&values.pre_trade);
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_data_provider(self.data_provider.clone())
-            .with_strategy(self.strategy.clone())
             .with_entry_ts(entry_ts)
             .with_trade(trade.clone())
             .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(entry_ts))
@@ -103,7 +102,6 @@ impl PnLReportDataRowCalculator {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
         calculator_builder
             .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
-            .with_trade_kind(self.strategy.get_trade_kind(&pre_trade_values))
             .build_and_compute()
     }
 }

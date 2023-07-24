@@ -106,7 +106,7 @@ async fn it_test() {
 
     let strategy = common::setup_strategy();
     let data_provider = common::setup_data_provider();
-    let name = "My First Bot with the new API".to_string();
+    let name = "chapaty".to_string();
     let years = vec![2022];
     let market_simulation_data = CandlestickKind::Ohlc1m;
     let markets = vec![MarketKind::EurUsdFuture];
@@ -127,12 +127,11 @@ async fn it_test() {
         .with_time_frame(time_frame)
         .with_google_cloud_client(client)
         .with_google_cloud_bucket(bucket)
+        .with_save_result_as_csv(true)
         .build()
         .unwrap();
 
-    let result = bot.backtest().await;
-    dbg!(result.pnl_statement);
-    dbg!(result.performance_report);
+    let _ = bot.backtest().await;
 
     let duration = start.elapsed();
     println!("Time elapsed in streams::chapaty::backtest() is: {duration:?}");

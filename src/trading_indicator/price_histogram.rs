@@ -47,7 +47,8 @@ impl PriceHistogram {
     /// * `df` - volume profile
     /// * `std_dev` - standard deviation
     /// * `poc` - peek of control
-    pub fn volume_area(&self, std_dev: f64, poc: f64) -> (f64, f64) {
+    pub fn volume_area(&self, std_dev: f64) -> (f64, f64) {
+        let poc = self.poc();
         let dp = self.data_provider.clone();
         let df = self.df.clone();
         let qx_col = dp.column_name_as_int(&Columns::Vol(VolumeProfileColumnNames::Quantity));

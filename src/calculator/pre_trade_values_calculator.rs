@@ -2,13 +2,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     bot::pre_trade_data::PreTradeData,
+    converter::any_value::AnyValueConverter,
     data_provider::DataProvider,
     enums::{
         self,
         bots::{PreTradeDataKind, TradingIndicatorKind},
         columns::{Columns, OhlcColumnNames},
     },
-    trading_indicator::price_histogram::PriceHistogram, converter::any_value::AnyValueConverter,
+    trading_indicator::price_histogram::PriceHistogram,
 };
 
 use polars::prelude::{col, IntoLazy};
@@ -61,8 +62,7 @@ impl PreTradeValuesCalculator {
             PreTradeDataKind::HighestTradePrice => {
                 let res = self.compute_highest_trade_price();
                 map.insert(PreTradeDataKind::HighestTradePrice, res);
-            }
-            // _ => panic!("Not yet implemented!"),
+            } // _ => panic!("Not yet implemented!"),
         };
 
         map
@@ -106,7 +106,10 @@ impl PreTradeValuesCalculator {
 
         match indicator {
             TradingIndicatorKind::Poc(_) => ph.poc(),
-            _ => panic!("Not yet implemented!"),
+            _ => {
+                ph.volume_area(0.3);
+                panic!("Not yet implemented!")
+            }
         }
     }
 
@@ -166,8 +169,6 @@ impl From<&PnLReportDataRowCalculator> for PreTradeValuesCalculatorBuilder {
 }
 
 impl PreTradeValuesCalculatorBuilder {
-
-
     pub fn with_required_market_sim_values(
         self,
         required_market_sim_values: Vec<PreTradeDataKind>,

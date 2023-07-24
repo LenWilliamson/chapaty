@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-
 use crate::enums::{bots::StrategyKind, markets::MarketKind};
 
 use super::pnl_report::PnLReports;
@@ -12,3 +11,10 @@ pub struct PnLStatement {
     pub pnl_data: HashMap<MarketKind, PnLReports>,
 }
 
+impl PnLStatement {
+    pub fn save_as_csv(&self, file_name: &str) {
+        self.pnl_data
+            .iter()
+            .for_each(|(_, data)| data.save_as_csv(file_name))
+    }
+}

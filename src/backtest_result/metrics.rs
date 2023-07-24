@@ -1,7 +1,7 @@
 use polars::{
     datatypes::AnyValue,
     lazy::dsl::when,
-    prelude::{col, lit, DataFrame, IntoLazy, SeriesMethods, SortOptions},
+    prelude::{col, lit, DataFrame, IntoLazy, SeriesMethods},
 };
 
 use crate::{converter::any_value::AnyValueConverter, enums::columns::ProfitAndLossColumnNames};
@@ -153,16 +153,8 @@ pub fn total_loss(df: DataFrame) -> f64 {
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
 }
 
-pub fn clean_win(df: DataFrame) -> f64 {
-    total_win(df.clone()) - timeout_win(df)
-}
-
-pub fn clean_loss(df: DataFrame) -> f64 {
-    total_loss(df.clone()) - timeout_loss(df)
-}
-
 pub fn timeout_win(df: DataFrame) -> f64 {
-    let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+    let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
     let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
     let pl_dollar_col = ProfitAndLossColumnNames::PlDollar.to_string();
 
@@ -187,7 +179,7 @@ pub fn timeout_win(df: DataFrame) -> f64 {
 }
 
 pub fn timeout_loss(df: DataFrame) -> f64 {
-    let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+    let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
     let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
     let pl_dollar_col = ProfitAndLossColumnNames::PlDollar.to_string();
 
@@ -224,36 +216,10 @@ pub fn status_summary(df: DataFrame) -> DataFrame {
     df[status_col.as_str()].value_counts(true, false).unwrap()
 }
 
-pub fn top_n_winner(df: DataFrame, n: u32) -> DataFrame {
-    top_n(df, n, true)
-}
-
-pub fn top_n_loser(df: DataFrame, n: u32) -> DataFrame {
-    top_n(df, n, false)
-}
-
-fn top_n(df: DataFrame, n: u32, descending: bool) -> DataFrame {
-    let date_col = ProfitAndLossColumnNames::Date.to_string();
-    let pl_dollar_col = ProfitAndLossColumnNames::PlDollar.to_string();
-
-    df.lazy()
-        .sort(
-            &pl_dollar_col,
-            SortOptions {
-                descending,
-                ..Default::default()
-            },
-        )
-        .select(&[col(&date_col), col(&pl_dollar_col)])
-        .slice(0, n)
-        .collect()
-        .unwrap()
-}
-
 pub fn timeout_summary(df: DataFrame) -> DataFrame {
     let status_col = ProfitAndLossColumnNames::Status.to_string();
     let pl_dollar_col = ProfitAndLossColumnNames::PlDollar.to_string();
-    let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+    let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
     let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
     let filtered = df
@@ -404,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_timeout_summary() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -476,128 +442,6 @@ mod tests {
     }
 
     #[test]
-    fn test_top_n_loser() {
-        let df = df!(
-            "Date" => &["2022-01-10", "2022-01-11", "2022-01-12", "2022-01-13", "2022-01-14", "2022-01-15", "2022-01-16"],
-            "PlDollar" => &[10_f64, -20.0, -30.0, -20.0, 30.0, 10.0, 0.0],
-        )
-        .unwrap();
-
-        let res = top_n_loser(df.clone(), 1);
-        let target = df!(
-            "Date" => &["2022-01-12",],
-            "PlDollar" => &[ -30.0],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_loser(df.clone(), 2);
-        let target = df!(
-            "Date" => &["2022-01-12", "2022-01-11",],
-            "PlDollar" => &[ -30.0, -20.0,],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_loser(df.clone(), 3);
-        let target = df!(
-            "Date" => &["2022-01-12", "2022-01-11", "2022-01-13",],
-            "PlDollar" => &[ -30.0, -20.0, -20.0],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_loser(df.clone(), 10);
-        let target = df!(
-            "Date" => &[
-                "2022-01-12",
-                "2022-01-11",
-                "2022-01-13",
-                "2022-01-16",
-                "2022-01-10",
-                "2022-01-15",
-                "2022-01-14",
-            ],
-            "PlDollar" => &[
-                -30.0_f64,
-                -20.0,
-                -20.0,
-                0.0,
-                10.0,
-                10.0,
-                30.0,
-            ],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-    }
-
-    #[test]
-    fn test_top_n_winner() {
-        let df = df!(
-            "Date" => &["2022-01-10", "2022-01-11", "2022-01-12", "2022-01-13", "2022-01-14", "2022-01-15", "2022-01-16"],
-            "PlDollar" => &[10_f64, -20.0, -30.0, -20.0, 30.0, 10.0, 0.0],
-        )
-        .unwrap();
-
-        let res = top_n_winner(df.clone(), 1);
-        let target = df!(
-            "Date" => &["2022-01-14",],
-            "PlDollar" => &[ 30.0],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_winner(df.clone(), 2);
-        let target = df!(
-            "Date" => &["2022-01-14", "2022-01-10",],
-            "PlDollar" => &[ 30.0, 10.0,],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_winner(df.clone(), 3);
-        let target = df!(
-            "Date" => &["2022-01-14", "2022-01-10","2022-01-15",],
-            "PlDollar" => &[ 30.0, 10.0, 10.0],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_winner(df.clone(), 4);
-        let target = df!(
-            "Date" => &["2022-01-14", "2022-01-10","2022-01-15","2022-01-16"],
-            "PlDollar" => &[ 30.0, 10.0, 10.0, 0.0],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-
-        let res = top_n_winner(df.clone(), 10);
-        let target = df!(
-            "Date" => &[
-                "2022-01-14",
-                "2022-01-10",
-                "2022-01-15",
-                "2022-01-16",
-                "2022-01-11",
-                "2022-01-13",
-                "2022-01-12",
-            ],
-            "PlDollar" => &[
-                30.0_f64,
-                10.0,
-                10.0,
-                0.0,
-                -20.0,
-                -20.0,
-                -30.0,
-            ],
-        )
-        .unwrap();
-        assert_eq!(target, res);
-    }
-
-    #[test]
     fn test_profit_factor() {
         let df = df!(
             "Status" => &["Winner", "Loser", "Loser", "Loser", "Winner", "Winner", "NoEntry"],
@@ -646,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_timeout_win() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -679,42 +523,8 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_win() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
-        let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
-
-        let df = df!(
-            &take_profit_ts => &[
-                "2022-01-12",
-                "Timeout",
-                "2022-01-13",
-                "Timeout",
-                "2022-01-10",
-                "Timeout",
-                "2022-01-14",
-            ],
-            &stop_loss_ts => &[
-                "2022-01-12",
-                "Timeout",
-                "2022-01-13",
-                "Timeout",
-                "2022-01-10",
-                "Timeout",
-                "2022-01-14",
-            ],
-            "Status" => &["Winner", "Loser", "Loser", "Loser", "Winner", "Winner", "NoEntry"],
-            "PlDollar" => &[10_f64, -20.0, -30.0, -20.0, 30.0, 10.0, 0.0],
-        )
-        .unwrap();
-
-        let res = clean_win(df);
-
-        assert_eq!(40.0, res);
-    }
-
-    #[test]
     fn test_timeout_loss() {
-        let take_profit_ts: String = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts: String = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -744,40 +554,6 @@ mod tests {
         let res = timeout_loss(df);
 
         assert_eq!(-40.0, res);
-    }
-
-    #[test]
-    fn test_clean_loss() {
-        let take_profit_ts: String = ProfitAndLossColumnNames::TargetTimestamp.to_string();
-        let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
-
-        let df = df!(
-            &take_profit_ts => &[
-                "2022-01-12",
-                "Timeout",
-                "2022-01-13",
-                "Timeout",
-                "2022-01-10",
-                "Timeout",
-                "2022-01-14",
-            ],
-            &stop_loss_ts => &[
-                "2022-01-12",
-                "Timeout",
-                "2022-01-13",
-                "Timeout",
-                "2022-01-10",
-                "Timeout",
-                "2022-01-14",
-            ],
-            "Status" => &["Winner", "Loser", "Loser", "Loser", "Winner", "Winner", "NoEntry"],
-            "PlDollar" => &[10_f64, -20.0, -30.0, -20.0, 30.0, 10.0, 0.0],
-        )
-        .unwrap();
-
-        let res = clean_loss(df);
-
-        assert_eq!(-30.0, res);
     }
 
     #[test]
@@ -855,7 +631,7 @@ mod tests {
 
     #[test]
     fn test_number_loser_trades() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -887,7 +663,7 @@ mod tests {
 
     #[test]
     fn test_number_timeout_loser_trades() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -919,7 +695,7 @@ mod tests {
 
     #[test]
     fn test_number_timeout_winner_trades() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(
@@ -951,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_number_winner_trades() {
-        let take_profit_ts = ProfitAndLossColumnNames::TargetTimestamp.to_string();
+        let take_profit_ts = ProfitAndLossColumnNames::TakeProfitTimestamp.to_string();
         let stop_loss_ts = ProfitAndLossColumnNames::StopLossTimestamp.to_string();
 
         let df = df!(

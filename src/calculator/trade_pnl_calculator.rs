@@ -5,14 +5,12 @@ use polars::prelude::LazyFrame;
 use crate::{
     bot::trade::Trade, data_provider::DataProvider,
     enums::bots::TradeDataKind, lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
-    strategy::Strategy,
 };
 
 use super::pnl_report_data_row_calculator::TradeAndPreTradeValues;
 
 pub struct TradePnLCalculator {
     data_provider: Arc<dyn DataProvider>,
-    strategy: Arc<dyn Strategy>,
     entry_ts: i64,
     trade: Trade,
     market_sim_data_since_entry: LazyFrame,
@@ -207,7 +205,6 @@ fn is_order_open(timestamp: Option<i64>) -> bool {
 
 pub struct TradePnLCalculatorBuilder {
     data_provider: Option<Arc<dyn DataProvider>>,
-    strategy: Option<Arc<dyn Strategy>>,
     entry_ts: Option<i64>,
     trade: Option<Trade>,
     market_sim_data_since_entry: Option<LazyFrame>,
@@ -218,7 +215,6 @@ impl TradePnLCalculatorBuilder {
     pub fn new() -> Self {
         Self {
             data_provider: None,
-            strategy: None,
             entry_ts: None,
             trade: None,
             market_sim_data_since_entry: None,
@@ -229,13 +225,6 @@ impl TradePnLCalculatorBuilder {
     pub fn with_data_provider(self, data_provider: Arc<dyn DataProvider>) -> Self {
         Self {
             data_provider: Some(data_provider),
-            ..self
-        }
-    }
-
-    pub fn with_strategy(self, strategy: Arc<dyn Strategy>) -> Self {
-        Self {
-            strategy: Some(strategy),
             ..self
         }
     }
@@ -274,7 +263,6 @@ impl TradePnLCalculatorBuilder {
     pub fn build(self) -> TradePnLCalculator {
         TradePnLCalculator {
             data_provider: self.data_provider.clone().unwrap(),
-            strategy: self.strategy.clone().unwrap(),
             entry_ts: self.entry_ts.clone().unwrap(),
             trade: self.trade.clone().unwrap(),
             market_sim_data_since_entry: self.market_sim_data_since_entry.clone().unwrap(),

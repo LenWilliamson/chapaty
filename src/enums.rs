@@ -1,5 +1,3 @@
-// #![allow(dead_code)]
-
 pub mod bots {
     use strum_macros::{Display, EnumString};
 
@@ -102,7 +100,7 @@ pub mod columns {
         ExpectedLossDollar = 11,
         Crv = 12,
         EntryTimestamp = 13,
-        TargetTimestamp = 14,
+        TakeProfitTimestamp = 14,
         StopLossTimestamp = 15,
         ExitPrice = 16,
         Status = 17,

@@ -227,7 +227,6 @@ impl TradingSessionBuilder {
 
     async fn populate_trading_session_data(&self) -> ExecutionData {
         let bot = self.bot.clone().unwrap();
-        let required_data = self.required_data.clone().unwrap();
         let market = self.market.unwrap();
         let year = self.year.unwrap();
 

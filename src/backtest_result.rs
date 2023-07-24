@@ -12,7 +12,15 @@ use self::{
 #[derive(Debug)]
 pub struct BacktestResult {
     pub pnl_statement: PnLStatement,
-    pub performance_report: PerformanceReports,
-    pub trade_breakdown_report: TradeBreakDownReports,
+    pub performance_reports: PerformanceReports,
+    pub trade_breakdown_reports: TradeBreakDownReports,
     pub equity_curves: EquityCurvesReport,
+}
+
+impl BacktestResult {
+    pub fn save_as_csv(&self, file_name: &str) {
+        self.pnl_statement.save_as_csv(file_name);
+        self.performance_reports.save_as_csv(file_name);
+        self.trade_breakdown_reports.save_as_csv(file_name);
+    }
 }

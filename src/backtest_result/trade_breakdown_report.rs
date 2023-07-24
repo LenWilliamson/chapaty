@@ -1,3 +1,4 @@
+use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::bots::StrategyKind;
 use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
 use std::collections::HashMap;
@@ -17,6 +18,19 @@ use super::{pnl_report::PnLReports, pnl_statement::PnLStatement};
 pub struct TradeBreakDownReports {
     pub markets: Vec<MarketKind>,
     pub reports: HashMap<MarketKind, TradeBreakDownReport>,
+}
+
+impl TradeBreakDownReports {
+    pub fn save_as_csv(&self, file_name: &str) {
+        self.reports
+            .iter()
+            .for_each(|(market, trade_break_down_report)| {
+                save_df_as_csv(
+                    &mut trade_break_down_report.report.clone(),
+                    &format!("{file_name}_{market}_trade_break_down_report"),
+                )
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -147,4 +161,3 @@ impl PnLSnapshot {
         ldfs.concatenate_to_data_frame()
     }
 }
-

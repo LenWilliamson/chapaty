@@ -44,6 +44,7 @@ pub struct Bot {
     market_simulation_data: CandlestickKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrame,
+    save_result_as_csv: bool,
 }
 pub struct BotBuilder {
     client: Option<Client>,
@@ -56,6 +57,7 @@ pub struct BotBuilder {
     market_simulation_data: CandlestickKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrame,
+    save_result_as_csv: bool,
     // news_filter: Option<Vec<EconomicNews>>,
 }
 
@@ -68,12 +70,18 @@ impl Bot {
         let trade_breakdown_report = pnl_statement.clone().into();
         let equity_curves = pnl_statement.clone().into();
 
-        BacktestResult {
+        let res = BacktestResult {
             pnl_statement,
-            performance_report,
-            trade_breakdown_report,
+            performance_reports: performance_report,
+            trade_breakdown_reports: trade_breakdown_report,
             equity_curves,
+        };
+
+        if self.save_result_as_csv {
+            res.save_as_csv(&self.name);
         }
+
+        res
     }
 
     pub fn get_shared_pointer(&self) -> Arc<Bot> {
@@ -201,6 +209,7 @@ impl BotBuilder {
             market_simulation_data: CandlestickKind::Ohlc1m,
             time_interval: None,
             time_frame: TimeFrame::Daily,
+            save_result_as_csv: false,
         }
     }
 
@@ -241,6 +250,13 @@ impl BotBuilder {
         }
     }
 
+    pub fn with_save_result_as_csv(self, save_result_as_csv: bool) -> Self {
+        Self {
+            save_result_as_csv,
+            ..self
+        }
+    }
+
     pub fn with_google_cloud_bucket(self, bucket: GoogleCloudBucket) -> Self {
         Self { bucket, ..self }
     }
@@ -261,6 +277,7 @@ impl BotBuilder {
             market_simulation_data: self.market_simulation_data,
             time_interval: self.time_interval,
             time_frame: self.time_frame,
+            save_result_as_csv: self.save_result_as_csv,
         })
     }
 }

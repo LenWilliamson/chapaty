@@ -4,7 +4,7 @@ use polars::prelude::{ DataFrame, IntoLazy};
 
 use crate::{
     data_provider::DataProvider,
-    enums::{bots::TradeDataKind, trades::TradeKind, MyAnyValue},
+    enums::{bots::TradeDataKind, MyAnyValue},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations, converter::any_value::AnyValueConverter,
 };
 
@@ -14,7 +14,6 @@ pub struct TradeValuesCalculator {
     data_provider: Arc<dyn DataProvider>,
     market_sim_data: DataFrame,
     entry_price: f64,
-    trade_kind: TradeKind,
 }
 
 impl TradeValuesCalculator {
@@ -123,7 +122,6 @@ pub struct TradeValuesCalculatorBuilder {
     data_provider: Option<Arc<dyn DataProvider>>,
     market_sim_data: Option<DataFrame>,
     entry_price: Option<f64>,
-    trade_kind: Option<TradeKind>,
 }
 
 impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
@@ -132,7 +130,6 @@ impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
             data_provider: Some(value.data_provider.clone()),
             market_sim_data: Some(value.market_sim_data.clone()),
             entry_price: None,
-            trade_kind: None,
         }
     }
 }
@@ -145,19 +142,12 @@ impl TradeValuesCalculatorBuilder {
         }
     }
 
-    pub fn with_trade_kind(self, trade_kind: TradeKind) -> Self {
-        Self {
-            trade_kind: Some(trade_kind),
-            ..self
-        }
-    }
 
     pub fn build(self) -> TradeValuesCalculator {
         TradeValuesCalculator {
             data_provider: self.data_provider.unwrap(),
             market_sim_data: self.market_sim_data.unwrap(),
             entry_price: self.entry_price.unwrap(),
-            trade_kind: self.trade_kind.unwrap(),
         }
     }
 
