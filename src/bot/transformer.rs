@@ -139,6 +139,7 @@ impl Transformer {
 
         tpo.from_df_map(df_map)
     }
+    
     fn compute_vol_agg_trades(
         &self,
         df_map: chapaty::types::DataFrameMap,

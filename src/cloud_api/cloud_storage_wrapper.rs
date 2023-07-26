@@ -69,6 +69,7 @@ impl CloudStorageClient {
             .await;
 
         self.upload_df_map(df_map).await.unwrap()
+        // df_map
     }
 
     fn upload_df_map(
@@ -123,7 +124,7 @@ impl CloudStorageClient {
         };
         let upload_type = UploadType::Simple(Media {
             name: file_name.into(),
-            content_type: std::borrow::Cow::Borrowed("text/csv"),
+            content_type: std::borrow::Cow::Borrowed("application/json"),
             content_length: None,
         });
 
@@ -311,7 +312,9 @@ pub async fn get_files_in_bucket2(
             .await
             .unwrap();
         res.append(&mut lor.items.ok_or_else(|| {
-            ChapatyErrorKind::UnknownGoogleCloudStorageError("Invalid ListObjectsResponse".to_string())
+            ChapatyErrorKind::UnknownGoogleCloudStorageError(
+                "Invalid ListObjectsResponse".to_string(),
+            )
         })?);
     }
 

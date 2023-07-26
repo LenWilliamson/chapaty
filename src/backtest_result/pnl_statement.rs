@@ -5,8 +5,10 @@ use polars::prelude::{DataFrame, LazyFrame, IntoLazy};
 use crate::{enums::{bot::StrategyKind, markets::MarketKind}, lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations};
 
 use super::{pnl_report::PnLReports, trade_break_down_report::TradeBreakDownReport, performance_report::PerformanceReport, equity_curves::{EquityCurves, EquityCurve}};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLStatement {
     pub strategy: StrategyKind,
     pub markets: Vec<MarketKind>,

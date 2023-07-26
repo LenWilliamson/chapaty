@@ -6,9 +6,9 @@ use super::pnl_statement::PnLSnapshot;
 use super::pnl_statement::PnLStatement;
 use crate::enums::markets::MarketKind;
 use polars::prelude::DataFrame;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
-
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TradeBreakDownReports {
     pub markets: Vec<MarketKind>,
     pub reports: HashMap<MarketKind, TradeBreakDownReport>,
@@ -27,7 +27,7 @@ impl TradeBreakDownReports {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TradeBreakDownReport {
     pub market: MarketKind,
     pub report: DataFrame,

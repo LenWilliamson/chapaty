@@ -8,8 +8,9 @@ use self::{
     equity_curves::EquityCurvesReport, performance_report::PerformanceReports,
     pnl_statement::PnLStatement, trade_break_down_report::TradeBreakDownReports,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BacktestResult {
     pub pnl_statement: PnLStatement,
     pub performance_reports: PerformanceReports,

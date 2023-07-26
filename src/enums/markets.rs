@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
-#[derive(Copy, Clone, Debug, Display, EnumString, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Display, EnumString, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MarketKind {
     #[strum(serialize = "btcusdt")]
     BtcUsdt,

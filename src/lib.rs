@@ -24,14 +24,21 @@ pub use enums::{
 
 
 /*
+- Test schreiben
 - PPP Entry flexibel setzen, am besten über Struct
 - PPP / Strategy Trait aufrümen
+- Importe aufräumen
+- Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
+- Performance <59sek
 - Offset in Dollar angeben und dann umrechnen
-- Test schreiben
+- bot/metrics -> Effizienter bestimmen
 - Time Frames umsetzen (siehe warning)
 - StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
 - Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
 - Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
-- Bugfix siehe Zettel
-
+- Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)
+- Warum ist die PnL eine andere, wenn man die Daten direkt lädt
+- Volume Area LOW / HIGH berechnen und dann SL/TP Kriterien erweitern
+- Was ist bei zwei POC's?
+- Volumen Profil Auch angeben wie man rundne soll VolumenProfile(Precision::{Genau, 1EUR, 10EUR, usw})
 */

@@ -3,9 +3,10 @@ use crate::enums::markets::MarketKind;
 use std::collections::HashMap;
 
 use polars::prelude::DataFrame;
+use serde::{Deserialize, Serialize};
 
-use super::pnl_statement::{PnLStatement, PnLSnapshot};
-#[derive(Debug)]
+use super::pnl_statement::{PnLSnapshot, PnLStatement};
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PerformanceReports {
     pub markets: Vec<MarketKind>,
     pub reports: HashMap<MarketKind, PerformanceReport>,
@@ -23,7 +24,7 @@ impl PerformanceReports {
             })
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PerformanceReport {
     pub market: MarketKind,
     pub report: DataFrame,

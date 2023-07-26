@@ -54,9 +54,9 @@ impl TradingSession {
     }
 
     fn run_backtesting_daily(&self) -> PnLReport {
-        let pnl_report_data_rows: Vec<_> = (1..=52_i64)
+        let pnl_report_data_rows: Vec<_> = (2..=52_i64)
             .into_par_iter()
-            .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
+            .flat_map(|cw| (1..=5).into_par_iter().map(move |wd| (cw, wd)))
             .map(|(cw, wd)| build_time_frame_snapshot(cw, wd))
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
             .map(|batch| self.compute_pnl_data_row(batch))
@@ -89,12 +89,12 @@ impl TradingSession {
         builder = if is_on_monday(snapshot) {
             let last_friday = snapshot.last_friday();
             builder
-                .with_market_simd_data(self.get_market_sim_data_data(&last_friday)?)
+                .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
                 .with_indicators(self.get_trading_indicator(&last_friday)?)
         } else {
             let yesterday = snapshot.shift_back_by_n_weekdays(1);
             builder
-                .with_market_simd_data(self.get_market_sim_data_data(&yesterday)?)
+                .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
                 .with_indicators(self.get_trading_indicator(&yesterday)?)
         };
 

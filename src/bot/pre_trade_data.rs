@@ -25,7 +25,7 @@ impl PreTradeDataBuilder {
         }
     }
 
-    pub fn with_market_simd_data(self, market_sim_data: DataFrame) -> Self {
+    pub fn with_market_sim_data(self, market_sim_data: DataFrame) -> Self {
         Self {
             market_sim_data: Some(market_sim_data),
             ..self

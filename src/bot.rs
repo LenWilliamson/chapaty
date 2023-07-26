@@ -84,6 +84,11 @@ impl Bot {
         res
     }
 
+    pub async fn backtest_and_serialize(&self) -> String {
+        let res = self.backtest().await;
+        serde_json::to_string(&res).unwrap()
+    }
+
     pub fn get_shared_pointer(&self) -> Arc<Bot> {
         Arc::new(self.clone())
     }

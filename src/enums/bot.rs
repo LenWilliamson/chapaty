@@ -1,6 +1,7 @@
 use strum_macros::{Display, EnumString};
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, Display, EnumString)]
+#[derive(Copy, Clone, Debug, Display, EnumString, Serialize, Deserialize)]
 pub enum StrategyKind {
     #[strum(serialize = "magneto")]
     Magneto,

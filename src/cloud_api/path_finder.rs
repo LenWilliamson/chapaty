@@ -35,7 +35,7 @@ impl PathFinder {
 
     pub fn get_absolute_file_path(&self, file_name: String) -> String {
         let mut base_path = self.get_base_path_to_cached_data();
-        base_path.push(format!("{file_name}.csv"));
+        base_path.push(format!("{file_name}.json"));
         base_path.to_str().unwrap().to_string()
     }
 

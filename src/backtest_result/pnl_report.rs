@@ -28,8 +28,9 @@ use polars::prelude::NamedFrom;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 
 use super::equity_curves::EquityCurve;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLReports {
     pub market: MarketKind,
     pub years: Vec<u32>,
@@ -95,7 +96,7 @@ impl PnLReportsBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLReport {
     pub market: MarketKind,
     pub year: u32,
@@ -225,7 +226,7 @@ impl PnLReportDataRow {
             &column_names::PnLReportColumnKind::StopLossTimestamp.to_string() =>vec![stop_loss_ts],
             &column_names::PnLReportColumnKind::ExitPrice.to_string() =>vec![exit_price.round_to_n_decimal_places(n)],
             &column_names::PnLReportColumnKind::Status.to_string() =>vec![status],
-            &column_names::PnLReportColumnKind::PlTick.to_string() =>vec![pl_tick],
+            &column_names::PnLReportColumnKind::PlTick.to_string() =>vec![pl_tick.round_to_n_decimal_places(n)],
             &column_names::PnLReportColumnKind::PlDollar.to_string() =>vec![pl_dollar.round_to_dollar_cents()],
         ).unwrap()
     }
