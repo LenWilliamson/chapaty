@@ -1,6 +1,6 @@
 use crate::enums::{data::HdbSourceDirKind, indicator::TradingIndicatorKind};
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IndicatorDataPair {
     pub indicator: TradingIndicatorKind,
     pub data: HdbSourceDirKind,

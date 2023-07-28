@@ -1,5 +1,5 @@
 use std::str::FromStr;
-
+use mockall::automock;
 use crate::{
     bot::trade::Trade,
     calculator::pre_trade_values_calculator::PreTradeValues,
@@ -23,6 +23,7 @@ pub struct TakeProfit {
     pub offset: f64,
 }
 
+#[automock]
 pub trait Strategy {
     fn set_stop_loss(&mut self, sl: StopLoss);
     fn set_take_profit(&mut self, tp: TakeProfit);

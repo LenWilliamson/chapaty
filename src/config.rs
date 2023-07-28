@@ -1,6 +1,6 @@
  use google_cloud_storage::client::{Client, ClientConfig};
 
- pub async fn get_google_cloud_client() -> Client {
+ pub async fn get_google_cloud_storage_client() -> Client {
      let config = ClientConfig::default().with_auth().await.unwrap();
      Client::new(config)
  }

@@ -73,7 +73,7 @@ impl Tpo {
             "px" => &px,
             "qx" => &qx,
         );
-        result.unwrap()
+        result.unwrap().sort(["px"], false, false).unwrap()
     }
 }
 

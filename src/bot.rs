@@ -4,15 +4,17 @@ use std::{
 };
 
 use google_cloud_storage::client::Client;
+use mockall::automock;
 
 use crate::{
     backtest_result::{pnl_report::PnLReports, pnl_statement::PnLStatement, BacktestResult},
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
-        data::{MarketSimulationDataKind, HdbSourceDirKind},
+        bot::TimeFrameKind,
+        data::{HdbSourceDirKind, MarketSimulationDataKind},
         error::ChapatyErrorKind,
-        markets::MarketKind, bot::TimeFrameKind,
+        markets::MarketKind,
     },
     strategy::Strategy,
 };
@@ -45,6 +47,7 @@ pub struct Bot {
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
+    cache_computations: bool,
 }
 pub struct BotBuilder {
     client: Option<Client>,
@@ -58,9 +61,11 @@ pub struct BotBuilder {
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
+    cache_computations: bool,
     // news_filter: Option<Vec<EconomicNews>>,
 }
 
+#[automock]
 impl Bot {
     pub async fn backtest(&self) -> BacktestResult {
         let pnl_statement = self.compute_pnl_statement().await;
@@ -155,7 +160,8 @@ impl Bot {
     async fn compute_pnl_reports(&self, market: MarketKind) -> PnLReports {
         let trading_session_builder = TradingSessionBuilder::new()
             .with_bot(self.get_shared_pointer())
-            .with_required_data(self.determine_required_data())
+            .with_indicator_data_pair(self.determine_indicator_data_pair())
+            .with_cache_computations(self.cache_computations)
             .with_market(market);
 
         let tasks: Vec<_> = self
@@ -180,7 +186,7 @@ impl Bot {
             .collect()
     }
 
-    fn determine_required_data(&self) -> Arc<HashSet<IndicatorDataPair>> {
+    fn determine_indicator_data_pair(&self) -> Arc<HashSet<IndicatorDataPair>> {
         let map = self.strategy.register_trading_indicators().iter().fold(
             HashSet::new(),
             |mut acc, trading_indicator| {
@@ -217,6 +223,7 @@ impl BotBuilder {
             time_interval: None,
             time_frame: TimeFrameKind::Daily,
             save_result_as_csv: false,
+            cache_computations: false,
         }
     }
 
@@ -232,7 +239,10 @@ impl BotBuilder {
         Self { markets, ..self }
     }
 
-    pub fn with_market_simulation_data(self, market_simulation_data: MarketSimulationDataKind) -> Self {
+    pub fn with_market_simulation_data(
+        self,
+        market_simulation_data: MarketSimulationDataKind,
+    ) -> Self {
         Self {
             market_simulation_data,
             ..self
@@ -250,7 +260,7 @@ impl BotBuilder {
         Self { time_frame, ..self }
     }
 
-    pub fn with_google_cloud_client(self, client: Client) -> Self {
+    pub fn with_google_cloud_storage_client(self, client: Client) -> Self {
         Self {
             client: Some(client),
             ..self
@@ -261,6 +271,12 @@ impl BotBuilder {
         Self {
             save_result_as_csv,
             ..self
+        }
+    }
+
+    pub fn with_cache_computations(self, cache_computations: bool) -> Self {
+        Self {
+            cache_computations, ..self
         }
     }
 
@@ -285,6 +301,72 @@ impl BotBuilder {
             time_interval: self.time_interval,
             time_frame: self.time_frame,
             save_result_as_csv: self.save_result_as_csv,
+            cache_computations: self.cache_computations
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashSet, sync::Arc};
+
+    use crate::{
+        bot::IndicatorDataPair,
+        config,
+        data_provider::cme::Cme,
+        enums::{
+            data::HdbSourceDirKind,
+            indicator::{PriceHistogramKind, TradingIndicatorKind},
+        },
+        strategy::MockStrategy,
+        BotBuilder,
+    };
+
+    #[tokio::test]
+    async fn determine_indicator_data_pair_test() {
+        let data_provider = Arc::new(Cme::new());
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicator = vec![
+            TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
+            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
+            TradingIndicatorKind::VolumeAreaHigh(PriceHistogramKind::VolTick),
+            TradingIndicatorKind::VolumeAreaLow(PriceHistogramKind::VolAggTrades),
+        ];
+        mock_strategy
+            .expect_register_trading_indicators()
+            .return_const(trading_indicator);
+
+        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .build()
+            .unwrap();
+
+        let required_data = bot.determine_indicator_data_pair();
+        let expected = HashSet::from([
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
+                HdbSourceDirKind::AggTrades,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
+                HdbSourceDirKind::Tick,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+                HdbSourceDirKind::Ohlc1m,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::VolumeAreaHigh(PriceHistogramKind::VolTick),
+                HdbSourceDirKind::Tick,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::VolumeAreaLow(PriceHistogramKind::VolAggTrades),
+                HdbSourceDirKind::AggTrades,
+            ),
+        ]);
+
+        assert_eq!(*required_data, expected);
     }
 }

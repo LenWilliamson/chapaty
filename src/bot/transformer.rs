@@ -5,9 +5,10 @@ use crate::{
     converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
     enums::{
+        bot::TimeFrameKind,
         data::HdbSourceDirKind,
         indicator::{PriceHistogramKind, TradingIndicatorKind},
-        markets::MarketKind, bot::TimeFrameKind,
+        markets::MarketKind,
     },
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     price_histogram::{
@@ -59,7 +60,7 @@ impl Transformer {
         let time_interval = self.bot.time_interval;
         let time_frame = self.bot.time_frame;
 
-        let ts_col = &self.market_sim_data.get_ts_col_as_str();
+        let ts_col = &self.get_ts_col();
         let mut ldf = lazy_df.add_cw_col(&ts_col).add_weekday_col(&ts_col);
 
         if time_interval.is_some() {
@@ -79,7 +80,7 @@ impl Transformer {
         let time_interval = self.bot.time_interval;
         let time_frame = self.bot.time_frame;
 
-        let ts_col = &self.market_sim_data.get_ts_col_as_str();
+        let ts_col = &self.get_ts_col();
         let mut ldf = lazy_df.add_cw_col(&ts_col);
 
         if time_interval.is_some() {
@@ -139,7 +140,7 @@ impl Transformer {
 
         tpo.from_df_map(df_map)
     }
-    
+
     fn compute_vol_agg_trades(
         &self,
         df_map: chapaty::types::DataFrameMap,
@@ -153,6 +154,13 @@ impl Transformer {
     ) -> chapaty::types::DataFrameMap {
         volume_profile_by_tick_data();
         HashMap::new()
+    }
+
+    fn get_ts_col(&self) -> String {
+        self.indicator_data_pair.as_ref().map_or_else(
+            || self.market_sim_data.get_ts_col_as_str(),
+            |v| v.data.get_ts_col_as_str(),
+        )
     }
 }
 

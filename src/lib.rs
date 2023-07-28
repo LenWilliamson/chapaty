@@ -39,6 +39,6 @@ pub use enums::{
 - Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)
 - Warum ist die PnL eine andere, wenn man die Daten direkt lädt
 - Volume Area LOW / HIGH berechnen und dann SL/TP Kriterien erweitern
-- Was ist bei zwei POC's?
+- Was ist bei zwei POC's? -> Aktuell der kleinere (performt besser) aber flexibel setzen lassen können
 - Volumen Profil Auch angeben wie man rundne soll VolumenProfile(Precision::{Genau, 1EUR, 10EUR, usw})
 */

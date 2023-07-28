@@ -42,6 +42,7 @@ impl AggTradesVolume {
             ])
             .groupby([col(&px_vol)])
             .agg([col(&qx_vol).sum()])
+            .sort(&px_vol, Default::default())
             .collect()
             .unwrap()
     }

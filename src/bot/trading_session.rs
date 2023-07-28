@@ -16,7 +16,10 @@ use crate::{
         file_name_resolver::FileNameResolver,
         path_finder::{PathFinder, PathFinderBuilder},
     },
-    enums::{error::ChapatyErrorKind, indicator::TradingIndicatorKind, markets::MarketKind, bot::TimeFrameKind},
+    enums::{
+        bot::TimeFrameKind, error::ChapatyErrorKind, indicator::TradingIndicatorKind,
+        markets::MarketKind,
+    },
 };
 
 use super::{
@@ -31,10 +34,11 @@ use super::{
 #[derive(Clone)]
 pub struct TradingSession {
     pub bot: Arc<Bot>,
-    pub required_data: Arc<HashSet<IndicatorDataPair>>,
+    pub indicator_data_pair: Arc<HashSet<IndicatorDataPair>>,
     pub market: MarketKind,
     pub year: u32,
     pub data: ExecutionData,
+    pub cache_computations: bool,
 }
 
 impl TradingSession {
@@ -54,10 +58,10 @@ impl TradingSession {
     }
 
     fn run_backtesting_daily(&self) -> PnLReport {
-        let pnl_report_data_rows: Vec<_> = (2..=52_i64)
+        let pnl_report_data_rows: Vec<_> = (1..=52_i64)
             .into_par_iter()
-            .flat_map(|cw| (1..=5).into_par_iter().map(move |wd| (cw, wd)))
-            .map(|(cw, wd)| build_time_frame_snapshot(cw, wd))
+            .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
+            .map(|(cw, wd)| build_time_frame_snapshot(cw, Some(wd), None, None))
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
             .map(|batch| self.compute_pnl_data_row(batch))
             .collect();
@@ -148,8 +152,18 @@ impl TradingSession {
     }
 }
 
-fn build_time_frame_snapshot(cw: i64, wd: i64) -> TimeFrameSnapshot {
-    TimeFrameSnapshotBuilder::new(cw).with_weekday(wd).build()
+fn build_time_frame_snapshot(
+    cw: i64,
+    wd: Option<i64>,
+    h: Option<i64>,
+    m: Option<i64>,
+) -> TimeFrameSnapshot {
+    let mut builder = TimeFrameSnapshotBuilder::new(cw);
+    builder = wd.map_or_else(|| builder.clone(), |weekday| builder.with_weekday(weekday));
+    builder = h.map_or_else(|| builder.clone(), |hour| builder.with_hour(hour));
+    builder = m.map_or_else(|| builder.clone(), |minute| builder.with_minute(minute));
+
+    builder.build()
 }
 
 fn is_on_monday(snapshot: &TimeFrameSnapshot) -> bool {
@@ -167,18 +181,20 @@ fn df_to_result(df: Option<DataFrame>) -> Result<DataFrame, ChapatyErrorKind> {
 #[derive(Clone)]
 pub struct TradingSessionBuilder {
     bot: Option<Arc<Bot>>,
-    required_data: Option<Arc<HashSet<IndicatorDataPair>>>,
+    indicator_data_pair: Option<Arc<HashSet<IndicatorDataPair>>>,
     market: Option<MarketKind>,
     year: Option<u32>,
+    cache_computations: bool,
 }
 
 impl TradingSessionBuilder {
     pub fn new() -> Self {
         Self {
             bot: None,
-            required_data: None,
+            indicator_data_pair: None,
             market: None,
             year: None,
+            cache_computations: false,
         }
     }
 
@@ -189,9 +205,9 @@ impl TradingSessionBuilder {
         }
     }
 
-    pub fn with_required_data(self, data: Arc<HashSet<IndicatorDataPair>>) -> Self {
+    pub fn with_indicator_data_pair(self, data: Arc<HashSet<IndicatorDataPair>>) -> Self {
         Self {
-            required_data: Some(data),
+            indicator_data_pair: Some(data),
             ..self
         }
     }
@@ -210,14 +226,22 @@ impl TradingSessionBuilder {
         }
     }
 
+    pub fn with_cache_computations(self, cache_computations: bool) -> Self {
+        Self {
+            cache_computations,
+            ..self
+        }
+    }
+
     pub async fn build(self) -> TradingSession {
         let data = self.populate_trading_session_data().await;
         TradingSession {
             bot: self.bot.unwrap(),
-            required_data: self.required_data.unwrap(),
+            indicator_data_pair: self.indicator_data_pair.unwrap(),
             market: self.market.unwrap(),
             year: self.year.unwrap(),
             data,
+            cache_computations: self.cache_computations,
         }
     }
 
@@ -249,7 +273,7 @@ impl TradingSessionBuilder {
         path_finder: &PathFinder,
     ) -> HashMap<TradingIndicatorKind, chapaty::types::DataFrameMap> {
         let tasks: Vec<_> = self
-            .required_data
+            .indicator_data_pair
             .clone()
             .unwrap()
             .iter()
@@ -322,5 +346,229 @@ impl TradingSessionBuilder {
             .with_simulation_data(bot.market_simulation_data.into())
             .with_market(self.market.unwrap())
             .with_year(self.year.unwrap())
+            .with_cache_computations(self.cache_computations)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        cloud_api::api_for_unit_tests::{download_df, download_df_map},
+        config,
+        data_provider::binance::Binance,
+        enums::{bot::StrategyKind, indicator::PriceHistogramKind},
+        strategy::MockStrategy,
+        BotBuilder, MarketSimulationDataKind, TimeInterval,
+    };
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn populate_daily_trading_session_data_test() {
+        // Test Setup
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        mock_strategy
+            .expect_register_trading_indicators()
+            .return_const(trading_indicator.clone());
+        mock_strategy
+            .expect_get_bot_kind()
+            .return_const(StrategyKind::Ppp);
+        let data_provider = Arc::new(Binance::new());
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
+        let time_interval = TimeInterval {
+            start_day: chrono::Weekday::Mon,
+            start_h: 1,
+            end_day: chrono::Weekday::Fri,
+            end_h: 23,
+        };
+
+        // Test Initialization
+        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_interval(time_interval)
+            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
+
+        let session = TradingSessionBuilder::new()
+            .with_bot(Arc::new(bot.clone()))
+            .with_indicator_data_pair(bot.determine_indicator_data_pair())
+            .with_market(MarketKind::BtcUsdt)
+            .with_year(2022);
+
+        // Test Evaluation
+        let execution_data = session.populate_trading_session_data().await;
+        let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_ohlcv-1h_dataframes";
+
+        // Test Evaluation "market_sim_data"
+        let market_sim_data = execution_data.market_sim_data;
+        let mut cw = 8;
+        let mut wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+
+        cw = 8;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+
+        // Test Evaluation "trading_indicators"
+        let trading_indicators = execution_data.trading_indicators;
+        let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_vol-aggTrades.json";
+        let target = download_df_map(path.to_string()).await;
+        assert_eq!(
+            &target,
+            trading_indicators.get(&trading_indicator[0]).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn populate_weekly_trading_session_data_test() {
+        // Test Setup
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        mock_strategy
+            .expect_register_trading_indicators()
+            .return_const(trading_indicator.clone());
+        mock_strategy
+            .expect_get_bot_kind()
+            .return_const(StrategyKind::Ppp);
+        let data_provider = Arc::new(Binance::new());
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
+        let time_interval = TimeInterval {
+            start_day: chrono::Weekday::Mon,
+            start_h: 1,
+            end_day: chrono::Weekday::Fri,
+            end_h: 23,
+        };
+
+        // Test Initialization
+        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_interval(time_interval)
+            .with_time_frame(TimeFrameKind::Weekly)
+            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
+
+        let session = TradingSessionBuilder::new()
+            .with_bot(Arc::new(bot.clone()))
+            .with_indicator_data_pair(bot.determine_indicator_data_pair())
+            .with_market(MarketKind::BtcUsdt)
+            .with_year(2022);
+
+        // Test Evaluation
+        let execution_data = session.populate_trading_session_data().await;
+        let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_ohlcv-1h_dataframes";
+
+        // Test Evaluation "market_sim_data"
+        let market_sim_data = execution_data.market_sim_data;
+        let mut cw = 8;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+
+    
+        cw = 9;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        
+        cw = 10;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+
+        // Test Evaluation "trading_indicators"
+        let trading_indicators = execution_data.trading_indicators;
+        let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_vol-aggTrades.json";
+        let target = download_df_map(path.to_string()).await;
+        assert_eq!(
+            &target,
+            trading_indicators.get(&trading_indicator[0]).unwrap()
+        );
     }
 }

@@ -35,6 +35,7 @@ pub struct CloudStorageClient {
     simulation_data: HdbSourceDirKind,
     market: MarketKind,
     year: u32,
+    cache_computations: bool,
 }
 
 impl CloudStorageClient {
@@ -68,8 +69,11 @@ impl CloudStorageClient {
             .transform_into_df_map(required_data_frames)
             .await;
 
-        self.upload_df_map(df_map).await.unwrap()
-        // df_map
+        if self.cache_computations {
+            self.upload_df_map(df_map).await.unwrap()
+        } else {
+            df_map
+        }
     }
 
     fn upload_df_map(
@@ -209,6 +213,7 @@ pub struct CloudStorageClientBuilder {
     simulation_data: Option<HdbSourceDirKind>,
     market: Option<MarketKind>,
     year: Option<u32>,
+    cache_computations: bool,
 }
 
 impl From<CloudStorageClient> for CloudStorageClientBuilder {
@@ -220,6 +225,7 @@ impl From<CloudStorageClient> for CloudStorageClientBuilder {
             simulation_data: Some(value.simulation_data),
             market: Some(value.market),
             year: Some(value.year),
+            cache_computations: value.cache_computations,
         }
     }
 }
@@ -233,6 +239,7 @@ impl CloudStorageClientBuilder {
             simulation_data: None,
             market: None,
             year: None,
+            cache_computations: false,
         }
     }
 
@@ -274,6 +281,13 @@ impl CloudStorageClientBuilder {
         }
     }
 
+    pub fn with_cache_computations(self, cache_computations: bool) -> Self {
+        Self {
+            cache_computations,
+            ..self
+        }
+    }
+
     pub fn build(self) -> CloudStorageClient {
         CloudStorageClient {
             bot: self.bot,
@@ -282,6 +296,7 @@ impl CloudStorageClientBuilder {
             indicator_data_pair: self.indicator_data_pair,
             market: self.market.unwrap(),
             year: self.year.unwrap(),
+            cache_computations: self.cache_computations,
         }
     }
 }

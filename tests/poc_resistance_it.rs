@@ -108,7 +108,7 @@ async fn it_test() {
     let markets = vec![MarketKind::EurUsdFuture];
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
-    let client = config::get_google_cloud_client().await;
+    let client = config::get_google_cloud_storage_client().await;
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
@@ -121,9 +121,10 @@ async fn it_test() {
         .with_market_simulation_data(market_simulation_data)
         .with_time_interval(time_interval)
         .with_time_frame(time_frame)
-        .with_google_cloud_client(client)
+        .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
         .with_save_result_as_csv(true)
+        .with_cache_computations(true)
         .build()
         .unwrap();
 

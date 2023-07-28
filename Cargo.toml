@@ -8,6 +8,7 @@ chrono = "0.4.26"
 futures = "0.3.28"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
 google-cloud-storage = "0.13.0"
+mockall = "0.11.4"
 polars = {version = "0.31.1", features = ["lazy", "partition_by", "serde", "cum_agg"]}
 rayon = "1.7.0"
 regex = "1.9.1"

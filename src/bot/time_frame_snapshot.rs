@@ -53,6 +53,7 @@ impl TimeFrameSnapshot {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct TimeFrameSnapshotBuilder {
     calendar_week: i64,
     weekday: Option<i64>,
