@@ -41,4 +41,8 @@ pub enum TakeProfitKind {
     PrevClose,
     #[strum(serialize = "PriceUponTradeEntry")]
     PriceUponTradeEntry,
+    #[strum(serialize = "PrevLow")]
+    PrevLow,
+    #[strum(serialize = "PrevHigh")]
+    PrevHigh,
 }

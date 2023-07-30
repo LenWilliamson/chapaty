@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use chapaty::{
     config::{self},
-    BotBuilder, MarketSimulationDataKind, MarketKind, TimeFrameKind,
+    BotBuilder, MarketKind, MarketSimulationDataKind, TimeFrameKind,
 };
 
 mod common;
@@ -103,9 +103,18 @@ async fn it_test() {
     let strategy = common::setup_strategy();
     let data_provider = common::setup_data_provider();
     let name = "chapaty".to_string();
-    let years = vec![2022];
+    // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
+    let years = vec![2021];
     let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
-    let markets = vec![MarketKind::EurUsdFuture];
+    let markets = vec![
+        // MarketKind::AudUsdFuture,
+        MarketKind::EurUsdFuture,
+        // MarketKind::GbpUsdFuture,
+        // MarketKind::CadUsdFuture,
+        // MarketKind::YenUsdFuture,
+        // MarketKind::NzdUsdFuture,
+        // MarketKind::BtcUsdFuture,
+    ];
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
@@ -113,7 +122,6 @@ async fn it_test() {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-
     let bot = BotBuilder::new(strategy, data_provider)
         .with_name(name)
         .with_years(years)
@@ -124,7 +132,7 @@ async fn it_test() {
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
         .with_save_result_as_csv(true)
-        .with_cache_computations(true)
+        .with_cache_computations(false)
         .build()
         .unwrap();
 

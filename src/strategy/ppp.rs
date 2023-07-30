@@ -133,16 +133,26 @@ impl Strategy for Ppp {
         let lst_trade_price = *pre_trade_data
             .get(&PreTradeDataKind::LastTradePrice)
             .unwrap();
+        let lowest_trad_price = *pre_trade_data
+            .get(&PreTradeDataKind::LowestTradePrice)
+            .unwrap();
+        let highest_trad_price = *pre_trade_data
+            .get(&PreTradeDataKind::HighestTradePrice)
+            .unwrap();
 
         match self.get_trade_kind(pre_trade_values) {
             TradeDirectionKind::Long => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price + self.take_profit.offset,
-                TakeProfitKind::PriceUponTradeEntry => panic!("PrevPoc not implemented for PPP"),
+                TakeProfitKind::PriceUponTradeEntry => self.get_entry_price(pre_trade_values) + self.take_profit.offset,
+                TakeProfitKind::PrevHigh =>highest_trad_price + self.stop_loss.offset,
+                TakeProfitKind::PrevLow =>  highest_trad_price + self.stop_loss.offset,
             },
 
             TradeDirectionKind::Short => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price - self.take_profit.offset,
-                TakeProfitKind::PriceUponTradeEntry => panic!("PrevPoc not implemented for PPP"),
+                TakeProfitKind::PriceUponTradeEntry => self.get_entry_price(pre_trade_values) - self.take_profit.offset,
+                TakeProfitKind::PrevHigh => lowest_trad_price - self.stop_loss.offset,
+                TakeProfitKind::PrevLow => lowest_trad_price - self.stop_loss.offset,
             },
 
             TradeDirectionKind::None => {

@@ -1,6 +1,8 @@
 use crate::{
-    chapaty, converter::any_value::AnyValueConverter, data_provider::DataProvider,
-    enums::{markets::MarketKind, column_names::DataProviderColumnKind},
+    chapaty,
+    converter::any_value::AnyValueConverter,
+    data_provider::DataProvider,
+    enums::{column_names::DataProviderColumnKind, markets::MarketKind},
 };
 
 use polars::prelude::{df, DataFrame, NamedFrom};
@@ -109,5 +111,13 @@ impl TpoBuilder {
             data_provider: self.data_provider.unwrap(),
             max_digits: self.market.unwrap().decimal_places(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn tpo_test() {
+        
     }
 }

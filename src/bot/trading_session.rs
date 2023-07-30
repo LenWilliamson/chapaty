@@ -411,83 +411,147 @@ mod test {
         let mut cw = 8;
         let mut wd = 1;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         cw = 8;
         wd = 1;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 8;
         wd = 2;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 8;
         wd = 3;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 8;
         wd = 4;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 8;
         wd = 5;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 9;
         wd = 1;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 9;
         wd = 2;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 9;
         wd = 3;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 9;
         wd = 4;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 9;
         wd = 5;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 10;
         wd = 1;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 10;
         wd = 2;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 10;
         wd = 3;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 10;
         wd = 4;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
         cw = 10;
         wd = 5;
         let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        let target = download_df(format!("{base_path}/{cw}_{wd}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         // Test Evaluation "trading_indicators"
@@ -548,18 +612,17 @@ mod test {
         let market_sim_data = execution_data.market_sim_data;
         let mut cw = 8;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-    
         cw = 9;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        
+
         cw = 10;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df(format!("{base_path}/{cw}.csv")).await;
+        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         // Test Evaluation "trading_indicators"

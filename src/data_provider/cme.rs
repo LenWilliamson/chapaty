@@ -123,7 +123,9 @@ impl DataProvider for Cme {
 
     fn schema(&self, data: &HdbSourceDirKind) -> Schema {
         match data {
-            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlc1h => ohlc_schema(),
+            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlc1h => {
+                ohlc_schema()
+            }
             _ => panic!("DataProvider <CME> only upports OHLC schema. No schema for <{data}>"),
         }
     }
@@ -156,13 +158,52 @@ impl DataProvider for Cme {
 fn ohlc_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(&DataProviderColumnKind::OpenTime.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumnKind::OpenTime.to_string(),
+                DataType::Int64,
+            ),
             Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
             Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
             Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::CloseTime.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumnKind::Close.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumnKind::CloseTime.to_string(),
+                DataType::Int64,
+            ),
         ]
         .into_iter(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data_provider::cme::Cme;
+    use crate::{
+        cloud_api::api_for_unit_tests::download_df_as_bytes, enums::bot::DataProviderKind,
+    };
+    use polars::prelude::{df, NamedFrom};
+
+    #[tokio::test]
+    async fn test_transform_df() {
+        let cme = Cme {
+            producer_kind: DataProviderKind::Cme,
+        };
+        let target = df!(
+            "ots" => &[1661990400000_i64, 1661990460000, 1661990520000,1661990580000, 1661990640000,1661990700000],
+            "open" => &[1.0127, 1.01275, 1.01285, 1.0127, 1.01275, 1.01285],
+            "high" => &[1.01295,1.0129,1.01285,1.01275,1.0128,1.0129],
+            "low" => &[1.01265,1.01275,1.01265,1.0127,1.01275,1.01285],
+            "close" => &[1.01275,1.01285,1.0127,1.0127,1.0128,1.01285],
+            "cts" => &[1661990459999_i64, 1661990519999,1661990579999, 1661990639999,1661990699999, 1661990759999],
+        );
+
+        let file = "cme/ohlc/6e-1m-2022-09-01.csv".to_string();
+        let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
+        let result = cme.transform_ninja_df(df, 1);
+
+        assert_eq!(target.unwrap().frame_equal(&result), true);
+    }
 }

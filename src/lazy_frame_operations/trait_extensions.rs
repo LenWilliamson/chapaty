@@ -153,3 +153,32 @@ impl MyLazyFrameVecOperations for Vec<LazyFrame> {
             .unwrap()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cloud_api::api_for_unit_tests::download_df;
+    use polars::prelude::IntoLazy;
+
+    #[tokio::test]
+    async fn test_compute_cw_and_weekday_col() {
+        let df = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "binance/ohlcv/test_file_compute_cw_and_weekday_col.csv".to_string(),
+        )
+        .await;
+        let target_df = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "binance/ohlcv/target_file_compute_cw_and_weekday_col.csv".to_string(),
+        )
+        .await;
+
+        let res = df
+            .lazy()
+            .add_cw_col("ots")
+            .add_weekday_col("ots")
+            .collect()
+            .unwrap();
+        assert_eq!(target_df, res);
+    }
+}

@@ -109,3 +109,9 @@ To download multiple files from the Google Cloud Platform do the following steps
 4. In the gsutil commoand line tool menu click the botton with the three dots on the top right corner
 5. Select Download
 6. Append the file `folder.zip` name you want to download to the file path
+
+## Renaming files
+Use the `rename` command:
+1. To lowercase: `rename -f 'y/A-Z/a-z/' *.csv`
+2. Replace `_` with `-`: `rename 's/_/-/g' *.csv`
+3. Replace `6btc-1m-01-01-2021-31-12-2021.csv` to `6btc-1m-2021-31-12-2021.csv` by `rename 's/^(\w+-\w+-)(\d{2}-\d{2}-)(\d{4}-\d{2}-\d{2}-\d{4})\.csv$/$1$3.csv/' *.csv` and then `6btc-1m-2021-31-12-2021.csv` to `6btc-1m-2021.csv` by `rename 's/^(.{12}).*\.csv$/$1.csv/' *.csv` (replace 12 in `(.{12})` with 10 if you want to keep first ten letters)
