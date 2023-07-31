@@ -53,7 +53,7 @@ impl Strategy for Ppp {
         Trade {
             entry_price: self.get_entry_price(pre_trade_values),
             stop_loss: self.get_sl_price(pre_trade_values),
-            take_prift: self.get_tp_price(pre_trade_values),
+            take_profit: self.get_tp_price(pre_trade_values),
             trade_kind: self.get_trade_kind(pre_trade_values),
         }
     }

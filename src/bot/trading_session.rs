@@ -8,8 +8,8 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::task::JoinHandle;
 
 use crate::{
-    backtest_result::pnl_report::{PnLReport, PnLReportDataRow},
-    calculator::pnl_report_data_row_calculator::PnLReportDataRowCalculatorBuilder,
+    backtest_result::pnl_report::PnLReport,
+    calculator::pnl_report_data_row_calculator::{PnLReportDataRowCalculatorBuilder, PnLReportDataRow},
     chapaty,
     cloud_api::{
         cloud_storage_wrapper::CloudStorageClientBuilder,
@@ -612,17 +612,29 @@ mod test {
         let market_sim_data = execution_data.market_sim_data;
         let mut cw = 8;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         cw = 9;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         cw = 10;
         let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        let target = download_df("chapaty-ai-test".to_string(), format!("{base_path}/{cw}.csv")).await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
         assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
         // Test Evaluation "trading_indicators"

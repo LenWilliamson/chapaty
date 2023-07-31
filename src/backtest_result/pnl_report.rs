@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::convert::identity;
 
-use crate::bot::time_frame_snapshot::TimeFrameSnapshot;
 use crate::bot::time_interval::timestamp_in_milli_to_string;
-use crate::bot::trade::Trade;
-use crate::calculator::trade_pnl_calculator::TradePnL;
+use crate::calculator::pnl_report_data_row_calculator::PnLReportDataRow;
 use crate::converter::market_decimal_places::MyDecimalPlaces;
 use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::bot::StrategyKind;
@@ -190,7 +188,7 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_prift;
+        let take_profit = self.trade.take_profit;
         let stop_loss = self.trade.stop_loss;
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
@@ -241,7 +239,7 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_prift;
+        let take_profit = self.trade.take_profit;
         let stop_loss = self.trade.stop_loss;
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
@@ -325,7 +323,7 @@ impl PnLReportDataRow {
     }
 
     fn expected_win_in_tick(&self, tick_factor: f64) -> f64 {
-        (self.trade.profit(self.trade.take_prift) / tick_factor).round()
+        (self.trade.profit(self.trade.take_profit) / tick_factor).round()
     }
 
     fn expected_loss_in_tick(&self, tick_factor: f64) -> f64 {
@@ -338,16 +336,6 @@ pub struct PnLReportBuilder {
     year: Option<u32>,
     strategy: Option<StrategyKind>,
     data_rows: Option<Vec<LazyFrame>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PnLReportDataRow {
-    pub market: MarketKind,
-    pub year: u32,
-    pub strategy: StrategyKind,
-    pub time_frame_snapshot: TimeFrameSnapshot,
-    pub trade: Trade,
-    pub trade_pnl: Option<TradePnL>,
 }
 
 impl From<PnLReportDataRow> for DataFrame {
@@ -406,13 +394,5 @@ impl PnLReportBuilder {
                 .with_row_count("#", Some(1))
                 .unwrap(),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    #[tokio::test]
-    async fn test_() {
-        
     }
 }

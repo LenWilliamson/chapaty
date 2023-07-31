@@ -3,19 +3,27 @@ use std::{collections::HashMap, sync::Arc};
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 
 use crate::{
-    backtest_result::pnl_report::PnLReportDataRow,
-    bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
+    bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot, trade::Trade},
     data_provider::DataProvider,
-    enums::{trade_and_pre_trade::TradeDataKind, markets::MarketKind, my_any_value::MyAnyValueKind, },
+    enums::{trade_and_pre_trade::TradeDataKind, markets::MarketKind, my_any_value::MyAnyValueKind, bot::StrategyKind, },
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::Strategy,
 };
 
 use super::{
     pre_trade_values_calculator::{PreTradeValues, PreTradeValuesCalculatorBuilder},
-    trade_pnl_calculator::TradePnLCalculatorBuilder,
+    trade_pnl_calculator::{TradePnLCalculatorBuilder, TradePnL},
     trade_values_calculator::TradeValuesCalculatorBuilder,
 };
+#[derive(Debug, Clone)]
+pub struct PnLReportDataRow {
+    pub market: MarketKind,
+    pub year: u32,
+    pub strategy: StrategyKind,
+    pub time_frame_snapshot: TimeFrameSnapshot,
+    pub trade: Trade,
+    pub trade_pnl: Option<TradePnL>,
+}
 
 pub struct PnLReportDataRowCalculator {
     pub data_provider: Arc<dyn DataProvider>,
@@ -58,7 +66,7 @@ impl PnLReportDataRowCalculator {
         }
     }
 
-    fn handle_trade<'a>(&self, values: TradeAndPreTradeValues) -> PnLReportDataRow {
+    fn handle_trade(&self, values: TradeAndPreTradeValues) -> PnLReportDataRow {
         let entry_ts = get_entry_ts(&values.trade);
         let trade = self.strategy.get_trade(&values.pre_trade);
         let trade_pnl = TradePnLCalculatorBuilder::new()
@@ -93,7 +101,7 @@ impl PnLReportDataRowCalculator {
             .build_and_compute()
     }
 
-    fn compute_trade_values<'a>(
+    fn compute_trade_values(
         &self,
         pre_trade_values: &PreTradeValues,
     ) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
@@ -104,7 +112,7 @@ impl PnLReportDataRowCalculator {
     }
 }
 
-fn get_entry_ts<'a>(trade_values: &HashMap<TradeDataKind, MyAnyValueKind>) -> i64 {
+fn get_entry_ts(trade_values: &HashMap<TradeDataKind, MyAnyValueKind>) -> i64 {
     trade_values
         .get(&TradeDataKind::EntryTimestamp)
         .unwrap()
