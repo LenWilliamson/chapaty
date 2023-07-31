@@ -143,14 +143,18 @@ impl Strategy for Ppp {
         match self.get_trade_kind(pre_trade_values) {
             TradeDirectionKind::Long => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price + self.take_profit.offset,
-                TakeProfitKind::PriceUponTradeEntry => self.get_entry_price(pre_trade_values) + self.take_profit.offset,
-                TakeProfitKind::PrevHigh =>highest_trad_price + self.stop_loss.offset,
-                TakeProfitKind::PrevLow =>  highest_trad_price + self.stop_loss.offset,
+                TakeProfitKind::PriceUponTradeEntry => {
+                    self.get_entry_price(pre_trade_values) + self.take_profit.offset
+                }
+                TakeProfitKind::PrevHigh => highest_trad_price + self.stop_loss.offset,
+                TakeProfitKind::PrevLow => highest_trad_price + self.stop_loss.offset,
             },
 
             TradeDirectionKind::Short => match self.take_profit.condition {
                 TakeProfitKind::PrevClose => lst_trade_price - self.take_profit.offset,
-                TakeProfitKind::PriceUponTradeEntry => self.get_entry_price(pre_trade_values) - self.take_profit.offset,
+                TakeProfitKind::PriceUponTradeEntry => {
+                    self.get_entry_price(pre_trade_values) - self.take_profit.offset
+                }
                 TakeProfitKind::PrevHigh => lowest_trad_price - self.stop_loss.offset,
                 TakeProfitKind::PrevLow => lowest_trad_price - self.stop_loss.offset,
             },
@@ -169,7 +173,17 @@ impl Strategy for Ppp {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
+
+    use std::collections::HashMap;
+
+    use crate::{
+        calculator::pre_trade_values_calculator::PreTradeValues,
+        enums::{
+            indicator::{PriceHistogramKind, TradingIndicatorKind},
+            trade_and_pre_trade::TradeDirectionKind,
+        },
+    };
 
     /// This unit test determines if the `TradeKind` based on the POC and last traded price.
     /// * `Short` - last traded price < poc,
@@ -179,31 +193,37 @@ mod tests {
     /// is computed correctly.
     #[tokio::test]
     async fn test_get_trade_kind() {
-        // let bot = Ppp::new();
-        // let poc = 100.0;
+        let strategy = Ppp::new();
+        let poc = 100.0;
 
-        // let mut trading_indicators = HashMap::new();
-        // trading_indicators.insert(TradingIndicatorKind::Poc(PriceHistogram::Tpo1m), poc);
+        let mut trading_indicators = HashMap::new();
+        trading_indicators.insert(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m), poc);
 
-        // let mut pre_trade_data_map = HashMap::new();
+        let mut pre_trade_data_map = HashMap::new();
+        pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 99.0);
 
-        // pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 99.0);
-        // assert_eq!(
-        //     bot.get_trade_kind(&trading_indicators, &pre_trade_data_map)
-        //         .unwrap(),
-        //     TradeDirection::Short
-        // );
-        // pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 101.0);
-        // assert_eq!(
-        //     bot.get_trade_kind(&trading_indicators, &pre_trade_data_map)
-        //         .unwrap(),
-        //     TradeDirection::Long
-        // );
+        let mut pre_trade_values = PreTradeValues {
+            indicator_values: trading_indicators,
+            market_valeus: pre_trade_data_map,
+        };
+        assert_eq!(
+            strategy.get_trade_kind(&pre_trade_values),
+            TradeDirectionKind::Short
+        );
+        pre_trade_values
+            .market_valeus
+            .insert(PreTradeDataKind::LastTradePrice, 101.0);
+        assert_eq!(
+            strategy.get_trade_kind(&pre_trade_values),
+            TradeDirectionKind::Long
+        );
 
-        // pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, poc);
-        // assert_eq!(
-        //     bot.get_trade_kind(&trading_indicators, &pre_trade_data_map),
-        //     None
-        // );
+        pre_trade_values
+            .market_valeus
+            .insert(PreTradeDataKind::LastTradePrice, poc);
+        assert_eq!(
+            strategy.get_trade_kind(&pre_trade_values),
+            TradeDirectionKind::None
+        );
     }
 }

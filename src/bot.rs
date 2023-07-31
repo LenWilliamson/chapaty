@@ -323,7 +323,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn determine_indicator_data_pair_test() {
+    async fn test_determine_indicator_data_pair() {
         let data_provider = Arc::new(Cme::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let mut mock_strategy = MockStrategy::new();

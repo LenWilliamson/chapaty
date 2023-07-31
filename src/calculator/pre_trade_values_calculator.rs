@@ -23,7 +23,6 @@ pub struct PreTradeValues {
 
 pub struct PreTradeValuesCalculator {
     pre_trade_data: PreTradeData,
-
     required_market_sim_values: Vec<PreTradeDataKind>,
     required_indicator_values: Vec<TradingIndicatorKind>,
 }
@@ -193,5 +192,77 @@ impl PreTradeValuesCalculatorBuilder {
 
     pub fn build_and_compute(self) -> PreTradeValues {
         self.build().compute()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        calculator::pre_trade_values_calculator::PreTradeData,
+        cloud_api::api_for_unit_tests::download_df,
+    };
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_compute_last_trade_price() {
+        let df = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/pre_trade_data.csv".to_string(),
+        )
+        .await;
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+
+        let caclulator = PreTradeValuesCalculator {
+            pre_trade_data,
+            required_indicator_values: Vec::new(),
+            required_market_sim_values: Vec::new(),
+        };
+
+        assert_eq!(43_578.87, caclulator.compute_last_trade_price());
+    }
+    
+    #[tokio::test]
+    async fn test_compute_lowest_trade_price() {
+        let df = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/pre_trade_data.csv".to_string(),
+        )
+        .await;
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+
+        let caclulator = PreTradeValuesCalculator {
+            pre_trade_data,
+            required_indicator_values: Vec::new(),
+            required_market_sim_values: Vec::new(),
+        };
+
+        assert_eq!(37_934.89, caclulator.compute_lowest_trade_price());
+    }
+    #[tokio::test]
+    async fn test_compute_highest_trade_price() {
+        let df = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/pre_trade_data.csv".to_string(),
+        )
+        .await;
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+
+        let caclulator = PreTradeValuesCalculator {
+            pre_trade_data,
+            required_indicator_values: Vec::new(),
+            required_market_sim_values: Vec::new(),
+        };
+
+        assert_eq!(44_225.84, caclulator.compute_highest_trade_price());
     }
 }

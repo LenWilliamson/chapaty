@@ -1,18 +1,16 @@
-
 use crate::{
-
     converter::any_value::AnyValueConverter, enums::column_names::VolumeProfileColumnKind,
 };
 
-use polars::prelude::{col, lit, DataFrame, IntoLazy, AnyValue};
+use polars::prelude::{col, lit, AnyValue, DataFrame, IntoLazy};
 
 pub struct PriceHistogram {
     df: DataFrame,
 }
 
 impl PriceHistogram {
-    pub fn new( df: DataFrame) -> Self {
-        Self {  df }
+    pub fn new(df: DataFrame) -> Self {
+        Self { df }
     }
 
     /// This function computes the POC for the given volume profile. The POC is the point of control. Hence,
@@ -21,7 +19,6 @@ impl PriceHistogram {
     /// # Arguments
     /// * `df_vol` - volume profile
     pub fn poc(&self) -> f64 {
-
         let df = self.df.clone();
 
         let qx = &VolumeProfileColumnKind::Quantity.to_string();
@@ -132,6 +129,51 @@ fn get_tpo(df: &DataFrame, row: u32, offset: i32) -> (f64, f64) {
 
 #[cfg(test)]
 mod tests {
+    use polars::{df, prelude::NamedFrom};
+
+    use super::*;
+    use crate::{
+        bot::time_frame_snapshot::TimeFrameSnapshotBuilder,
+        cloud_api::api_for_unit_tests::download_df_map,
+    };
+
+    #[tokio::test]
+    async fn test_poc() {
+        let df_map = download_df_map(
+            "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_vol-aggTrades.json".to_string(),
+        )
+        .await;
+
+        let mut snapshot = TimeFrameSnapshotBuilder::new(12).build();
+        let mut df = df_map.get(&snapshot).unwrap().clone();
+        assert_eq!(42000.0, PriceHistogram { df }.poc());
+
+        snapshot = TimeFrameSnapshotBuilder::new(8).build();
+        df = df_map.get(&snapshot).unwrap().clone();
+        assert_eq!(38100.0, PriceHistogram { df }.poc());
+
+        snapshot = TimeFrameSnapshotBuilder::new(9).build();
+        df = df_map.get(&snapshot).unwrap().clone();
+        assert_eq!(42100.0, PriceHistogram { df }.poc());
+
+        snapshot = TimeFrameSnapshotBuilder::new(10).build();
+        df = df_map.get(&snapshot).unwrap().clone();
+        assert_eq!(42200.0, PriceHistogram { df }.poc());
+
+        df = df!(
+            "px" => &[1.0, 2.0, 3.0, 4.0],
+            "qx" => &[10, 10, 9, 10]
+        )
+        .unwrap();
+        assert_eq!(1.0, PriceHistogram { df }.poc());
+
+        df = df!(
+            "px" => &[ 83_200.0, 38_100.0, 38_000.0, 1.0],
+            "qx" => &[100.0, 300.0, 150.0, 300.0],
+        ).unwrap();
+        assert_eq!(38_100.0, PriceHistogram { df }.poc());
+    }
+
     #[tokio::test]
     async fn test_compute_volume_area() {
         // let config = ClientConfig::default().with_auth().await.unwrap();

@@ -4,7 +4,7 @@ use polars::prelude::{DataFrame, IntoLazy};
 
 use crate::{
     converter::any_value::AnyValueConverter,
-    enums::{trade_and_pre_trade::TradeDataKind, my_any_value::MyAnyValueKind},
+    enums::{my_any_value::MyAnyValueKind, trade_and_pre_trade::TradeDataKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 
@@ -16,25 +16,6 @@ pub struct TradeValuesCalculator {
 }
 
 impl TradeValuesCalculator {
-    /// This function computes the `Option<TradeData>` consisting of
-    /// * `entry_ts` - entry time stamp where the market hits the `poc`
-    /// * `last_trade_price` - closing price of this week
-    /// * `lowest_price_since_entry` - lowest traded price since we entered our trade
-    /// * `highest_price_since_entry` - highest traded price since we entered our trade
-    /// * `lowest_price_since_entry_ts` - time stamp of lowest traded price since we entered our trade
-    /// * `highest_price_since_entry_ts` - time stamp of highest traded price since we entered our trade
-    ///
-    /// We determine in this function if we enter a trade or not. We return
-    /// * `None` - if we don't enter a trade
-    /// * `Some(TradeData)` - if we enter a trade
-    ///
-    /// # Note
-    ///
-    /// A Trade has two phases which are each in two separates but consecutive calendar weeks. The first
-    /// phase is the pre trade phase (`PreTradeData`). The second phase is the trade phase (`TradeData`). In each phase we collect data.
-    /// If we don't enter the trade in the second week, the `trade_data` object is `None`.
-    ///
-    /// Collects the data if a trade occurs
     pub fn compute(&self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         self.market_sim_data
             .clone()
@@ -65,7 +46,10 @@ impl TradeValuesCalculator {
                 TradeDataKind::EntryPrice,
                 MyAnyValueKind::Float64(self.entry_price),
             ),
-            (TradeDataKind::EntryTimestamp, MyAnyValueKind::Int64(entry_ts)),
+            (
+                TradeDataKind::EntryTimestamp,
+                MyAnyValueKind::Int64(entry_ts),
+            ),
         ])
     }
 
@@ -77,11 +61,6 @@ impl TradeValuesCalculator {
     /// * Index 3: timestamp highest trade price
     /// * Index 4: timestamp lowest trade price
     fn get_trade_values_as_df(&self, entry_ts: i64) -> DataFrame {
-        // let ots = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::OpenTime));
-        // let high = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::High));
-        // let low = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Low));
-        // let close = dp.column_name_as_str(&Columns::Ohlc(OhlcColumnNames::Close));
-
         self.market_sim_data
             .clone()
             .lazy()
@@ -92,7 +71,9 @@ impl TradeValuesCalculator {
     }
 }
 
-fn match_trade_values_with_trade_kind(trade_values: DataFrame) -> Vec<(TradeDataKind, MyAnyValueKind)> {
+fn match_trade_values_with_trade_kind(
+    trade_values: DataFrame,
+) -> Vec<(TradeDataKind, MyAnyValueKind)> {
     let row = trade_values.get(0).unwrap();
     vec![
         (
@@ -157,5 +138,72 @@ impl TradeValuesCalculatorBuilder {
 
     pub fn build_and_compute(self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         self.build().compute()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::cloud_api::api_for_unit_tests::download_df;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_compute_trade_values() {
+        let market_sim_data = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/trade_data.csv".to_string(),
+        )
+        .await;
+        let mut calculator = TradeValuesCalculator {
+            entry_price: 42_000.0,
+            market_sim_data: market_sim_data.clone(),
+        };
+
+        // Define target values from test data
+        let entry_price = 42_000.0;
+        let ts = 1646085600000_i64;
+        let lst_tp = 43_578.87;
+        let low = 41628.99;
+        let high = 44_225.84;
+        let low_ots = 1646085600000_i64;
+        let high_ots = 1646085600000_i64;
+        let mut target = HashMap::new();
+
+        target.insert(
+            TradeDataKind::EntryPrice,
+            MyAnyValueKind::Float64(entry_price),
+        );
+        target.insert(TradeDataKind::EntryTimestamp, MyAnyValueKind::Int64(ts));
+        target.insert(
+            TradeDataKind::LastTradePrice,
+            MyAnyValueKind::Float64(lst_tp),
+        );
+        target.insert(
+            TradeDataKind::LowestTradePriceSinceEntry,
+            MyAnyValueKind::Float64(low),
+        );
+        target.insert(
+            TradeDataKind::LowestTradePriceSinceEntryTimestamp,
+            MyAnyValueKind::Int64(low_ots),
+        );
+        target.insert(
+            TradeDataKind::HighestTradePriceSinceEntry,
+            MyAnyValueKind::Float64(high),
+        );
+        target.insert(
+            TradeDataKind::HighestTradePriceSinceEntryTimestamp,
+            MyAnyValueKind::Int64(high_ots),
+        );
+
+        assert_eq!(target, calculator.compute().unwrap());
+
+        calculator = TradeValuesCalculator {
+            entry_price: 0.0,
+            market_sim_data
+        };
+
+        assert_eq!(None, calculator.compute())
+
+
     }
 }

@@ -364,7 +364,7 @@ mod test {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn populate_daily_trading_session_data_test() {
+    async fn test_populate_daily_trading_session_data() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
         let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
@@ -565,7 +565,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn populate_weekly_trading_session_data_test() {
+    async fn test_populate_weekly_trading_session_data() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
         let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];

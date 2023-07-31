@@ -1,5 +1,5 @@
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MyAnyValueKind {
     Int64(i64),
     Float64(f64),

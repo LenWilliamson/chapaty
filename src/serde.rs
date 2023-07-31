@@ -13,7 +13,7 @@ mod tests {
     use super::{serialize::serialize_data_frame_map, deserialize::deserialize_data_frame_map};
 
     #[test]
-    fn serde_test() {
+    fn test_serde() {
         let time_frame_snapshot = TimeFrameSnapshotBuilder::new(1).with_weekday(1).build();
         let df = df!(
             "a" => [1, 2],

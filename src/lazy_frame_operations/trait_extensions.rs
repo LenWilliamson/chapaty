@@ -181,4 +181,28 @@ mod tests {
             .unwrap();
         assert_eq!(target_df, res);
     }
+
+    #[tokio::test]
+    async fn test_find_timestamp_when_price_reached() {
+        let ldf = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/pre_trade_data.csv".to_string(),
+        )
+        .await
+        .lazy();
+
+        let target_ts_taken = 1646085600000_i64;
+        let px_taken = 42_000.0;
+        let px_not_taken = 0.0;
+
+        match ldf.clone().find_timestamp_when_price_reached(px_taken) {
+            Some(result_taken) => assert_eq!(result_taken, target_ts_taken),
+            None => assert!(false),
+        };
+
+        match ldf.find_timestamp_when_price_reached(px_not_taken) {
+            Some(_) => assert!(false),
+            None => assert!(true),
+        };
+    }
 }
