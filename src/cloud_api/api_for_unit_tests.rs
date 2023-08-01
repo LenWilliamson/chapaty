@@ -1,9 +1,7 @@
-use std::io::Cursor;
-
+use crate::{chapaty, config, serde::deserialize::deserialize_data_frame_map};
 use google_cloud_storage::http::objects::{download::Range, get::GetObjectRequest};
 use polars::prelude::{CsvReader, DataFrame, SerReader};
-
-use crate::{chapaty, config, serde::deserialize::deserialize_data_frame_map};
+use std::io::Cursor;
 
 #[allow(dead_code)]
 pub async fn download_df(bucket: String, abs_file_path: String) -> DataFrame {

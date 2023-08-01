@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDateTime, Duration};
+use chrono::{Datelike, Duration, NaiveDateTime};
 use polars::{
     prelude::{Float64Chunked, Int64Chunked},
     series::{IntoSeries, Series},
@@ -95,7 +95,6 @@ pub fn sub_time(val: Series, duration: Duration) -> Series {
         .collect::<Int64Chunked>()
         .into_series()
 }
-
 
 #[cfg(test)]
 mod tests {

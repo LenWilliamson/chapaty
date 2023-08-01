@@ -5,8 +5,6 @@ pub enum TradingIndicatorKind {
     VolumeAreaHigh(PriceHistogramKind),
 }
 
-
-
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum PriceHistogramKind {
     Tpo1m,

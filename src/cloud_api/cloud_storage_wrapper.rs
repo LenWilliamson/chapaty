@@ -1,3 +1,7 @@
+use super::{
+    file_name_resolver::FileNameResolver, file_path_with_fallback::FilePathWithFallback,
+    path_finder::PathFinderBuilder,
+};
 use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
@@ -21,11 +25,6 @@ use polars::prelude::DataFrame;
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
-
-use super::{
-    file_name_resolver::FileNameResolver, file_path_with_fallback::FilePathWithFallback,
-    path_finder::PathFinderBuilder,
-};
 
 #[derive(Clone)]
 pub struct CloudStorageClient {

@@ -1,10 +1,10 @@
+use crate::{converter::any_value::AnyValueConverter, enums::column_names::PnLReportColumnKind};
 use polars::{
     datatypes::AnyValue,
     lazy::dsl::when,
     prelude::{col, lit, DataFrame, IntoLazy, SeriesMethods},
 };
 
-use crate::{converter::any_value::AnyValueConverter, enums::column_names::PnLReportColumnKind};
 
 /// Percent Profitable = Trefferquote = Gewinner/Gesamttrades
 pub fn percent_profitability(number_winner: u32, number_trades: u32) -> f64 {

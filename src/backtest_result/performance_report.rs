@@ -1,11 +1,10 @@
+use super::pnl_statement::{PnLSnapshot, PnLStatement};
 use crate::data_frame_operations::save_df_as_csv;
 use crate::enums::markets::MarketKind;
-use std::collections::HashMap;
-
 use polars::prelude::DataFrame;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use super::pnl_statement::{PnLSnapshot, PnLStatement};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PerformanceReports {
     pub markets: Vec<MarketKind>,

@@ -1,10 +1,6 @@
-use std::collections::HashMap;
-
-use polars::prelude::DataFrame;
-
 use crate::enums::indicator::TradingIndicatorKind;
-
-
+use polars::prelude::DataFrame;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct PreTradeData {

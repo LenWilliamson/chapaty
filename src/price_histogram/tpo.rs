@@ -116,8 +116,27 @@ impl TpoBuilder {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{cloud_api::api_for_unit_tests::download_df, data_provider::cme::Cme};
+
     #[tokio::test]
     async fn test_tpo() {
-        
+        let df_ohlc_data = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
+        )
+        .await;
+        let df_target_tpo = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
+        )
+        .await;
+
+        let tpo = Tpo {
+            data_provider: Arc::new(Cme::new()),
+            max_digits: MarketKind::EurUsdFuture.decimal_places(),
+        };
+
+        assert_eq!(df_target_tpo, tpo.tpo(df_ohlc_data));
     }
 }

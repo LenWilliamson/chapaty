@@ -1,6 +1,6 @@
 use crate::{
     bot::indicator_data_pair::IndicatorDataPair,
-    enums::{indicator::TradingIndicatorKind, data::HdbSourceDirKind},
+    enums::{data::HdbSourceDirKind, indicator::TradingIndicatorKind},
 };
 #[derive(Clone)]
 pub struct FileNameResolver {
@@ -29,7 +29,6 @@ impl FileNameResolver {
             |_| self.generate_file_name(),
         )
     }
-
 
     fn generate_file_name(&self) -> String {
         match self.indicator_data_pair.as_ref().unwrap().data {

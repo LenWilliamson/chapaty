@@ -1,6 +1,5 @@
-use crate::enums::indicator::PriceHistogramKind;
-
 use super::*;
+use crate::enums::indicator::PriceHistogramKind;
 
 pub struct Ppp {
     stop_loss: StopLoss,
@@ -174,9 +173,6 @@ impl Strategy for Ppp {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::collections::HashMap;
-
     use crate::{
         calculator::pre_trade_values_calculator::PreTradeValues,
         enums::{
@@ -184,6 +180,7 @@ mod tests {
             trade_and_pre_trade::TradeDirectionKind,
         },
     };
+    use std::collections::HashMap;
 
     /// This unit test determines if the `TradeKind` based on the POC and last traded price.
     /// * `Short` - last traded price < poc,

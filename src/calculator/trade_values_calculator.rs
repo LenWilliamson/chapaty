@@ -1,14 +1,11 @@
-use std::collections::HashMap;
-
-use polars::prelude::{DataFrame, IntoLazy};
-
+use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
 use crate::{
     converter::any_value::AnyValueConverter,
     enums::{my_any_value::MyAnyValueKind, trade_and_pre_trade::TradeDataKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
-
-use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
+use polars::prelude::{DataFrame, IntoLazy};
+use std::collections::HashMap;
 
 pub struct TradeValuesCalculator {
     market_sim_data: DataFrame,
@@ -199,11 +196,9 @@ mod test {
 
         calculator = TradeValuesCalculator {
             entry_price: 0.0,
-            market_sim_data
+            market_sim_data,
         };
 
         assert_eq!(None, calculator.compute())
-
-
     }
 }

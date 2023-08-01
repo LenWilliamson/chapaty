@@ -1,20 +1,21 @@
-use std::{collections::HashMap, sync::Arc};
-
-use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
-
+use super::{
+    pre_trade_values_calculator::{PreTradeValues, PreTradeValuesCalculatorBuilder},
+    trade_pnl_calculator::{TradePnL, TradePnLCalculatorBuilder},
+    trade_values_calculator::TradeValuesCalculatorBuilder,
+};
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot, trade::Trade},
     data_provider::DataProvider,
-    enums::{trade_and_pre_trade::TradeDataKind, markets::MarketKind, my_any_value::MyAnyValueKind, bot::StrategyKind, },
+    enums::{
+        bot::StrategyKind, markets::MarketKind, my_any_value::MyAnyValueKind,
+        trade_and_pre_trade::TradeDataKind,
+    },
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::Strategy,
 };
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
+use std::{collections::HashMap, sync::Arc};
 
-use super::{
-    pre_trade_values_calculator::{PreTradeValues, PreTradeValuesCalculatorBuilder},
-    trade_pnl_calculator::{TradePnLCalculatorBuilder, TradePnL},
-    trade_values_calculator::TradeValuesCalculatorBuilder,
-};
 #[derive(Debug, Clone)]
 pub struct PnLReportDataRow {
     pub market: MarketKind,

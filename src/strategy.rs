@@ -1,15 +1,16 @@
-use std::str::FromStr;
-use mockall::automock;
+pub mod ppp;
 use crate::{
     bot::trade::Trade,
     calculator::pre_trade_values_calculator::PreTradeValues,
     enums::{
         bot::{StopLossKind, StrategyKind, TakeProfitKind},
-        error::ChapatyErrorKind, indicator::TradingIndicatorKind, trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
+        error::ChapatyErrorKind,
+        indicator::TradingIndicatorKind,
+        trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
     },
 };
-
-pub mod ppp;
+use mockall::automock;
+use std::str::FromStr;
 
 #[derive(Clone, Copy)]
 pub struct StopLoss {

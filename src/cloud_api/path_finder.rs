@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
-use regex::Regex;
-
+use super::file_path_with_fallback::FilePathWithFallback;
 use crate::{
     bot::time_interval::TimeInterval,
     enums::{
@@ -10,8 +7,8 @@ use crate::{
         markets::MarketKind,
     },
 };
-
-use super::file_path_with_fallback::FilePathWithFallback;
+use regex::Regex;
+use std::path::PathBuf;
 
 pub struct PathFinder {
     data_provider: DataProviderKind,

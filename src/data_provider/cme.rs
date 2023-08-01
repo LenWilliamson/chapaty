@@ -1,17 +1,14 @@
-use std::{io::Cursor, sync::Arc};
-
+use super::*;
+use crate::{
+    enums::column_names::DataProviderColumnKind,
+    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
+};
 use chrono::Duration;
 use polars::{
     lazy::dsl::GetOutput,
     prelude::{col, CsvReader, IntoLazy, SerReader},
 };
-
-use crate::{
-    enums::column_names::DataProviderColumnKind,
-    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
-};
-
-use super::*;
+use std::{io::Cursor, sync::Arc};
 
 pub struct Cme {
     producer_kind: DataProviderKind,

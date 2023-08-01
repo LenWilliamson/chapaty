@@ -1,11 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
+use self::{
+    indicator_data_pair::IndicatorDataPair, time_interval::TimeInterval,
+    trading_session::TradingSessionBuilder,
 };
-
-use google_cloud_storage::client::Client;
-use mockall::automock;
-
 use crate::{
     backtest_result::{pnl_report::PnLReports, pnl_statement::PnLStatement, BacktestResult},
     config::GoogleCloudBucket,
@@ -18,10 +14,11 @@ use crate::{
     },
     strategy::Strategy,
 };
-
-use self::{
-    indicator_data_pair::IndicatorDataPair, time_interval::TimeInterval,
-    trading_session::TradingSessionBuilder,
+use google_cloud_storage::client::Client;
+use mockall::automock;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
 };
 
 mod backtesting_batch_data;
@@ -276,7 +273,8 @@ impl BotBuilder {
 
     pub fn with_cache_computations(self, cache_computations: bool) -> Self {
         Self {
-            cache_computations, ..self
+            cache_computations,
+            ..self
         }
     }
 
@@ -301,15 +299,13 @@ impl BotBuilder {
             time_interval: self.time_interval,
             time_frame: self.time_frame,
             save_result_as_csv: self.save_result_as_csv,
-            cache_computations: self.cache_computations
+            cache_computations: self.cache_computations,
         })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, sync::Arc};
-
     use crate::{
         bot::IndicatorDataPair,
         config,
@@ -321,6 +317,7 @@ mod test {
         strategy::MockStrategy,
         BotBuilder,
     };
+    use std::{collections::HashSet, sync::Arc};
 
     #[tokio::test]
     async fn test_determine_indicator_data_pair() {

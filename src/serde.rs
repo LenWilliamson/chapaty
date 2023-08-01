@@ -3,14 +3,10 @@ pub mod serialize;
 
 #[cfg(test)]
 mod tests {
-
-    use std::collections::HashMap;
-
-    use polars::{df, prelude::NamedFrom};
-
+    use super::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map};
     use crate::bot::time_frame_snapshot::TimeFrameSnapshotBuilder;
-
-    use super::{serialize::serialize_data_frame_map, deserialize::deserialize_data_frame_map};
+    use polars::{df, prelude::NamedFrom};
+    use std::collections::HashMap;
 
     #[test]
     fn test_serde() {

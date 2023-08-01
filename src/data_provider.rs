@@ -1,7 +1,8 @@
 pub mod binance;
 pub mod cme;
-use crate::enums::{self, column_names::DataProviderColumnKind, data::HdbSourceDirKind, bot::DataProviderKind};
-
+use crate::enums::{
+    self, bot::DataProviderKind, column_names::DataProviderColumnKind, data::HdbSourceDirKind,
+};
 use polars::prelude::{DataFrame, DataType, Field, Schema};
 use std::str::FromStr;
 

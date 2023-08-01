@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
 use crate::{
     bot::pre_trade_data::PreTradeData,
     converter::any_value::AnyValueConverter,
@@ -10,10 +9,8 @@ use crate::{
     },
     trading_indicator::price_histogram::PriceHistogram,
 };
-
 use polars::prelude::{col, IntoLazy};
-
-use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct PreTradeValues {
@@ -224,7 +221,7 @@ mod test {
 
         assert_eq!(43_578.87, caclulator.compute_last_trade_price());
     }
-    
+
     #[tokio::test]
     async fn test_compute_lowest_trade_price() {
         let df = download_df(

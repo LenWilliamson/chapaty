@@ -1,7 +1,5 @@
 use polars::prelude::AnyValue;
 
-
-
 pub trait AnyValueConverter {
     /// Unwrap an polars `AnyValue` to a `f64` type.
     fn unwrap_float64(self) -> f64;

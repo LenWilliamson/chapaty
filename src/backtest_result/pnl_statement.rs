@@ -1,12 +1,16 @@
-use std::collections::HashMap;
-
-use polars::prelude::{DataFrame, LazyFrame, IntoLazy};
-
-use crate::{enums::{bot::StrategyKind, markets::MarketKind}, lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations};
-
-use super::{pnl_report::PnLReports, trade_break_down_report::TradeBreakDownReport, performance_report::PerformanceReport, equity_curves::{EquityCurves, EquityCurve}};
+use super::{
+    equity_curves::{EquityCurve, EquityCurves},
+    performance_report::PerformanceReport,
+    pnl_report::PnLReports,
+    trade_break_down_report::TradeBreakDownReport,
+};
+use crate::{
+    enums::{bot::StrategyKind, markets::MarketKind},
+    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+};
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
-
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLStatement {
@@ -22,7 +26,6 @@ impl PnLStatement {
             .for_each(|(_, data)| data.save_as_csv(file_name))
     }
 }
-
 
 pub struct PnLSnapshot {
     pub pnl_reports: PnLReports,

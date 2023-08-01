@@ -1,18 +1,15 @@
-use std::path::PathBuf;
-
-use polars::{
-    lazy::dsl::GetOutput,
-    prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame},
-};
-
+use super::closures::{get_cw_from_ts, get_weekday_from_ts};
 use crate::{
     bot::time_interval::{InInterval, TimeInterval},
     converter::any_value::AnyValueConverter,
     data_frame_operations::is_not_an_empty_frame,
     enums::{bot::TimeFrameKind, column_names::DataProviderColumnKind},
 };
-
-use super::closures::{get_cw_from_ts, get_weekday_from_ts};
+use polars::{
+    lazy::dsl::GetOutput,
+    prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame},
+};
+use std::path::PathBuf;
 
 pub trait MyLazyFrameOperations {
     fn add_cw_col(self, ts_col: &str) -> Self;

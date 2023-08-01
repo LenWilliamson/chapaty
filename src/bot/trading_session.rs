@@ -1,15 +1,16 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
+use super::{
+    backtesting_batch_data::BacktestingBatchData,
+    execution_data::ExecutionData,
+    indicator_data_pair::IndicatorDataPair,
+    pre_trade_data::{PreTradeData, PreTradeDataBuilder},
+    time_frame_snapshot::{TimeFrameSnapshot, TimeFrameSnapshotBuilder},
+    Bot,
 };
-
-use polars::prelude::DataFrame;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use tokio::task::JoinHandle;
-
 use crate::{
     backtest_result::pnl_report::PnLReport,
-    calculator::pnl_report_data_row_calculator::{PnLReportDataRowCalculatorBuilder, PnLReportDataRow},
+    calculator::pnl_report_data_row_calculator::{
+        PnLReportDataRow, PnLReportDataRowCalculatorBuilder,
+    },
     chapaty,
     cloud_api::{
         cloud_storage_wrapper::CloudStorageClientBuilder,
@@ -21,15 +22,13 @@ use crate::{
         markets::MarketKind,
     },
 };
-
-use super::{
-    backtesting_batch_data::BacktestingBatchData,
-    execution_data::ExecutionData,
-    indicator_data_pair::IndicatorDataPair,
-    pre_trade_data::{PreTradeData, PreTradeDataBuilder},
-    time_frame_snapshot::{TimeFrameSnapshot, TimeFrameSnapshotBuilder},
-    Bot,
+use polars::prelude::DataFrame;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
 };
+use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct TradingSession {

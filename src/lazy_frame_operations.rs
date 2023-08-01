@@ -1,2 +1,2 @@
-pub mod trait_extensions;
 pub mod closures;
+pub mod trait_extensions;

@@ -1,5 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
-
+use super::{
+    indicator_data_pair::IndicatorDataPair, time_frame_snapshot::TimeFrameSnapshotBuilder, Bot,
+};
 use crate::{
     chapaty,
     converter::any_value::AnyValueConverter,
@@ -17,10 +18,7 @@ use crate::{
     },
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
-
-use super::{
-    indicator_data_pair::IndicatorDataPair, time_frame_snapshot::TimeFrameSnapshotBuilder, Bot,
-};
+use std::{collections::HashMap, sync::Arc};
 
 pub struct Transformer {
     bot: Arc<Bot>,

@@ -3,7 +3,6 @@ use crate::{
     enums::column_names::{DataProviderColumnKind, VolumeProfileColumnKind},
     lazy_frame_operations::closures::round,
 };
-
 use polars::{
     lazy::dsl::GetOutput,
     prelude::{col, DataFrame, IntoLazy},

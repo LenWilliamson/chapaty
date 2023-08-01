@@ -22,14 +22,11 @@ pub use enums::{
     markets::MarketKind,
 };
 
-
 /*
-- Test nachziehen wo fehlt
 - TPO Schrittgröße anpassen und Test schreiben
 - Volume Area LOW / HIGH berechnen und dann SL/TP Kriterien erweitern
 - PPP Entry flexibel setzen, am besten über Struct
 - PPP / Strategy Trait aufrümen
-- Importe aufräumen
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Offset in Dollar angeben und dann umrechnen
 - bot/metrics -> Effizienter bestimmen

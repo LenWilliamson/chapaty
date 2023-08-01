@@ -1,10 +1,7 @@
-use std::{io::Cursor, sync::Arc};
-
-use polars::prelude::{CsvReader, SerReader};
-
-use crate::enums::column_names::DataProviderColumnKind;
-
 use super::*;
+use crate::enums::column_names::DataProviderColumnKind;
+use polars::prelude::{CsvReader, SerReader};
+use std::{io::Cursor, sync::Arc};
 
 pub struct Binance {
     producer_kind: DataProviderKind,
@@ -91,13 +88,25 @@ impl DataProvider for Binance {
 fn ohlcv_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(&DataProviderColumnKind::OpenTime.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumnKind::OpenTime.to_string(),
+                DataType::Int64,
+            ),
             Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
             Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
             Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::Volume.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::CloseTime.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumnKind::Close.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumnKind::Volume.to_string(),
+                DataType::Float64,
+            ),
+            Field::new(
+                &DataProviderColumnKind::CloseTime.to_string(),
+                DataType::Int64,
+            ),
             Field::new(
                 &DataProviderColumnKind::QuoteAssetVol.to_string(),
                 DataType::Float64,
@@ -128,7 +137,10 @@ fn aggtrades_schema() -> Schema {
                 &DataProviderColumnKind::AggTradeId.to_string(),
                 DataType::Int64,
             ),
-            Field::new(&DataProviderColumnKind::Price.to_string(), DataType::Float64),
+            Field::new(
+                &DataProviderColumnKind::Price.to_string(),
+                DataType::Float64,
+            ),
             Field::new(
                 &DataProviderColumnKind::Quantity.to_string(),
                 DataType::Float64,
@@ -141,7 +153,10 @@ fn aggtrades_schema() -> Schema {
                 &DataProviderColumnKind::LastTradeId.to_string(),
                 DataType::Int64,
             ),
-            Field::new(&DataProviderColumnKind::Timestamp.to_string(), DataType::Int64),
+            Field::new(
+                &DataProviderColumnKind::Timestamp.to_string(),
+                DataType::Int64,
+            ),
             Field::new(
                 &DataProviderColumnKind::BuyerEqualsMaker.to_string(),
                 DataType::Boolean,

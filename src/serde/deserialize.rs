@@ -1,6 +1,5 @@
-use polars::prelude::DataFrame;
-
 use crate::{chapaty, bot::time_frame_snapshot::TimeFrameSnapshot};
+use polars::prelude::DataFrame;
 use std::str::from_utf8;
 
 pub fn deserialize_data_frame_map(bytes: Vec<u8>) -> chapaty::types::DataFrameMap {

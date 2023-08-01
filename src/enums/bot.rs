@@ -1,5 +1,5 @@
-use strum_macros::{Display, EnumString};
 use serde::{Deserialize, Serialize};
+use strum_macros::{Display, EnumString};
 
 #[derive(Copy, Clone, Debug, Display, EnumString, Serialize, Deserialize)]
 pub enum StrategyKind {
@@ -25,7 +25,7 @@ pub enum TimeFrameKind {
     Daily,
 }
 
-#[derive(Debug, Copy, Clone,Display, EnumString)]
+#[derive(Debug, Copy, Clone, Display, EnumString)]
 pub enum StopLossKind {
     #[strum(serialize = "PriceUponTradeEntry")]
     PriceUponTradeEntry,

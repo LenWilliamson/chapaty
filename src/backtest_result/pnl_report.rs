@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::convert::identity;
-
-use crate::bot::time_interval::timestamp_in_milli_to_string;
-use crate::calculator::pnl_report_data_row_calculator::PnLReportDataRow;
-use crate::converter::market_decimal_places::MyDecimalPlaces;
-use crate::data_frame_operations::save_df_as_csv;
-use crate::enums::bot::StrategyKind;
-use crate::enums::column_names::{
-    self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind,
+use crate::{
+    bot::time_interval::timestamp_in_milli_to_string,
+    calculator::pnl_report_data_row_calculator::PnLReportDataRow,
+    converter::market_decimal_places::MyDecimalPlaces,
+    data_frame_operations::save_df_as_csv,
+    enums::{
+        bot::StrategyKind,
+        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
+    },
 };
+use std::{convert::identity, collections::HashMap};
 
 use super::metrics::{
     accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,

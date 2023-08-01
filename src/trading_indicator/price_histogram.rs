@@ -129,13 +129,12 @@ fn get_tpo(df: &DataFrame, row: u32, offset: i32) -> (f64, f64) {
 
 #[cfg(test)]
 mod tests {
-    use polars::{df, prelude::NamedFrom};
-
     use super::*;
     use crate::{
         bot::time_frame_snapshot::TimeFrameSnapshotBuilder,
         cloud_api::api_for_unit_tests::download_df_map,
     };
+    use polars::{df, prelude::NamedFrom};
 
     #[tokio::test]
     async fn test_poc() {
@@ -170,28 +169,18 @@ mod tests {
         df = df!(
             "px" => &[ 83_200.0, 38_100.0, 38_000.0, 1.0],
             "qx" => &[100.0, 300.0, 150.0, 300.0],
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(38_100.0, PriceHistogram { df }.poc());
     }
 
     #[tokio::test]
     async fn test_compute_volume_area() {
-        // let config = ClientConfig::default().with_auth().await.unwrap();
-        // let d = Test::new(
-        //     std::path::PathBuf::from(GCS_DATA_BUCKET),
-
-        // );
-        // let df = df!(
-        //     "px"=> &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
-        //     "qx" => &[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 20.0, 15.0, 10.0, 5.0, 0.0],
-        // );
-
-        // let df_u = df.unwrap();
-
-        // // let result = compute_volume_area(&d, &df_u, 0.5, 5.0);
-        // // assert_eq!((3.0, 7.0), result);
-
-        // let result = compute_volume_area(&d, &df_u, 0.3, 5.0);
-        // assert_eq!((3.0, 5.0), result);
+        let df = df!(
+            "px"=> &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+            "qx" => &[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 20.0, 15.0, 10.0, 5.0, 0.0],
+        )
+        .unwrap();
+        assert_eq!((3.0, 5.0), PriceHistogram { df }.volume_area(0.3));
     }
 }

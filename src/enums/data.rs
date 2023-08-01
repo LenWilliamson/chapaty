@@ -1,6 +1,9 @@
 use strum_macros::{Display, EnumString};
 
-use super::{indicator::{TradingIndicatorKind, PriceHistogramKind}, column_names::DataProviderColumnKind};
+use super::{
+    column_names::DataProviderColumnKind,
+    indicator::{PriceHistogramKind, TradingIndicatorKind},
+};
 
 #[derive(Copy, Clone, Debug, EnumString, PartialEq, Display)]
 pub enum MarketSimulationDataKind {

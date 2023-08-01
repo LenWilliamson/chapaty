@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnyValueKind {
     Int64(i64),

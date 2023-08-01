@@ -1,12 +1,8 @@
-use crate::data_frame_operations::save_df_as_csv;
-
-use std::collections::HashMap;
-
-use super::pnl_statement::PnLSnapshot;
-use super::pnl_statement::PnLStatement;
-use crate::enums::markets::MarketKind;
+use super::pnl_statement::{PnLSnapshot, PnLStatement};
+use crate::{data_frame_operations::save_df_as_csv, enums::markets::MarketKind};
 use polars::prelude::DataFrame;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeBreakDownReports {

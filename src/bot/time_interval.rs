@@ -1,9 +1,7 @@
-use std::fmt;
-
+use crate::enums::bot::TimeFrameKind;
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use polars::prelude::{BooleanChunked, IntoSeries, Series};
-
-use crate::enums::bot::TimeFrameKind;
+use std::fmt;
 
 pub trait InInterval {
     /// This function determines if a **UTC timestamp in milliseconds** is inside the
@@ -40,7 +38,7 @@ pub trait InInterval {
 /// Friday 23:00UTC. Then we have to set the parameters as follows:
 /// ```
 /// use chapaty::TimeInterval;
-/// 
+///
 /// let time_interval = TimeInterval {
 ///     start_day: chrono::Weekday::Mon,
 ///     start_h: 1,
@@ -111,9 +109,8 @@ pub fn timestamp_in_milli_to_string(ts: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::lazy_frame_operations::closures::{get_cw_from_ts, get_weekday_from_ts};
-
     use super::*;
+    use crate::lazy_frame_operations::closures::{get_cw_from_ts, get_weekday_from_ts};
     use polars::prelude::{df, DataFrame, NamedFrom};
 
     /// This unit test checks for the DataFrame
