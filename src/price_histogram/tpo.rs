@@ -5,7 +5,7 @@ use crate::{
     enums::{column_names::DataProviderColumnKind, markets::MarketKind},
 };
 
-use polars::prelude::{df, AnyValue, DataFrame, NamedFrom};
+use polars::prelude::{col, df, AnyValue, DataFrame, IntoLazy, NamedFrom};
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use std::{collections::HashMap, convert::identity, sync::Arc};
 
@@ -48,7 +48,15 @@ impl Tpo {
             "px" => &px,
             "qx" => &qx,
         );
-        result.unwrap().sort(["px"], false, false).unwrap()
+        result
+            .unwrap()
+            .lazy()
+            .groupby([col("px")])
+            .agg([col("qx").sum()])
+            .sort("px", Default::default())
+            .collect()
+            .unwrap()
+        // result.unwrap().sort(["px"], false, false).unwrap()
     }
 
     fn compute_tpo_for_interval<'a>(
@@ -59,7 +67,7 @@ impl Tpo {
         let mut x = initalize_start_value(&interval);
         let end = upper_bound_from_interval(&interval);
         while is_current_value_still_in_inteval(x, end) {
-            tpos.entry(format!("{:.10}", x))
+            tpos.entry(self.create_key(x))
                 .and_modify(|(_, qx)| *qx += 1.0)
                 .or_insert((x.round_to_n_decimal_places(self.max_digits()), 1.0));
             x += self.market.tick_step_size().map_or_else(|| 0.01, identity);
@@ -75,6 +83,19 @@ impl Tpo {
 
     fn max_digits(&self) -> i32 {
         self.market.decimal_places()
+    }
+    fn create_key(&self, x: f64) -> String {
+        let res = match self.market {
+            MarketKind::BtcUsdt => format!("{:.2}", x),
+            MarketKind::EurUsdFuture => format!("{:.5}", x),
+            MarketKind::AudUsdFuture => format!("{:.5}", x),
+            MarketKind::GbpUsdFuture => format!("{:.4}", x),
+            MarketKind::CadUsdFuture => format!("{:.5}", x),
+            MarketKind::YenUsdFuture => format!("{:.7}", x),
+            MarketKind::NzdUsdFuture => format!("{:.5}", x),
+            MarketKind::BtcUsdFuture => format!("{:.0}", x),
+        };
+        res
     }
 }
 
@@ -129,7 +150,10 @@ impl TpoBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{cloud_api::api_for_unit_tests::download_df, data_provider::cme::Cme, data_frame_operations::save_df_as_csv};
+    use crate::{
+        cloud_api::api_for_unit_tests::download_df,
+        data_provider::cme::Cme,
+    };
 
     #[tokio::test]
     async fn test_tpo2_cme() {
@@ -160,18 +184,16 @@ mod tests {
         )
         .await;
 
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
-        // )
-        // .await;
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_binance_tpo_from_ohlc.csv".to_string(),
+        )
+        .await;
 
         let tpo = Tpo {
             data_provider: Arc::new(Cme::new()),
             market: MarketKind::BtcUsdt,
         };
-        let mut res = tpo.tpo(df_ohlc_data);
-        save_df_as_csv(&mut res, "binance_tpo");
-        // assert_eq!(target, tpo.tpo2(df_ohlc_data))
+        assert_eq!(target, tpo.tpo(df_ohlc_data))
     }
 }

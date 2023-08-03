@@ -39,5 +39,5 @@ pub use enums::{
     - Bei TP/SL PrevMax ist number timeout winner größer als number winner
 - Warum ist die PnL eine andere, wenn man die Daten direkt lädt
 - Was ist bei zwei POC's? -> Aktuell der kleinere (performt besser) aber flexibel setzen lassen können
-- Volumen Profil Auch angeben wie man rundne soll VolumenProfile(Precision::{Genau, 1EUR, 10EUR, usw}) & TPO bei Binance fixen
+- Volumen Profil Auch angeben wie man rundne soll VolumenProfile(Precision::{Genau, 1EUR, 10EUR, usw})
 */
