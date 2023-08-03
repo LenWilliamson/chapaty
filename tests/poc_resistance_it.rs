@@ -11,7 +11,6 @@ async fn it_test() {
 
     let strategy = common::setup_strategy();
     let data_provider = common::setup_data_provider();
-    let name = "chapaty".to_string();
     // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
     let years = vec![2022];
     let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
@@ -32,7 +31,6 @@ async fn it_test() {
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
     let bot = BotBuilder::new(strategy, data_provider)
-        .with_name(name)
         .with_years(years)
         .with_markets(markets)
         .with_market_simulation_data(market_simulation_data)

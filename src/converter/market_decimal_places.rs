@@ -14,3 +14,15 @@ impl MyDecimalPlaces for f64 {
         (self * x).round() / x
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::converter::market_decimal_places::MyDecimalPlaces;
+
+
+    #[test]
+    fn test_round_to_n_decimal_places() {
+        let f = 1.1530499999999999;
+        assert_eq!(1.15305, f.round_to_n_decimal_places(5))
+    }
+}

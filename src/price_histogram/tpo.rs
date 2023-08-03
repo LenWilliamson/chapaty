@@ -1,17 +1,17 @@
 use crate::{
     chapaty,
-    converter::any_value::AnyValueConverter,
+    converter::{any_value::AnyValueConverter, market_decimal_places::MyDecimalPlaces},
     data_provider::DataProvider,
     enums::{column_names::DataProviderColumnKind, markets::MarketKind},
 };
 
-use polars::prelude::{df, DataFrame, NamedFrom};
+use polars::prelude::{df, AnyValue, DataFrame, NamedFrom};
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::identity, sync::Arc};
 
 pub struct Tpo {
     data_provider: Arc<dyn DataProvider + Send + Sync>,
-    max_digits: i32,
+    market: MarketKind,
 }
 
 impl Tpo {
@@ -25,19 +25,8 @@ impl Tpo {
             .collect()
     }
 
-    /// TODO wrong step size. For 6E we move in 0.00005 steps and not 0.00001 steps.
-    ///
-    /// This function computes the market profile described in https://www.vtad.de/lexikon/market-profile/,
-    /// for the given DataFrame and sorts it by price in ascending order. The values for the price columns are not rounded.
-    ///
-    /// # Arguments
-    /// * `df` - DataFrame we want to compute the volume profile for
-    /// * `max_digits` - accuracy of available trade price.
-    ///    * BtcUsdt (two digits for cents, e.g. 1258.33)
-    ///    * 6e (five digits for ticks, e.g. 1.39450)
     fn tpo(&self, df: DataFrame) -> DataFrame {
         let dp = self.data_provider.clone();
-        let max_digits = self.max_digits;
 
         // Get index of respective columns in `DataFrame`
         let high_idx = dp.column_name_as_int(&DataProviderColumnKind::High);
@@ -48,26 +37,10 @@ impl Tpo {
         let lows = &df.get_columns()[low_idx];
 
         // Create a `Hashmap` to compute the time price opportunities (tpos)
-        let mut tpos = HashMap::<i32, (f64, f64)>::new();
-
-        std::iter::zip(highs.iter(), lows.iter()).for_each(|(highw, loww)| {
-            // Unwrap Anyvalue h
-            let h = highw.unwrap_float64();
-            // Unwrap Anyvalue l
-            let l = loww.unwrap_float64();
-
-            // Multiply h, l * 10^max-digits and transform to i32
-            let high = (h * 10.0_f64.powi(max_digits)) as i32;
-            let low = (l * 10.0_f64.powi(max_digits)) as i32;
-
-            // Iterate for x in low..=high and add to hashmap
-            // TODO https://docs.rs/ordered-float/latest/ordered_float/struct.OrderedFloat.html (improvement?)
-            for x in low..=high {
-                tpos.entry(x)
-                    .and_modify(|(_, qx)| *qx += 1.0)
-                    .or_insert((f64::try_from(x).unwrap() * 10.0_f64.powi(-max_digits), 1.0));
-            }
-        });
+        let tpos = std::iter::zip(lows.iter(), highs.iter())
+            .fold(HashMap::<String, (f64, f64)>::new(), |tpos, interval| {
+                self.compute_tpo_for_interval(tpos, interval)
+            });
 
         // Create volume profile `DataFrame`
         let (px, qx): (Vec<_>, Vec<_>) = tpos.values().cloned().unzip();
@@ -77,8 +50,47 @@ impl Tpo {
         );
         result.unwrap().sort(["px"], false, false).unwrap()
     }
+
+    fn compute_tpo_for_interval<'a>(
+        &self,
+        mut tpos: HashMap<String, (f64, f64)>,
+        interval: (AnyValue<'a>, AnyValue<'a>),
+    ) -> HashMap<String, (f64, f64)> {
+        let mut x = initalize_start_value(&interval);
+        let end = upper_bound_from_interval(&interval);
+        while is_current_value_still_in_inteval(x, end) {
+            tpos.entry(format!("{:.10}", x))
+                .and_modify(|(_, qx)| *qx += 1.0)
+                .or_insert((x.round_to_n_decimal_places(self.max_digits()), 1.0));
+            x += self.market.tick_step_size().map_or_else(|| 0.01, identity);
+        }
+
+        // add possible last entry
+        tpos.entry(format!("{:.10}", x))
+            .and_modify(|(_, qx)| *qx += 1.0)
+            .or_insert((x.round_to_n_decimal_places(self.max_digits()), 1.0));
+
+        tpos
+    }
+
+    fn max_digits(&self) -> i32 {
+        self.market.decimal_places()
+    }
 }
 
+fn initalize_start_value<'a>(interval: &(AnyValue<'a>, AnyValue<'a>)) -> f64 {
+    interval.0.unwrap_float64()
+}
+
+fn upper_bound_from_interval<'a>(interval: &(AnyValue<'a>, AnyValue<'a>)) -> f64 {
+    interval.1.unwrap_float64()
+}
+
+fn is_current_value_still_in_inteval(current: f64, upper_bound: f64) -> bool {
+    current <= upper_bound
+}
+
+#[derive(Clone)]
 pub struct TpoBuilder {
     data_provider: Option<Arc<dyn DataProvider + Send + Sync>>,
     market: Option<MarketKind>,
@@ -109,7 +121,7 @@ impl TpoBuilder {
     pub fn build(self) -> Tpo {
         Tpo {
             data_provider: self.data_provider.unwrap(),
-            max_digits: self.market.unwrap().decimal_places(),
+            market: self.market.unwrap(),
         }
     }
 }
@@ -117,16 +129,17 @@ impl TpoBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{cloud_api::api_for_unit_tests::download_df, data_provider::cme::Cme};
+    use crate::{cloud_api::api_for_unit_tests::download_df, data_provider::cme::Cme, data_frame_operations::save_df_as_csv};
 
     #[tokio::test]
-    async fn test_tpo() {
+    async fn test_tpo2_cme() {
         let df_ohlc_data = download_df(
             "chapaty-ai-hdb-test".to_string(),
             "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
         )
         .await;
-        let df_target_tpo = download_df(
+
+        let target = download_df(
             "chapaty-ai-test".to_string(),
             "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
         )
@@ -134,9 +147,31 @@ mod tests {
 
         let tpo = Tpo {
             data_provider: Arc::new(Cme::new()),
-            max_digits: MarketKind::EurUsdFuture.decimal_places(),
+            market: MarketKind::EurUsdFuture,
         };
+        assert_eq!(target, tpo.tpo(df_ohlc_data))
+    }
 
-        assert_eq!(df_target_tpo, tpo.tpo(df_ohlc_data));
+    #[tokio::test]
+    async fn test_tpo2_binance() {
+        let df_ohlc_data = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "binance/ohlcv/ohlc_data_for_tpo_test.csv".to_string(),
+        )
+        .await;
+
+        // let target = download_df(
+        //     "chapaty-ai-test".to_string(),
+        //     "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
+        // )
+        // .await;
+
+        let tpo = Tpo {
+            data_provider: Arc::new(Cme::new()),
+            market: MarketKind::BtcUsdt,
+        };
+        let mut res = tpo.tpo(df_ohlc_data);
+        save_df_as_csv(&mut res, "binance_tpo");
+        // assert_eq!(target, tpo.tpo2(df_ohlc_data))
     }
 }

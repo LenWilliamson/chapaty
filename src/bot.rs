@@ -1,3 +1,12 @@
+mod backtesting_batch_data;
+mod execution_data;
+pub mod indicator_data_pair;
+pub mod pre_trade_data;
+pub mod time_frame_snapshot;
+pub mod time_interval;
+pub mod trade;
+pub mod trading_session;
+pub mod transformer;
 use self::{
     indicator_data_pair::IndicatorDataPair, time_interval::TimeInterval,
     trading_session::TradingSessionBuilder,
@@ -20,16 +29,6 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-
-mod backtesting_batch_data;
-mod execution_data;
-pub mod indicator_data_pair;
-pub mod pre_trade_data;
-pub mod time_frame_snapshot;
-pub mod time_interval;
-pub mod trade;
-pub mod trading_session;
-pub mod transformer;
 
 #[derive(Clone)]
 pub struct Bot {
