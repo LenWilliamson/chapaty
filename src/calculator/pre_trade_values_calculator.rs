@@ -3,8 +3,7 @@ use crate::{
     bot::pre_trade_data::PreTradeData,
     converter::any_value::AnyValueConverter,
     enums::{
-        column_names::DataProviderColumnKind,
-        indicator::{PriceHistogramKind, TradingIndicatorKind},
+        column_names::DataProviderColumnKind, indicator::TradingIndicatorKind,
         trade_and_pre_trade::PreTradeDataKind,
     },
     trading_indicator::price_histogram::PriceHistogram,
@@ -77,9 +76,9 @@ impl PreTradeValuesCalculator {
         val: &TradingIndicatorKind,
     ) -> HashMap<TradingIndicatorKind, f64> {
         match val {
-            TradingIndicatorKind::Poc(_) => {
+            TradingIndicatorKind::Poc(ph) => {
                 let res = self.handle_price_histogram_indicator(val);
-                map.insert(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m), res);
+                map.insert(TradingIndicatorKind::Poc(*ph), res);
             }
             _ => panic!("Not yet implemented!"),
         };

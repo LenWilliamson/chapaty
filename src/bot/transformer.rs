@@ -125,6 +125,7 @@ impl Transformer {
     ) -> chapaty::types::DataFrameMap {
         match price_histogram {
             PriceHistogramKind::Tpo1m => self.get_tpo(df_map),
+            PriceHistogramKind::Tpo1h => self.get_tpo(df_map),
             PriceHistogramKind::VolAggTrades => self.compute_vol_agg_trades(df_map),
             PriceHistogramKind::VolTick => self.compute_vol_tick(df_map),
         }

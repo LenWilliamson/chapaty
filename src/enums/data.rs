@@ -97,16 +97,19 @@ impl From<TradingIndicatorKind> for HdbSourceDirKind {
         match value {
             TradingIndicatorKind::Poc(price_histogram) => match price_histogram {
                 PriceHistogramKind::Tpo1m => HdbSourceDirKind::Ohlc1m,
+                PriceHistogramKind::Tpo1h => HdbSourceDirKind::Ohlc1h,
                 PriceHistogramKind::VolAggTrades => HdbSourceDirKind::AggTrades,
                 PriceHistogramKind::VolTick => HdbSourceDirKind::Tick,
             },
             TradingIndicatorKind::VolumeAreaLow(price_histogram) => match price_histogram {
                 PriceHistogramKind::Tpo1m => HdbSourceDirKind::Ohlc1m,
+                PriceHistogramKind::Tpo1h => HdbSourceDirKind::Ohlc1h,
                 PriceHistogramKind::VolAggTrades => HdbSourceDirKind::AggTrades,
                 PriceHistogramKind::VolTick => HdbSourceDirKind::Tick,
             },
             TradingIndicatorKind::VolumeAreaHigh(price_histogram) => match price_histogram {
                 PriceHistogramKind::Tpo1m => HdbSourceDirKind::Ohlc1m,
+                PriceHistogramKind::Tpo1h => HdbSourceDirKind::Ohlc1h,
                 PriceHistogramKind::VolAggTrades => HdbSourceDirKind::AggTrades,
                 PriceHistogramKind::VolTick => HdbSourceDirKind::Tick,
             },
