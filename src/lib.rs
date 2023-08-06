@@ -24,7 +24,6 @@ pub use enums::{
 
 /*
 - DP rausnehmen und stattdessen let idx = self.df.find_idx_by_name(&col_name_low);
-- Volume Area LOW / HIGH berechnen und dann SL/TP Kriterien erweitern
 - PPP Entry flexibel setzen, am besten über Struct
 - Initial Balance von Trade Day bekommen
 - PPP / Strategy Trait aufrümen

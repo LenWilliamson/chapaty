@@ -33,6 +33,10 @@ pub enum StopLossKind {
     PrevLow,
     #[strum(serialize = "PrevHigh")]
     PrevHigh,
+    #[strum(serialize = "ValueAreaHigh")]
+    ValueAreaHigh,
+    #[strum(serialize = "ValueAreaLow")]
+    ValueAreaLow,
 }
 
 #[derive(Debug, Copy, Clone, EnumString)]
@@ -45,4 +49,8 @@ pub enum TakeProfitKind {
     PrevLow,
     #[strum(serialize = "PrevHigh")]
     PrevHigh,
+    #[strum(serialize = "ValueAreaHigh")]
+    ValueAreaHigh,
+    #[strum(serialize = "ValueAreaLow")]
+    ValueAreaLow,
 }

@@ -41,24 +41,24 @@ impl FileNameResolver {
     fn trading_indicator_from_tick_data(&self) -> String {
         match self.indicator_data_pair.clone().unwrap().indicator {
             TradingIndicatorKind::Poc(_)
-            | TradingIndicatorKind::VolumeAreaHigh(_)
-            | TradingIndicatorKind::VolumeAreaLow(_) => format!("vol-tick"),
+            | TradingIndicatorKind::ValueAreaHigh(_)
+            | TradingIndicatorKind::ValueAreaLow(_) => format!("vol-tick"),
         }
     }
 
     fn trading_indicator_from_agg_trades_data(&self) -> String {
         match self.indicator_data_pair.clone().unwrap().indicator {
             TradingIndicatorKind::Poc(_)
-            | TradingIndicatorKind::VolumeAreaHigh(_)
-            | TradingIndicatorKind::VolumeAreaLow(_) => format!("vol-aggTrades"),
+            | TradingIndicatorKind::ValueAreaHigh(_)
+            | TradingIndicatorKind::ValueAreaLow(_) => format!("vol-aggTrades"),
         }
     }
 
     fn trading_indicator_from_ohlc_variant(&self, ohlc_variant: &HdbSourceDirKind) -> String {
         match self.indicator_data_pair.clone().unwrap().indicator {
             TradingIndicatorKind::Poc(_)
-            | TradingIndicatorKind::VolumeAreaHigh(_)
-            | TradingIndicatorKind::VolumeAreaLow(_) => {
+            | TradingIndicatorKind::ValueAreaHigh(_)
+            | TradingIndicatorKind::ValueAreaLow(_) => {
                 format!("tpo-{}", ohlc_variant.split_ohlc_dir_in_parts().1)
             }
         }

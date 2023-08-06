@@ -293,11 +293,13 @@ impl ValueAreaPart {
         price_histogram: &DataFrame,
         part: ValueAreaPart,
     ) -> Option<Self> {
-        let next_but_one_row = self.get_next_but_one_row_index();
-        price_histogram.get(next_but_one_row).map_or_else(
-            || Some(part),
-            |row| part.then_update_value_area_part_with_row(row),
-        )
+        let next_but_one_row_index = self.get_next_but_one_row_index();
+        next_but_one_row_index.and_then(|next_but_one_row| {
+            price_histogram.get(next_but_one_row).map_or_else(
+                || Some(part),
+                |row| part.then_update_value_area_part_with_row(row),
+            )
+        })
     }
 
     fn get_next_row_index(&self) -> Option<usize> {
@@ -313,10 +315,16 @@ impl ValueAreaPart {
         }
     }
 
-    fn get_next_but_one_row_index(&self) -> usize {
+    fn get_next_but_one_row_index(&self) -> Option<usize> {
         match self.value_area_kind {
-            ValueAreaKind::High => (self.row_idx + 2) as usize,
-            ValueAreaKind::Low => (self.row_idx - 2) as usize,
+            ValueAreaKind::High => self
+                .row_idx
+                .checked_add(2)
+                .and_then(|res| Some(res as usize)),
+            ValueAreaKind::Low => self
+                .row_idx
+                .checked_sub(2)
+                .and_then(|res| Some(res as usize)),
         }
     }
 }
@@ -552,6 +560,6 @@ mod tests {
             "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
         )
         .await;
-        assert_eq!((1.15195,1.15845), PriceHistogram { df }.value_area(0.68))
+        assert_eq!((1.15195, 1.15845), PriceHistogram { df }.value_area(0.68))
     }
 }

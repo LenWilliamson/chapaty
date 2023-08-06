@@ -112,8 +112,8 @@ impl Transformer {
     ) -> chapaty::types::DataFrameMap {
         match trading_indicator {
             TradingIndicatorKind::Poc(ph)
-            | TradingIndicatorKind::VolumeAreaLow(ph)
-            | TradingIndicatorKind::VolumeAreaHigh(ph) => self.handle_price_histogram(ph, df_map),
+            | TradingIndicatorKind::ValueAreaLow(ph)
+            | TradingIndicatorKind::ValueAreaHigh(ph) => self.handle_price_histogram(ph, df_map),
         }
     }
 

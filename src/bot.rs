@@ -327,8 +327,8 @@ mod test {
             TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
             TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
             TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
-            TradingIndicatorKind::VolumeAreaHigh(PriceHistogramKind::VolTick),
-            TradingIndicatorKind::VolumeAreaLow(PriceHistogramKind::VolAggTrades),
+            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
+            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
         ];
         mock_strategy
             .expect_register_trading_indicators()
@@ -354,11 +354,11 @@ mod test {
                 HdbSourceDirKind::Ohlc1m,
             ),
             IndicatorDataPair::new(
-                TradingIndicatorKind::VolumeAreaHigh(PriceHistogramKind::VolTick),
+                TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
                 HdbSourceDirKind::Tick,
             ),
             IndicatorDataPair::new(
-                TradingIndicatorKind::VolumeAreaLow(PriceHistogramKind::VolAggTrades),
+                TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
                 HdbSourceDirKind::AggTrades,
             ),
         ]);

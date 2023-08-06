@@ -56,7 +56,7 @@ impl PreTradeValuesCalculator {
             PreTradeDataKind::HighestTradePrice => {
                 let res = self.compute_highest_trade_price();
                 map.insert(PreTradeDataKind::HighestTradePrice, res);
-            } // _ => panic!("Not yet implemented!"),
+            }
         };
 
         map
@@ -77,16 +77,19 @@ impl PreTradeValuesCalculator {
     ) -> HashMap<TradingIndicatorKind, f64> {
         match val {
             TradingIndicatorKind::Poc(ph) => {
-                let res = self.handle_price_histogram_indicator(val);
-                map.insert(TradingIndicatorKind::Poc(*ph), res);
+                map.insert(TradingIndicatorKind::Poc(*ph), self.get_poc(val));
             }
-            _ => panic!("Not yet implemented!"),
+            TradingIndicatorKind::ValueAreaHigh(ph) | TradingIndicatorKind::ValueAreaLow(ph) => {
+                let (value_area_low, value_area_high) = self.get_value_area(val);
+                map.insert(TradingIndicatorKind::ValueAreaHigh(*ph), value_area_low);
+                map.insert(TradingIndicatorKind::ValueAreaLow(*ph), value_area_high);
+            }
         };
 
         map
     }
 
-    fn handle_price_histogram_indicator(&self, indicator: &TradingIndicatorKind) -> f64 {
+    fn get_poc(&self, indicator: &TradingIndicatorKind) -> f64 {
         let df = self
             .pre_trade_data
             .indicators
@@ -94,14 +97,18 @@ impl PreTradeValuesCalculator {
             .unwrap()
             .clone();
         let ph = PriceHistogram::new(df);
+        ph.poc()
+    }
 
-        match indicator {
-            TradingIndicatorKind::Poc(_) => ph.poc(),
-            _ => {
-                ph.value_area(0.3);
-                panic!("Not yet implemented!")
-            }
-        }
+    fn get_value_area(&self, indicator: &TradingIndicatorKind) -> (f64, f64) {
+        let df = self
+            .pre_trade_data
+            .indicators
+            .get(&indicator)
+            .unwrap()
+            .clone();
+        let ph = PriceHistogram::new(df);
+        ph.value_area(0.63)
     }
 
     fn compute_last_trade_price(&self) -> f64 {
