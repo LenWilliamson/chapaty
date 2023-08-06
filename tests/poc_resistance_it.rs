@@ -46,7 +46,7 @@ async fn it_test() {
     let _ = bot.backtest().await;
 
     let duration = start.elapsed();
-    println!("Time elapsed in streams::chapaty::backtest() is: {duration:?}");
+    println!("Time elapsed is: {duration:?}");
 
     assert_eq!(0, 0);
 }

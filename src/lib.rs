@@ -23,12 +23,14 @@ pub use enums::{
 };
 
 /*
+- DP rausnehmen und stattdessen let idx = self.df.find_idx_by_name(&col_name_low);
 - Volume Area LOW / HIGH berechnen und dann SL/TP Kriterien erweitern
 - PPP Entry flexibel setzen, am besten über Struct
+- Initial Balance von Trade Day bekommen
 - PPP / Strategy Trait aufrümen
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Offset in Dollar angeben und dann umrechnen
-- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets & make parallel
+- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets & make parallel &&&
 - Time Frames umsetzen
 - StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
 - Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
@@ -39,5 +41,4 @@ pub use enums::{
     - Bei TP/SL PrevMax ist number timeout winner größer als number winner
 - Warum ist die PnL eine andere, wenn man die Daten direkt lädt
 - Was ist bei zwei POC's? -> Aktuell der kleinere (performt besser) aber flexibel setzen lassen können
-- Volumen Profil Auch angeben wie man rundne soll VolumenProfile(Precision::{Genau, 1EUR, 10EUR, usw})
 */

@@ -340,7 +340,7 @@ fn handle_google_cloud_error(error: Error, file: String, bucket: &str) -> Chapat
         if is_file_not_found_error(e) {
             return ChapatyErrorKind::FileNotFound(format!(
                 "{file} not found in cloud storage bucket <{bucket}>"
-            ));
+            ))
         }
     }
     ChapatyErrorKind::UnknownGoogleCloudStorageError(error.to_string())

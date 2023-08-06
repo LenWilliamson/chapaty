@@ -98,7 +98,7 @@ impl PreTradeValuesCalculator {
         match indicator {
             TradingIndicatorKind::Poc(_) => ph.poc(),
             _ => {
-                ph.volume_area(0.3);
+                ph.value_area(0.3);
                 panic!("Not yet implemented!")
             }
         }

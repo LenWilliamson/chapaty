@@ -2,7 +2,7 @@ use super::closures::{get_cw_from_ts, get_weekday_from_ts};
 use crate::{
     bot::time_interval::{InInterval, TimeInterval},
     converter::any_value::AnyValueConverter,
-    data_frame_operations::is_not_an_empty_frame,
+    data_frame_operations::trait_extensions::MyDataFrameOperations,
     enums::{bot::TimeFrameKind, column_names::DataProviderColumnKind},
 };
 use polars::{
@@ -26,6 +26,7 @@ pub trait MyLazyFrameOperations {
     fn drop_rows_before_entry_ts(self, entry_ts: i64) -> Self;
     fn filter_trade_data_kind_values(self) -> Self;
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64>;
+    fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
@@ -121,11 +122,18 @@ impl MyLazyFrameOperations for LazyFrame {
 
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64> {
         let df = self.filter_ts_col_by_price(px).first().collect().unwrap();
-        if is_not_an_empty_frame(&df) {
+        if df.is_not_an_empty_frame() {
             Some(df.get(0).unwrap()[0].unwrap_int64())
         } else {
             None
         }
+    }
+
+    fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame {
+        self.filter(col("px").eq(lit(poc)))
+            .select(&[col("*")])
+            .collect()
+            .unwrap()
     }
 }
 

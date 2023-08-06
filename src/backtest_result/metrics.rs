@@ -57,7 +57,7 @@ fn get_number_of_trades_from_summary(df: DataFrame, trade: &str) -> u32 {
         .unwrap();
     let (rows, _) = trades.shape();
     if rows == 0 {
-        return 0;
+        return 0
     }
     trades["counts"].get(0).unwrap().unwrap_uint32()
 }
@@ -81,7 +81,7 @@ pub fn total_number_trades(df: DataFrame) -> u32 {
 // Ratio Avg Win/Avg Lose = CRV
 pub fn avg_win_by_avg_loose(avg_win: f64, avg_loss: f64) -> f64 {
     if avg_loss == 0.0 {
-        return f64::INFINITY;
+        return f64::INFINITY
     }
     (avg_win / avg_loss).abs()
 }
@@ -98,7 +98,7 @@ pub fn avg_win(df: DataFrame) -> f64 {
         .unwrap();
 
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
 
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
@@ -114,7 +114,7 @@ pub fn avg_loss(df: DataFrame) -> f64 {
         .collect()
         .unwrap();
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
 }
@@ -130,7 +130,7 @@ pub fn total_win(df: DataFrame) -> f64 {
         .unwrap();
 
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
 
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
@@ -147,7 +147,7 @@ pub fn total_loss(df: DataFrame) -> f64 {
         .unwrap();
 
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
 
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
@@ -172,7 +172,7 @@ pub fn timeout_win(df: DataFrame) -> f64 {
         .unwrap();
 
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
 
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
@@ -197,7 +197,7 @@ pub fn timeout_loss(df: DataFrame) -> f64 {
         .unwrap();
 
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
-        return 0.0;
+        return 0.0
     }
 
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()
@@ -205,7 +205,7 @@ pub fn timeout_loss(df: DataFrame) -> f64 {
 
 pub fn profit_factor(total_win: f64, total_loss: f64) -> f64 {
     if total_loss == 0.0 {
-        return f64::INFINITY;
+        return f64::INFINITY
     }
     (total_win / total_loss).abs()
 }
@@ -280,7 +280,7 @@ pub fn max_draw_down_abs(accumulated_profit: &Vec<f64>) -> f64 {
 pub fn max_draw_down_rel(accumulated_profit: &Vec<f64>) -> f64 {
     let (high, draw_down) = max_draw_down(accumulated_profit);
     if high == 0.0 {
-        return f64::INFINITY;
+        return f64::INFINITY
     }
     (high - draw_down) / high - 1_f64
 }

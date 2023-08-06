@@ -4,7 +4,6 @@ use super::{
 use crate::{
     chapaty,
     converter::any_value::AnyValueConverter,
-    data_frame_operations::is_not_an_empty_frame,
     enums::{
         bot::TimeFrameKind,
         data::HdbSourceDirKind,
@@ -15,7 +14,7 @@ use crate::{
     price_histogram::{
         agg_trades_volume::AggTradesVolume, tick_volume::volume_profile_by_tick_data,
         tpo::TpoBuilder,
-    },
+    }, data_frame_operations::trait_extensions::MyDataFrameOperations,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use std::{collections::HashMap, sync::Arc};
@@ -92,7 +91,7 @@ impl Transformer {
 
     fn populate_df_map(&self, dfs: Vec<DataFrame>) -> chapaty::types::DataFrameMap {
         dfs.into_iter().fold(HashMap::new(), |mut df_map, df| {
-            if is_not_an_empty_frame(&df) {
+            if df.is_not_an_empty_frame() {
                 self.insert_df_into_df_map(df, &mut df_map);
             }
             df_map

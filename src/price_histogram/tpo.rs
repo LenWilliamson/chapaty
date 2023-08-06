@@ -156,7 +156,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn test_tpo2_cme() {
+    async fn test_tpo_cme() {
         let df_ohlc_data = download_df(
             "chapaty-ai-hdb-test".to_string(),
             "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tpo2_binance() {
+    async fn test_tpo_binance() {
         let df_ohlc_data = download_df(
             "chapaty-ai-hdb-test".to_string(),
             "binance/ohlcv/ohlc_data_for_tpo_test.csv".to_string(),
