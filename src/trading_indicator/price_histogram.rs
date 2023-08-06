@@ -269,10 +269,12 @@ impl ValueAreaPart {
         if self.is_tail_reached {
             None
         } else {
-            let next_row = self.get_next_row_index();
-            price_histogram
-                .get(next_row)
-                .and_then(|row| self.then_update_value_area_part_with_row(row))
+            let next_row_index = self.get_next_row_index();
+            next_row_index.and_then(|next_row| {
+                price_histogram
+                    .get(next_row)
+                    .and_then(|row| self.then_update_value_area_part_with_row(row))
+            })
         }
     }
 
@@ -298,10 +300,16 @@ impl ValueAreaPart {
         )
     }
 
-    fn get_next_row_index(&self) -> usize {
+    fn get_next_row_index(&self) -> Option<usize> {
         match self.value_area_kind {
-            ValueAreaKind::High => (self.row_idx + 1) as usize,
-            ValueAreaKind::Low => (self.row_idx - 1) as usize,
+            ValueAreaKind::High => self
+                .row_idx
+                .checked_add(1)
+                .and_then(|res| Some(res as usize)),
+            ValueAreaKind::Low => self
+                .row_idx
+                .checked_sub(1)
+                .and_then(|res| Some(res as usize)),
         }
     }
 
@@ -535,5 +543,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!((5080.0, 5160.0), PriceHistogram { df }.value_area(0.68));
+    }
+
+    #[tokio::test]
+    async fn test_compute_value_area_from_test_file() {
+        let df = download_df(
+            "chapaty-ai-test".to_string(),
+            "ppp/_test_data_files/target_ohlc_tpo_for_tpo_test.csv".to_string(),
+        )
+        .await;
+        assert_eq!((1.15195,1.15845), PriceHistogram { df }.value_area(0.68))
     }
 }
