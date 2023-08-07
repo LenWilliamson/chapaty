@@ -23,16 +23,16 @@ pub use enums::{
 };
 
 /*
-- DP rausnehmen und stattdessen let idx = self.df.find_idx_by_name(&col_name_low);
+- PPP / Strategy Trait aufrümen
 - PPP Entry flexibel setzen, am besten über Struct
 - Initial Balance von Trade Day bekommen
-- PPP / Strategy Trait aufrümen
-- Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Offset in Dollar angeben und dann umrechnen
-- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets & make parallel &&&
-- Time Frames umsetzen
 - StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
 - Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
+- Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
+- Time Frames umsetzen
+- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets & make parallel &&&
+- Fehler in PnL Berechnung fixen
 
 - Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
 - Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)

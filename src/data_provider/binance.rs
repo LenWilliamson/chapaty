@@ -25,12 +25,6 @@ impl Binance {
             producer_kind: DataProviderKind::Binance,
         }
     }
-}
-
-impl DataProvider for Binance {
-    fn get_data_producer_kind(&self) -> DataProviderKind {
-        self.producer_kind.clone()
-    }
 
     fn schema(&self, data: &HdbSourceDirKind) -> Schema {
         match data {
@@ -46,34 +40,14 @@ impl DataProvider for Binance {
             HdbSourceDirKind::AggTrades => aggtrades_schema(),
         }
     }
+}
 
-    fn column_name_as_int(&self, col: &DataProviderColumnKind) -> usize {
-        match col {
-            // OHLCV Column names
-            DataProviderColumnKind::OpenTime => 0,
-            DataProviderColumnKind::Open => 1,
-            DataProviderColumnKind::High => 2,
-            DataProviderColumnKind::Low => 3,
-            DataProviderColumnKind::Close => 4,
-            DataProviderColumnKind::Volume => 5,
-            DataProviderColumnKind::CloseTime => 6,
-            DataProviderColumnKind::QuoteAssetVol => 7,
-            DataProviderColumnKind::NumberOfTrades => 8,
-            DataProviderColumnKind::TakerBuyBaseAssetVol => 9,
-            DataProviderColumnKind::TakerBuyQuoteAssetVol => 10,
-            DataProviderColumnKind::Ignore => 11,
-
-            // AggTrades Column names
-            DataProviderColumnKind::AggTradeId => 0,
-            DataProviderColumnKind::Price => 1,
-            DataProviderColumnKind::Quantity => 2,
-            DataProviderColumnKind::FirstTradeId => 3,
-            DataProviderColumnKind::LastTradeId => 4,
-            DataProviderColumnKind::Timestamp => 5,
-            DataProviderColumnKind::BuyerEqualsMaker => 6,
-            DataProviderColumnKind::BestTradePriceMatch => 7,
-        }
+impl DataProvider for Binance {
+    fn get_data_producer_kind(&self) -> DataProviderKind {
+        self.producer_kind.clone()
     }
+
+
 
     fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
         CsvReader::new(Cursor::new(df_as_bytes))

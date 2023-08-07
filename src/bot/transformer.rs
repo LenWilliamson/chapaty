@@ -132,7 +132,6 @@ impl Transformer {
 
     fn get_tpo(&self, df_map: chapaty::types::DataFrameMap) -> chapaty::types::DataFrameMap {
         let tpo = TpoBuilder::new()
-            .with_data_provider(self.bot.data_provider.clone())
             .with_market(self.market)
             .build();
 

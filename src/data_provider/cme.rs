@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    enums::column_names::DataProviderColumnKind,
-    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
-};
+use crate::lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time};
 use chrono::Duration;
 use polars::{
     lazy::dsl::GetOutput,
@@ -18,10 +15,10 @@ impl FromStr for Cme {
     type Err = enums::error::ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Ninja" | "ninja" => Ok(Cme::new()),
-            _ => Err(Self::Err::ParseDataProducerError(
-                "Data Producer Does not Exists".to_string(),
-            )),
+            "CME" | "Cme" | "cme" => Ok(Cme::new()),
+            _ => Err(Self::Err::ParseDataProducerError(format!(
+                "Data Producer <{s}> does not Exists"
+            ))),
         }
     }
 }
@@ -33,14 +30,14 @@ impl Cme {
         }
     }
 
-    /// Returns a OHLC `DataFrame` from a raw data `.csv` file produced by the `Ninja` data profider
+    /// Returns a OHLC `DataFrame` from a raw data `.csv` file produced by the `cme` data profider
     ///
     /// # Arguments
     /// * `file` - path to the `.csv` file we want to load into a `DataFrame`
     /// * `kperiod` - duration of a candle **in minutes**
     ///
     /// # Example
-    /// Calling `transform_ninja_df` on the INPUT `.csv` with `kperiod = 60` results in OUTPUT. Note, the
+    /// Calling `transform_cme_df` on the INPUT `.csv` with `kperiod = 60` results in OUTPUT. Note, the
     /// INPUT `.csv` does not have any header. We simply put them in this example to clarify how INPUT and
     /// OUTPUT differ from each other.
     /// // INPUT:
@@ -57,7 +54,7 @@ impl Cme {
     /// id:     ots             ,open       ,high       ,low        ,close      ,cts
     /// row0:   1661990400000   ,1.0127     ,1.01295    ,1.01265    ,1.01275    ,1661990459999
     /// row1:   1661990460000   ,1.01275    ,1.0129     ,1.01275    ,1.01285    ,1661990519999
-    pub fn transform_ninja_df(&self, df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
+    pub fn transform_cme_df(&self, df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
         let schema = Schema::from_iter(
             vec![
                 Field::new("ots", DataType::Utf8),
@@ -75,11 +72,11 @@ impl Cme {
             .with_schema(Arc::new(schema))
             .finish()
             .unwrap();
-        ninja_raw_to_ohlc_df(df, kperiod)
+        cme_raw_to_ohlc_df(df, kperiod)
     }
 }
 
-fn ninja_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
+fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
     df.lazy()
         .with_columns(vec![
             col("ots").apply(
@@ -118,26 +115,6 @@ impl DataProvider for Cme {
         self.producer_kind.clone()
     }
 
-    fn schema(&self, data: &HdbSourceDirKind) -> Schema {
-        match data {
-            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlc1h => {
-                ohlc_schema()
-            }
-            _ => panic!("DataProvider <CME> only upports OHLC schema. No schema for <{data}>"),
-        }
-    }
-
-    fn column_name_as_int(&self, col: &DataProviderColumnKind) -> usize {
-        match col {
-            DataProviderColumnKind::OpenTime => 0,
-            DataProviderColumnKind::Open => 1,
-            DataProviderColumnKind::High => 2,
-            DataProviderColumnKind::Low => 3,
-            DataProviderColumnKind::Close => 4,
-            _ => panic!("DataProvider <CME> does not provide data with column {col}"),
-        }
-    }
-
     fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
         let offset = match data {
             HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
@@ -147,32 +124,8 @@ impl DataProvider for Cme {
                 "DataProvider <CME> can only compute offset for OHLC data. But not for {data}"
             ),
         };
-        self.transform_ninja_df(df_as_bytes, offset)
+        self.transform_cme_df(df_as_bytes, offset)
     }
-}
-
-/// Returns the OHLC `Schema` for `Ninja`
-fn ohlc_schema() -> Schema {
-    Schema::from_iter(
-        vec![
-            Field::new(
-                &DataProviderColumnKind::OpenTime.to_string(),
-                DataType::Int64,
-            ),
-            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
-            Field::new(
-                &DataProviderColumnKind::Close.to_string(),
-                DataType::Float64,
-            ),
-            Field::new(
-                &DataProviderColumnKind::CloseTime.to_string(),
-                DataType::Int64,
-            ),
-        ]
-        .into_iter(),
-    )
 }
 
 #[cfg(test)]
@@ -199,7 +152,7 @@ mod tests {
 
         let file = "cme/ohlc/6e-1m-2022-09-01.csv".to_string();
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
-        let result = cme.transform_ninja_df(df, 1);
+        let result = cme.transform_cme_df(df, 1);
 
         assert_eq!(target.unwrap().frame_equal(&result), true);
     }

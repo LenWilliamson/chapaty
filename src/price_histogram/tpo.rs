@@ -1,16 +1,14 @@
 use crate::{
     chapaty,
     converter::{any_value::AnyValueConverter, market_decimal_places::MyDecimalPlaces},
-    data_provider::DataProvider,
     enums::{column_names::DataProviderColumnKind, markets::MarketKind},
 };
 
-use polars::prelude::{col, df, AnyValue, DataFrame, IntoLazy, NamedFrom};
+use polars::prelude::{df, AnyValue, DataFrame, IntoLazy, NamedFrom};
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
-use std::{collections::HashMap, convert::identity, sync::Arc};
+use std::{collections::HashMap, convert::identity};
 
 pub struct Tpo {
-    data_provider: Arc<dyn DataProvider + Send + Sync>,
     market: MarketKind,
 }
 
@@ -26,11 +24,13 @@ impl Tpo {
     }
 
     fn tpo(&self, df: DataFrame) -> DataFrame {
-        let dp = self.data_provider.clone();
-
         // Get index of respective columns in `DataFrame`
-        let high_idx = dp.column_name_as_int(&DataProviderColumnKind::High);
-        let low_idx = dp.column_name_as_int(&DataProviderColumnKind::Low);
+        let high_idx = df
+            .find_idx_by_name(DataProviderColumnKind::High.to_string().as_str())
+            .unwrap();
+        let low_idx = df
+            .find_idx_by_name(DataProviderColumnKind::Low.to_string().as_str())
+            .unwrap();
 
         // Get a reference to the respective columns
         let highs = &df.get_columns()[high_idx];
@@ -51,12 +51,9 @@ impl Tpo {
         result
             .unwrap()
             .lazy()
-            .groupby([col("px")])
-            .agg([col("qx").sum()])
             .sort("px", Default::default())
             .collect()
             .unwrap()
-        // result.unwrap().sort(["px"], false, false).unwrap()
     }
 
     fn compute_tpo_for_interval<'a>(
@@ -74,7 +71,7 @@ impl Tpo {
         }
 
         // add possible last entry
-        tpos.entry(format!("{:.10}", x))
+        tpos.entry(self.create_key(x))
             .and_modify(|(_, qx)| *qx += 1.0)
             .or_insert((x.round_to_n_decimal_places(self.max_digits()), 1.0));
 
@@ -113,23 +110,12 @@ fn is_current_value_still_in_inteval(current: f64, upper_bound: f64) -> bool {
 
 #[derive(Clone)]
 pub struct TpoBuilder {
-    data_provider: Option<Arc<dyn DataProvider + Send + Sync>>,
     market: Option<MarketKind>,
 }
 
 impl TpoBuilder {
     pub fn new() -> Self {
-        Self {
-            data_provider: None,
-            market: None,
-        }
-    }
-
-    pub fn with_data_provider(self, data_provider: Arc<dyn DataProvider + Send + Sync>) -> Self {
-        Self {
-            data_provider: Some(data_provider),
-            ..self
-        }
+        Self { market: None }
     }
 
     pub fn with_market(self, market: MarketKind) -> Self {
@@ -141,7 +127,6 @@ impl TpoBuilder {
 
     pub fn build(self) -> Tpo {
         Tpo {
-            data_provider: self.data_provider.unwrap(),
             market: self.market.unwrap(),
         }
     }
@@ -150,10 +135,7 @@ impl TpoBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        cloud_api::api_for_unit_tests::download_df,
-        data_provider::cme::Cme,
-    };
+    use crate::cloud_api::api_for_unit_tests::download_df;
 
     #[tokio::test]
     async fn test_tpo_cme() {
@@ -170,7 +152,6 @@ mod tests {
         .await;
 
         let tpo = Tpo {
-            data_provider: Arc::new(Cme::new()),
             market: MarketKind::EurUsdFuture,
         };
         assert_eq!(target, tpo.tpo(df_ohlc_data))
@@ -191,7 +172,6 @@ mod tests {
         .await;
 
         let tpo = Tpo {
-            data_provider: Arc::new(Cme::new()),
             market: MarketKind::BtcUsdt,
         };
         assert_eq!(target, tpo.tpo(df_ohlc_data))

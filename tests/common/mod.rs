@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let mut strategy = Ppp::new();
     let sl = StopLoss {
-        condition: StopLossKind::ValueAreaHigh,
+        condition: StopLossKind::PrevHigh,
         offset: 0.0,
     };
     let tp = TakeProfit {
