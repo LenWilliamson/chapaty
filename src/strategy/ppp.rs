@@ -11,7 +11,7 @@ impl Ppp {
     pub fn new() -> Self {
         Ppp {
             stop_loss: StopLoss {
-                condition: StopLossKind::PrevLow, // is equivalent to previous max
+                condition: StopLossKind::PrevHighOrLow, // is equivalent to previous max
                 offset: 0.0,
             },
             take_profit: TakeProfit {
@@ -121,9 +121,7 @@ impl Strategy for Ppp {
                 StopLossKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) - self.stop_loss.offset
                 }
-                StopLossKind::PrevLow | StopLossKind::PrevHigh => {
-                    lowest_trade_price - self.stop_loss.offset
-                }
+                StopLossKind::PrevHighOrLow => lowest_trade_price - self.stop_loss.offset,
                 StopLossKind::ValueAreaLow | StopLossKind::ValueAreaHigh => {
                     value_area_low - self.stop_loss.offset
                 }
@@ -133,9 +131,7 @@ impl Strategy for Ppp {
                 StopLossKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) + self.stop_loss.offset
                 }
-                StopLossKind::PrevHigh | StopLossKind::PrevLow => {
-                    highest_trade_price + self.stop_loss.offset
-                }
+                StopLossKind::PrevHighOrLow => highest_trade_price + self.stop_loss.offset,
                 StopLossKind::ValueAreaHigh | StopLossKind::ValueAreaLow => {
                     value_area_high + self.stop_loss.offset
                 }
@@ -177,9 +173,7 @@ impl Strategy for Ppp {
                 TakeProfitKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) + self.take_profit.offset
                 }
-                TakeProfitKind::PrevHigh | TakeProfitKind::PrevLow => {
-                    highest_trad_price + self.stop_loss.offset
-                }
+                TakeProfitKind::PrevHighOrLow => highest_trad_price + self.stop_loss.offset,
                 TakeProfitKind::ValueAreaHigh | TakeProfitKind::ValueAreaLow => {
                     value_area_high + self.stop_loss.offset
                 }
@@ -190,9 +184,7 @@ impl Strategy for Ppp {
                 TakeProfitKind::PriceUponTradeEntry => {
                     self.get_entry_price(pre_trade_values) - self.take_profit.offset
                 }
-                TakeProfitKind::PrevLow | TakeProfitKind::PrevHigh => {
-                    lowest_trad_price - self.stop_loss.offset
-                }
+                TakeProfitKind::PrevHighOrLow => lowest_trad_price - self.stop_loss.offset,
                 TakeProfitKind::ValueAreaLow | TakeProfitKind::ValueAreaHigh => {
                     value_area_low - self.stop_loss.offset
                 }

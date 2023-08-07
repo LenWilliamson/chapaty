@@ -27,7 +27,6 @@ pub use enums::{
 - PPP Entry flexibel setzen, am besten über Struct
 - Initial Balance von Trade Day bekommen
 - Offset in Dollar angeben und dann umrechnen
-- StopLoss PrevHigh Namen verbessern, da verwirrend bzw. abgänig ob Long oder Short
 - Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Time Frames umsetzen

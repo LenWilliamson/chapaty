@@ -20,10 +20,8 @@ pub enum TimeFrameKind {
 pub enum StopLossKind {
     #[strum(serialize = "PriceUponTradeEntry")]
     PriceUponTradeEntry,
-    #[strum(serialize = "PrevLow")]
-    PrevLow,
-    #[strum(serialize = "PrevHigh")]
-    PrevHigh,
+    #[strum(serialize = "PrevHighOrLow")]
+    PrevHighOrLow,
     #[strum(serialize = "ValueAreaHigh")]
     ValueAreaHigh,
     #[strum(serialize = "ValueAreaLow")]
@@ -36,10 +34,8 @@ pub enum TakeProfitKind {
     PrevClose,
     #[strum(serialize = "PriceUponTradeEntry")]
     PriceUponTradeEntry,
-    #[strum(serialize = "PrevLow")]
-    PrevLow,
-    #[strum(serialize = "PrevHigh")]
-    PrevHigh,
+    #[strum(serialize = "PrevHighOrLow")]
+    PrevHighOrLow,
     #[strum(serialize = "ValueAreaHigh")]
     ValueAreaHigh,
     #[strum(serialize = "ValueAreaLow")]
