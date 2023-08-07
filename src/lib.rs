@@ -19,23 +19,26 @@ pub use bot::BotBuilder;
 pub use enums::{
     bot::{StopLossKind, TakeProfitKind, TimeFrameKind},
     data::MarketSimulationDataKind,
+    indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
 };
 
 /*
-- PPP Entry flexibel setzen, am besten über Struct
-- Initial Balance von Trade Day bekommen
+- Funktionen in PPP struct verbessern
 - Offset in Dollar angeben und dann umrechnen
 - Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
+- Initial Balance von Trade Day bekommen
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Time Frames umsetzen
 - bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets & make parallel &&&
-- Fehler in PnL Berechnung fixen
+- Fehler in PnL Berechnung fixen (Wann ist TradeDirection::None)
+- Warum ist die PnL eine andere, wenn man die Daten direkt lädt
 
 - Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
 - Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)
     - CRV NULL wenn PrevHigh -0.002 bei 6E => Was passiert wenn SL unterhalb//oberhalb des Entry?
     - Bei TP/SL PrevMax ist number timeout winner größer als number winner
-- Warum ist die PnL eine andere, wenn man die Daten direkt lädt
+
+- Better error handling when using PreTradeValues which were not registered in Strategy::get_required_pre_trade_vales
 - Was ist bei zwei POC's? -> Aktuell der kleinere (performt besser) aber flexibel setzen lassen können
 */

@@ -4,31 +4,55 @@ use crate::enums::indicator::PriceHistogramKind;
 pub struct Ppp {
     stop_loss: StopLoss,
     take_profit: TakeProfit,
-    strategy_name: String,
+    entry: TradingIndicatorKind,
+}
+
+pub struct PppBuilder {
+    stop_loss: Option<StopLoss>,
+    take_profit: Option<TakeProfit>,
+    entry: Option<TradingIndicatorKind>,
+}
+
+impl PppBuilder {
+    pub fn new() -> Self {
+        Self {
+            stop_loss: None,
+            take_profit: None,
+            entry: None,
+        }
+    }
+
+    pub fn with_stop_loss(self, stop_loss: StopLoss) -> Self {
+        Self {
+            stop_loss: Some(stop_loss),
+            ..self
+        }
+    }
+
+    pub fn with_take_profit(self, take_profit: TakeProfit) -> Self {
+        Self {
+            take_profit: Some(take_profit),
+            ..self
+        }
+    }
+
+    pub fn with_entry(self, entry: TradingIndicatorKind) -> Self {
+        Self {
+            entry: Some(entry),
+            ..self
+        }
+    }
+
+    pub fn build(self) -> Ppp {
+        Ppp {
+            stop_loss: self.stop_loss.unwrap(),
+            take_profit: self.take_profit.unwrap(),
+            entry: self.entry.unwrap(),
+        }
+    }
 }
 
 impl Ppp {
-    pub fn new() -> Self {
-        Ppp {
-            stop_loss: StopLoss {
-                condition: StopLossKind::PrevHighOrLow, // is equivalent to previous max
-                offset: 0.0,
-            },
-            take_profit: TakeProfit {
-                condition: TakeProfitKind::PrevClose,
-                offset: 0.0,
-            },
-            strategy_name: "ppp".to_string(),
-        }
-    }
-    pub fn set_stop_loss(&mut self, sl: StopLoss) {
-        self.stop_loss = sl;
-    }
-
-    pub fn set_take_profit(&mut self, tp: TakeProfit) {
-        self.take_profit = tp;
-    }
-
     fn get_sl_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
         let pre_trade_data = pre_trade_values.market_valeus.clone();
         let lowest_trade_price = *pre_trade_data
@@ -124,18 +148,18 @@ impl Ppp {
             },
 
             TradeDirectionKind::None => {
-                dbg!("Cannot compute stop-loss condition for TradeDirection::None");
+                dbg!("Cannot compute take-profit condition for TradeDirection::None");
                 -1.0
             }
         }
     }
 }
 
-impl FromStr for Ppp {
+impl FromStr for PppBuilder {
     type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "PPP" | "Ppp" | "ppp" => Ok(Ppp::new()),
+            "PPP" | "Ppp" | "ppp" => Ok(PppBuilder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
                 "This strategy <{s}> does not exist"
             ))),
@@ -171,10 +195,7 @@ impl Strategy for Ppp {
     }
 
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
-        let trading_indicators_map = pre_trade_values.indicator_values.clone();
-        *trading_indicators_map
-            .get(&TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
-            .unwrap()
+        *pre_trade_values.indicator_values.get(&self.entry).unwrap()
     }
 
     /// This function determines the `TradeKind` based on the entry price and last traded price.
@@ -201,7 +222,7 @@ impl Strategy for Ppp {
     }
 
     fn get_name(&self) -> String {
-        self.strategy_name.to_lowercase()
+        "ppp".to_string()
     }
 }
 
@@ -225,7 +246,19 @@ mod tests {
     /// is computed correctly.
     #[tokio::test]
     async fn test_get_trade_kind() {
-        let strategy = Ppp::new();
+        let sl = StopLoss {
+            condition: StopLossKind::PrevHighOrLow, // is equivalent to previous max
+            offset: 0.0,
+        };
+        let tp = TakeProfit {
+            condition: TakeProfitKind::PrevClose,
+            offset: 0.0,
+        };
+        let strategy = PppBuilder::new()
+            .with_stop_loss(sl)
+            .with_take_profit(tp)
+            .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+            .build();
         let poc = 100.0;
 
         let mut trading_indicators = HashMap::new();

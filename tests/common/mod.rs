@@ -1,19 +1,19 @@
 use chapaty::{
     data_provider::{cme::Cme, DataProvider},
-    strategy::{ppp::Ppp, StopLoss, Strategy, TakeProfit},
-    StopLossKind, TakeProfitKind, TimeInterval,
+    strategy::{ppp::PppBuilder, StopLoss, Strategy, TakeProfit},
+    PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind,
 };
 use std::sync::Arc;
 
 pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
-    let mut strategy = Ppp::new();
+    let ppp_builder = PppBuilder::new();
     let sl = StopLoss {
         condition: StopLossKind::PrevHighOrLow,
         offset: 0.0,
     };
     let tp = TakeProfit {
         condition: TakeProfitKind::PrevClose,
-        offset: 0.0
+        offset: 0.0,
     };
     // let sl = StopLoss {
     //     condition: StopLossKind::PrevLow, // MAIN
@@ -23,9 +23,12 @@ pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
     //     condition: TakeProfitKind::PrevClose, // MAIN
     //     offset: 0.00005 * 20.0,               // MAIN
     // };
-    strategy.set_stop_loss(sl);
-    strategy.set_take_profit(tp);
 
+    let strategy = ppp_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .build();
     Arc::new(strategy)
 }
 
