@@ -21,82 +21,15 @@ impl Ppp {
             strategy_name: "ppp".to_string(),
         }
     }
-}
-
-impl FromStr for Ppp {
-    type Err = ChapatyErrorKind;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Ppp" => Ok(Ppp::new()),
-            _ => Err(Self::Err::ParseBotError(
-                "This bot does currently not exist".to_string(),
-            )),
-        }
-    }
-}
-
-impl Strategy for Ppp {
-    fn set_stop_loss(&mut self, sl: StopLoss) {
+    pub fn set_stop_loss(&mut self, sl: StopLoss) {
         self.stop_loss = sl;
     }
 
-    fn set_take_profit(&mut self, tp: TakeProfit) {
+    pub fn set_take_profit(&mut self, tp: TakeProfit) {
         self.take_profit = tp;
     }
 
-    fn register_trading_indicators(&self) -> Vec<TradingIndicatorKind> {
-        vec![
-            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
-            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
-            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
-        ]
-    }
-
-    fn get_trade(&self, pre_trade_values: &PreTradeValues) -> Trade {
-        Trade {
-            entry_price: self.get_entry_price(pre_trade_values),
-            stop_loss: self.get_sl_price(pre_trade_values),
-            take_profit: self.get_tp_price(pre_trade_values),
-            trade_kind: self.get_trade_kind(pre_trade_values),
-        }
-    }
-
-    fn required_pre_trade_data(&self) -> Vec<PreTradeDataKind> {
-        vec![
-            PreTradeDataKind::LastTradePrice,
-            PreTradeDataKind::LowestTradePrice,
-            PreTradeDataKind::HighestTradePrice,
-        ]
-    }
-
-    fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
-        let trading_indicators_map = pre_trade_values.indicator_values.clone();
-        *trading_indicators_map
-            .get(&TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
-            .unwrap()
-    }
-
-    /// This function determines the `TradeKind` based on the entry price and last traded price.
-    /// * `Short` - last traded price < entry price
-    /// * `Long` - last traded price > entry price
-    /// * `None` - last traded price = poc
-    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeDirectionKind {
-        let pre_trade_data_map = pre_trade_values.market_valeus.clone();
-        let last_trade_price = *pre_trade_data_map
-            .get(&PreTradeDataKind::LastTradePrice)
-            .unwrap();
-        let entry_price = self.get_entry_price(pre_trade_values);
-
-        if last_trade_price < entry_price {
-            TradeDirectionKind::Short
-        } else if last_trade_price > entry_price {
-            TradeDirectionKind::Long
-        } else {
-            TradeDirectionKind::None
-        }
-    }
-
-    fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
+    fn get_sl_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
         let pre_trade_data = pre_trade_values.market_valeus.clone();
         let lowest_trade_price = *pre_trade_data
             .get(&PreTradeDataKind::LowestTradePrice)
@@ -144,7 +77,7 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_tp_price(&self, pre_trade_values: &PreTradeValues) -> f64 {
+    fn get_tp_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
         let pre_trade_data = pre_trade_values.market_valeus.clone();
         let lst_trade_price = *pre_trade_data
             .get(&PreTradeDataKind::LastTradePrice)
@@ -196,8 +129,78 @@ impl Strategy for Ppp {
             }
         }
     }
+}
 
-    fn get_strategy_name(&self) -> String {
+impl FromStr for Ppp {
+    type Err = ChapatyErrorKind;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "PPP" | "Ppp" | "ppp" => Ok(Ppp::new()),
+            _ => Err(Self::Err::ParseBotError(format!(
+                "This strategy <{s}> does not exist"
+            ))),
+        }
+    }
+}
+
+impl Strategy for Ppp {
+    fn get_trade(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Trade {
+        Trade {
+            entry_price: self.get_entry_price(pre_trade_values),
+            stop_loss: self.get_sl_price(pre_trade_values),
+            take_profit: self.get_tp_price(pre_trade_values),
+            trade_kind: self.get_trade_kind(pre_trade_values),
+        }
+    }
+
+    fn get_required_pre_trade_vales(&self) -> RequriedPreTradeValues {
+        let market_values = vec![
+            PreTradeDataKind::LastTradePrice,
+            PreTradeDataKind::LowestTradePrice,
+            PreTradeDataKind::HighestTradePrice,
+        ];
+        let trading_indicators = vec![
+            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
+        ];
+        RequriedPreTradeValues {
+            market_values,
+            trading_indicators,
+        }
+    }
+
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+        let trading_indicators_map = pre_trade_values.indicator_values.clone();
+        *trading_indicators_map
+            .get(&TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+            .unwrap()
+    }
+
+    /// This function determines the `TradeKind` based on the entry price and last traded price.
+    /// * `Short` - last traded price < entry price
+    /// * `Long` - last traded price > entry price
+    /// * `None` - last traded price = poc
+    fn get_trade_kind(
+        &self,
+        pre_trade_values: &RequiredPreTradeValuesWithData,
+    ) -> TradeDirectionKind {
+        let pre_trade_data_map = pre_trade_values.market_valeus.clone();
+        let last_trade_price = *pre_trade_data_map
+            .get(&PreTradeDataKind::LastTradePrice)
+            .unwrap();
+        let entry_price = self.get_entry_price(pre_trade_values);
+
+        if last_trade_price < entry_price {
+            TradeDirectionKind::Short
+        } else if last_trade_price > entry_price {
+            TradeDirectionKind::Long
+        } else {
+            TradeDirectionKind::None
+        }
+    }
+
+    fn get_name(&self) -> String {
         self.strategy_name.to_lowercase()
     }
 }
@@ -206,7 +209,7 @@ impl Strategy for Ppp {
 mod tests {
     use super::*;
     use crate::{
-        calculator::pre_trade_values_calculator::PreTradeValues,
+        calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
         enums::{
             indicator::{PriceHistogramKind, TradingIndicatorKind},
             trade_and_pre_trade::TradeDirectionKind,
@@ -231,7 +234,7 @@ mod tests {
         let mut pre_trade_data_map = HashMap::new();
         pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 99.0);
 
-        let mut pre_trade_values = PreTradeValues {
+        let mut pre_trade_values = RequiredPreTradeValuesWithData {
             indicator_values: trading_indicators,
             market_valeus: pre_trade_data_map,
         };

@@ -251,7 +251,7 @@ impl TradingSessionBuilder {
 
         let path_finder = PathFinderBuilder::new()
             .with_data_provider(bot.data_provider.get_data_producer_kind())
-            .with_strategy_name(bot.strategy.get_strategy_name())
+            .with_strategy_name(bot.strategy.get_name())
             .with_market(market)
             .with_year(year)
             .with_time_interval(bot.time_interval)
@@ -357,7 +357,7 @@ mod test {
         config,
         data_provider::binance::Binance,
         enums::indicator::PriceHistogramKind,
-        strategy::MockStrategy,
+        strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder, MarketSimulationDataKind, TimeInterval,
     };
     use std::sync::Arc;
@@ -366,13 +366,15 @@ mod test {
     async fn test_populate_daily_trading_session_data() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
-        let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators,
+        };
         mock_strategy
-            .expect_register_trading_indicators()
-            .return_const(trading_indicator.clone());
-        mock_strategy
-            .expect_get_strategy_name()
-            .return_const("ppp");
+            .expect_get_required_pre_trade_vales()
+            .return_const(required_pre_trade_values.clone());
+        mock_strategy.expect_get_name().return_const("ppp");
         let data_provider = Arc::new(Binance::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -559,7 +561,9 @@ mod test {
         let target = download_df_map(path.to_string()).await;
         assert_eq!(
             &target,
-            trading_indicators.get(&trading_indicator[0]).unwrap()
+            trading_indicators
+                .get(&required_pre_trade_values.trading_indicators[0])
+                .unwrap()
         );
     }
 
@@ -567,13 +571,15 @@ mod test {
     async fn test_populate_weekly_trading_session_data() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
-        let trading_indicator = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators,
+        };
         mock_strategy
-            .expect_register_trading_indicators()
-            .return_const(trading_indicator.clone());
-        mock_strategy
-            .expect_get_strategy_name()
-            .return_const("ppp");
+            .expect_get_required_pre_trade_vales()
+            .return_const(required_pre_trade_values.clone());
+        mock_strategy.expect_get_name().return_const("ppp");
         let data_provider = Arc::new(Binance::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -642,7 +648,9 @@ mod test {
         let target = download_df_map(path.to_string()).await;
         assert_eq!(
             &target,
-            trading_indicators.get(&trading_indicator[0]).unwrap()
+            trading_indicators
+                .get(&required_pre_trade_values.trading_indicators[0])
+                .unwrap()
         );
     }
 }

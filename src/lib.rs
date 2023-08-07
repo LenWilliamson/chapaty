@@ -23,7 +23,6 @@ pub use enums::{
 };
 
 /*
-- PPP / Strategy Trait aufrümen
 - PPP Entry flexibel setzen, am besten über Struct
 - Initial Balance von Trade Day bekommen
 - Offset in Dollar angeben und dann umrechnen

@@ -6,33 +6,34 @@ use crate::{
         column_names::DataProviderColumnKind, indicator::TradingIndicatorKind,
         trade_and_pre_trade::PreTradeDataKind,
     },
+    strategy::RequriedPreTradeValues,
     trading_indicator::price_histogram::PriceHistogram,
 };
 use polars::prelude::{col, IntoLazy};
 use std::collections::HashMap;
 
 #[derive(Clone)]
-pub struct PreTradeValues {
+pub struct RequiredPreTradeValuesWithData {
     pub market_valeus: HashMap<PreTradeDataKind, f64>,
     pub indicator_values: HashMap<TradingIndicatorKind, f64>,
 }
 
 pub struct PreTradeValuesCalculator {
     pre_trade_data: PreTradeData,
-    required_market_sim_values: Vec<PreTradeDataKind>,
-    required_indicator_values: Vec<TradingIndicatorKind>,
+    required_pre_trade_values: RequriedPreTradeValues,
 }
 
 impl PreTradeValuesCalculator {
-    pub fn compute(&self) -> PreTradeValues {
-        PreTradeValues {
+    pub fn compute(&self) -> RequiredPreTradeValuesWithData {
+        RequiredPreTradeValuesWithData {
             market_valeus: self.compute_market_values(),
             indicator_values: self.compute_indicator_values(),
         }
     }
 
     fn compute_market_values(&self) -> HashMap<PreTradeDataKind, f64> {
-        self.required_market_sim_values
+        self.required_pre_trade_values
+            .market_values
             .iter()
             .fold(HashMap::new(), |acc, val| {
                 self.update_market_value_map(acc, val)
@@ -63,7 +64,8 @@ impl PreTradeValuesCalculator {
     }
 
     fn compute_indicator_values(&self) -> HashMap<TradingIndicatorKind, f64> {
-        self.required_indicator_values
+        self.required_pre_trade_values
+            .trading_indicators
             .iter()
             .fold(HashMap::new(), |acc, val| {
                 self.update_indicator_value_map(acc, val)
@@ -148,38 +150,25 @@ impl PreTradeValuesCalculator {
 pub struct PreTradeValuesCalculatorBuilder {
     pre_trade_data: Option<PreTradeData>,
 
-    required_market_sim_values: Option<Vec<PreTradeDataKind>>,
-    required_indicator_values: Option<Vec<TradingIndicatorKind>>,
+    required_pre_trade_values: Option<RequriedPreTradeValues>,
 }
 
 impl From<&PnLReportDataRowCalculator> for PreTradeValuesCalculatorBuilder {
     fn from(value: &PnLReportDataRowCalculator) -> Self {
         Self {
             pre_trade_data: Some(value.pre_trade_data.clone()),
-
-            required_market_sim_values: None,
-            required_indicator_values: None,
+            required_pre_trade_values: None,
         }
     }
 }
 
 impl PreTradeValuesCalculatorBuilder {
-    pub fn with_required_market_sim_values(
+    pub fn with_required_pre_trade_values(
         self,
-        required_market_sim_values: Vec<PreTradeDataKind>,
+        required_pre_trade_values: RequriedPreTradeValues,
     ) -> Self {
         Self {
-            required_market_sim_values: Some(required_market_sim_values),
-            ..self
-        }
-    }
-
-    pub fn with_required_indicator_values(
-        self,
-        required_indicator_values: Vec<TradingIndicatorKind>,
-    ) -> Self {
-        Self {
-            required_indicator_values: Some(required_indicator_values),
+            required_pre_trade_values: Some(required_pre_trade_values),
             ..self
         }
     }
@@ -187,13 +176,11 @@ impl PreTradeValuesCalculatorBuilder {
     pub fn build(self) -> PreTradeValuesCalculator {
         PreTradeValuesCalculator {
             pre_trade_data: self.pre_trade_data.unwrap(),
-
-            required_market_sim_values: self.required_market_sim_values.unwrap(),
-            required_indicator_values: self.required_indicator_values.unwrap(),
+            required_pre_trade_values: self.required_pre_trade_values.unwrap(),
         }
     }
 
-    pub fn build_and_compute(self) -> PreTradeValues {
+    pub fn build_and_compute(self) -> RequiredPreTradeValuesWithData {
         self.build().compute()
     }
 }
@@ -214,15 +201,20 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
+        
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),
         };
 
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators: Vec::new(),
+        };
+
         let caclulator = PreTradeValuesCalculator {
             pre_trade_data,
-            required_indicator_values: Vec::new(),
-            required_market_sim_values: Vec::new(),
+            required_pre_trade_values,
         };
 
         assert_eq!(43_578.87, caclulator.compute_last_trade_price());
@@ -235,19 +227,25 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
+        
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),
         };
+        
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators: Vec::new(),
+        };
 
         let caclulator = PreTradeValuesCalculator {
             pre_trade_data,
-            required_indicator_values: Vec::new(),
-            required_market_sim_values: Vec::new(),
+            required_pre_trade_values,
         };
 
         assert_eq!(37_934.89, caclulator.compute_lowest_trade_price());
     }
+
     #[tokio::test]
     async fn test_compute_highest_trade_price() {
         let df = download_df(
@@ -255,15 +253,20 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
+        
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),
         };
 
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators: Vec::new(),
+        };
+
         let caclulator = PreTradeValuesCalculator {
             pre_trade_data,
-            required_indicator_values: Vec::new(),
-            required_market_sim_values: Vec::new(),
+            required_pre_trade_values,
         };
 
         assert_eq!(44_225.84, caclulator.compute_highest_trade_price());

@@ -86,7 +86,7 @@ impl CloudStorageClient {
         tokio::spawn(async move {
             let path_finder = PathFinderBuilder::new()
                 .with_data_provider(bot.get_data_provider().get_data_producer_kind())
-                .with_strategy_name(bot.get_strategy().get_strategy_name())
+                .with_strategy_name(bot.get_strategy().get_name())
                 .with_market(market)
                 .with_year(year)
                 .with_time_interval(*bot.get_time_interval_optional_ref())

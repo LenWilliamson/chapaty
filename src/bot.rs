@@ -147,7 +147,7 @@ impl Bot {
         );
 
         PnLStatement {
-            strategy_name: self.strategy.get_strategy_name(),
+            strategy_name: self.strategy.get_name(),
             markets: self.markets.clone(),
             pnl_data,
         }
@@ -183,17 +183,19 @@ impl Bot {
     }
 
     fn determine_indicator_data_pair(&self) -> Arc<HashSet<IndicatorDataPair>> {
-        let map = self.strategy.register_trading_indicators().iter().fold(
-            HashSet::new(),
-            |mut acc, trading_indicator| {
+        let map = self
+            .strategy
+            .get_required_pre_trade_vales()
+            .trading_indicators
+            .iter()
+            .fold(HashSet::new(), |mut acc, trading_indicator| {
                 let indicator_data_pair = IndicatorDataPair::new(
                     *trading_indicator,
                     HdbSourceDirKind::from(*trading_indicator),
                 );
                 acc.insert(indicator_data_pair);
                 acc
-            },
-        );
+            });
 
         Arc::new(map)
     }
@@ -313,7 +315,7 @@ mod test {
             data::HdbSourceDirKind,
             indicator::{PriceHistogramKind, TradingIndicatorKind},
         },
-        strategy::MockStrategy,
+        strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder,
     };
     use std::{collections::HashSet, sync::Arc};
@@ -323,7 +325,7 @@ mod test {
         let data_provider = Arc::new(Cme::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let mut mock_strategy = MockStrategy::new();
-        let trading_indicator = vec![
+        let trading_indicators = vec![
             TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
             TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
             TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
@@ -331,8 +333,11 @@ mod test {
             TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
         ];
         mock_strategy
-            .expect_register_trading_indicators()
-            .return_const(trading_indicator);
+            .expect_get_required_pre_trade_vales()
+            .return_const(RequriedPreTradeValues {
+                market_values: Vec::new(),
+                trading_indicators,
+            });
 
         let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
             .with_google_cloud_storage_client(cloud_storage_client)

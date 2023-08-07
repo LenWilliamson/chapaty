@@ -354,7 +354,7 @@ mod test {
     use super::*;
     use crate::{
         bot::trade::Trade,
-        calculator::pre_trade_values_calculator::PreTradeValues,
+        calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
         cloud_api::api_for_unit_tests::download_df,
         enums::{
             indicator::{PriceHistogramKind, TradingIndicatorKind},
@@ -409,8 +409,8 @@ mod test {
         ])
     }
 
-    fn set_up_pre_trade_values_ppp_long() -> PreTradeValues {
-        PreTradeValues {
+    fn set_up_pre_trade_values_ppp_long() -> RequiredPreTradeValuesWithData {
+        RequiredPreTradeValuesWithData {
             market_valeus: set_up_pre_trade_market_values_ppp_long(),
             indicator_values: set_up_pre_trade_indicator_values_ppp_long(),
         }
@@ -691,8 +691,8 @@ mod test {
         ])
     }
 
-    fn set_up_pre_trade_values_ppp_short() -> PreTradeValues {
-        PreTradeValues {
+    fn set_up_pre_trade_values_ppp_short() -> RequiredPreTradeValuesWithData {
+        RequiredPreTradeValuesWithData {
             market_valeus: set_up_pre_trade_market_values_ppp_short(),
             indicator_values: set_up_pre_trade_indicator_values_ppp_short(),
         }

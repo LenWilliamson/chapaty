@@ -1,5 +1,5 @@
 use super::{
-    pre_trade_values_calculator::{PreTradeValues, PreTradeValuesCalculatorBuilder},
+    pre_trade_values_calculator::{RequiredPreTradeValuesWithData, PreTradeValuesCalculatorBuilder},
     trade_pnl_calculator::{TradePnL, TradePnLCalculatorBuilder},
     trade_values_calculator::TradeValuesCalculatorBuilder,
 };
@@ -39,7 +39,7 @@ pub struct PnLReportDataRowCalculator {
 #[derive(Clone)]
 pub struct TradeAndPreTradeValues {
     pub trade: HashMap<TradeDataKind, MyAnyValueKind>,
-    pub pre_trade: PreTradeValues,
+    pub pre_trade: RequiredPreTradeValuesWithData,
 }
 
 impl PnLReportDataRowCalculator {
@@ -56,11 +56,11 @@ impl PnLReportDataRowCalculator {
         )
     }
 
-    fn handle_no_entry(&self, pre_trade: PreTradeValues) -> PnLReportDataRow {
+    fn handle_no_entry(&self, pre_trade: RequiredPreTradeValuesWithData) -> PnLReportDataRow {
         PnLReportDataRow {
             market: self.market.clone(),
             year: self.year,
-            strategy_name: self.strategy.get_strategy_name(),
+            strategy_name: self.strategy.get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
             trade: self.strategy.get_trade(&pre_trade),
             trade_pnl: None,
@@ -80,7 +80,7 @@ impl PnLReportDataRowCalculator {
         PnLReportDataRow {
             market: self.market,
             year: self.year,
-            strategy_name: self.strategy.get_strategy_name(),
+            strategy_name: self.strategy.get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
             trade,
             trade_pnl: Some(trade_pnl),
@@ -94,17 +94,16 @@ impl PnLReportDataRowCalculator {
             .drop_rows_before_entry_ts(entry_ts)
     }
 
-    fn compute_pre_trade_values(&self) -> PreTradeValues {
+    fn compute_pre_trade_values(&self) -> RequiredPreTradeValuesWithData {
         let calculator_builder: PreTradeValuesCalculatorBuilder = self.into();
         calculator_builder
-            .with_required_market_sim_values(self.strategy.required_pre_trade_data())
-            .with_required_indicator_values(self.strategy.register_trading_indicators())
+            .with_required_pre_trade_values(self.strategy.get_required_pre_trade_vales())
             .build_and_compute()
     }
 
     fn compute_trade_values(
         &self,
-        pre_trade_values: &PreTradeValues,
+        pre_trade_values: &RequiredPreTradeValuesWithData,
     ) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
         calculator_builder

@@ -1,7 +1,7 @@
 pub mod ppp;
 use crate::{
     bot::trade::Trade,
-    calculator::pre_trade_values_calculator::PreTradeValues,
+    calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
     enums::{
         bot::{StopLossKind, TakeProfitKind},
         error::ChapatyErrorKind,
@@ -24,16 +24,18 @@ pub struct TakeProfit {
     pub offset: f64,
 }
 
+
+#[derive(Clone)]
+pub struct RequriedPreTradeValues {
+    pub market_values: Vec<PreTradeDataKind>,
+    pub trading_indicators: Vec<TradingIndicatorKind>,
+}
+
 #[automock]
 pub trait Strategy {
-    fn set_stop_loss(&mut self, sl: StopLoss);
-    fn set_take_profit(&mut self, tp: TakeProfit);
-    fn register_trading_indicators(&self) -> Vec<TradingIndicatorKind>;
-    fn required_pre_trade_data(&self) -> Vec<PreTradeDataKind>;
-    fn get_entry_price(&self, pre_trade_values: &PreTradeValues) -> f64;
-    fn get_trade(&self, pre_trade_values: &PreTradeValues) -> Trade;
-    fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeDirectionKind;
-    fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64;
-    fn get_tp_price(&self, pre_trade_values: &PreTradeValues) -> f64;
-    fn get_strategy_name(&self) -> String;
+    fn get_required_pre_trade_vales(&self) -> RequriedPreTradeValues;
+    fn get_trade(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Trade;
+    fn get_trade_kind(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> TradeDirectionKind;
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
+    fn get_name(&self) -> String;
 }
