@@ -4,7 +4,7 @@ use crate::enums::indicator::PriceHistogramKind;
 pub struct Ppp {
     stop_loss: StopLoss,
     take_profit: TakeProfit,
-    bot_kind: StrategyKind,
+    strategy_name: String,
 }
 
 impl Ppp {
@@ -18,7 +18,7 @@ impl Ppp {
                 condition: TakeProfitKind::PrevClose,
                 offset: 0.0,
             },
-            bot_kind: StrategyKind::Ppp,
+            strategy_name: "ppp".to_string(),
         }
     }
 }
@@ -45,9 +45,11 @@ impl Strategy for Ppp {
     }
 
     fn register_trading_indicators(&self) -> Vec<TradingIndicatorKind> {
-        vec![TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
-        TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
-        TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m)]
+        vec![
+            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
+        ]
     }
 
     fn get_trade(&self, pre_trade_values: &PreTradeValues) -> Trade {
@@ -190,7 +192,7 @@ impl Strategy for Ppp {
                 }
                 TakeProfitKind::PrevLow | TakeProfitKind::PrevHigh => {
                     lowest_trad_price - self.stop_loss.offset
-                },
+                }
                 TakeProfitKind::ValueAreaLow | TakeProfitKind::ValueAreaHigh => {
                     value_area_low - self.stop_loss.offset
                 }
@@ -203,8 +205,8 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_bot_kind(&self) -> StrategyKind {
-        self.bot_kind
+    fn get_strategy_name(&self) -> String {
+        self.strategy_name.to_lowercase()
     }
 }
 

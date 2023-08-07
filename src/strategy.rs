@@ -3,7 +3,7 @@ use crate::{
     bot::trade::Trade,
     calculator::pre_trade_values_calculator::PreTradeValues,
     enums::{
-        bot::{StopLossKind, StrategyKind, TakeProfitKind},
+        bot::{StopLossKind, TakeProfitKind},
         error::ChapatyErrorKind,
         indicator::TradingIndicatorKind,
         trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
@@ -35,5 +35,5 @@ pub trait Strategy {
     fn get_trade_kind(&self, pre_trade_values: &PreTradeValues) -> TradeDirectionKind;
     fn get_sl_price(&self, pre_trade_values: &PreTradeValues) -> f64;
     fn get_tp_price(&self, pre_trade_values: &PreTradeValues) -> f64;
-    fn get_bot_kind(&self) -> StrategyKind;
+    fn get_strategy_name(&self) -> String;
 }

@@ -1,18 +1,14 @@
 use super::file_path_with_fallback::FilePathWithFallback;
 use crate::{
     bot::time_interval::TimeInterval,
-    enums::{
-        bot::{DataProviderKind, StrategyKind},
-        data::HdbSourceDirKind,
-        markets::MarketKind,
-    },
+    enums::{bot::DataProviderKind, data::HdbSourceDirKind, markets::MarketKind},
 };
 use regex::Regex;
 use std::path::PathBuf;
 
 pub struct PathFinder {
     data_provider: DataProviderKind,
-    strategy: StrategyKind,
+    strategy_name: String,
     market: MarketKind,
     year: u32,
     time_interval: Option<TimeInterval>,
@@ -40,7 +36,7 @@ impl PathFinder {
         let time_interval = self
             .time_interval
             .map_or_else(|| "none".to_string(), |v| v.to_string());
-        let mut file_path = PathBuf::from(self.strategy.to_string());
+        let mut file_path = PathBuf::from(self.strategy_name.to_string());
         file_path.push(self.market.to_string());
         file_path.push(self.year.to_string());
         file_path.push(time_interval);
@@ -73,7 +69,7 @@ impl PathFinder {
 
 pub struct PathFinderBuilder {
     data_provider: Option<DataProviderKind>,
-    strategy: Option<StrategyKind>,
+    strategy_name: Option<String>,
     market: Option<MarketKind>,
     year: Option<u32>,
     time_interval: Option<TimeInterval>,
@@ -84,7 +80,7 @@ impl PathFinderBuilder {
     pub fn new() -> Self {
         Self {
             data_provider: None,
-            strategy: None,
+            strategy_name: None,
             market: None,
             year: None,
             time_interval: None,
@@ -98,9 +94,9 @@ impl PathFinderBuilder {
             ..self
         }
     }
-    pub fn with_strategy(self, strategy: StrategyKind) -> Self {
+    pub fn with_strategy_name(self, strategy_name: String) -> Self {
         Self {
-            strategy: Some(strategy),
+            strategy_name: Some(strategy_name),
             ..self
         }
     }
@@ -132,7 +128,7 @@ impl PathFinderBuilder {
     pub fn build(self) -> PathFinder {
         PathFinder {
             data_provider: self.data_provider.unwrap(),
-            strategy: self.strategy.unwrap(),
+            strategy_name: self.strategy_name.unwrap(),
             market: self.market.unwrap(),
             year: self.year.unwrap(),
             time_interval: self.time_interval,

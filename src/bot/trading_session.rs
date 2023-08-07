@@ -251,7 +251,7 @@ impl TradingSessionBuilder {
 
         let path_finder = PathFinderBuilder::new()
             .with_data_provider(bot.data_provider.get_data_producer_kind())
-            .with_strategy(bot.strategy.get_bot_kind())
+            .with_strategy_name(bot.strategy.get_strategy_name())
             .with_market(market)
             .with_year(year)
             .with_time_interval(bot.time_interval)
@@ -356,7 +356,7 @@ mod test {
         cloud_api::api_for_unit_tests::{download_df, download_df_map},
         config,
         data_provider::binance::Binance,
-        enums::{bot::StrategyKind, indicator::PriceHistogramKind},
+        enums::indicator::PriceHistogramKind,
         strategy::MockStrategy,
         BotBuilder, MarketSimulationDataKind, TimeInterval,
     };
@@ -371,8 +371,8 @@ mod test {
             .expect_register_trading_indicators()
             .return_const(trading_indicator.clone());
         mock_strategy
-            .expect_get_bot_kind()
-            .return_const(StrategyKind::Ppp);
+            .expect_get_strategy_name()
+            .return_const("ppp");
         let data_provider = Arc::new(Binance::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -572,8 +572,8 @@ mod test {
             .expect_register_trading_indicators()
             .return_const(trading_indicator.clone());
         mock_strategy
-            .expect_get_bot_kind()
-            .return_const(StrategyKind::Ppp);
+            .expect_get_strategy_name()
+            .return_const("ppp");
         let data_provider = Arc::new(Binance::new());
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {

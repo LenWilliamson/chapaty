@@ -1,13 +1,4 @@
-use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-
-#[derive(Copy, Clone, Debug, Display, EnumString, Serialize, Deserialize)]
-pub enum StrategyKind {
-    #[strum(serialize = "magneto")]
-    Magneto,
-    #[strum(serialize = "ppp")]
-    Ppp,
-}
 
 #[derive(Copy, Clone, Debug, Display, EnumString)]
 pub enum DataProviderKind {

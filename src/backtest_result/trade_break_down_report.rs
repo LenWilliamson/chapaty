@@ -36,7 +36,7 @@ impl From<PnLStatement> for TradeBreakDownReports {
             .into_iter()
             .map(|(_, pnl_reports)| PnLSnapshot {
                 pnl_reports,
-                bot: value.strategy,
+                strategy_name: value.strategy_name.clone(),
             })
             .map(|pnl_snapshot| pnl_snapshot.into())
             .collect()

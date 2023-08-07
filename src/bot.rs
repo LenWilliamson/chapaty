@@ -147,7 +147,7 @@ impl Bot {
         );
 
         PnLStatement {
-            strategy: self.strategy.get_bot_kind(),
+            strategy_name: self.strategy.get_strategy_name(),
             markets: self.markets.clone(),
             pnl_data,
         }

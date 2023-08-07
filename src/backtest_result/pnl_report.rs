@@ -3,12 +3,9 @@ use crate::{
     calculator::pnl_report_data_row_calculator::PnLReportDataRow,
     converter::market_decimal_places::MyDecimalPlaces,
     data_frame_operations::io_operations::save_df_as_csv,
-    enums::{
-        bot::StrategyKind,
-        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
-    },
+    enums::column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
 };
-use std::{convert::identity, collections::HashMap};
+use std::{collections::HashMap, convert::identity};
 
 use super::metrics::{
     accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
@@ -98,7 +95,7 @@ impl PnLReportsBuilder {
 pub struct PnLReport {
     pub market: MarketKind,
     pub year: u32,
-    pub strategy: StrategyKind,
+    pub strategy: String,
     pub pnl: DataFrame,
 }
 
@@ -184,7 +181,7 @@ impl PnLReportDataRow {
 
         let cw = self.time_frame_snapshot.get_calendar_week_as_int();
         let date = self.get_date();
-        let strategy = self.strategy.to_string().to_uppercase();
+        let strategy = self.strategy_name.to_string().to_uppercase();
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
@@ -235,7 +232,7 @@ impl PnLReportDataRow {
 
         let cw = self.time_frame_snapshot.get_calendar_week_as_int();
         let date = self.get_date();
-        let strategy = self.strategy.to_string().to_uppercase();
+        let strategy = self.strategy_name.to_string().to_uppercase();
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
@@ -334,7 +331,7 @@ impl PnLReportDataRow {
 pub struct PnLReportBuilder {
     market: Option<MarketKind>,
     year: Option<u32>,
-    strategy: Option<StrategyKind>,
+    strategy: Option<String>,
     data_rows: Option<Vec<LazyFrame>>,
 }
 
@@ -377,7 +374,7 @@ impl PnLReportBuilder {
         Self {
             market: Some(row.market),
             year: Some(row.year),
-            strategy: Some(row.strategy),
+            strategy: Some(row.strategy_name),
             data_rows: Some(data_rows),
         }
     }

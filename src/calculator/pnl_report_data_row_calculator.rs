@@ -7,7 +7,7 @@ use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot, trade::Trade},
     data_provider::DataProvider,
     enums::{
-        bot::StrategyKind, markets::MarketKind, my_any_value::MyAnyValueKind,
+markets::MarketKind, my_any_value::MyAnyValueKind,
         trade_and_pre_trade::TradeDataKind,
     },
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
@@ -20,7 +20,7 @@ use std::{collections::HashMap, sync::Arc};
 pub struct PnLReportDataRow {
     pub market: MarketKind,
     pub year: u32,
-    pub strategy: StrategyKind,
+    pub strategy_name: String,
     pub time_frame_snapshot: TimeFrameSnapshot,
     pub trade: Trade,
     pub trade_pnl: Option<TradePnL>,
@@ -60,7 +60,7 @@ impl PnLReportDataRowCalculator {
         PnLReportDataRow {
             market: self.market.clone(),
             year: self.year,
-            strategy: self.strategy.get_bot_kind(),
+            strategy_name: self.strategy.get_strategy_name(),
             time_frame_snapshot: self.time_frame_snapshot,
             trade: self.strategy.get_trade(&pre_trade),
             trade_pnl: None,
@@ -80,7 +80,7 @@ impl PnLReportDataRowCalculator {
         PnLReportDataRow {
             market: self.market,
             year: self.year,
-            strategy: self.strategy.get_bot_kind(),
+            strategy_name: self.strategy.get_strategy_name(),
             time_frame_snapshot: self.time_frame_snapshot,
             trade,
             trade_pnl: Some(trade_pnl),

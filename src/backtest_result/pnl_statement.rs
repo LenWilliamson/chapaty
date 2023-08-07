@@ -5,8 +5,7 @@ use super::{
     trade_break_down_report::TradeBreakDownReport,
 };
 use crate::{
-    enums::{bot::StrategyKind, markets::MarketKind},
-    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+    enums::markets::MarketKind, lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
@@ -14,7 +13,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLStatement {
-    pub strategy: StrategyKind,
+    pub strategy_name: String,
     pub markets: Vec<MarketKind>,
     pub pnl_data: HashMap<MarketKind, PnLReports>,
 }
@@ -29,7 +28,7 @@ impl PnLStatement {
 
 pub struct PnLSnapshot {
     pub pnl_reports: PnLReports,
-    pub bot: StrategyKind,
+    pub strategy_name: String,
 }
 
 impl From<PnLSnapshot> for TradeBreakDownReport {
