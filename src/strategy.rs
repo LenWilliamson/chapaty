@@ -7,7 +7,7 @@ use crate::{
         error::ChapatyErrorKind,
         indicator::TradingIndicatorKind,
         trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
-    },
+    }, MarketKind,
 };
 use mockall::automock;
 use std::str::FromStr;
@@ -24,6 +24,10 @@ pub struct TakeProfit {
     pub offset: f64,
 }
 
+pub struct TradeRequestObject {
+    pub pre_trade_values: RequiredPreTradeValuesWithData,
+    pub market: MarketKind,
+}
 
 #[derive(Clone)]
 pub struct RequriedPreTradeValues {
@@ -34,7 +38,7 @@ pub struct RequriedPreTradeValues {
 #[automock]
 pub trait Strategy {
     fn get_required_pre_trade_vales(&self) -> RequriedPreTradeValues;
-    fn get_trade(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Trade;
+    fn get_trade(&self, trade_request_object: &TradeRequestObject) -> Trade;
     fn get_trade_kind(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> TradeDirectionKind;
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
     fn get_name(&self) -> String;

@@ -25,7 +25,6 @@ pub use enums::{
 };
 
 /*
-- Offset in Dollar angeben und dann umrechnen
 - Initial Balance von Trade Day bekommen
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Time Frames umsetzen

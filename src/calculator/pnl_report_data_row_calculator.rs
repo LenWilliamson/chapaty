@@ -10,7 +10,7 @@ use crate::{
     data_provider::DataProvider,
     enums::markets::MarketKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
-    strategy::Strategy,
+    strategy::{Strategy, TradeRequestObject},
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use std::sync::Arc;
@@ -56,19 +56,21 @@ impl PnLReportDataRowCalculator {
     }
 
     fn handle_no_entry(&self, pre_trade: RequiredPreTradeValuesWithData) -> PnLReportDataRow {
+        let request = self.trade_object_request(pre_trade);
         PnLReportDataRow {
             market: self.market.clone(),
             year: self.year,
             strategy_name: self.strategy.get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
-            trade: self.strategy.get_trade(&pre_trade),
+            trade: self.strategy.get_trade(&request),
             trade_pnl: None,
         }
     }
 
     fn handle_trade(&self, values: TradeAndPreTradeValuesWithData) -> PnLReportDataRow {
+        let request = self.trade_object_request(values.clone().pre_trade);
         let entry_ts = values.trade.entry_ts();
-        let trade = self.strategy.get_trade(&values.pre_trade);
+        let trade = self.strategy.get_trade(&request);
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(entry_ts)
             .with_trade(trade.clone())
@@ -83,6 +85,16 @@ impl PnLReportDataRowCalculator {
             time_frame_snapshot: self.time_frame_snapshot,
             trade,
             trade_pnl: Some(trade_pnl),
+        }
+    }
+
+    fn trade_object_request(
+        &self,
+        pre_trade: RequiredPreTradeValuesWithData,
+    ) -> TradeRequestObject {
+        TradeRequestObject {
+            pre_trade_values: pre_trade,
+            market: self.market,
         }
     }
 

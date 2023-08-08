@@ -53,10 +53,10 @@ impl PppBuilder {
 }
 
 impl Ppp {
-    fn get_sl_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
-        match self.get_trade_kind(pre_trade_values) {
-            TradeDirectionKind::Long => self.get_sl_price_long(pre_trade_values),
-            TradeDirectionKind::Short => self.get_sl_price_short(pre_trade_values),
+    fn get_sl_price(&self, request: &TradeRequestObject) -> f64 {
+        match self.get_trade_kind(&request.pre_trade_values) {
+            TradeDirectionKind::Long => self.get_sl_price_long(request),
+            TradeDirectionKind::Short => self.get_sl_price_short(request),
             TradeDirectionKind::None => {
                 dbg!("Cannot compute stop-loss condition for TradeDirection::None");
                 -1.0
@@ -64,66 +64,74 @@ impl Ppp {
         }
     }
 
-    fn get_tp_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
-        match self.get_trade_kind(pre_trade_values) {
-            TradeDirectionKind::Long => self.get_tp_long(pre_trade_values),
-            TradeDirectionKind::Short => self.get_tp_short(pre_trade_values),
+    fn get_tp_price(&self, request: &TradeRequestObject) -> f64 {
+        match self.get_trade_kind(&request.pre_trade_values) {
+            TradeDirectionKind::Long => self.get_tp_long(request),
+            TradeDirectionKind::Short => self.get_tp_short(request),
             TradeDirectionKind::None => {
                 dbg!("Cannot compute take-profit condition for TradeDirection::None");
                 -1.0
             }
         }
     }
-    
-    fn get_sl_price_long(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+
+    fn get_sl_price_long(&self, request: &TradeRequestObject) -> f64 {
+        let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let value_area_low = pre_trade_values.value_area_low(ph);
         let lowest_trade_price = pre_trade_values.lowest_trade_price();
         let entry_price = self.get_entry_price(pre_trade_values);
+        let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
         match self.stop_loss.kind {
-            StopLossKind::PriceUponTradeEntry => entry_price - self.stop_loss.offset,
-            StopLossKind::PrevHighOrLow => lowest_trade_price - self.stop_loss.offset,
-            StopLossKind::ValueAreaHighOrLow => value_area_low - self.stop_loss.offset,
+            StopLossKind::PriceUponTradeEntry => entry_price - offset,
+            StopLossKind::PrevHighOrLow => lowest_trade_price - offset,
+            StopLossKind::ValueAreaHighOrLow => value_area_low - offset,
         }
     }
 
-    fn get_sl_price_short(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+    fn get_sl_price_short(&self, request: &TradeRequestObject) -> f64 {
+        let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let value_area_high = pre_trade_values.value_area_high(ph);
         let highest_trade_price = pre_trade_values.highest_trade_price();
         let entry_price = self.get_entry_price(pre_trade_values);
+        let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
         match self.stop_loss.kind {
-            StopLossKind::PriceUponTradeEntry => entry_price + self.stop_loss.offset,
-            StopLossKind::PrevHighOrLow => highest_trade_price + self.stop_loss.offset,
-            StopLossKind::ValueAreaHighOrLow => value_area_high + self.stop_loss.offset,
+            StopLossKind::PriceUponTradeEntry => entry_price + offset,
+            StopLossKind::PrevHighOrLow => highest_trade_price + offset,
+            StopLossKind::ValueAreaHighOrLow => value_area_high + offset,
         }
     }
 
-    fn get_tp_long(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+    fn get_tp_long(&self, request: &TradeRequestObject) -> f64 {
+        let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let value_area_high = pre_trade_values.value_area_high(ph);
         let lst_trade_price = pre_trade_values.last_trade_price();
         let highest_trade_price = pre_trade_values.highest_trade_price();
         let entry_price = self.get_entry_price(pre_trade_values);
+        let offset = request.market.try_offset_in_tick(self.take_profit.offset);
         match self.take_profit.kind {
-            TakeProfitKind::PrevClose => lst_trade_price + self.take_profit.offset,
-            TakeProfitKind::PriceUponTradeEntry => entry_price + self.take_profit.offset,
-            TakeProfitKind::PrevHighOrLow => highest_trade_price + self.take_profit.offset,
-            TakeProfitKind::ValueAreaHighOrLow => value_area_high + self.take_profit.offset,
+            TakeProfitKind::PrevClose => lst_trade_price + offset,
+            TakeProfitKind::PriceUponTradeEntry => entry_price + offset,
+            TakeProfitKind::PrevHighOrLow => highest_trade_price + offset,
+            TakeProfitKind::ValueAreaHighOrLow => value_area_high + offset,
         }
     }
-    
-    fn get_tp_short(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+
+    fn get_tp_short(&self, request: &TradeRequestObject) -> f64 {
+        let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let value_area_low = pre_trade_values.value_area_low(ph);
         let lst_trade_price = pre_trade_values.last_trade_price();
         let lowest_trade_price = pre_trade_values.lowest_trade_price();
         let entry_price = self.get_entry_price(pre_trade_values);
+        let offset = request.market.try_offset_in_tick(self.take_profit.offset);
         match self.take_profit.kind {
-            TakeProfitKind::PrevClose => lst_trade_price - self.take_profit.offset,
-            TakeProfitKind::PriceUponTradeEntry => entry_price - self.take_profit.offset,
-            TakeProfitKind::PrevHighOrLow => lowest_trade_price - self.take_profit.offset,
-            TakeProfitKind::ValueAreaHighOrLow => value_area_low - self.take_profit.offset,
+            TakeProfitKind::PrevClose => lst_trade_price - offset,
+            TakeProfitKind::PriceUponTradeEntry => entry_price - offset,
+            TakeProfitKind::PrevHighOrLow => lowest_trade_price - offset,
+            TakeProfitKind::ValueAreaHighOrLow => value_area_low - offset,
         }
     }
 }
@@ -141,12 +149,12 @@ impl FromStr for PppBuilder {
 }
 
 impl Strategy for Ppp {
-    fn get_trade(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Trade {
+    fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         Trade {
-            entry_price: self.get_entry_price(pre_trade_values),
-            stop_loss: self.get_sl_price(pre_trade_values),
-            take_profit: self.get_tp_price(pre_trade_values),
-            trade_kind: self.get_trade_kind(pre_trade_values),
+            entry_price: self.get_entry_price(&request.pre_trade_values),
+            stop_loss: self.get_sl_price(request),
+            take_profit: self.get_tp_price(request),
+            trade_kind: self.get_trade_kind(&request.pre_trade_values),
         }
     }
 

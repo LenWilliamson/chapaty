@@ -67,4 +67,17 @@ impl MarketKind {
             MarketKind::BtcUsdFuture => Some(25.0),
         }
     }
+
+    pub fn try_offset_in_tick(&self, offset: f64) -> f64 {
+        match self {
+            MarketKind::BtcUsdt => offset,
+            MarketKind::EurUsdFuture => offset / 6.25 * self.tick_step_size().unwrap(),
+            MarketKind::AudUsdFuture => offset / 5.0 * self.tick_step_size().unwrap(),
+            MarketKind::GbpUsdFuture => offset / 6.25 * self.tick_step_size().unwrap(),
+            MarketKind::CadUsdFuture => offset / 5.0 * self.tick_step_size().unwrap(),
+            MarketKind::YenUsdFuture => offset / 6.25 * self.tick_step_size().unwrap(),
+            MarketKind::NzdUsdFuture => offset / 5.0 * self.tick_step_size().unwrap(),
+            MarketKind::BtcUsdFuture => offset / 25.0 * self.tick_step_size().unwrap(),
+        }
+    }
 }

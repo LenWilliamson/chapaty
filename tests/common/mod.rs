@@ -7,22 +7,22 @@ use std::sync::Arc;
 
 pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let ppp_builder = PppBuilder::new();
-    let sl = StopLoss {
-        kind: StopLossKind::PrevHighOrLow,
-        offset: 0.0,
-    };
-    let tp = TakeProfit {
-        kind: TakeProfitKind::PrevClose,
-        offset: 0.0,
-    };
     // let sl = StopLoss {
-    //     condition: StopLossKind::PrevLow, // MAIN
-    //     offset: 1.0,                      // MAIN
+    //     kind: StopLossKind::PrevHighOrLow,
+    //     offset: 0.0,
     // };
     // let tp = TakeProfit {
-    //     condition: TakeProfitKind::PrevClose, // MAIN
-    //     offset: 0.00005 * 20.0,               // MAIN
+    //     kind: TakeProfitKind::PrevClose,
+    //     offset: 0.0,
     // };
+    let sl = StopLoss {
+        kind: StopLossKind::PrevHighOrLow, // MAIN
+        offset: 125_000.0, // MAIN previous 1.0
+    };
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PrevClose, // MAIN
+        offset: 125.0, // MAIN previous 0.00005 * 20.0
+    };
 
     let strategy = ppp_builder
         .with_stop_loss(sl)
