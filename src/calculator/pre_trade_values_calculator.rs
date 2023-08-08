@@ -8,6 +8,7 @@ use crate::{
     },
     strategy::RequriedPreTradeValues,
     trading_indicator::price_histogram::PriceHistogram,
+    PriceHistogramKind,
 };
 use polars::prelude::{col, IntoLazy};
 use std::collections::HashMap;
@@ -16,6 +17,44 @@ use std::collections::HashMap;
 pub struct RequiredPreTradeValuesWithData {
     pub market_valeus: HashMap<PreTradeDataKind, f64>,
     pub indicator_values: HashMap<TradingIndicatorKind, f64>,
+}
+
+impl RequiredPreTradeValuesWithData {
+    pub fn lowest_trade_price(&self) -> f64 {
+        *self
+            .market_valeus
+            .get(&PreTradeDataKind::LowestTradePrice)
+            .unwrap()
+    }
+    pub fn highest_trade_price(&self) -> f64 {
+        *self
+            .market_valeus
+            .get(&PreTradeDataKind::HighestTradePrice)
+            .unwrap()
+    }
+    pub fn last_trade_price(&self) -> f64 {
+        *self.market_valeus
+            .get(&PreTradeDataKind::LastTradePrice)
+            .unwrap()
+    }
+    pub fn value_area_high(&self, ph: PriceHistogramKind) -> f64 {
+        *self
+            .indicator_values
+            .get(&TradingIndicatorKind::ValueAreaHigh(ph))
+            .unwrap()
+    }
+    pub fn value_area_low(&self, ph: PriceHistogramKind) -> f64 {
+        *self
+            .indicator_values
+            .get(&TradingIndicatorKind::ValueAreaLow(ph))
+            .unwrap()
+    }
+    pub fn poc(&self, ph: PriceHistogramKind) -> f64 {
+        *self
+            .indicator_values
+            .get(&TradingIndicatorKind::Poc(ph))
+            .unwrap()
+    }
 }
 
 pub struct PreTradeValuesCalculator {
@@ -201,7 +240,7 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
-        
+
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),
@@ -227,12 +266,12 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
-        
+
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),
         };
-        
+
         let required_pre_trade_values = RequriedPreTradeValues {
             market_values: Vec::new(),
             trading_indicators: Vec::new(),
@@ -253,7 +292,7 @@ mod test {
             "ppp/_test_data_files/pre_trade_data.csv".to_string(),
         )
         .await;
-        
+
         let pre_trade_data = PreTradeData {
             market_sim_data: df,
             indicators: HashMap::new(),

@@ -1,20 +1,19 @@
 use super::{
-    pre_trade_values_calculator::{RequiredPreTradeValuesWithData, PreTradeValuesCalculatorBuilder},
+    pre_trade_values_calculator::{
+        PreTradeValuesCalculatorBuilder, RequiredPreTradeValuesWithData,
+    },
     trade_pnl_calculator::{TradePnL, TradePnLCalculatorBuilder},
-    trade_values_calculator::TradeValuesCalculatorBuilder,
+    trade_values_calculator::{TradeValuesCalculatorBuilder, TradeValuesWithData},
 };
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot, trade::Trade},
     data_provider::DataProvider,
-    enums::{
-markets::MarketKind, my_any_value::MyAnyValueKind,
-        trade_and_pre_trade::TradeDataKind,
-    },
+    enums::markets::MarketKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::Strategy,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct PnLReportDataRow {
@@ -37,8 +36,8 @@ pub struct PnLReportDataRowCalculator {
 }
 
 #[derive(Clone)]
-pub struct TradeAndPreTradeValues {
-    pub trade: HashMap<TradeDataKind, MyAnyValueKind>,
+pub struct TradeAndPreTradeValuesWithData {
+    pub trade: TradeValuesWithData,
     pub pre_trade: RequiredPreTradeValuesWithData,
 }
 
@@ -48,7 +47,7 @@ impl PnLReportDataRowCalculator {
         self.compute_trade_values(&pre_trade).map_or_else(
             || self.handle_no_entry(pre_trade.clone()),
             |trade| {
-                self.handle_trade(TradeAndPreTradeValues {
+                self.handle_trade(TradeAndPreTradeValuesWithData {
                     trade,
                     pre_trade: pre_trade.clone(),
                 })
@@ -67,8 +66,8 @@ impl PnLReportDataRowCalculator {
         }
     }
 
-    fn handle_trade(&self, values: TradeAndPreTradeValues) -> PnLReportDataRow {
-        let entry_ts = get_entry_ts(&values.trade);
+    fn handle_trade(&self, values: TradeAndPreTradeValuesWithData) -> PnLReportDataRow {
+        let entry_ts = values.trade.entry_ts();
         let trade = self.strategy.get_trade(&values.pre_trade);
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(entry_ts)
@@ -104,20 +103,12 @@ impl PnLReportDataRowCalculator {
     fn compute_trade_values(
         &self,
         pre_trade_values: &RequiredPreTradeValuesWithData,
-    ) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
+    ) -> Option<TradeValuesWithData> {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
         calculator_builder
             .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
             .build_and_compute()
     }
-}
-
-fn get_entry_ts(trade_values: &HashMap<TradeDataKind, MyAnyValueKind>) -> i64 {
-    trade_values
-        .get(&TradeDataKind::EntryTimestamp)
-        .unwrap()
-        .clone()
-        .unwrap_int64()
 }
 
 pub struct PnLReportDataRowCalculatorBuilder {

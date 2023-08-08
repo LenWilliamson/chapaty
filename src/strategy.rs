@@ -14,13 +14,13 @@ use std::str::FromStr;
 
 #[derive(Clone, Copy)]
 pub struct StopLoss {
-    pub condition: StopLossKind,
+    pub kind: StopLossKind,
     pub offset: f64,
 }
 
 #[derive(Clone, Copy)]
 pub struct TakeProfit {
-    pub condition: TakeProfitKind,
+    pub kind: TakeProfitKind,
     pub offset: f64,
 }
 

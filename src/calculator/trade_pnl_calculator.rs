@@ -1,8 +1,5 @@
-use super::pnl_report_data_row_calculator::TradeAndPreTradeValues;
-use crate::{
-    bot::trade::Trade, enums::trade_and_pre_trade::TradeDataKind,
-    lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
-};
+use super::pnl_report_data_row_calculator::TradeAndPreTradeValuesWithData;
+use crate::{bot::trade::Trade, lazy_frame_operations::trait_extensions::MyLazyFrameOperations};
 use polars::prelude::LazyFrame;
 use std::convert::identity;
 
@@ -10,7 +7,7 @@ pub struct TradePnLCalculator {
     entry_ts: i64,
     trade: Trade,
     market_sim_data_since_entry: LazyFrame,
-    trade_and_pre_trade_values: TradeAndPreTradeValues,
+    trade_and_pre_trade_values: TradeAndPreTradeValuesWithData,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -167,13 +164,7 @@ impl TradePnLCalculator {
     }
 
     fn handle_timeout(&self) -> PnL {
-        let exit_px = self
-            .trade_and_pre_trade_values
-            .trade
-            .get(&TradeDataKind::LastTradePrice)
-            .unwrap()
-            .clone()
-            .unwrap_float64();
+        let exit_px = self.trade_and_pre_trade_values.trade.last_trade_price();
 
         PnL {
             price: exit_px,
@@ -204,7 +195,7 @@ pub struct TradePnLCalculatorBuilder {
     entry_ts: Option<i64>,
     trade: Option<Trade>,
     market_sim_data_since_entry: Option<LazyFrame>,
-    trade_and_pre_trade_values: Option<TradeAndPreTradeValues>,
+    trade_and_pre_trade_values: Option<TradeAndPreTradeValuesWithData>,
 }
 
 impl TradePnLCalculatorBuilder {
@@ -240,7 +231,7 @@ impl TradePnLCalculatorBuilder {
 
     pub fn with_trade_and_pre_trade_values(
         self,
-        trade_and_pre_trade_values: TradeAndPreTradeValues,
+        trade_and_pre_trade_values: TradeAndPreTradeValuesWithData,
     ) -> Self {
         Self {
             trade_and_pre_trade_values: Some(trade_and_pre_trade_values),
@@ -354,7 +345,7 @@ mod test {
     use super::*;
     use crate::{
         bot::trade::Trade,
-        calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
+        calculator::{pre_trade_values_calculator::RequiredPreTradeValuesWithData, trade_values_calculator::TradeValuesWithData},
         cloud_api::api_for_unit_tests::download_df,
         enums::{
             indicator::{PriceHistogramKind, TradingIndicatorKind},
@@ -380,8 +371,8 @@ mod test {
         ])
     }
 
-    fn set_up_trade_data_map_ppp_long(entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
-        HashMap::from([
+    fn set_up_trade_data_map_ppp_long(entry_ts: i64) -> TradeValuesWithData {
+        let trade = HashMap::from([
             (
                 TradeDataKind::EntryTimestamp,
                 MyAnyValueKind::Int64(entry_ts),
@@ -406,7 +397,9 @@ mod test {
                 TradeDataKind::HighestTradePriceSinceEntryTimestamp,
                 MyAnyValueKind::Int64(1646085600000),
             ),
-        ])
+        ]);
+
+        TradeValuesWithData { trade }
     }
 
     fn set_up_pre_trade_values_ppp_long() -> RequiredPreTradeValuesWithData {
@@ -425,8 +418,8 @@ mod test {
         }
     }
 
-    fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> TradeAndPreTradeValues {
-        TradeAndPreTradeValues {
+    fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> TradeAndPreTradeValuesWithData {
+        TradeAndPreTradeValuesWithData {
             trade: set_up_trade_data_map_ppp_long(entry_ts),
             pre_trade: set_up_pre_trade_values_ppp_long(),
         }
@@ -662,8 +655,8 @@ mod test {
         ])
     }
 
-    fn set_up_trade_data_map_ppp_short(entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
-        HashMap::from([
+    fn set_up_trade_data_map_ppp_short(entry_ts: i64) -> TradeValuesWithData {
+        let trade = HashMap::from([
             (
                 TradeDataKind::EntryTimestamp,
                 MyAnyValueKind::Int64(entry_ts),
@@ -688,7 +681,9 @@ mod test {
                 TradeDataKind::HighestTradePriceSinceEntryTimestamp,
                 MyAnyValueKind::Int64(1646838000000),
             ),
-        ])
+        ]);
+
+        TradeValuesWithData { trade }
     }
 
     fn set_up_pre_trade_values_ppp_short() -> RequiredPreTradeValuesWithData {
@@ -707,8 +702,10 @@ mod test {
         }
     }
 
-    fn set_up_trade_and_pre_trade_values_ppp_short(entry_ts: i64) -> TradeAndPreTradeValues {
-        TradeAndPreTradeValues {
+    fn set_up_trade_and_pre_trade_values_ppp_short(
+        entry_ts: i64,
+    ) -> TradeAndPreTradeValuesWithData {
+        TradeAndPreTradeValuesWithData {
             trade: set_up_trade_data_map_ppp_short(entry_ts),
             pre_trade: set_up_pre_trade_values_ppp_short(),
         }

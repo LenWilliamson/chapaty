@@ -12,13 +12,44 @@ pub struct TradeValuesCalculator {
     entry_price: f64,
 }
 
+#[derive(Default, Clone)]
+pub struct TradeValuesWithData {
+    pub trade: HashMap<TradeDataKind, MyAnyValueKind>,
+}
+
+impl TradeValuesWithData {
+    pub fn last_trade_price(&self) -> f64 {
+        self.trade
+            .get(&TradeDataKind::LastTradePrice)
+            .unwrap()
+            .clone()
+            .unwrap_float64()
+    }
+
+    pub fn entry_ts(&self) -> i64 {
+        self.trade
+            .get(&TradeDataKind::EntryTimestamp)
+            .unwrap()
+            .clone()
+            .unwrap_int64()
+    }
+}
+
 impl TradeValuesCalculator {
-    pub fn compute(&self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
+    pub fn compute(&self) -> Option<TradeValuesWithData> {
         self.market_sim_data
             .clone()
             .lazy()
             .find_timestamp_when_price_reached(self.entry_price)
-            .map_or_else(|| None, |entry_ts| Some(self.get_result(entry_ts)))
+            .map_or_else(
+                || None,
+                |entry_ts| {
+                    let trade = TradeValuesWithData {
+                        trade: self.get_result(entry_ts),
+                    };
+                    Some(trade)
+                },
+            )
     }
 
     fn get_result(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
@@ -133,7 +164,7 @@ impl TradeValuesCalculatorBuilder {
         }
     }
 
-    pub fn build_and_compute(self) -> Option<HashMap<TradeDataKind, MyAnyValueKind>> {
+    pub fn build_and_compute(self) -> Option<TradeValuesWithData> {
         self.build().compute()
     }
 }
@@ -192,13 +223,13 @@ mod test {
             MyAnyValueKind::Int64(high_ots),
         );
 
-        assert_eq!(target, calculator.compute().unwrap());
+        assert_eq!(target, calculator.compute().unwrap().trade);
 
         calculator = TradeValuesCalculator {
             entry_price: 0.0,
             market_sim_data,
         };
 
-        assert_eq!(None, calculator.compute())
+        assert!(calculator.compute().is_none())
     }
 }
