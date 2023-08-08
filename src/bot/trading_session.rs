@@ -250,7 +250,7 @@ impl TradingSessionBuilder {
         let year = self.year.unwrap();
 
         let path_finder = PathFinderBuilder::new()
-            .with_data_provider(bot.data_provider.get_data_producer_kind())
+            .with_data_provider(bot.data_provider.get_name())
             .with_strategy_name(bot.strategy.get_name())
             .with_market(market)
             .with_year(year)
@@ -375,7 +375,7 @@ mod test {
             .expect_get_required_pre_trade_vales()
             .return_const(required_pre_trade_values.clone());
         mock_strategy.expect_get_name().return_const("ppp");
-        let data_provider = Arc::new(Binance::new());
+        let data_provider = Arc::new(Binance);
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
             historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
@@ -580,7 +580,7 @@ mod test {
             .expect_get_required_pre_trade_vales()
             .return_const(required_pre_trade_values.clone());
         mock_strategy.expect_get_name().return_const("ppp");
-        let data_provider = Arc::new(Binance::new());
+        let data_provider = Arc::new(Binance);
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
             historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),

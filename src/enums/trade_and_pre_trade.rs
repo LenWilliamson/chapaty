@@ -22,6 +22,6 @@ pub enum TradeDirectionKind {
     Long,
     Short,
 
-    #[strum(serialize = "NotClear")]
+    #[strum(serialize = "Not Clear")]
     None,
 }

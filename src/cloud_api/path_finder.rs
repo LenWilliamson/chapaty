@@ -1,13 +1,13 @@
 use super::file_path_with_fallback::FilePathWithFallback;
 use crate::{
     bot::time_interval::TimeInterval,
-    enums::{bot::DataProviderKind, data::HdbSourceDirKind, markets::MarketKind},
+    enums::{data::HdbSourceDirKind, markets::MarketKind},
 };
 use regex::Regex;
 use std::path::PathBuf;
 
 pub struct PathFinder {
-    data_provider: DataProviderKind,
+    data_provider: String,
     strategy_name: String,
     market: MarketKind,
     year: u32,
@@ -45,7 +45,7 @@ impl PathFinder {
     }
 
     fn get_fallback_file_name(&self, leaf_dir_kind: &HdbSourceDirKind) -> String {
-        let data_provider = self.data_provider;
+        let data_provider = self.data_provider.clone();
         let market = self.market;
         let year = self.year;
         match leaf_dir_kind {
@@ -68,7 +68,7 @@ impl PathFinder {
 }
 
 pub struct PathFinderBuilder {
-    data_provider: Option<DataProviderKind>,
+    data_provider: Option<String>,
     strategy_name: Option<String>,
     market: Option<MarketKind>,
     year: Option<u32>,
@@ -88,7 +88,7 @@ impl PathFinderBuilder {
         }
     }
 
-    pub fn with_data_provider(self, data_provider: DataProviderKind) -> Self {
+    pub fn with_data_provider(self, data_provider: String) -> Self {
         Self {
             data_provider: Some(data_provider),
             ..self

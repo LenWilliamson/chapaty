@@ -19,13 +19,13 @@ pub use bot::BotBuilder;
 pub use enums::{
     bot::{StopLossKind, TakeProfitKind, TimeFrameKind},
     data::MarketSimulationDataKind,
+    column_names::DataProviderColumnKind,
     indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
 };
 
 /*
 - Offset in Dollar angeben und dann umrechnen
-- Data Provider aufräumen... Irgendwie komsch das die gar keinen attribute haben
 - Initial Balance von Trade Day bekommen
 - Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
 - Time Frames umsetzen

@@ -6,7 +6,7 @@ use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
     enums::{data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind},
-    serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map},
+    serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map}, data_provider::BytesToDataFrameRequest,
 };
 use google_cloud_storage::{
     client::Client,
@@ -85,7 +85,7 @@ impl CloudStorageClient {
         let _self = Arc::new(self.clone());
         tokio::spawn(async move {
             let path_finder = PathFinderBuilder::new()
-                .with_data_provider(bot.get_data_provider().get_data_producer_kind())
+                .with_data_provider(bot.get_data_provider().get_name())
                 .with_strategy_name(bot.get_strategy().get_name())
                 .with_market(market)
                 .with_year(year)
@@ -168,7 +168,11 @@ impl CloudStorageClient {
             .map(Result::unwrap)
             .map(|df_as_bytes| {
                 let dp = self.bot.get_data_provider();
-                dp.get_df(df_as_bytes, &leaf_dir)
+                let request = BytesToDataFrameRequest {
+                    df_as_bytes,
+                    bytes_source_dir: leaf_dir
+                };
+                dp.get_df_from_bytes(request)
             })
             .collect()
     }

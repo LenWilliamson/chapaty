@@ -33,7 +33,7 @@ pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
 }
 
 pub fn setup_data_provider() -> Arc<dyn DataProvider + Send + Sync> {
-    Arc::new(Cme::new())
+    Arc::new(Cme)
 }
 
 pub fn setup_time_interval() -> TimeInterval {

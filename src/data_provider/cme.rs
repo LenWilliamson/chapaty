@@ -1,5 +1,9 @@
 use super::*;
-use crate::lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time};
+use crate::{
+    enums::bot::DataProviderKind,
+    lazy_frame_operations::closures::{comma_separated_string_to_f64, sub_time},
+    DataProviderColumnKind,
+};
 use chrono::Duration;
 use polars::{
     lazy::dsl::GetOutput,
@@ -7,15 +11,13 @@ use polars::{
 };
 use std::{io::Cursor, sync::Arc};
 
-pub struct Cme {
-    producer_kind: DataProviderKind,
-}
+pub struct Cme;
 
 impl FromStr for Cme {
     type Err = enums::error::ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "CME" | "Cme" | "cme" => Ok(Cme::new()),
+            "CME" | "Cme" | "cme" => Ok(Cme),
             _ => Err(Self::Err::ParseDataProducerError(format!(
                 "Data Producer <{s}> does not Exists"
             ))),
@@ -23,124 +25,119 @@ impl FromStr for Cme {
     }
 }
 
-impl Cme {
-    pub fn new() -> Self {
-        Cme {
-            producer_kind: DataProviderKind::Cme,
-        }
+impl DataProvider for Cme {
+    fn get_name(&self) -> String {
+        DataProviderKind::Cme.to_string()
     }
 
-    /// Returns a OHLC `DataFrame` from a raw data `.csv` file produced by the `cme` data profider
-    ///
-    /// # Arguments
-    /// * `file` - path to the `.csv` file we want to load into a `DataFrame`
-    /// * `kperiod` - duration of a candle **in minutes**
-    ///
-    /// # Example
-    /// Calling `transform_cme_df` on the INPUT `.csv` with `kperiod = 60` results in OUTPUT. Note, the
-    /// INPUT `.csv` does not have any header. We simply put them in this example to clarify how INPUT and
-    /// OUTPUT differ from each other.
-    /// // INPUT:
-    /// // idx = Index
-    /// // id = Uniqe identifier
-    /// // val = Example value inside a .csv file
-    /// idx:    0                   ,1          ,2          ,3          ,4         
-    /// id:     cts                 ,open       ,high       ,low        ,close     
-    /// row0:   01.09.2022 00:01:00 ;1,0127     ;1,01295    ;1,01265    ;1,01275
-    /// row1:   01.09.2022 00:02:00 ;1,01275    ;1,0129     ;1,01275    ;1,01285
-    ///
-    /// // OUTPUT:
-    /// idx:    0               ,1          ,2          ,3          ,4          ,5  
-    /// id:     ots             ,open       ,high       ,low        ,close      ,cts
-    /// row0:   1661990400000   ,1.0127     ,1.01295    ,1.01265    ,1.01275    ,1661990459999
-    /// row1:   1661990460000   ,1.01275    ,1.0129     ,1.01275    ,1.01285    ,1661990519999
-    pub fn transform_cme_df(&self, df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
-        let schema = Schema::from_iter(
-            vec![
-                Field::new("ots", DataType::Utf8),
-                Field::new("open", DataType::Utf8),
-                Field::new("high", DataType::Utf8),
-                Field::new("low", DataType::Utf8),
-                Field::new("close", DataType::Utf8),
-            ]
-            .into_iter(),
-        );
-        // has no header
-        let df = CsvReader::new(Cursor::new(df_as_bytes))
-            .has_header(false)
-            .with_delimiter(b';')
-            .with_schema(Arc::new(schema))
-            .finish()
-            .unwrap();
-        cme_raw_to_ohlc_df(df, kperiod)
+    fn get_df_from_bytes(&self, request: BytesToDataFrameRequest) -> DataFrame {
+        let offset = match request.bytes_source_dir {
+            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
+            HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlcv30m => 30,
+            HdbSourceDirKind::Ohlc1h | HdbSourceDirKind::Ohlcv1h => 60,
+            _ => panic!(
+                "DataProvider <CME> can only compute offset for OHLC data. But not for {}",
+                request.bytes_source_dir
+            ),
+        };
+        transform_cme_df(request.df_as_bytes, offset)
     }
+}
+
+/// Returns a OHLC `DataFrame` from a raw data `.csv` file produced by the `cme` data profider
+///
+/// # Arguments
+/// * `file` - path to the `.csv` file we want to load into a `DataFrame`
+/// * `kperiod` - duration of a candle **in minutes**
+///
+/// # Example
+/// Calling `transform_cme_df` on the INPUT `.csv` with `kperiod = 60` results in OUTPUT. Note, the
+/// INPUT `.csv` does not have any header. We simply put them in this example to clarify how INPUT and
+/// OUTPUT differ from each other.
+///
+/// ```
+/// // INPUT:
+/// // idx = Index
+/// // id = Uniqe identifier
+/// // val = Example value inside a .csv file
+/// // idx:    0                   ,1          ,2          ,3          ,4         
+/// // id:     cts                 ,open       ,high       ,low        ,close     
+/// // row0:   01.09.2022 00:01:00 ;1,0127     ;1,01295    ;1,01265    ;1,01275
+/// // row1:   01.09.2022 00:02:00 ;1,01275    ;1,0129     ;1,01275    ;1,01285
+///
+/// // OUTPUT:
+/// // idx:    0               ,1          ,2          ,3          ,4          ,5  
+/// // id:     ots             ,open       ,high       ,low        ,close      ,cts
+/// // row0:   1661990400000   ,1.0127     ,1.01295    ,1.01265    ,1.01275    ,1661990459999
+/// // row1:   1661990460000   ,1.01275    ,1.0129     ,1.01275    ,1.01285    ,1661990519999
+/// ```
+pub fn transform_cme_df(df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
+    let schema = Schema::from_iter(
+        vec![
+            Field::new(
+                &DataProviderColumnKind::OpenTime.to_string(),
+                DataType::Utf8,
+            ),
+            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Utf8),
+            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Utf8),
+            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Utf8),
+            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Utf8),
+        ]
+        .into_iter(),
+    );
+
+    let df = CsvReader::new(Cursor::new(df_as_bytes))
+        .has_header(false)
+        .with_delimiter(b';')
+        .with_schema(Arc::new(schema))
+        .finish()
+        .unwrap();
+
+    cme_raw_to_ohlc_df(df, kperiod)
 }
 
 fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
     df.lazy()
         .with_columns(vec![
-            col("ots").apply(
+            col(&DataProviderColumnKind::OpenTime.to_string()).apply(
                 move |x| Ok(Some(sub_time(x, Duration::minutes(offset)))),
                 GetOutput::default(),
             ),
-            col("open").apply(
+            col(&DataProviderColumnKind::Open.to_string()).apply(
                 |x| Ok(Some(comma_separated_string_to_f64(x))),
                 GetOutput::default(),
             ),
-            col("high").apply(
+            col(&DataProviderColumnKind::High.to_string()).apply(
                 |x| Ok(Some(comma_separated_string_to_f64(x))),
                 GetOutput::default(),
             ),
-            col("low").apply(
+            col(&DataProviderColumnKind::Low.to_string()).apply(
                 |x| Ok(Some(comma_separated_string_to_f64(x))),
                 GetOutput::default(),
             ),
-            col("close").apply(
+            col(&DataProviderColumnKind::Close.to_string()).apply(
                 |x| Ok(Some(comma_separated_string_to_f64(x))),
                 GetOutput::default(),
             ),
-            col("ots")
+            col(&DataProviderColumnKind::OpenTime.to_string())
                 .apply(
                     |x| Ok(Some(sub_time(x, Duration::milliseconds(1)))),
                     GetOutput::default(),
                 )
-                .alias("cts"),
+                .alias(&DataProviderColumnKind::CloseTime.to_string()),
         ])
         .collect()
         .unwrap()
 }
 
-impl DataProvider for Cme {
-    fn get_data_producer_kind(&self) -> DataProviderKind {
-        self.producer_kind.clone()
-    }
-
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
-        let offset = match data {
-            HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
-            HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlcv30m => 30,
-            HdbSourceDirKind::Ohlc1h | HdbSourceDirKind::Ohlcv1h => 60,
-            _ => panic!(
-                "DataProvider <CME> can only compute offset for OHLC data. But not for {data}"
-            ),
-        };
-        self.transform_cme_df(df_as_bytes, offset)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::data_provider::cme::Cme;
-    use crate::{
-        cloud_api::api_for_unit_tests::download_df_as_bytes, enums::bot::DataProviderKind,
-    };
+    use super::*;
+    use crate::cloud_api::api_for_unit_tests::download_df_as_bytes;
     use polars::prelude::{df, NamedFrom};
 
     #[tokio::test]
     async fn test_transform_df() {
-        let cme = Cme {
-            producer_kind: DataProviderKind::Cme,
-        };
         let target = df!(
             "ots" => &[1661990400000_i64, 1661990460000, 1661990520000,1661990580000, 1661990640000,1661990700000],
             "open" => &[1.0127, 1.01275, 1.01285, 1.0127, 1.01275, 1.01285],
@@ -152,7 +149,7 @@ mod tests {
 
         let file = "cme/ohlc/6e-1m-2022-09-01.csv".to_string();
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
-        let result = cme.transform_cme_df(df, 1);
+        let result = transform_cme_df(df, 1);
 
         assert_eq!(target.unwrap().frame_equal(&result), true);
     }

@@ -1,17 +1,15 @@
 use super::*;
-use crate::enums::column_names::DataProviderColumnKind;
+use crate::{enums::bot::DataProviderKind, DataProviderColumnKind};
 use polars::prelude::{CsvReader, SerReader};
 use std::{io::Cursor, sync::Arc};
 
-pub struct Binance {
-    producer_kind: DataProviderKind,
-}
+pub struct Binance;
 
 impl FromStr for Binance {
     type Err = enums::error::ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Binance" | "binance" => Ok(Binance::new()),
+            "Binance" | "binance" => Ok(Binance),
             _ => Err(Self::Err::ParseDataProducerError(
                 "Data Producer Does not Exists".to_string(),
             )),
@@ -19,46 +17,35 @@ impl FromStr for Binance {
     }
 }
 
-impl Binance {
-    pub fn new() -> Self {
-        Binance {
-            producer_kind: DataProviderKind::Binance,
-        }
-    }
-
-    fn schema(&self, data: &HdbSourceDirKind) -> Schema {
-        match data {
-            HdbSourceDirKind::Ohlc1m
-            | HdbSourceDirKind::Ohlc30m
-            | HdbSourceDirKind::Ohlc1h
-            | HdbSourceDirKind::Ohlcv1m
-            | HdbSourceDirKind::Ohlcv30m
-            | HdbSourceDirKind::Ohlcv1h => ohlcv_schema(),
-            HdbSourceDirKind::Tick => {
-                panic!("DataProvider <BINANCE> does not implement DataKind::Tick")
-            }
-            HdbSourceDirKind::AggTrades => aggtrades_schema(),
-        }
-    }
-}
-
 impl DataProvider for Binance {
-    fn get_data_producer_kind(&self) -> DataProviderKind {
-        self.producer_kind.clone()
+    fn get_name(&self) -> String {
+        DataProviderKind::Binance.to_string()
     }
 
-
-
-    fn get_df(&self, df_as_bytes: Vec<u8>, data: &HdbSourceDirKind) -> DataFrame {
-        CsvReader::new(Cursor::new(df_as_bytes))
+    fn get_df_from_bytes(&self, request: BytesToDataFrameRequest) -> DataFrame {
+        CsvReader::new(Cursor::new(request.df_as_bytes))
             .has_header(false)
-            .with_schema(Arc::new(self.schema(data)))
+            .with_schema(Arc::new(schema(&request.bytes_source_dir)))
             .finish()
             .unwrap()
     }
 }
 
-/// Returns the OHLC `Schema` for `Binance`
+fn schema(data: &HdbSourceDirKind) -> Schema {
+    match data {
+        HdbSourceDirKind::Ohlc1m
+        | HdbSourceDirKind::Ohlc30m
+        | HdbSourceDirKind::Ohlc1h
+        | HdbSourceDirKind::Ohlcv1m
+        | HdbSourceDirKind::Ohlcv30m
+        | HdbSourceDirKind::Ohlcv1h => ohlcv_schema(),
+        HdbSourceDirKind::AggTrades => aggtrades_schema(),
+        HdbSourceDirKind::Tick => {
+            panic!("DataProvider <BINANCE> does not implement DataKind::Tick")
+        }
+    }
+}
+
 fn ohlcv_schema() -> Schema {
     Schema::from_iter(
         vec![
@@ -103,7 +90,6 @@ fn ohlcv_schema() -> Schema {
     )
 }
 
-/// Returns the AggTrades `Schema` for `Binance`
 fn aggtrades_schema() -> Schema {
     Schema::from_iter(
         vec![
