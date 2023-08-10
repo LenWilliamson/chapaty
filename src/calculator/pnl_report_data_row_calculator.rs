@@ -11,6 +11,7 @@ use crate::{
     enums::markets::MarketKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::{Strategy, TradeRequestObject},
+    MarketSimulationDataKind,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use std::sync::Arc;
@@ -33,30 +34,26 @@ pub struct PnLReportDataRowCalculator {
     pub market: MarketKind,
     pub year: u32,
     pub time_frame_snapshot: TimeFrameSnapshot,
+    pub market_sim_data_kind: MarketSimulationDataKind,
 }
 
 #[derive(Clone)]
 pub struct TradeAndPreTradeValuesWithData {
-    pub trade: TradeValuesWithData,
+    pub trade: Option<TradeValuesWithData>,
     pub pre_trade: RequiredPreTradeValuesWithData,
 }
 
 impl PnLReportDataRowCalculator {
     pub fn compute(&self) -> PnLReportDataRow {
-        let pre_trade = self.compute_pre_trade_values();
-        self.compute_trade_values(&pre_trade).map_or_else(
-            || self.handle_no_entry(pre_trade.clone()),
-            |trade| {
-                self.handle_trade(TradeAndPreTradeValuesWithData {
-                    trade,
-                    pre_trade: pre_trade.clone(),
-                })
-            },
-        )
+        let data = self.get_trade_and_pre_trade_values_with_data();
+        match data.trade {
+            Some(_) => self.handle_trade(data),
+            None => self.handle_no_entry(data),
+        }
     }
 
-    fn handle_no_entry(&self, pre_trade: RequiredPreTradeValuesWithData) -> PnLReportDataRow {
-        let request = self.trade_object_request(pre_trade);
+    fn handle_no_entry(&self, values: TradeAndPreTradeValuesWithData) -> PnLReportDataRow {
+        let request = self.trade_object_request(&values);
         PnLReportDataRow {
             market: self.market.clone(),
             year: self.year,
@@ -68,8 +65,8 @@ impl PnLReportDataRowCalculator {
     }
 
     fn handle_trade(&self, values: TradeAndPreTradeValuesWithData) -> PnLReportDataRow {
-        let request = self.trade_object_request(values.clone().pre_trade);
-        let entry_ts = values.trade.entry_ts();
+        let request = self.trade_object_request(&values);
+        let entry_ts = values.trade.as_ref().unwrap().entry_ts();
         let trade = self.strategy.get_trade(&request);
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(entry_ts)
@@ -88,12 +85,14 @@ impl PnLReportDataRowCalculator {
         }
     }
 
-    fn trade_object_request(
-        &self,
-        pre_trade: RequiredPreTradeValuesWithData,
-    ) -> TradeRequestObject {
+    fn trade_object_request(&self, values: &TradeAndPreTradeValuesWithData) -> TradeRequestObject {
+        let initial_balance = values
+            .trade
+            .as_ref()
+            .and_then(|trade| Some(trade.initial_balance()));
         TradeRequestObject {
-            pre_trade_values: pre_trade,
+            pre_trade_values: values.pre_trade.clone(),
+            initial_balance,
             market: self.market,
         }
     }
@@ -121,6 +120,12 @@ impl PnLReportDataRowCalculator {
             .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
             .build_and_compute()
     }
+
+    fn get_trade_and_pre_trade_values_with_data(&self) -> TradeAndPreTradeValuesWithData {
+        let pre_trade = self.compute_pre_trade_values();
+        let trade = self.compute_trade_values(&pre_trade);
+        TradeAndPreTradeValuesWithData { trade, pre_trade }
+    }
 }
 
 pub struct PnLReportDataRowCalculatorBuilder {
@@ -131,6 +136,7 @@ pub struct PnLReportDataRowCalculatorBuilder {
     market: Option<MarketKind>,
     year: Option<u32>,
     time_frame_snapshot: Option<TimeFrameSnapshot>,
+    market_sim_data_kind: Option<MarketSimulationDataKind>,
 }
 
 impl PnLReportDataRowCalculatorBuilder {
@@ -143,6 +149,7 @@ impl PnLReportDataRowCalculatorBuilder {
             market: None,
             year: None,
             time_frame_snapshot: None,
+            market_sim_data_kind: None,
         }
     }
 
@@ -195,6 +202,13 @@ impl PnLReportDataRowCalculatorBuilder {
         }
     }
 
+    pub fn with_market_sim_data_kind(self, market_sim_data_kind: MarketSimulationDataKind) -> Self {
+        Self {
+            market_sim_data_kind: Some(market_sim_data_kind),
+            ..self
+        }
+    }
+
     pub fn build(self) -> PnLReportDataRowCalculator {
         PnLReportDataRowCalculator {
             data_provider: self.data_provider.unwrap(),
@@ -204,6 +218,7 @@ impl PnLReportDataRowCalculatorBuilder {
             market: self.market.unwrap(),
             year: self.year.unwrap(),
             time_frame_snapshot: self.time_frame_snapshot.unwrap(),
+            market_sim_data_kind: self.market_sim_data_kind.unwrap(),
         }
     }
 

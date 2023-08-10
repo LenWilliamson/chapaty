@@ -164,12 +164,13 @@ impl TradePnLCalculator {
     }
 
     fn handle_timeout(&self) -> PnL {
-        let exit_px = self.trade_and_pre_trade_values.trade.last_trade_price();
+        let exit_px = self.trade_and_pre_trade_values.trade.as_ref().unwrap();
+        let last_trade_price = exit_px.last_trade_price();
 
         PnL {
-            price: exit_px,
+            price: last_trade_price,
             ts: Some(0),
-            profit: Some(self.trade.profit(exit_px)),
+            profit: Some(self.trade.profit(last_trade_price)),
         }
     }
 
@@ -345,7 +346,10 @@ mod test {
     use super::*;
     use crate::{
         bot::trade::Trade,
-        calculator::{pre_trade_values_calculator::RequiredPreTradeValuesWithData, trade_values_calculator::TradeValuesWithData},
+        calculator::{
+            pre_trade_values_calculator::RequiredPreTradeValuesWithData,
+            trade_values_calculator::TradeValuesWithData,
+        },
         cloud_api::api_for_unit_tests::download_df,
         enums::{
             indicator::{PriceHistogramKind, TradingIndicatorKind},
@@ -420,7 +424,7 @@ mod test {
 
     fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> TradeAndPreTradeValuesWithData {
         TradeAndPreTradeValuesWithData {
-            trade: set_up_trade_data_map_ppp_long(entry_ts),
+            trade: Some(set_up_trade_data_map_ppp_long(entry_ts)),
             pre_trade: set_up_pre_trade_values_ppp_long(),
         }
     }
@@ -706,7 +710,7 @@ mod test {
         entry_ts: i64,
     ) -> TradeAndPreTradeValuesWithData {
         TradeAndPreTradeValuesWithData {
-            trade: set_up_trade_data_map_ppp_short(entry_ts),
+            trade: Some(set_up_trade_data_map_ppp_short(entry_ts)),
             pre_trade: set_up_pre_trade_values_ppp_short(),
         }
     }

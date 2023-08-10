@@ -3,10 +3,7 @@ use std::{convert::identity, rc::Rc};
 use crate::{
     converter::any_value::AnyValueConverter,
     data_frame_operations::trait_extensions::MyDataFrameOperations,
-    enums::{
-        column_names::{DataProviderColumnKind, VolumeProfileColumnKind},
-        value_area::ValueAreaKind,
-    },
+    enums::{column_names::VolumeProfileColumnKind, value_area::ValueAreaKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 
@@ -14,6 +11,82 @@ use polars::prelude::{col, AnyValue, DataFrame, IntoLazy};
 
 pub struct PriceHistogram {
     df: DataFrame,
+}
+
+impl PriceHistogram {
+    pub fn new(df: DataFrame) -> Self {
+        Self { df }
+    }
+
+    /// This function computes the POC for the given volume profile. The POC is the point of control. Hence,
+    /// the price where the highest volume for a given time interval was traded.
+    ///
+    /// # Arguments
+    /// * `df_vol` - volume profile
+    pub fn poc(&self) -> f64 {
+        let qx = VolumeProfileColumnKind::Quantity.to_string();
+        let px = VolumeProfileColumnKind::Price.to_string();
+
+        self.df
+            .clone()
+            .lazy()
+            .select([col(&px).filter(col(&qx).eq(col(&qx).max()))])
+            .collect()
+            .unwrap()
+            .get(0)
+            .unwrap()[0]
+            .unwrap_float64()
+    }
+
+    /// Computes the volume area described in <https://www.vtad.de/lexikon/market-profile/>
+    /// # Arguments
+    /// * `std_dev` - standard deviation
+    pub fn value_area(&self, std_dev: f64) -> (f64, f64) {
+        let (poc, poc_vol) = self.get_poc_with_vol_tuple();
+        let total_tpo_count = self.get_total_tpo_count();
+        let initial_value_area = ValueArea::new(&self.df, poc);
+        let initial_tpo_count = total_tpo_count * std_dev - poc_vol;
+        self.compute_value_area(initial_tpo_count, initial_value_area)
+    }
+
+    fn compute_value_area(&self, total_tpo_count: f64, va: ValueArea) -> (f64, f64) {
+        if total_tpo_count <= 0.0 {
+            return (va.low.price, va.high.price);
+        }
+
+        let va_with_updated_parts = va.update_value_area_parts();
+        let tpo_delta = va_with_updated_parts
+            .determine_tpo_delta(&va)
+            .map_or_else(|| total_tpo_count, identity);
+        let new_va = va.update_value_area_part(&va_with_updated_parts);
+
+        self.compute_value_area(total_tpo_count - tpo_delta, new_va)
+    }
+
+    fn get_poc_with_vol_tuple(&self) -> (f64, f64) {
+        let qx = VolumeProfileColumnKind::Quantity.to_string();
+
+        let row = self
+            .df
+            .clone()
+            .lazy()
+            .filter(col(&qx).eq(col(&qx).max()))
+            .collect()
+            .unwrap();
+        let row = row.get(0).unwrap();
+
+        let poc = row[0].unwrap_float64();
+        let poc_vol = row[1].unwrap_float64();
+        (poc, poc_vol)
+    }
+
+    fn get_total_tpo_count(&self) -> f64 {
+        let qx_col = self
+            .df
+            .find_idx_by_name(VolumeProfileColumnKind::Quantity.to_string().as_str())
+            .unwrap();
+        self.df.get_columns()[qx_col].sum().unwrap()
+    }
 }
 
 struct ValueArea {
@@ -345,117 +418,6 @@ fn get_tpo_count_from_df_row<'a>(row: &Vec<AnyValue<'a>>) -> f64 {
     row[2].unwrap_float64()
 }
 
-impl PriceHistogram {
-    pub fn new(df: DataFrame) -> Self {
-        Self { df }
-    }
-
-    /// This function computes the POC for the given volume profile. The POC is the point of control. Hence,
-    /// the price where the highest volume for a given time interval was traded.
-    ///
-    /// # Arguments
-    /// * `df_vol` - volume profile
-    pub fn poc(&self) -> f64 {
-        let qx = VolumeProfileColumnKind::Quantity.to_string();
-        let px = VolumeProfileColumnKind::Price.to_string();
-
-        self.df
-            .clone()
-            .lazy()
-            .select([col(&px).filter(col(&qx).eq(col(&qx).max()))])
-            .collect()
-            .unwrap()
-            .get(0)
-            .unwrap()[0]
-            .unwrap_float64()
-    }
-
-    #[allow(dead_code)]
-    /// Computes the initial balance described in <https://www.vtad.de/lexikon/market-profile/>
-    pub fn initial_balance(&self) -> (f64, f64) {
-        let first_candle = self.df.get(0).unwrap();
-        let second_candle = self.df.get(1).unwrap();
-        let start = self.initial_balance_start_price(&first_candle, &second_candle);
-        let end = self.initial_balance_end_price(&first_candle, &second_candle);
-
-        (start, end)
-    }
-
-    /// Computes the volume area described in <https://www.vtad.de/lexikon/market-profile/>
-    /// # Arguments
-    /// * `std_dev` - standard deviation
-    pub fn value_area(&self, std_dev: f64) -> (f64, f64) {
-        let (poc, poc_vol) = self.get_poc_with_vol_tuple();
-        let total_tpo_count = self.get_total_tpo_count();
-        let initial_value_area = ValueArea::new(&self.df, poc);
-        let initial_tpo_count = total_tpo_count * std_dev - poc_vol;
-        self.compute_value_area(initial_tpo_count, initial_value_area)
-    }
-
-    fn compute_value_area(&self, total_tpo_count: f64, va: ValueArea) -> (f64, f64) {
-        if total_tpo_count <= 0.0 {
-            return (va.low.price, va.high.price);
-        }
-
-        let va_with_updated_parts = va.update_value_area_parts();
-        let tpo_delta = va_with_updated_parts
-            .determine_tpo_delta(&va)
-            .map_or_else(|| total_tpo_count, identity);
-        let new_va = va.update_value_area_part(&va_with_updated_parts);
-
-        self.compute_value_area(total_tpo_count - tpo_delta, new_va)
-    }
-
-    fn get_poc_with_vol_tuple(&self) -> (f64, f64) {
-        let qx = VolumeProfileColumnKind::Quantity.to_string();
-
-        let row = self
-            .df
-            .clone()
-            .lazy()
-            .filter(col(&qx).eq(col(&qx).max()))
-            .collect()
-            .unwrap();
-        let row = row.get(0).unwrap();
-
-        let poc = row[0].unwrap_float64();
-        let poc_vol = row[1].unwrap_float64();
-        (poc, poc_vol)
-    }
-
-    fn get_total_tpo_count(&self) -> f64 {
-        let qx_col = self
-            .df
-            .find_idx_by_name(VolumeProfileColumnKind::Quantity.to_string().as_str())
-            .unwrap();
-        self.df.get_columns()[qx_col].sum().unwrap()
-    }
-
-    fn initial_balance_start_price<'a>(
-        &self,
-        first_candle: &Vec<AnyValue<'a>>,
-        second_candle: &Vec<AnyValue<'a>>,
-    ) -> f64 {
-        let col_name_low = DataProviderColumnKind::Low.to_string();
-        let idx = self.df.find_idx_by_name(&col_name_low).unwrap();
-        let first_low = first_candle[idx].unwrap_float64();
-        let second_low = second_candle[idx].unwrap_float64();
-        f64::min(first_low, second_low)
-    }
-
-    fn initial_balance_end_price<'a>(
-        &self,
-        first_candle: &Vec<AnyValue<'a>>,
-        second_candle: &Vec<AnyValue<'a>>,
-    ) -> f64 {
-        let col_name_high = DataProviderColumnKind::High.to_string();
-        let idx = self.df.find_idx_by_name(&col_name_high).unwrap();
-        let first_high = first_candle[idx].unwrap_float64();
-        let second_high = second_candle[idx].unwrap_float64();
-        f64::max(first_high, second_high)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,18 +463,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(38_100.0, PriceHistogram { df }.poc());
-    }
-
-    #[tokio::test]
-    async fn test_initial_balance() {
-        let df = download_df(
-            "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
-        )
-        .await;
-
-        let initial_balance = PriceHistogram { df }.initial_balance();
-        assert_eq!((1.16095, 1.16275), initial_balance);
     }
 
     #[test]

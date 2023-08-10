@@ -85,11 +85,6 @@ impl Bot {
         res
     }
 
-    pub async fn backtest_and_serialize(&self) -> String {
-        let res = self.backtest().await;
-        serde_json::to_string(&res).unwrap()
-    }
-
     pub fn get_shared_pointer(&self) -> Arc<Bot> {
         Arc::new(self.clone())
     }
@@ -158,7 +153,8 @@ impl Bot {
             .with_bot(self.get_shared_pointer())
             .with_indicator_data_pair(self.determine_indicator_data_pair())
             .with_cache_computations(self.cache_computations)
-            .with_market(market);
+            .with_market(market)
+            .with_market_sim_data_kind(self.market_simulation_data);
 
         let tasks: Vec<_> = self
             .years

@@ -33,7 +33,8 @@ impl RequiredPreTradeValuesWithData {
             .unwrap()
     }
     pub fn last_trade_price(&self) -> f64 {
-        *self.market_valeus
+        *self
+            .market_valeus
             .get(&PreTradeDataKind::LastTradePrice)
             .unwrap()
     }

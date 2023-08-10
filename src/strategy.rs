@@ -7,7 +7,7 @@ use crate::{
         error::ChapatyErrorKind,
         indicator::TradingIndicatorKind,
         trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
-    }, MarketKind,
+    }, MarketKind, trading_indicator::initial_balance::InitialBalance,
 };
 use mockall::automock;
 use std::str::FromStr;
@@ -26,6 +26,7 @@ pub struct TakeProfit {
 
 pub struct TradeRequestObject {
     pub pre_trade_values: RequiredPreTradeValuesWithData,
+    pub initial_balance: Option<InitialBalance>,
     pub market: MarketKind,
 }
 

@@ -9,6 +9,7 @@ pub enum TradeDataKind {
     LowestTradePriceSinceEntryTimestamp,
     HighestTradePriceSinceEntry,
     HighestTradePriceSinceEntryTimestamp,
+    InitialBalance,
 }
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum PreTradeDataKind {

@@ -20,7 +20,7 @@ use crate::{
     enums::{
         bot::TimeFrameKind, error::ChapatyErrorKind, indicator::TradingIndicatorKind,
         markets::MarketKind,
-    },
+    }, MarketSimulationDataKind,
 };
 use polars::prelude::DataFrame;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -37,6 +37,7 @@ pub struct TradingSession {
     pub market: MarketKind,
     pub year: u32,
     pub data: ExecutionData,
+    pub market_sim_data_kind: MarketSimulationDataKind,
     pub cache_computations: bool,
 }
 
@@ -147,6 +148,7 @@ impl TradingSession {
             .with_year(self.year)
             .with_market(self.market)
             .with_time_frame_snapshot(batch.time_frame_snapshot)
+            .with_market_sim_data_kind(self.market_sim_data_kind)
             .build_and_compute()
     }
 }
@@ -183,6 +185,7 @@ pub struct TradingSessionBuilder {
     indicator_data_pair: Option<Arc<HashSet<IndicatorDataPair>>>,
     market: Option<MarketKind>,
     year: Option<u32>,
+    market_sim_data_kind: Option<MarketSimulationDataKind>,
     cache_computations: bool,
 }
 
@@ -193,6 +196,7 @@ impl TradingSessionBuilder {
             indicator_data_pair: None,
             market: None,
             year: None,
+    market_sim_data_kind: None,
             cache_computations: false,
         }
     }
@@ -225,6 +229,13 @@ impl TradingSessionBuilder {
         }
     }
 
+    pub fn with_market_sim_data_kind(self, market_sim_data_kind: MarketSimulationDataKind) -> Self {
+        Self {
+            market_sim_data_kind: Some(market_sim_data_kind),
+            ..self
+        }
+    }
+
     pub fn with_cache_computations(self, cache_computations: bool) -> Self {
         Self {
             cache_computations,
@@ -239,6 +250,7 @@ impl TradingSessionBuilder {
             indicator_data_pair: self.indicator_data_pair.unwrap(),
             market: self.market.unwrap(),
             year: self.year.unwrap(),
+            market_sim_data_kind: self.market_sim_data_kind.unwrap(),
             data,
             cache_computations: self.cache_computations,
         }

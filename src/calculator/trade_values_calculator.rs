@@ -3,12 +3,15 @@ use crate::{
     converter::any_value::AnyValueConverter,
     enums::{my_any_value::MyAnyValueKind, trade_and_pre_trade::TradeDataKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
+    trading_indicator::initial_balance::{InitialBalance, InitialBalanceCalculator},
+    MarketSimulationDataKind,
 };
 use polars::prelude::{DataFrame, IntoLazy};
 use std::collections::HashMap;
 
 pub struct TradeValuesCalculator {
-    market_sim_data: DataFrame,
+    pub market_sim_data: DataFrame,
+    pub market_sim_data_kind: MarketSimulationDataKind,
     entry_price: f64,
 }
 
@@ -22,7 +25,6 @@ impl TradeValuesWithData {
         self.trade
             .get(&TradeDataKind::LastTradePrice)
             .unwrap()
-            .clone()
             .unwrap_float64()
     }
 
@@ -30,8 +32,14 @@ impl TradeValuesWithData {
         self.trade
             .get(&TradeDataKind::EntryTimestamp)
             .unwrap()
-            .clone()
             .unwrap_int64()
+    }
+
+    pub fn initial_balance(&self) -> InitialBalance {
+        self.trade
+            .get(&TradeDataKind::InitialBalance)
+            .unwrap()
+            .unwrap_initial_balance()
     }
 }
 
@@ -41,8 +49,7 @@ impl TradeValuesCalculator {
             .clone()
             .lazy()
             .find_timestamp_when_price_reached(self.entry_price)
-            .map_or_else(
-                || None,
+            .and_then(
                 |entry_ts| {
                     let trade = TradeValuesWithData {
                         trade: self.get_result(entry_ts),
@@ -78,7 +85,16 @@ impl TradeValuesCalculator {
                 TradeDataKind::EntryTimestamp,
                 MyAnyValueKind::Int64(entry_ts),
             ),
+            (
+                TradeDataKind::InitialBalance,
+                MyAnyValueKind::InitialBalance(self.get_initial_balance()),
+            ),
         ])
+    }
+
+    fn get_initial_balance(&self) -> InitialBalance {
+        let calculator: InitialBalanceCalculator = self.into();
+        calculator.initial_balance()
     }
 
     /// # Returns
@@ -137,6 +153,7 @@ fn update_trade_value_map(
 
 pub struct TradeValuesCalculatorBuilder {
     market_sim_data: Option<DataFrame>,
+    market_sim_data_kind: Option<MarketSimulationDataKind>,
     entry_price: Option<f64>,
 }
 
@@ -144,6 +161,7 @@ impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
     fn from(value: &PnLReportDataRowCalculator) -> Self {
         Self {
             market_sim_data: Some(value.market_sim_data.clone()),
+            market_sim_data_kind: Some(value.market_sim_data_kind),
             entry_price: None,
         }
     }
@@ -160,6 +178,7 @@ impl TradeValuesCalculatorBuilder {
     pub fn build(self) -> TradeValuesCalculator {
         TradeValuesCalculator {
             market_sim_data: self.market_sim_data.unwrap(),
+            market_sim_data_kind: self.market_sim_data_kind.unwrap(),
             entry_price: self.entry_price.unwrap(),
         }
     }
@@ -184,6 +203,7 @@ mod test {
         .await;
         let mut calculator = TradeValuesCalculator {
             entry_price: 42_000.0,
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
             market_sim_data: market_sim_data.clone(),
         };
 
@@ -222,11 +242,19 @@ mod test {
             TradeDataKind::HighestTradePriceSinceEntryTimestamp,
             MyAnyValueKind::Int64(high_ots),
         );
+        target.insert(
+            TradeDataKind::InitialBalance,
+            MyAnyValueKind::InitialBalance(InitialBalance {
+                high: 38484.84,
+                low: 38127.76,
+            }),
+        );
 
         assert_eq!(target, calculator.compute().unwrap().trade);
 
         calculator = TradeValuesCalculator {
             entry_price: 0.0,
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
             market_sim_data,
         };
 
