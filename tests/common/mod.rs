@@ -1,32 +1,46 @@
+use chapaty::{
+    data_provider::{cme::Cme, DataProvider},
+    strategy::{ppp::PppBuilder, StopLoss, Strategy, TakeProfit},
+    PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind,
+};
 use std::sync::Arc;
 
-use chapaty::{
-    common::time_interval::TimeInterval,
-    enums::{
-        markets::{GranularityKind, MarketKind},
-    },
-    producers::{
-        ninja::Ninja,
-    },
-    streams::backtester::Backtester,
-};
-
-pub fn setup() -> Backtester {
-    // Initialze parameter for backtesting the strategy
-    let data_provider = Ninja::new(std::path::PathBuf::from("trust-data"));
-    let dp = Arc::new(data_provider);
-    let years = vec![2022];
-    let market = MarketKind::EurUsd;
-    let granularity = GranularityKind::Daily;
-    let ti: Option<TimeInterval> = None;
-
-
-    let backtester = Backtester {
-        dp,
-        years,
-        market: vec![market],
-        granularity: vec![granularity],
-        ti,
+pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let ppp_builder = PppBuilder::new();
+    // let sl = StopLoss {
+    //     kind: StopLossKind::PrevHighOrLow,
+    //     offset: 0.0,
+    // };
+    // let tp = TakeProfit {
+    //     kind: TakeProfitKind::PrevClose,
+    //     offset: 0.0,
+    // };
+    let sl = StopLoss {
+        kind: StopLossKind::PrevHighOrLow, // MAIN
+        offset: 125_000.0, // MAIN previous 1.0
     };
-    backtester
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PrevClose, // MAIN
+        offset: 125.0, // MAIN previous 0.00005 * 20.0
+    };
+
+    let strategy = ppp_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .build();
+    Arc::new(strategy)
+}
+
+pub fn setup_data_provider() -> Arc<dyn DataProvider + Send + Sync> {
+    Arc::new(Cme)
+}
+
+pub fn setup_time_interval() -> TimeInterval {
+    TimeInterval {
+        start_day: chrono::Weekday::Mon,
+        start_h: 1,
+        end_day: chrono::Weekday::Fri,
+        end_h: 23,
+    }
 }
