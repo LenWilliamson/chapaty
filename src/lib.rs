@@ -25,8 +25,6 @@ pub use enums::{
 };
 
 /*
-- Time Interval anpassen => Flexibler setzen: Wochentage, ganze Woche, Gar nicht und Zeitinterval für Wochentage oder ganze woche
-- Time Frames umsetzen
 - bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets
 - Fehler in PnL Berechnung fixen (Wann ist TradeDirection::None)
 - Warum ist die PnL eine andere, wenn man die Daten direkt lädt

@@ -14,8 +14,6 @@ use std::path::PathBuf;
 pub trait MyLazyFrameOperations {
     fn add_cw_col(self, ts_col: &str) -> Self;
     fn add_weekday_col(self, ts_col: &str) -> Self;
-    fn add_hour_col(self, ts_col: &str) -> Self;
-    fn add_min_col(self, ts_col: &str) -> Self;
     fn filter_ts_col_by_time_interval(
         self,
         ts_col: &str,
@@ -43,22 +41,6 @@ impl MyLazyFrameOperations for LazyFrame {
                 .apply(|x| Ok(Some(get_weekday_from_ts(&x))), GetOutput::default())
                 .alias("weekday"),
         )
-    }
-    fn add_hour_col(self, _ts_col: &str) -> Self {
-        // self.with_column(
-        //     col(&ts_col)
-        //         .apply(|x| Ok(Some(get_hour_from_ts(&x))), GetOutput::default())
-        //         .alias("hour"),
-        // )
-        self
-    }
-    fn add_min_col(self, _ts_col: &str) -> Self {
-        // self.with_column(
-        //     col(&ts_col)
-        //         .apply(|x| Ok(Some(get_min_from_ts(&x))), GetOutput::default())
-        //         .alias("min"),
-        // )
-        self
     }
 
     fn filter_ts_col_by_time_interval(
