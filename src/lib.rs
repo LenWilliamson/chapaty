@@ -25,10 +25,10 @@ pub use enums::{
 };
 
 /*
-- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets
 - Fehler in PnL Berechnung fixen (Wann ist TradeDirection::None)
 - Warum ist die PnL eine andere, wenn man die Daten direkt lädt
 - MERGE IN MASTER + UPLOAD CRATE with License
+- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets
 - Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
 - Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)
     - CRV NULL wenn PrevHigh -0.002 bei 6E => Was passiert wenn SL unterhalb//oberhalb des Entry?
