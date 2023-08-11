@@ -3,7 +3,10 @@ use crate::{
     calculator::pnl_report_data_row_calculator::PnLReportDataRow,
     converter::market_decimal_places::MyDecimalPlaces,
     data_frame_operations::io_operations::save_df_as_csv,
-    enums::column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
+    enums::{
+        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
+        trade_and_pre_trade::TradeDirectionKind,
+    },
 };
 use std::{collections::HashMap, convert::identity};
 
@@ -185,19 +188,28 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_profit;
-        let stop_loss = self.trade.stop_loss;
+        let take_profit = self.trade.take_profit.map_or_else(|| 0.0, identity);
+        let stop_loss = self.trade.stop_loss.map_or_else(|| 0.0, identity);
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
         let expected_loss_dollar = expected_loss_tick * tick_to_dollar;
-        let crv = (expected_win_tick / expected_loss_tick).abs();
+        let crv = compute_crv(expected_win_tick, expected_loss_tick);
         let entry_ts = self.get_entry_ts();
         let take_profit_ts = self.get_take_profit_ts();
         let stop_loss_ts = self.get_stop_loss_ts();
-        let exit_price = trade_pnl.exit_price();
-        let status = trade_pnl.trade_outcome();
-        let pl_tick = trade_pnl.profit() / tick_factor;
+        let exit_price = match self.trade.trade_kind {
+            TradeDirectionKind::None => 0.0,
+            _ => trade_pnl.exit_price(),
+        };
+        let status = match self.trade.trade_kind {
+            TradeDirectionKind::None => "No Trade".to_string(),
+            _ => trade_pnl.trade_outcome(),
+        };
+        let pl_tick = match self.trade.trade_kind {
+            TradeDirectionKind::None => 0.0,
+            _ => trade_pnl.profit() / tick_factor,
+        };
         let pl_dollar = pl_tick * tick_to_dollar;
 
         let n = self.get_decimal_places();
@@ -236,8 +248,8 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_profit;
-        let stop_loss = self.trade.stop_loss;
+        let take_profit = self.trade.take_profit.map_or_else(|| 0.0, identity);
+        let stop_loss = self.trade.stop_loss.map_or_else(|| 0.0, identity);
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
@@ -320,11 +332,25 @@ impl PnLReportDataRow {
     }
 
     fn expected_win_in_tick(&self, tick_factor: f64) -> f64 {
-        (self.trade.profit(self.trade.take_profit) / tick_factor).round()
+        let profit = self
+            .trade
+            .profit(self.trade.take_profit.map_or_else(|| 0.0, identity));
+        (profit / tick_factor).round()
     }
 
     fn expected_loss_in_tick(&self, tick_factor: f64) -> f64 {
-        (self.trade.profit(self.trade.stop_loss) / tick_factor).round()
+        let loss = self
+            .trade
+            .profit(self.trade.stop_loss.map_or_else(|| 0.0, identity));
+        (loss / tick_factor).round()
+    }
+}
+
+fn compute_crv(win: f64, loss: f64) -> f64 {
+    if loss == 0.0 {
+        f64::INFINITY
+    } else {
+        (win / loss).abs()
     }
 }
 

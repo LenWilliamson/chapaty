@@ -3,8 +3,8 @@ use crate::enums::trade_and_pre_trade::TradeDirectionKind;
 #[derive(Debug, Clone)]
 pub struct Trade {
     pub entry_price: f64,
-    pub stop_loss: f64,
-    pub take_profit: f64,
+    pub stop_loss: Option<f64>,
+    pub take_profit: Option<f64>,
     pub trade_kind: TradeDirectionKind,
 }
 
@@ -28,8 +28,8 @@ mod test {
     async fn test_compute_trade_values() {
         let trade_long = Trade {
             entry_price: 100.0,
-            stop_loss: -1.0,
-            take_profit: -1.0,
+            stop_loss: Some(-1.0),
+            take_profit: Some(-1.0),
             trade_kind: TradeDirectionKind::Long,
         };
 
@@ -39,8 +39,8 @@ mod test {
 
         let trade_short = Trade {
             entry_price: 100.0,
-            stop_loss: -1.0,
-            take_profit: -1.0,
+            stop_loss: Some(-1.0),
+            take_profit: Some(-1.0),
             trade_kind: TradeDirectionKind::Short,
         };
 

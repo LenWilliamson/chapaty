@@ -53,25 +53,19 @@ impl PppBuilder {
 }
 
 impl Ppp {
-    fn get_sl_price(&self, request: &TradeRequestObject) -> f64 {
+    fn get_sl_price(&self, request: &TradeRequestObject) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
-            TradeDirectionKind::Long => self.get_sl_price_long(request),
-            TradeDirectionKind::Short => self.get_sl_price_short(request),
-            TradeDirectionKind::None => {
-                dbg!("Cannot compute stop-loss condition for TradeDirection::None");
-                -1.0
-            }
+            TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
+            TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
+            TradeDirectionKind::None => None,
         }
     }
 
-    fn get_tp_price(&self, request: &TradeRequestObject) -> f64 {
+    fn get_tp_price(&self, request: &TradeRequestObject) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
-            TradeDirectionKind::Long => self.get_tp_long(request),
-            TradeDirectionKind::Short => self.get_tp_short(request),
-            TradeDirectionKind::None => {
-                dbg!("Cannot compute take-profit condition for TradeDirection::None");
-                -1.0
-            }
+            TradeDirectionKind::Long => Some(self.get_tp_long(request)),
+            TradeDirectionKind::Short => Some(self.get_tp_short(request)),
+            TradeDirectionKind::None => None,
         }
     }
 

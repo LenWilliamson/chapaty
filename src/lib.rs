@@ -23,19 +23,3 @@ pub use enums::{
     indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
 };
-
-/*
-- Fehler in PnL Berechnung fixen (Wann ist TradeDirection::None)
-- Warum ist die PnL eine andere, wenn man die Daten direkt lädt
-- MERGE IN MASTER + UPLOAD CRATE with License
-
-- bot/metrics -> Effizienter bestimmen &&& TODO compute for all_years and all_markets
-- Prüfe, wenn bei SL PriceUponEntry gewählt, dass man keinen Unfug macht
-- Bugfix siehe Zettel (und eigene Tests mit unterschiedlichen P&L Werten, code läuft manchmal auf Fehler)
-    - CRV NULL wenn PrevHigh -0.002 bei 6E => Was passiert wenn SL unterhalb//oberhalb des Entry?
-    - Bei TP/SL PrevMax ist number timeout winner größer als number winner
-- MERGE IN MASTER + UPLOAD CRATE with License
-
-- Better error handling when using PreTradeValues which were not registered in Strategy::get_required_pre_trade_vales
-- Was ist bei zwei POC's? -> Aktuell der kleinere (performt besser) aber flexibel setzen lassen können
-*/

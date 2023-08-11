@@ -37,7 +37,7 @@ impl TradePnL {
 
     pub fn profit(&self) -> f64 {
         if self.is_trade_timeout() {
-            self.timeout.clone().unwrap().profit.clone().unwrap()
+            self.timeout.clone().unwrap().profit.unwrap()
         } else {
             self.handle_regular_profit()
         }
@@ -136,25 +136,28 @@ impl PnL {
 
 impl TradePnLCalculator {
     pub fn compute(&self) -> TradePnL {
-        let stop_loss = self.handle_exit(self.trade.stop_loss);
-        let take_profit = self.handle_exit(self.trade.take_profit);
-        let timeout = if is_limit_order_open(stop_loss.clone(), take_profit.clone()) {
-            Some(self.handle_timeout())
-        } else {
-            None
-        };
-
+        let stop_loss = self.try_handle_exit(self.trade.stop_loss);
+        let take_profit = self.try_handle_exit(self.trade.take_profit);
+        let mut timeout = None;
+        if is_sl_and_tp_valid(&stop_loss, &take_profit)
+            && is_limit_order_open(stop_loss.clone().unwrap(), take_profit.clone().unwrap())
+        {
+            timeout = Some(self.handle_timeout())
+        }
         TradePnL {
             trade_entry_ts: self.entry_ts,
-            stop_loss: stop_loss.or_none(),
-            take_profit: take_profit.or_none(),
+            stop_loss: stop_loss.and_then(PnL::or_none),
+            take_profit: take_profit.and_then(PnL::or_none),
             timeout,
         }
     }
 
-    fn handle_exit(&self, exit_px: f64) -> PnL {
+    fn try_handle_exit(&self, exit_px: Option<f64>) -> Option<PnL> {
+        exit_px.and_then(|px| Some(self.then_handle_exit(px)))
+    }
+    fn then_handle_exit(&self, exit_px: f64) -> PnL {
         let ts = self.trade_exit_ts(exit_px);
-        let profit = ts.map_or_else(|| None, |_| Some(self.trade.profit(exit_px)));
+        let profit = ts.and_then(|_| Some(self.trade.profit(exit_px)));
 
         PnL {
             price: exit_px,
@@ -186,6 +189,10 @@ fn is_limit_order_open(sl: PnL, tp: PnL) -> bool {
     let is_tp_order_open = is_order_open(tp.ts);
 
     is_sl_order_open && is_tp_order_open
+}
+
+fn is_sl_and_tp_valid(sl: &Option<PnL>, tp: &Option<PnL>) -> bool {
+    sl.as_ref().and(tp.as_ref()).is_some()
 }
 
 fn is_order_open(timestamp: Option<i64>) -> bool {
@@ -416,8 +423,8 @@ mod test {
     fn set_up_trade_ppp_long(entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade {
         Trade {
             entry_price,
-            stop_loss,
-            take_profit,
+            stop_loss: Some(stop_loss),
+            take_profit: Some(take_profit),
             trade_kind: TradeDirectionKind::Long,
         }
     }
@@ -700,8 +707,8 @@ mod test {
     fn set_up_trade_ppp_short(entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade {
         Trade {
             entry_price,
-            stop_loss,
-            take_profit,
+            stop_loss: Some(stop_loss),
+            take_profit: Some(take_profit),
             trade_kind: TradeDirectionKind::Short,
         }
     }

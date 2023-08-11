@@ -1,5 +1,3 @@
-use std::convert::identity;
-
 use crate::{converter::any_value::AnyValueConverter, enums::column_names::PnLReportColumnKind};
 use polars::{
     datatypes::AnyValue,
@@ -13,14 +11,10 @@ pub fn percent_profitability(number_winner: u32, number_trades: u32) -> f64 {
 }
 
 pub fn number_winner_trades(df: DataFrame) -> u32 {
-    total_number_winner_trades(df.clone())
-        .checked_sub(number_timeout_winner_trades(df))
-        .map_or_else(|| u32::MAX, identity)
+    total_number_winner_trades(df.clone()) - number_timeout_winner_trades(df)
 }
 pub fn number_loser_trades(df: DataFrame) -> u32 {
-    total_number_loser_trades(df.clone())
-        .checked_sub(number_timeout_loser_trades(df))
-        .map_or_else(|| u32::MAX, identity)
+    total_number_loser_trades(df.clone()) - number_timeout_loser_trades(df)
 }
 
 pub fn total_number_winner_trades(df: DataFrame) -> u32 {
