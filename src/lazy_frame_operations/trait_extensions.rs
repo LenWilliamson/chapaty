@@ -3,7 +3,10 @@ use crate::{
     bot::time_interval::{InInterval, TimeInterval},
     converter::any_value::AnyValueConverter,
     data_frame_operations::trait_extensions::MyDataFrameOperations,
-    enums::{bot::TimeFrameKind, column_names::DataProviderColumnKind},
+    enums::{
+        bot::TimeFrameKind,
+        column_names::{DataProviderColumnKind, PnLReportColumnKind},
+    },
 };
 use polars::{
     lazy::dsl::GetOutput,
@@ -25,6 +28,7 @@ pub trait MyLazyFrameOperations {
     fn filter_trade_data_kind_values(self) -> Self;
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64>;
     fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame;
+    fn sort_by_date(self) -> Self;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
@@ -116,6 +120,9 @@ impl MyLazyFrameOperations for LazyFrame {
             .select(&[col("*")])
             .collect()
             .unwrap()
+    }
+    fn sort_by_date(self) -> Self {
+        self.sort(&PnLReportColumnKind::Date.to_string(), Default::default())
     }
 }
 

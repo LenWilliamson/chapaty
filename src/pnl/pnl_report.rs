@@ -1,15 +1,3 @@
-use crate::{
-    bot::time_interval::timestamp_in_milli_to_string,
-    calculator::pnl_report_data_row_calculator::PnLReportDataRow,
-    converter::market_decimal_places::MyDecimalPlaces,
-    data_frame_operations::io_operations::save_df_as_csv,
-    enums::{
-        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
-        trade_and_pre_trade::TradeDirectionKind,
-    },
-};
-use std::{collections::HashMap, convert::identity};
-
 use super::metrics::{
     accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
     max_draw_down_rel, net_profit, number_loser_trades, number_no_entry,
@@ -18,14 +6,25 @@ use super::metrics::{
     total_loss, total_number_loser_trades, total_number_trades, total_number_winner_trades,
     total_win,
 };
-use crate::enums::markets::MarketKind;
-use crate::lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations;
+
+use crate::{
+    bot::time_interval::timestamp_in_milli_to_string,
+    calculator::pnl_report_data_row_calculator::PnLReportDataRow,
+    converter::market_decimal_places::MyDecimalPlaces,
+    data_frame_operations::io_operations::save_df_as_csv,
+    enums::markets::MarketKind,
+    enums::{
+        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
+        trade_and_pre_trade::TradeDirectionKind,
+    },
+    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+};
 use chrono::NaiveDate;
 use polars::df;
 use polars::prelude::NamedFrom;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
+use std::{collections::HashMap, convert::identity};
 
-use super::equity_curves::EquityCurve;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,15 +136,8 @@ impl PnLReport {
         ).unwrap()
     }
 
-    pub fn as_equity_curve(self) -> (u32, EquityCurve) {
-        let year = self.year;
-        let equity_curve = EquityCurve {
-            market: self.market,
-            year,
-            curve: accumulated_profit(self.pnl, 0.0),
-        };
-
-        (year, equity_curve)
+    pub fn as_equity_curve(self) -> (u32, Vec<f64>) {
+        (self.year, accumulated_profit(self.pnl, 0.0))
     }
 
     pub fn as_performance_report_df(self) -> DataFrame {

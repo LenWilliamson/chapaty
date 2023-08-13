@@ -69,7 +69,8 @@ pub fn total_number_trades(df: DataFrame) -> u32 {
         .filter(
             col(&status_col)
                 .neq(lit("NoEntry"))
-                .and(col(&status_col).neq(lit("Not Clear"))),
+                .and(col(&status_col).neq(lit("Not Clear")))
+                .and(col(&status_col).neq(lit("No Trade"))),
         )
         .select(&[col("counts").sum()])
         .collect()

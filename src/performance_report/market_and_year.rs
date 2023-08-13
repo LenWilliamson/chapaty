@@ -1,35 +1,37 @@
-use super::pnl_statement::{PnLSnapshot, PnLStatement};
-use crate::{enums::markets::MarketKind, data_frame_operations::io_operations::save_df_as_csv};
+use crate::{
+    data_frame_operations::io_operations::save_df_as_csv,
+    enums::markets::MarketKind,
+    pnl::pnl_statement::{PnLSnapshot, PnLStatement},
+};
 use polars::prelude::DataFrame;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TradeBreakDownReports {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PerformanceReports {
     pub markets: Vec<MarketKind>,
-    pub reports: HashMap<MarketKind, TradeBreakDownReport>,
+    pub reports: HashMap<MarketKind, PerformanceReport>,
 }
 
-impl TradeBreakDownReports {
+impl PerformanceReports {
     pub fn save_as_csv(&self, file_name: &str) {
         self.reports
             .iter()
-            .for_each(|(market, trade_break_down_report)| {
+            .for_each(|(market, performance_report)| {
                 save_df_as_csv(
-                    &mut trade_break_down_report.report.clone(),
-                    &format!("{file_name}_{market}_trade_break_down_report"),
+                    &mut performance_report.report.clone(),
+                    &format!("{file_name}_{market}_performance_report"),
                 )
             })
     }
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TradeBreakDownReport {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PerformanceReport {
     pub market: MarketKind,
     pub report: DataFrame,
 }
 
-impl From<PnLStatement> for TradeBreakDownReports {
+impl From<PnLStatement> for PerformanceReports {
     fn from(value: PnLStatement) -> Self {
         value
             .pnl_data
@@ -43,12 +45,12 @@ impl From<PnLStatement> for TradeBreakDownReports {
     }
 }
 
-struct TradeBreakDownReportsBuilder {
+struct PerformanceReportsBuilder {
     markets: Vec<MarketKind>,
-    reports: HashMap<MarketKind, TradeBreakDownReport>,
+    reports: HashMap<MarketKind, PerformanceReport>,
 }
 
-impl TradeBreakDownReportsBuilder {
+impl PerformanceReportsBuilder {
     fn new() -> Self {
         Self {
             markets: Vec::new(),
@@ -56,7 +58,7 @@ impl TradeBreakDownReportsBuilder {
         }
     }
 
-    fn append(self, report: TradeBreakDownReport) -> Self {
+    fn append(self, report: PerformanceReport) -> Self {
         let market = report.market;
         let mut markets = self.markets;
         markets.push(market);
@@ -67,18 +69,18 @@ impl TradeBreakDownReportsBuilder {
         Self { markets, reports }
     }
 
-    fn build(self) -> TradeBreakDownReports {
-        TradeBreakDownReports {
+    fn build(self) -> PerformanceReports {
+        PerformanceReports {
             markets: self.markets,
             reports: self.reports,
         }
     }
 }
 
-impl FromIterator<TradeBreakDownReport> for TradeBreakDownReports {
-    fn from_iter<T: IntoIterator<Item = TradeBreakDownReport>>(iter: T) -> Self {
+impl FromIterator<PerformanceReport> for PerformanceReports {
+    fn from_iter<T: IntoIterator<Item = PerformanceReport>>(iter: T) -> Self {
         iter.into_iter()
-            .fold(TradeBreakDownReportsBuilder::new(), |builder, i| {
+            .fold(PerformanceReportsBuilder::new(), |builder, i| {
                 builder.append(i)
             })
             .build()

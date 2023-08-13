@@ -1,5 +1,7 @@
-use super::{pnl_statement::PnLSnapshot, pnl_statement::PnLStatement};
-use crate::enums::markets::MarketKind;
+use crate::{
+    enums::markets::MarketKind,
+    pnl::pnl_statement::{PnLSnapshot, PnLStatement},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -17,7 +19,7 @@ impl From<PnLStatement> for EquityCurvesReport {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EquityCurvesReport {
     pub markets: Vec<MarketKind>,
     pub curves: HashMap<MarketKind, EquityCurves>,
@@ -64,16 +66,9 @@ impl FromIterator<EquityCurves> for EquityCurvesReport {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EquityCurves {
     pub market: MarketKind,
     pub years: Vec<u32>,
-    pub curves: HashMap<u32, EquityCurve>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EquityCurve {
-    pub market: MarketKind,
-    pub year: u32,
-    pub curve: Vec<f64>,
+    pub curves: HashMap<u32, Vec<f64>>,
 }

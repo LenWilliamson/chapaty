@@ -12,7 +12,10 @@ use self::{
     trading_session::TradingSessionBuilder,
 };
 use crate::{
-    backtest_result::{pnl_report::PnLReports, pnl_statement::PnLStatement, BacktestResult},
+    backtest_result::{
+        BacktestResult,
+        MarketAndYearBacktestResult,
+    },
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
@@ -21,7 +24,7 @@ use crate::{
         error::ChapatyErrorKind,
         markets::MarketKind,
     },
-    strategy::Strategy,
+    strategy::Strategy, pnl::{pnl_statement::PnLStatement, pnl_report::PnLReports},
 };
 use google_cloud_storage::client::Client;
 use mockall::automock;
@@ -66,17 +69,18 @@ impl Bot {
     pub async fn backtest(&self) -> BacktestResult {
         let pnl_statement = self.compute_pnl_statement().await;
 
-        // TODO compute for all_years and all_markets & make parallel
         let performance_report = pnl_statement.clone().into();
         let trade_breakdown_report = pnl_statement.clone().into();
         let equity_curves = pnl_statement.clone().into();
 
-        let res = BacktestResult {
+        let market_and_year_backtest_result = MarketAndYearBacktestResult {
             pnl_statement,
             performance_reports: performance_report,
             trade_breakdown_reports: trade_breakdown_report,
             equity_curves,
         };
+
+        let res: BacktestResult = market_and_year_backtest_result.into();
 
         if self.save_result_as_csv {
             res.save_as_csv(&self.name);

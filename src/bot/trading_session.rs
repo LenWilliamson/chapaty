@@ -7,7 +7,7 @@ use super::{
     Bot,
 };
 use crate::{
-    backtest_result::pnl_report::PnLReport,
+    pnl::pnl_report::PnLReport,
     calculator::pnl_report_data_row_calculator::{
         PnLReportDataRow, PnLReportDataRowCalculatorBuilder,
     },

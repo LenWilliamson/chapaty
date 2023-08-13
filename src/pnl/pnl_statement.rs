@@ -1,15 +1,13 @@
-use super::{
-    equity_curves::{EquityCurve, EquityCurves},
-    performance_report::PerformanceReport,
-    pnl_report::PnLReports,
-    trade_break_down_report::TradeBreakDownReport,
-};
 use crate::{
-    enums::markets::MarketKind, lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+    enums::markets::MarketKind, equity_curve::market_and_year::EquityCurves,
+    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations, performance_report,
+    trade_breakdown_report,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use super::pnl_report::PnLReports;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLStatement {
@@ -31,7 +29,7 @@ pub struct PnLSnapshot {
     pub strategy_name: String,
 }
 
-impl From<PnLSnapshot> for TradeBreakDownReport {
+impl From<PnLSnapshot> for trade_breakdown_report::market_and_year::TradeBreakDownReport {
     fn from(value: PnLSnapshot) -> Self {
         Self {
             market: value.pnl_reports.market,
@@ -40,7 +38,7 @@ impl From<PnLSnapshot> for TradeBreakDownReport {
     }
 }
 
-impl From<PnLSnapshot> for PerformanceReport {
+impl From<PnLSnapshot> for performance_report::market_and_year::PerformanceReport {
     fn from(value: PnLSnapshot) -> Self {
         Self {
             market: value.pnl_reports.market,
@@ -60,7 +58,7 @@ impl From<PnLSnapshot> for EquityCurves {
 }
 
 impl PnLSnapshot {
-    fn compute_equity_curves(self) -> HashMap<u32, EquityCurve> {
+    fn compute_equity_curves(self) -> HashMap<u32, Vec<f64>> {
         self.pnl_reports
             .reports
             .into_iter()
