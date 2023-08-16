@@ -4,11 +4,12 @@ use polars::prelude::{col, df, DataFrame, IntoLazy, NamedFrom};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    data_frame_operations::io_operations::save_df_as_csv,
     enums::column_names::{
         PerformanceReportColumnKind, PnLReportColumnKind, TradeBreakDownReportColumnKind,
     },
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
-    MarketKind, data_frame_operations::io_operations::save_df_as_csv,
+    MarketKind,
 };
 
 use super::metrics::{
@@ -207,6 +208,7 @@ impl PnLReportAggMarkets {
             .lazy()
             .groupby([col(&date)])
             .agg([col(&pl_dollar).sum()])
+            .sort_by_date()
             .collect()
             .unwrap();
         let net_profit = net_profit(pl.clone());

@@ -63,7 +63,7 @@ impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
 }
 
 impl PnLStatementAggMarketsAggYears {
-    pub fn compute_performance_report(&self) -> DataFrame {
+    pub fn compute_trade_breakdown_report(&self) -> DataFrame {
         let pl = self.pnl.clone();
 
         let total_number_of_trades = total_number_trades(pl.clone());
@@ -97,7 +97,7 @@ impl PnLStatementAggMarketsAggYears {
         ).unwrap()
     }
 
-    pub fn compute_trade_breakdown_report(&self) -> DataFrame {
+    pub fn compute_performance_report(&self) -> DataFrame {
         let date = PnLReportColumnKind::Date.to_string();
         let pl_dollar = PnLReportColumnKind::PlDollar.to_string();
         let pl = self.pnl.clone();
@@ -105,6 +105,7 @@ impl PnLStatementAggMarketsAggYears {
             .lazy()
             .groupby([col(&date)])
             .agg([col(&pl_dollar).sum()])
+            .sort_by_date()
             .collect()
             .unwrap();
         let net_profit = net_profit(pl.clone());

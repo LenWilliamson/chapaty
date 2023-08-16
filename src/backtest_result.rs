@@ -101,7 +101,7 @@ impl From<MarketAndYearBacktestResult> for MarketAndAggYearBacktestResult {
 
 impl From<AggMarketAndYearBacktestResult> for AggMarketAndAggYearBacktestResult {
     fn from(value: AggMarketAndYearBacktestResult) -> Self {
-        let pnl_statement: PnLStatementAggMarketsAggYears = value.pnl_statement.clone().into();
+        let pnl_statement: PnLStatementAggMarketsAggYears = value.pnl_statement.into();
         Self {
             pnl_statement: pnl_statement.clone(),
             performance_report: pnl_statement.compute_performance_report(),
@@ -145,8 +145,9 @@ impl MarketAndAggYearBacktestResult {
 impl AggMarketAndAggYearBacktestResult {
     pub fn save_as_csv(&self, file_name: &str) {
         self.pnl_statement.save_as_csv(file_name);
-        let file_name = format!("{file_name}_all_markets_all_years_performance_report");
-        save_df_as_csv(&mut self.performance_report.clone(), &file_name);
-        save_df_as_csv(&mut self.trade_breakdown_report.clone(), &file_name);
+        let name = format!("{file_name}_all_markets_all_years_performance_report");
+        save_df_as_csv(&mut self.performance_report.clone(), &name);
+        let name = format!("{file_name}_all_markets_all_years_trade_breakdown_report");
+        save_df_as_csv(&mut self.trade_breakdown_report.clone(), &name);
     }
 }
