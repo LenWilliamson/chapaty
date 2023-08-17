@@ -2,6 +2,9 @@
 name = "chapaty"
 version = "0.1.0"
 edition = "2021"
+description = "A software to backtest trading strategies."
+license = "Apache-2.0"
+
 
 [dependencies]
 chrono = "0.4.26"
