@@ -15,7 +15,7 @@ async fn it_test() {
     let years = vec![2022];
     let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
     let markets = vec![
-        // MarketKind::AudUsdFuture,
+        MarketKind::AudUsdFuture,
         MarketKind::EurUsdFuture,
         // MarketKind::GbpUsdFuture,
         // MarketKind::CadUsdFuture,
