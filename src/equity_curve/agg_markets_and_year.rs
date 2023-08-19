@@ -8,13 +8,13 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct EquityCurvesAggMarkets {
+pub struct EquityCurvesAggMarket {
     pub markets: Vec<MarketKind>,
     pub years: Vec<u32>,
     pub curves: HashMap<u32, Vec<f64>>,
 }
 
-impl From<PnLStatementAggMarkets> for EquityCurvesAggMarkets {
+impl From<PnLStatementAggMarkets> for EquityCurvesAggMarket {
     fn from(value: PnLStatementAggMarkets) -> Self {
         PnLSnapshotAggMarkets {
             pnl_reports: value.pnl_data,

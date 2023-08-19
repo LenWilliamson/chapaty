@@ -61,7 +61,7 @@ impl From<PnLSnapshotAggMarkets>
     }
 }
 
-impl From<PnLSnapshotAggMarkets> for equity_curve::agg_markets_and_year::EquityCurvesAggMarkets {
+impl From<PnLSnapshotAggMarkets> for equity_curve::agg_markets_and_year::EquityCurvesAggMarket {
     fn from(value: PnLSnapshotAggMarkets) -> Self {
         Self {
             markets: value.pnl_reports.markets.clone(),

@@ -1,23 +1,11 @@
-use super::metrics::{
-    accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
-    max_draw_down_rel, net_profit, number_loser_trades, number_no_entry,
-    number_timeout_loser_trades, number_timeout_trades, number_timeout_winner_trades,
-    number_winner_trades, percent_profitability, profit_factor, timeout_loss, timeout_win,
-    total_loss, total_number_loser_trades, total_number_trades, total_number_winner_trades,
-    total_win,
-};
-
 use crate::{
     bot::time_interval::timestamp_in_milli_to_string,
     calculator::pnl_report_data_row_calculator::PnLReportDataRow,
     converter::market_decimal_places::MyDecimalPlaces,
     data_frame_operations::io_operations::save_df_as_csv,
     enums::markets::MarketKind,
-    enums::{
-        column_names::{self, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
-        trade_and_pre_trade::TradeDirectionKind,
-    },
-    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+    enums::{column_names, trade_and_pre_trade::TradeDirectionKind},
+    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
 };
 use chrono::NaiveDate;
 use polars::df;
@@ -31,6 +19,7 @@ use serde::{Deserialize, Serialize};
 pub struct PnLReports {
     pub market: MarketKind,
     pub years: Vec<u32>,
+    pub strategy: String,
     pub reports: HashMap<u32, PnLReport>,
 }
 
@@ -42,6 +31,17 @@ impl PnLReports {
                 &format!("{file_name}_{}_{year}_pnl", self.market),
             )
         })
+    }
+
+    pub fn agg_year(&self) -> DataFrame {
+        let ldfs = self.years.iter().fold(Vec::new(), |mut acc, year| {
+            acc.push(self.reports.get(year).unwrap().pnl.clone().lazy());
+            acc
+        });
+        ldfs.concatenate_to_lazy_frame()
+            .sort_by_date()
+            .collect()
+            .unwrap()
     }
 }
 
@@ -55,6 +55,7 @@ impl FromIterator<PnLReport> for PnLReports {
 
 struct PnLReportsBuilder {
     market: Option<MarketKind>,
+    strategy_name: Option<String>,
     years: Vec<u32>,
     reports: HashMap<u32, PnLReport>,
 }
@@ -63,6 +64,7 @@ impl PnLReportsBuilder {
     pub fn new() -> Self {
         Self {
             market: None,
+            strategy_name: None,
             years: Vec::new(),
             reports: HashMap::new(),
         }
@@ -70,6 +72,7 @@ impl PnLReportsBuilder {
 
     pub fn append(self, pnl_report: PnLReport) -> Self {
         let market = pnl_report.market;
+        let strategy_name = pnl_report.strategy.clone();
         let year = pnl_report.year;
         let mut years = self.years;
         years.push(year);
@@ -79,6 +82,7 @@ impl PnLReportsBuilder {
 
         Self {
             market: Some(market),
+            strategy_name: Some(strategy_name),
             years,
             reports,
         }
@@ -87,6 +91,7 @@ impl PnLReportsBuilder {
     pub fn build(self) -> PnLReports {
         PnLReports {
             market: self.market.unwrap(),
+            strategy: self.strategy_name.unwrap(),
             years: self.years,
             reports: self.reports,
         }
@@ -99,73 +104,6 @@ pub struct PnLReport {
     pub year: u32,
     pub strategy: String,
     pub pnl: DataFrame,
-}
-
-impl PnLReport {
-    pub fn as_trade_breakdown_df(self) -> DataFrame {
-        let pl = self.pnl;
-
-        let total_number_of_trades = total_number_trades(pl.clone());
-        let total_number_winner = total_number_winner_trades(pl.clone());
-        let total_win = total_win(pl.clone());
-        let total_loss = total_loss(pl.clone());
-        let timeout_win = timeout_win(pl.clone());
-        let timeout_loss = timeout_loss(pl.clone());
-        let clean_win = total_win - timeout_win;
-        let clean_loss = total_loss - timeout_loss;
-
-        df!(
-            &TradeBreakDownReportColumnKind::Year.to_string() => &vec![self.year],
-            &TradeBreakDownReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
-            &TradeBreakDownReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
-            &TradeBreakDownReportColumnKind::TotalWin.to_string() => &vec![total_win],
-            &TradeBreakDownReportColumnKind::TotalLoss.to_string() => &vec![total_loss],
-            &TradeBreakDownReportColumnKind::CleanWin.to_string() => &vec![clean_win],
-            &TradeBreakDownReportColumnKind::TimeoutWin.to_string() => &vec![timeout_win],
-            &TradeBreakDownReportColumnKind::CleanLoss.to_string() => &vec![clean_loss],
-            &TradeBreakDownReportColumnKind::TimeoutLoss.to_string() => &vec![timeout_loss],
-            &TradeBreakDownReportColumnKind::TotalNumberWinnerTrades.to_string() => &vec![total_number_winner],
-            &TradeBreakDownReportColumnKind::TotalNumberLoserTrades.to_string() => &vec![total_number_loser_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::TotalNumberTrades.to_string() => &vec![total_number_of_trades],
-            &TradeBreakDownReportColumnKind::NumberWinnerTrades.to_string() => &vec![number_winner_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::NumberLoserTrades.to_string() => &vec![number_loser_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::NumberTimeoutWinnerTrades.to_string() => &vec![number_timeout_winner_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::NumberTimeoutLoserTrades.to_string() => &vec![number_timeout_loser_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::NumberTimeoutTrades.to_string() => &vec![number_timeout_trades(pl.clone())],
-            &TradeBreakDownReportColumnKind::NumberNoEntry.to_string() => &vec![number_no_entry(pl.clone())],
-        ).unwrap()
-    }
-
-    pub fn as_equity_curve(self) -> (u32, Vec<f64>) {
-        (self.year, accumulated_profit(self.pnl, 0.0))
-    }
-
-    pub fn as_performance_report_df(self) -> DataFrame {
-        let pl = self.pnl;
-        let net_profit = net_profit(pl.clone());
-        let total_number_of_trades = total_number_trades(pl.clone());
-        let accumulated_profit = accumulated_profit(pl.clone(), 0.0);
-        let total_number_winner = total_number_winner_trades(pl.clone());
-        let avg_win = avg_win(pl.clone());
-        let avg_loss = avg_loss(pl.clone());
-        let total_win = total_win(pl.clone());
-        let total_loss = total_loss(pl.clone());
-
-        df!(
-            &PerformanceReportColumnKind::Year.to_string() => &vec![self.year],
-            &PerformanceReportColumnKind::Market.to_string() => &vec![self.market.to_string()],
-            &PerformanceReportColumnKind::Strategy.to_string() => &vec![self.strategy.to_string()],
-            &PerformanceReportColumnKind::NetProfit.to_string() => &vec![net_profit],
-            &PerformanceReportColumnKind::AvgWinnByTrade.to_string() => &vec![avg_trade(net_profit, total_number_of_trades)],
-            &PerformanceReportColumnKind::MaxDrawDownAbs.to_string() => &vec![max_draw_down_abs(&accumulated_profit)],
-            &PerformanceReportColumnKind::MaxDrawDownRel.to_string() => &vec![max_draw_down_rel(&accumulated_profit)],
-            &PerformanceReportColumnKind::PercentageProfitability.to_string() => &vec![percent_profitability(total_number_winner, total_number_of_trades)],
-            &PerformanceReportColumnKind::RatioAvgWinByAvgLoss.to_string() => &vec![avg_win_by_avg_loose(avg_win, avg_loss)],
-            &PerformanceReportColumnKind::AvgWin.to_string() => &vec![avg_win],
-            &PerformanceReportColumnKind::AvgLoss.to_string() => &vec![avg_loss],
-            &PerformanceReportColumnKind::ProfitFactor.to_string() => &vec![profit_factor(total_win, total_loss)],
-        ).unwrap()
-    }
 }
 
 impl PnLReportDataRow {

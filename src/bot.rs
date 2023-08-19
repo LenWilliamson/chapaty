@@ -69,9 +69,9 @@ impl Bot {
     pub async fn backtest(&self) -> BacktestResult {
         let pnl_statement = self.compute_pnl_statement().await;
 
-        let performance_report = pnl_statement.clone().into();
-        let trade_breakdown_report = pnl_statement.clone().into();
-        let equity_curves = pnl_statement.clone().into();
+        let performance_report = pnl_statement.compute_performance_report();
+        let trade_breakdown_report = pnl_statement.compute_trade_breakdown_report();
+        let equity_curves = pnl_statement.compute_equity_curves();
 
         let market_and_year_backtest_result = MarketAndYearBacktestResult {
             pnl_statement,

@@ -1,7 +1,7 @@
 use crate::{
     data_frame_operations::io_operations::save_df_as_csv,
     equity_curve::{
-        agg_markets_and_year::EquityCurvesAggMarkets, market_and_agg_years::EquityCurvesAggYears,
+        agg_markets_and_year::EquityCurvesAggMarket, market_and_agg_years::EquityCurvesAggYears,
         market_and_year::EquityCurvesReport,
     },
     performance_report::{
@@ -16,7 +16,7 @@ use crate::{
     trade_breakdown_report::{
         agg_markets_and_year::TradeBreakDownReportAggMarket,
         market_and_agg_years::TradeBreakDownReportsAggYears,
-        market_and_year::TradeBreakDownReports,
+        market_and_year::TradeBreakdownReports,
     },
 };
 
@@ -35,7 +35,7 @@ pub struct BacktestResult {
 pub struct MarketAndYearBacktestResult {
     pub pnl_statement: PnLStatement,
     pub performance_reports: PerformanceReports,
-    pub trade_breakdown_reports: TradeBreakDownReports,
+    pub trade_breakdown_reports: TradeBreakdownReports,
     pub equity_curves: EquityCurvesReport,
 }
 
@@ -44,7 +44,7 @@ pub struct AggMarketAndYearBacktestResult {
     pub pnl_statement: PnLStatementAggMarkets,
     pub performance_report: PerformanceReportAggMarket,
     pub trade_breakdown_report: TradeBreakDownReportAggMarket,
-    pub equity_curves: EquityCurvesAggMarkets,
+    pub equity_curves: EquityCurvesAggMarket,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,9 +92,9 @@ impl From<MarketAndYearBacktestResult> for MarketAndAggYearBacktestResult {
         let pnl_statement: PnLStatementAggYears = value.pnl_statement.clone().into();
         Self {
             pnl_statement: pnl_statement.clone(),
-            performance_report: pnl_statement.clone().into(),
-            trade_breakdown_report: pnl_statement.clone().into(),
-            equity_curves: pnl_statement.clone().into(),
+            performance_report: pnl_statement.compute_performance_reports(),
+            trade_breakdown_report: pnl_statement.compute_trade_breakdown_reports(),
+            equity_curves: pnl_statement.compute_equity_curves(),
         }
     }
 }

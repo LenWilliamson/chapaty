@@ -1,7 +1,9 @@
 use crate::{
-    enums::markets::MarketKind, equity_curve::market_and_year::EquityCurves,
-    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations, performance_report,
-    trade_breakdown_report,
+    converter::pnl_to_report::{as_equity_curve, as_performance_report_df, as_trade_breakdown_df},
+    enums::markets::MarketKind,
+    equity_curve::market_and_year::{EquityCurves, EquityCurvesReport},
+    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+    trade_breakdown_report::market_and_year::TradeBreakdownReports, performance_report::market_and_year::PerformanceReports,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
@@ -22,75 +24,94 @@ impl PnLStatement {
             .iter()
             .for_each(|(_, data)| data.save_as_csv(file_name))
     }
-}
 
-pub struct PnLSnapshot {
-    pub pnl_reports: PnLReports,
-    pub strategy_name: String,
-}
-
-impl From<PnLSnapshot> for trade_breakdown_report::market_and_year::TradeBreakDownReport {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            report: value.compute_trade_breakdown_report(),
-        }
-    }
-}
-
-impl From<PnLSnapshot> for performance_report::market_and_year::PerformanceReport {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            report: value.compute_performance_report(),
-        }
-    }
-}
-
-impl From<PnLSnapshot> for EquityCurves {
-    fn from(value: PnLSnapshot) -> Self {
-        Self {
-            market: value.pnl_reports.market,
-            years: value.pnl_reports.years.clone(),
-            curves: value.compute_equity_curves(),
-        }
-    }
-}
-
-impl PnLSnapshot {
-    fn compute_equity_curves(self) -> HashMap<u32, Vec<f64>> {
-        self.pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_equity_curve())
-            .collect()
-    }
-
-    fn compute_trade_breakdown_report(self) -> DataFrame {
-        let ldfs: Vec<LazyFrame> = self
-            .pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_trade_breakdown_df())
-            .map(|df| df.lazy())
+    pub fn compute_trade_breakdown_report(&self) -> TradeBreakdownReports {
+        let trade_breakdown_reports: HashMap<MarketKind, DataFrame> = self
+            .pnl_data
+            .iter()
+            .map(|(market, pnl_reports)| {
+                (
+                    *market,
+                    pnl_reports
+                        .reports
+                        .values()
+                        .map(|pnl_report| {
+                            as_trade_breakdown_df(
+                                &pnl_report.pnl,
+                                &pnl_report.market,
+                                &pnl_report.strategy,
+                            )
+                        })
+                        .map(|df| df.lazy())
+                        .collect::<Vec<LazyFrame>>()
+                        .concatenate_to_data_frame()
+                        .with_row_count("#", Some(1))
+                        .unwrap(),
+                )
+            })
             .collect();
 
-        ldfs.concatenate_to_data_frame()
-            .with_row_count("#", Some(1))
-            .unwrap()
+        TradeBreakdownReports {
+            markets: self.markets.clone(),
+            reports: trade_breakdown_reports,
+        }
     }
-
-    pub fn compute_performance_report(self) -> DataFrame {
-        let ldfs: Vec<LazyFrame> = self
-            .pnl_reports
-            .reports
-            .into_iter()
-            .map(|(_, pnl_report)| pnl_report.as_performance_report_df())
-            .map(|df| df.lazy())
+    pub fn compute_performance_report(&self) -> PerformanceReports {
+        let trade_breakdown_reports: HashMap<MarketKind, DataFrame> = self
+            .pnl_data
+            .iter()
+            .map(|(market, pnl_reports)| {
+                (
+                    *market,
+                    pnl_reports
+                        .reports
+                        .values()
+                        .map(|pnl_report| {
+                            as_performance_report_df(
+                                &pnl_report.pnl,
+                                &pnl_report.market,
+                                &pnl_report.strategy,
+                            )
+                        })
+                        .map(|df| df.lazy())
+                        .collect::<Vec<LazyFrame>>()
+                        .concatenate_to_data_frame()
+                        .with_row_count("#", Some(1))
+                        .unwrap(),
+                )
+            })
             .collect();
 
-        ldfs.concatenate_to_data_frame()
-            .with_row_count("#", Some(1))
-            .unwrap()
+        PerformanceReports {
+            markets: self.markets.clone(),
+            reports: trade_breakdown_reports,
+        }
+    }
+
+    pub fn compute_equity_curves(&self) -> EquityCurvesReport {
+        let equity_curves = self
+            .pnl_data
+            .iter()
+            .map(|(market, pnl_reports)| {
+                let curves = pnl_reports
+                    .reports
+                    .iter()
+                    .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report.pnl)))
+                    .collect();
+                (
+                    *market,
+                    EquityCurves {
+                        market: *market,
+                        years: pnl_reports.years.clone(),
+                        curves,
+                    },
+                )
+            })
+            .collect();
+
+        EquityCurvesReport {
+            markets: self.markets.clone(),
+            curves: equity_curves,
+        }
     }
 }
