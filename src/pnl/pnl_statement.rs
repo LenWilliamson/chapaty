@@ -1,9 +1,10 @@
 use crate::{
-    converter::pnl_to_report::{as_equity_curve, as_performance_report_df, as_trade_breakdown_df},
+    converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     enums::markets::MarketKind,
     equity_curve::market_and_year::{EquityCurves, EquityCurvesReport},
     lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
-    trade_breakdown_report::market_and_year::TradeBreakdownReports, performance_report::market_and_year::PerformanceReports,
+    performance_report::market_and_year::PerformanceReports,
+    trade_breakdown_report::market_and_year::TradeBreakdownReports,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,9 @@ impl PnLStatement {
     }
 
     pub fn compute_trade_breakdown_report(&self) -> TradeBreakdownReports {
+        let request_builder = PnLToReportRequestBuilder::new()
+            .is_agg_markets(false)
+            .is_agg_years(false);
         let trade_breakdown_reports: HashMap<MarketKind, DataFrame> = self
             .pnl_data
             .iter()
@@ -34,13 +38,15 @@ impl PnLStatement {
                     *market,
                     pnl_reports
                         .reports
-                        .values()
-                        .map(|pnl_report| {
-                            as_trade_breakdown_df(
-                                &pnl_report.pnl,
-                                &pnl_report.market,
-                                &pnl_report.strategy,
-                            )
+                        .iter()
+                        .map(|(year, pnl_report)| {
+                            request_builder.clone()
+                                .with_pnl(pnl_report.pnl.clone())
+                                .with_market(pnl_report.market)
+                                .with_strategy(pnl_report.strategy.clone())
+                                .with_year(*year)
+                                .build()
+                                .as_trade_breakdown_df()
                         })
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
@@ -57,6 +63,9 @@ impl PnLStatement {
         }
     }
     pub fn compute_performance_report(&self) -> PerformanceReports {
+        let request_builder = PnLToReportRequestBuilder::new()
+            .is_agg_markets(false)
+            .is_agg_years(false);
         let trade_breakdown_reports: HashMap<MarketKind, DataFrame> = self
             .pnl_data
             .iter()
@@ -65,13 +74,15 @@ impl PnLStatement {
                     *market,
                     pnl_reports
                         .reports
-                        .values()
-                        .map(|pnl_report| {
-                            as_performance_report_df(
-                                &pnl_report.pnl,
-                                &pnl_report.market,
-                                &pnl_report.strategy,
-                            )
+                        .iter()
+                        .map(|(year, pnl_report)| {
+                            request_builder.clone()
+                                .with_pnl(pnl_report.pnl.clone())
+                                .with_market(pnl_report.market)
+                                .with_strategy(pnl_report.strategy.clone())
+                                .with_year(*year)
+                                .build()
+                                .as_performance_report_df()
                         })
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
@@ -96,7 +107,7 @@ impl PnLStatement {
                 let curves = pnl_reports
                     .reports
                     .iter()
-                    .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report.pnl)))
+                    .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report.pnl, false)))
                     .collect();
                 (
                     *market,

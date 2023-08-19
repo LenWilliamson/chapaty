@@ -4,7 +4,7 @@ use polars::prelude::DataFrame;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    converter::pnl_to_report::{as_equity_curve, as_performance_report_df, as_trade_breakdown_df},
+    converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     data_frame_operations::io_operations::save_df_as_csv,
     equity_curve::market_and_agg_years::EquityCurvesAggYears,
     performance_report::market_and_agg_years::PerformanceReportsAggYears,
@@ -33,13 +33,21 @@ impl PnLStatementAggYears {
     }
 
     pub fn compute_trade_breakdown_reports(&self) -> TradeBreakDownReportsAggYears {
+        let request_builder = PnLToReportRequestBuilder::new()
+            .is_agg_markets(false)
+            .is_agg_years(true);
         let trade_breakdown_reports = self
             .pnl_data
             .iter()
             .map(|(market, pnl)| {
                 (
                     *market,
-                    as_trade_breakdown_df(pnl, market, &self.strategy_name),
+                    request_builder.clone()
+                        .with_pnl(pnl.clone())
+                        .with_market(*market)
+                        .with_strategy(self.strategy_name.clone())
+                        .build()
+                        .as_trade_breakdown_df(),
                 )
             })
             .collect();
@@ -51,13 +59,21 @@ impl PnLStatementAggYears {
     }
 
     pub fn compute_performance_reports(&self) -> PerformanceReportsAggYears {
+        let request_builder = PnLToReportRequestBuilder::new()
+            .is_agg_markets(false)
+            .is_agg_years(true);
         let performance_reports = self
             .pnl_data
             .iter()
             .map(|(market, pnl)| {
                 (
                     *market,
-                    as_performance_report_df(pnl, market, &self.strategy_name),
+                    request_builder.clone()
+                        .with_pnl(pnl.clone())
+                        .with_market(*market)
+                        .with_strategy(self.strategy_name.clone())
+                        .build()
+                        .as_performance_report_df(),
                 )
             })
             .collect();
@@ -72,7 +88,7 @@ impl PnLStatementAggYears {
         let equity_curves = self
             .pnl_data
             .iter()
-            .map(|(market, pnl)| (*market, as_equity_curve(pnl)))
+            .map(|(market, pnl)| (*market, as_equity_curve(pnl, false)))
             .collect();
 
         EquityCurvesAggYears {
