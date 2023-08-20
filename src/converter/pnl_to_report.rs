@@ -10,7 +10,7 @@ use crate::{
         total_loss, total_number_loser_trades, total_number_trades, total_number_winner_trades,
         total_win,
     },
-    MarketKind,
+    MarketKind, lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
 };
 use polars::prelude::{col, df, DataFrame, IntoLazy, NamedFrom};
 
@@ -75,15 +75,7 @@ impl PnLToReportRequest {
         let net_profit = net_profit(pl.clone());
         let total_number_of_trades = total_number_trades(pl.clone());
         let accumulated_profit = if self.agg_markets {
-            let date = PnLReportColumnKind::Date.to_string();
-            let pl_dollar = PnLReportColumnKind::PlDollar.to_string();
-            let agg_pnl = pl
-                .clone()
-                .lazy()
-                .groupby([col(&date)])
-                .agg([col(&pl_dollar).sum()])
-                .collect()
-                .unwrap();
+            let agg_pnl = pnl_aggregated_by_date(&pl);
             accumulated_profit(agg_pnl, 0.0)
         } else {
             accumulated_profit(pl.clone(), 0.0)
@@ -125,19 +117,23 @@ impl PnLToReportRequest {
 
 pub fn as_equity_curve(pnl: &DataFrame, agg_markets: bool) -> Vec<f64> {
     if agg_markets {
-        let date = PnLReportColumnKind::Date.to_string();
-        let pl_dollar = PnLReportColumnKind::PlDollar.to_string();
-        let agg_pnl = pnl
-            .clone()
-            .lazy()
-            .groupby([col(&date)])
-            .agg([col(&pl_dollar).sum()])
-            .collect()
-            .unwrap();
+        let agg_pnl = pnl_aggregated_by_date(pnl);
         accumulated_profit(agg_pnl, 0.0)
     } else {
         accumulated_profit(pnl.clone(), 0.0)
     }
+}
+
+fn pnl_aggregated_by_date(pnl: &DataFrame) -> DataFrame {
+    let date = PnLReportColumnKind::Date.to_string();
+    let pl_dollar = PnLReportColumnKind::PlDollar.to_string();
+    pnl.clone()
+        .lazy()
+        .groupby([col(&date)])
+        .agg([col(&pl_dollar).sum()])
+        .sort_by_date()
+        .collect()
+        .unwrap()
 }
 
 #[derive(Clone)]

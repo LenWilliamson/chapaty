@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     data_frame_operations::io_operations::save_df_as_csv,
-    equity_curve::market_and_agg_years::EquityCurvesAggYears,
-    performance_report::market_and_agg_years::PerformanceReportsAggYears,
-    trade_breakdown_report::market_and_agg_years::TradeBreakDownReportsAggYears,
+    equity_curve::EquityCurvesAggYears,
+    performance_report::PerformanceReportsAggYears,
+    trade_breakdown_report::TradeBreakDownReportsAggYears,
     MarketKind,
 };
 

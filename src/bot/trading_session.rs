@@ -7,7 +7,6 @@ use super::{
     Bot,
 };
 use crate::{
-    pnl::pnl_report::PnLReport,
     calculator::pnl_report_data_row_calculator::{
         PnLReportDataRow, PnLReportDataRowCalculatorBuilder,
     },
@@ -42,7 +41,7 @@ pub struct TradingSession {
 }
 
 impl TradingSession {
-    pub async fn compute_pnl_report(self) -> PnLReport {
+    pub async fn compute_pnl_report(self) -> DataFrame {
         let (tx, rx) = tokio::sync::oneshot::channel();
         rayon::spawn(move || {
             let _ = tx.send(self.run_backtesting());
@@ -50,14 +49,14 @@ impl TradingSession {
         rx.await.unwrap()
     }
 
-    fn run_backtesting(&self) -> PnLReport {
+    fn run_backtesting(&self) -> DataFrame {
         match self.bot.time_frame {
             TimeFrameKind::Daily => self.run_backtesting_daily(),
             TimeFrameKind::Weekly => self.run_backtesting_weekly(),
         }
     }
 
-    fn run_backtesting_daily(&self) -> PnLReport {
+    fn run_backtesting_daily(&self) -> DataFrame {
         let pnl_report_data_rows: Vec<_> = (1..=52_i64)
             .into_par_iter()
             .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
@@ -69,7 +68,7 @@ impl TradingSession {
         pnl_report_data_rows.into_iter().collect()
     }
 
-    fn run_backtesting_weekly(&self) -> PnLReport {
+    fn run_backtesting_weekly(&self) -> DataFrame {
         panic!("Not implemented weekly backtesting yet...")
     }
 

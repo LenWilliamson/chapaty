@@ -12,10 +12,7 @@ use self::{
     trading_session::TradingSessionBuilder,
 };
 use crate::{
-    backtest_result::{
-        BacktestResult,
-        MarketAndYearBacktestResult,
-    },
+    backtest_result::{BacktestResult, MarketAndYearBacktestResult},
     config::GoogleCloudBucket,
     data_provider::DataProvider,
     enums::{
@@ -24,7 +21,11 @@ use crate::{
         error::ChapatyErrorKind,
         markets::MarketKind,
     },
-    strategy::Strategy, pnl::{pnl_statement::PnLStatement, pnl_report::PnLReports},
+    pnl::{
+        pnl_report::{PnLReport, PnLReports},
+        pnl_statement::PnLStatement,
+    },
+    strategy::Strategy,
 };
 use google_cloud_storage::client::Client;
 use mockall::automock;
@@ -166,9 +167,15 @@ impl Bot {
             .into_iter()
             .map(|year| {
                 let builder = trading_session_builder.clone();
+                let strategy = self.strategy.get_name();
                 tokio::spawn(async move {
                     let session = builder.with_year(year).build().await;
-                    session.compute_pnl_report().await
+                    PnLReport {
+                        market,
+                        year,
+                        strategy,
+                        pnl: session.compute_pnl_report().await,
+                    }
                 })
             })
             .collect();

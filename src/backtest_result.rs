@@ -1,12 +1,8 @@
 use crate::{
     data_frame_operations::io_operations::save_df_as_csv,
-    equity_curve::{
-        agg_markets_and_year::EquityCurvesAggMarket, market_and_agg_years::EquityCurvesAggYears,
-        market_and_year::EquityCurvesReport,
-    },
+    equity_curve::{EquityCurvesAggMarket, EquityCurvesAggYears, EquityCurvesReport},
     performance_report::{
-        agg_markets_and_year::PerformanceReportAggMarket,
-        market_and_agg_years::PerformanceReportsAggYears, market_and_year::PerformanceReports,
+        PerformanceReportAggMarket, PerformanceReports, PerformanceReportsAggYears,
     },
     pnl::{
         pnl_statement::PnLStatement, pnl_statement_agg_markets::PnLStatementAggMarkets,
@@ -14,9 +10,9 @@ use crate::{
         pnl_statement_agg_years::PnLStatementAggYears,
     },
     trade_breakdown_report::{
-        agg_markets_and_year::TradeBreakDownReportAggMarket,
-        market_and_agg_years::TradeBreakDownReportsAggYears,
-        market_and_year::TradeBreakdownReports,
+        TradeBreakDownReportAggMarket,
+        TradeBreakDownReportsAggYears,
+        TradeBreakdownReports,
     },
 };
 
@@ -80,9 +76,9 @@ impl From<MarketAndYearBacktestResult> for AggMarketAndYearBacktestResult {
         let pnl_statement: PnLStatementAggMarkets = value.pnl_statement.clone().into();
         Self {
             pnl_statement: pnl_statement.clone(),
-            performance_report: pnl_statement.clone().into(),
-            trade_breakdown_report: pnl_statement.clone().into(),
-            equity_curves: pnl_statement.clone().into(),
+            performance_report: pnl_statement.compute_performance_report(),
+            trade_breakdown_report: pnl_statement.compute_trade_breakdown_report(),
+            equity_curves: pnl_statement.compute_equity_curves(),
         }
     }
 }

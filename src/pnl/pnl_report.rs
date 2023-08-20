@@ -10,7 +10,7 @@ use crate::{
 use chrono::NaiveDate;
 use polars::df;
 use polars::prelude::NamedFrom;
-use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
+use polars::prelude::{DataFrame, IntoLazy};
 use std::{collections::HashMap, convert::identity};
 
 use serde::{Deserialize, Serialize};
@@ -20,14 +20,14 @@ pub struct PnLReports {
     pub market: MarketKind,
     pub years: Vec<u32>,
     pub strategy: String,
-    pub reports: HashMap<u32, PnLReport>,
+    pub reports: HashMap<u32, DataFrame>,
 }
 
 impl PnLReports {
     pub fn save_as_csv(&self, file_name: &str) {
         self.reports.iter().for_each(|(year, data)| {
             save_df_as_csv(
-                &mut data.pnl.clone(),
+                &mut data.clone(),
                 &format!("{file_name}_{}_{year}_pnl", self.market),
             )
         })
@@ -35,7 +35,7 @@ impl PnLReports {
 
     pub fn agg_year(&self) -> DataFrame {
         let ldfs = self.years.iter().fold(Vec::new(), |mut acc, year| {
-            acc.push(self.reports.get(year).unwrap().pnl.clone().lazy());
+            acc.push(self.reports.get(year).unwrap().clone().lazy());
             acc
         });
         ldfs.concatenate_to_lazy_frame()
@@ -43,67 +43,6 @@ impl PnLReports {
             .collect()
             .unwrap()
     }
-}
-
-impl FromIterator<PnLReport> for PnLReports {
-    fn from_iter<T: IntoIterator<Item = PnLReport>>(iter: T) -> Self {
-        iter.into_iter()
-            .fold(PnLReportsBuilder::new(), |builder, i| builder.append(i))
-            .build()
-    }
-}
-
-struct PnLReportsBuilder {
-    market: Option<MarketKind>,
-    strategy_name: Option<String>,
-    years: Vec<u32>,
-    reports: HashMap<u32, PnLReport>,
-}
-
-impl PnLReportsBuilder {
-    pub fn new() -> Self {
-        Self {
-            market: None,
-            strategy_name: None,
-            years: Vec::new(),
-            reports: HashMap::new(),
-        }
-    }
-
-    pub fn append(self, pnl_report: PnLReport) -> Self {
-        let market = pnl_report.market;
-        let strategy_name = pnl_report.strategy.clone();
-        let year = pnl_report.year;
-        let mut years = self.years;
-        years.push(year);
-
-        let mut reports = self.reports;
-        reports.insert(year, pnl_report);
-
-        Self {
-            market: Some(market),
-            strategy_name: Some(strategy_name),
-            years,
-            reports,
-        }
-    }
-
-    pub fn build(self) -> PnLReports {
-        PnLReports {
-            market: self.market.unwrap(),
-            strategy: self.strategy_name.unwrap(),
-            years: self.years,
-            reports: self.reports,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PnLReport {
-    pub market: MarketKind,
-    pub year: u32,
-    pub strategy: String,
-    pub pnl: DataFrame,
 }
 
 impl PnLReportDataRow {
@@ -284,13 +223,6 @@ fn compute_crv(win: f64, loss: f64) -> f64 {
     }
 }
 
-pub struct PnLReportBuilder {
-    market: Option<MarketKind>,
-    year: Option<u32>,
-    strategy: Option<String>,
-    data_rows: Option<Vec<LazyFrame>>,
-}
-
 impl From<PnLReportDataRow> for DataFrame {
     fn from(value: PnLReportDataRow) -> Self {
         match value.trade_pnl {
@@ -300,52 +232,79 @@ impl From<PnLReportDataRow> for DataFrame {
     }
 }
 
-impl FromIterator<PnLReportDataRow> for PnLReport {
+impl FromIterator<PnLReportDataRow> for DataFrame {
     fn from_iter<T: IntoIterator<Item = PnLReportDataRow>>(iter: T) -> Self {
         iter.into_iter()
-            .fold(PnLReportBuilder::new(), |builder, i| builder.append(i))
+            .fold(Vec::new(), |mut ldfs, pnl_report_data_row| {
+                let df: DataFrame = pnl_report_data_row.into();
+                ldfs.push(df.lazy());
+                ldfs
+            })
+            .concatenate_to_lazy_frame()
+            .sort_by_date()
+            .collect()
+            .unwrap()
+            .with_row_count("#", Some(1))
+            .unwrap()
+    }
+}
+
+pub struct PnLReport {
+    pub market: MarketKind,
+    pub year: u32,
+    pub strategy: String,
+    pub pnl: DataFrame,
+}
+
+impl FromIterator<PnLReport> for PnLReports {
+    fn from_iter<T: IntoIterator<Item = PnLReport>>(iter: T) -> Self {
+        iter.into_iter()
+            .fold(PnLReportsBuilder::new(), |builder, i| builder.append(i))
             .build()
     }
 }
 
-impl PnLReportBuilder {
+struct PnLReportsBuilder {
+    market: Option<MarketKind>,
+    strategy_name: Option<String>,
+    years: Vec<u32>,
+    reports: HashMap<u32, DataFrame>,
+}
+
+impl PnLReportsBuilder {
     pub fn new() -> Self {
         Self {
             market: None,
-            year: None,
-            strategy: None,
-            data_rows: None,
+            strategy_name: None,
+            years: Vec::new(),
+            reports: HashMap::new(),
         }
     }
 
-    pub fn append(self, row: PnLReportDataRow) -> Self {
-        let row_as_df: DataFrame = row.clone().into();
-        let data_rows = match self.data_rows {
-            Some(mut v) => {
-                v.push(row_as_df.lazy());
-                v
-            }
-            None => vec![row_as_df.lazy()],
-        };
+    pub fn append(self, pnl_report: PnLReport) -> Self {
+        let market = pnl_report.market;
+        let strategy_name = pnl_report.strategy.clone();
+        let year = pnl_report.year;
+        let mut years = self.years;
+        years.push(year);
+
+        let mut reports = self.reports;
+        reports.insert(year, pnl_report.pnl);
+
         Self {
-            market: Some(row.market),
-            year: Some(row.year),
-            strategy: Some(row.strategy_name),
-            data_rows: Some(data_rows),
+            market: Some(market),
+            strategy_name: Some(strategy_name),
+            years,
+            reports,
         }
     }
 
-    pub fn build(self) -> PnLReport {
-        PnLReport {
+    pub fn build(self) -> PnLReports {
+        PnLReports {
             market: self.market.unwrap(),
-            strategy: self.strategy.unwrap(),
-            year: self.year.unwrap(),
-            pnl: self
-                .data_rows
-                .unwrap()
-                .concatenate_to_data_frame()
-                .with_row_count("#", Some(1))
-                .unwrap(),
+            strategy: self.strategy_name.unwrap(),
+            years: self.years,
+            reports: self.reports,
         }
     }
 }

@@ -1,10 +1,10 @@
 use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     enums::markets::MarketKind,
-    equity_curve::market_and_year::{EquityCurves, EquityCurvesReport},
+    equity_curve::{EquityCurves, EquityCurvesReport},
     lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
-    performance_report::market_and_year::PerformanceReports,
-    trade_breakdown_report::market_and_year::TradeBreakdownReports,
+    performance_report::PerformanceReports,
+    trade_breakdown_report::TradeBreakdownReports,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
@@ -40,10 +40,11 @@ impl PnLStatement {
                         .reports
                         .iter()
                         .map(|(year, pnl_report)| {
-                            request_builder.clone()
-                                .with_pnl(pnl_report.pnl.clone())
-                                .with_market(pnl_report.market)
-                                .with_strategy(pnl_report.strategy.clone())
+                            request_builder
+                                .clone()
+                                .with_pnl(pnl_report.clone())
+                                .with_market(*market)
+                                .with_strategy(self.strategy_name.clone())
                                 .with_year(*year)
                                 .build()
                                 .as_trade_breakdown_df()
@@ -76,10 +77,11 @@ impl PnLStatement {
                         .reports
                         .iter()
                         .map(|(year, pnl_report)| {
-                            request_builder.clone()
-                                .with_pnl(pnl_report.pnl.clone())
-                                .with_market(pnl_report.market)
-                                .with_strategy(pnl_report.strategy.clone())
+                            request_builder
+                                .clone()
+                                .with_pnl(pnl_report.clone())
+                                .with_market(*market)
+                                .with_strategy(self.strategy_name.clone())
                                 .with_year(*year)
                                 .build()
                                 .as_performance_report_df()
@@ -107,7 +109,7 @@ impl PnLStatement {
                 let curves = pnl_reports
                     .reports
                     .iter()
-                    .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report.pnl, false)))
+                    .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report, false)))
                     .collect();
                 (
                     *market,
