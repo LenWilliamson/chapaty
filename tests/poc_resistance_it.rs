@@ -16,10 +16,10 @@ async fn it_test() {
     let markets = vec![
         MarketKind::AudUsdFuture,
         MarketKind::EurUsdFuture,
-        // MarketKind::GbpUsdFuture,
-        // MarketKind::CadUsdFuture,
+        MarketKind::GbpUsdFuture,
+        MarketKind::CadUsdFuture,
         // MarketKind::YenUsdFuture,
-        // MarketKind::NzdUsdFuture,
+        MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
     let market_simulation_data = MarketSimulationDataKind::Ohlc1m;

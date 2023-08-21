@@ -9,13 +9,13 @@ mod data_frame_operations;
 pub mod data_provider;
 mod enums;
 mod lazy_frame_operations;
-mod performance_report;
-mod pnl;
+pub mod performance_report;
+pub mod pnl;
 mod price_histogram;
 mod serde;
-mod equity_curve;
+pub mod equity_curve;
 pub mod strategy;
-mod trade_breakdown_report;
+pub mod trade_breakdown_report;
 mod trading_indicator;
 
 pub use bot::time_interval::TimeInterval;
