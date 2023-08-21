@@ -13,7 +13,6 @@ async fn it_test() {
     let data_provider = common::setup_data_provider();
     // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
     let years = vec![2022];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
     let markets = vec![
         MarketKind::AudUsdFuture,
         MarketKind::EurUsdFuture,
@@ -23,6 +22,7 @@ async fn it_test() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
+    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
