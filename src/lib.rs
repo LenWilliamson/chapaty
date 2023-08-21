@@ -4,7 +4,7 @@ mod calculator;
 mod chapaty;
 mod cloud_api;
 pub mod config;
-mod converter;
+pub mod converter;
 mod data_frame_operations;
 pub mod data_provider;
 mod enums;

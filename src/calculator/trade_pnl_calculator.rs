@@ -19,7 +19,7 @@ pub struct TradePnL {
 }
 
 impl TradePnL {
-    pub fn trade_outcome(&self) -> String {
+    pub fn _trade_outcome(&self) -> String {
         if self.is_trade_timeout() {
             self.handle_timeout_trade()
         } else {
@@ -44,9 +44,9 @@ impl TradePnL {
     }
 
     fn handle_regular_trade_exit(&self) -> f64 {
-        if self.is_stop_loss_entry_before_take_profit_entry() {
+        if self.is_regular_trade_loser() {
             self.stop_loss.clone().unwrap().price
-        } else if self.is_stop_loss_entry_after_take_profit_entry() {
+        } else if self.is_regular_trade_winner() {
             self.take_profit.clone().unwrap().price
         } else {
             // If trade outcome not clear, be conservative and assume loser trade
@@ -55,9 +55,9 @@ impl TradePnL {
     }
 
     fn handle_regular_profit(&self) -> f64 {
-        if self.is_stop_loss_entry_before_take_profit_entry() {
+        if self.is_regular_trade_loser() {
             self.stop_loss.clone().unwrap().profit.clone().unwrap()
-        } else if self.is_stop_loss_entry_after_take_profit_entry() {
+        } else if self.is_regular_trade_winner() {
             self.take_profit.clone().unwrap().profit.clone().unwrap()
         } else {
             // If trade outcome not clear, be conservative and assume loser trade
@@ -81,9 +81,9 @@ impl TradePnL {
     }
 
     fn handle_regular_trade_outcome(&self) -> String {
-        if self.is_stop_loss_entry_before_take_profit_entry() {
+        if self.is_regular_trade_loser() {
             "Loser".to_string()
-        } else if self.is_stop_loss_entry_after_take_profit_entry() {
+        } else if self.is_regular_trade_winner() {
             "Winner".to_string()
         } else {
             "Not Clear".to_string()
@@ -94,13 +94,13 @@ impl TradePnL {
         self.timeout.clone().unwrap().profit.clone().unwrap() > 0.0
     }
 
-    fn is_stop_loss_entry_before_take_profit_entry(&self) -> bool {
+    fn is_regular_trade_loser(&self) -> bool {
         let sl_ts = get_entry_ts(&self.stop_loss);
         let tp_ts = get_entry_ts(&self.take_profit);
         sl_ts < tp_ts
     }
 
-    fn is_stop_loss_entry_after_take_profit_entry(&self) -> bool {
+    fn is_regular_trade_winner(&self) -> bool {
         let sl_ts = get_entry_ts(&self.stop_loss);
         let tp_ts = get_entry_ts(&self.take_profit);
         sl_ts > tp_ts

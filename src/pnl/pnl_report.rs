@@ -71,15 +71,15 @@ impl PnLReportDataRow {
             TradeDirectionKind::None => 0.0,
             _ => trade_pnl.exit_price(),
         };
-        let status = match self.trade.trade_kind {
-            TradeDirectionKind::None => "No Trade".to_string(),
-            _ => trade_pnl.trade_outcome(),
-        };
         let pl_tick = match self.trade.trade_kind {
             TradeDirectionKind::None => 0.0,
             _ => trade_pnl.profit() / tick_factor,
         };
         let pl_dollar = pl_tick * tick_to_dollar;
+        let status = match self.trade.trade_kind {
+            TradeDirectionKind::None => "No Trade".to_string(),
+            _ => determine_status(pl_dollar),
+        };
 
         let n = self.get_decimal_places();
 
@@ -212,6 +212,14 @@ impl PnLReportDataRow {
             .trade
             .profit(self.trade.stop_loss.map_or_else(|| 0.0, identity));
         (loss / tick_factor).round()
+    }
+}
+
+fn determine_status(profit: f64) -> String {
+    if profit > 0.0 {
+        "Winner".to_string()
+    } else {
+        "Loser".to_string()
     }
 }
 
