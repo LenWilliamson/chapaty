@@ -1,8 +1,8 @@
 use crate::{
     data_frame_operations::io_operations::save_df_as_csv,
-    equity_curve::{EquityCurvesAggMarket, EquityCurvesAggYears, EquityCurvesReport},
+    equity_curve::{EquityCurvesAggMarkets, EquityCurvesAggYears, EquityCurvesReport},
     performance_report::{
-        PerformanceReportAggMarket, PerformanceReports, PerformanceReportsAggYears,
+        PerformanceReportAggMarkets, PerformanceReports, PerformanceReportsAggYears,
     },
     pnl::{
         pnl_statement::PnLStatement, pnl_statement_agg_markets::PnLStatementAggMarkets,
@@ -10,7 +10,7 @@ use crate::{
         pnl_statement_agg_years::PnLStatementAggYears,
     },
     trade_breakdown_report::{
-        TradeBreakDownReportAggMarket,
+        TradeBreakDownReportAggMarkets,
         TradeBreakDownReportsAggYears,
         TradeBreakdownReports,
     },
@@ -22,9 +22,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BacktestResult {
     market_and_year: MarketAndYearBacktestResult,
-    agg_market_and_year: AggMarketAndYearBacktestResult,
-    market_and_agg_year: MarketAndAggYearBacktestResult,
-    agg_market_and_agg_year: AggMarketAndAggYearBacktestResult,
+    agg_market_and_year: AggMarketsAndYearBacktestResult,
+    market_and_agg_year: MarketAndAggYearsBacktestResult,
+    agg_market_and_agg_year: AggMarketsAndAggYearsBacktestResult,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,15 +36,15 @@ pub struct MarketAndYearBacktestResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AggMarketAndYearBacktestResult {
+pub struct AggMarketsAndYearBacktestResult {
     pub pnl_statement: PnLStatementAggMarkets,
-    pub performance_report: PerformanceReportAggMarket,
-    pub trade_breakdown_report: TradeBreakDownReportAggMarket,
-    pub equity_curves: EquityCurvesAggMarket,
+    pub performance_report: PerformanceReportAggMarkets,
+    pub trade_breakdown_report: TradeBreakDownReportAggMarkets,
+    pub equity_curves: EquityCurvesAggMarkets,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct MarketAndAggYearBacktestResult {
+pub struct MarketAndAggYearsBacktestResult {
     pub pnl_statement: PnLStatementAggYears,
     pub performance_report: PerformanceReportsAggYears,
     pub trade_breakdown_report: TradeBreakDownReportsAggYears,
@@ -52,7 +52,7 @@ pub struct MarketAndAggYearBacktestResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AggMarketAndAggYearBacktestResult {
+pub struct AggMarketsAndAggYearsBacktestResult {
     pub pnl_statement: PnLStatementAggMarketsAggYears,
     pub performance_report: DataFrame,
     pub trade_breakdown_report: DataFrame,
@@ -61,7 +61,7 @@ pub struct AggMarketAndAggYearBacktestResult {
 
 impl From<MarketAndYearBacktestResult> for BacktestResult {
     fn from(value: MarketAndYearBacktestResult) -> Self {
-        let agg_market_and_year: AggMarketAndYearBacktestResult = value.clone().into();
+        let agg_market_and_year: AggMarketsAndYearBacktestResult = value.clone().into();
         Self {
             market_and_year: value.clone(),
             agg_market_and_year: agg_market_and_year.clone(),
@@ -71,7 +71,7 @@ impl From<MarketAndYearBacktestResult> for BacktestResult {
     }
 }
 
-impl From<MarketAndYearBacktestResult> for AggMarketAndYearBacktestResult {
+impl From<MarketAndYearBacktestResult> for AggMarketsAndYearBacktestResult {
     fn from(value: MarketAndYearBacktestResult) -> Self {
         let pnl_statement: PnLStatementAggMarkets = value.pnl_statement.clone().into();
         Self {
@@ -83,7 +83,7 @@ impl From<MarketAndYearBacktestResult> for AggMarketAndYearBacktestResult {
     }
 }
 
-impl From<MarketAndYearBacktestResult> for MarketAndAggYearBacktestResult {
+impl From<MarketAndYearBacktestResult> for MarketAndAggYearsBacktestResult {
     fn from(value: MarketAndYearBacktestResult) -> Self {
         let pnl_statement: PnLStatementAggYears = value.pnl_statement.clone().into();
         Self {
@@ -95,8 +95,8 @@ impl From<MarketAndYearBacktestResult> for MarketAndAggYearBacktestResult {
     }
 }
 
-impl From<AggMarketAndYearBacktestResult> for AggMarketAndAggYearBacktestResult {
-    fn from(value: AggMarketAndYearBacktestResult) -> Self {
+impl From<AggMarketsAndYearBacktestResult> for AggMarketsAndAggYearsBacktestResult {
+    fn from(value: AggMarketsAndYearBacktestResult) -> Self {
         let pnl_statement: PnLStatementAggMarketsAggYears = value.pnl_statement.into();
         Self {
             pnl_statement: pnl_statement.clone(),
@@ -124,21 +124,21 @@ impl MarketAndYearBacktestResult {
     }
 }
 
-impl AggMarketAndYearBacktestResult {
+impl AggMarketsAndYearBacktestResult {
     pub fn save_as_csv(&self, file_name: &str) {
         self.pnl_statement.save_as_csv(file_name);
         self.performance_report.save_as_csv(file_name);
         self.trade_breakdown_report.save_as_csv(file_name);
     }
 }
-impl MarketAndAggYearBacktestResult {
+impl MarketAndAggYearsBacktestResult {
     pub fn save_as_csv(&self, file_name: &str) {
         self.pnl_statement.save_as_csv(file_name);
         self.performance_report.save_as_csv(file_name);
         self.trade_breakdown_report.save_as_csv(file_name);
     }
 }
-impl AggMarketAndAggYearBacktestResult {
+impl AggMarketsAndAggYearsBacktestResult {
     pub fn save_as_csv(&self, file_name: &str) {
         self.pnl_statement.save_as_csv(file_name);
         let name = format!("{file_name}_all_markets_all_years_performance_report");

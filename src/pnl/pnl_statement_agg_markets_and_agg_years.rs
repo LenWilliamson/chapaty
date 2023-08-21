@@ -1,10 +1,9 @@
-use polars::prelude::{DataFrame, IntoLazy};
+use polars::prelude::DataFrame;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     data_frame_operations::io_operations::save_df_as_csv,
-    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     MarketKind,
 };
 
@@ -29,24 +28,11 @@ impl PnLStatementAggMarketsAggYears {
 
 impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
     fn from(value: PnLStatementAggMarkets) -> Self {
-        let ldfs = value
-            .pnl_data
-            .years
-            .iter()
-            .fold(Vec::new(), |mut acc, year| {
-                acc.push(value.pnl_data.reports.get(year).unwrap().clone().lazy());
-                acc
-            });
-        let pnl = ldfs
-            .concatenate_to_lazy_frame()
-            .sort_by_date()
-            .collect()
-            .unwrap();
         Self {
-            strategy_name: value.strategy_name,
-            markets: value.markets,
-            years: value.pnl_data.years,
-            pnl,
+            strategy_name: value.strategy_name.clone(),
+            markets: value.markets.clone(),
+            years: value.years.clone(),
+            pnl: value.agg_year(),
         }
     }
 }

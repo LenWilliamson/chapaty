@@ -42,12 +42,12 @@ impl TradeBreakDownReportsAggYears {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TradeBreakDownReportAggMarket {
+pub struct TradeBreakDownReportAggMarkets {
     pub markets: Vec<MarketKind>,
     pub report: DataFrame,
 }
 
-impl TradeBreakDownReportAggMarket {
+impl TradeBreakDownReportAggMarkets {
     pub fn save_as_csv(&self, file_name: &str) {
         save_df_as_csv(
             &mut self.report.clone(),

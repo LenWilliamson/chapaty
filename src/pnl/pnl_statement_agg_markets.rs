@@ -1,35 +1,55 @@
-use polars::prelude::{IntoLazy, LazyFrame};
+use std::collections::HashMap;
+
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
-    equity_curve::EquityCurvesAggMarket,
-    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
-    performance_report::PerformanceReportAggMarket,
-    trade_breakdown_report::TradeBreakDownReportAggMarket,
+    data_frame_operations::io_operations::save_df_as_csv,
+    equity_curve::EquityCurvesAggMarkets,
+    lazy_frame_operations::trait_extensions::{MyLazyFrameVecOperations, MyLazyFrameOperations},
+    performance_report::PerformanceReportAggMarkets,
+    trade_breakdown_report::TradeBreakDownReportAggMarkets,
     MarketKind,
 };
 
-use super::{pnl_report_agg_markets::PnLReportsAggMarkets, pnl_statement::PnLStatement};
+use super::pnl_statement::PnLStatement;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PnLStatementAggMarkets {
     pub strategy_name: String,
     pub markets: Vec<MarketKind>,
-    pub pnl_data: PnLReportsAggMarkets,
+    pub years: Vec<u32>,
+    pub pnl_data: HashMap<u32, DataFrame>,
 }
 
 impl PnLStatementAggMarkets {
     pub fn save_as_csv(&self, file_name: &str) {
-        self.pnl_data.save_as_csv(file_name);
+        self.pnl_data.iter().for_each(|(year, pnl)| {
+            save_df_as_csv(
+                &mut pnl.clone(),
+                &format!("{file_name}_all_markets_{year}_pnl"),
+            )
+        })
     }
-    pub fn compute_trade_breakdown_report(&self) -> TradeBreakDownReportAggMarket {
+
+    pub fn agg_year(&self) -> DataFrame {
+        let ldfs = self.years.iter().fold(Vec::new(), |mut acc, year| {
+            acc.push(self.pnl_data.get(year).unwrap().clone().lazy());
+            acc
+        });
+        ldfs.concatenate_to_lazy_frame()
+            .sort_by_date()
+            .collect()
+            .unwrap()
+    }
+
+    pub fn compute_trade_breakdown_report(&self) -> TradeBreakDownReportAggMarkets {
         let request_builder = PnLToReportRequestBuilder::new()
             .is_agg_markets(true)
             .is_agg_years(false);
         let trade_breakdown_reports = self
             .pnl_data
-            .reports
             .iter()
             .map(|(year, pnl_report)| {
                 request_builder
@@ -46,18 +66,17 @@ impl PnLStatementAggMarkets {
             .with_row_count("#", Some(1))
             .unwrap();
 
-        TradeBreakDownReportAggMarket {
+        TradeBreakDownReportAggMarkets {
             markets: self.markets.clone(),
             report: trade_breakdown_reports,
         }
     }
-    pub fn compute_performance_report(&self) -> PerformanceReportAggMarket {
+    pub fn compute_performance_report(&self) -> PerformanceReportAggMarkets {
         let request_builder = PnLToReportRequestBuilder::new()
             .is_agg_markets(true)
             .is_agg_years(false);
         let trade_breakdown_reports = self
             .pnl_data
-            .reports
             .iter()
             .map(|(year, pnl_report)| {
                 request_builder
@@ -74,23 +93,22 @@ impl PnLStatementAggMarkets {
             .with_row_count("#", Some(1))
             .unwrap();
 
-        PerformanceReportAggMarket {
+        PerformanceReportAggMarkets {
             markets: self.markets.clone(),
             report: trade_breakdown_reports,
         }
     }
 
-    pub fn compute_equity_curves(&self) -> EquityCurvesAggMarket {
+    pub fn compute_equity_curves(&self) -> EquityCurvesAggMarkets {
         let equity_curves = self
             .pnl_data
-            .reports
             .iter()
             .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report, false)))
             .collect();
 
-        EquityCurvesAggMarket {
+        EquityCurvesAggMarkets {
             markets: self.markets.clone(),
-            years: self.pnl_data.years.clone(),
+            years: self.years.clone(),
             curves: equity_curves,
         }
     }
@@ -99,9 +117,10 @@ impl PnLStatementAggMarkets {
 impl From<PnLStatement> for PnLStatementAggMarkets {
     fn from(value: PnLStatement) -> Self {
         Self {
-            strategy_name: value.strategy_name,
-            markets: value.markets,
-            pnl_data: value.pnl_data.into(),
+            strategy_name: value.strategy_name.clone(),
+            markets: value.markets.clone(),
+            years: value.get_years(),
+            pnl_data: value.agg_markets(),
         }
     }
 }

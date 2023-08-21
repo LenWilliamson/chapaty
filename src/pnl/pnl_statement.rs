@@ -2,7 +2,7 @@ use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     enums::markets::MarketKind,
     equity_curve::{EquityCurves, EquityCurvesReport},
-    lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
+    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     performance_report::PerformanceReports,
     trade_breakdown_report::TradeBreakdownReports,
 };
@@ -24,6 +24,29 @@ impl PnLStatement {
         self.pnl_data
             .iter()
             .for_each(|(_, data)| data.save_as_csv(file_name))
+    }
+
+    pub fn agg_markets(&self) -> HashMap<u32, DataFrame> {
+        let years: &Vec<u32> = self.pnl_data[&self.markets[0]].years.as_ref();
+        years
+            .iter()
+            .map(|year| (*year, self.get_agg_pnl_report_in_year(year)))
+            .collect()
+    }
+
+    fn get_agg_pnl_report_in_year(&self, year: &u32) -> DataFrame {
+        self.pnl_data
+            .values()
+            .map(|pnl_reports| pnl_reports.reports.get(year).unwrap().clone().lazy())
+            .collect::<Vec<LazyFrame>>()
+            .concatenate_to_lazy_frame()
+            .sort_by_date()
+            .collect()
+            .unwrap()
+    }
+
+    pub fn get_years(&self) -> Vec<u32> {
+        self.pnl_data[&self.markets[0]].years.clone()
     }
 
     pub fn compute_trade_breakdown_report(&self) -> TradeBreakdownReports {

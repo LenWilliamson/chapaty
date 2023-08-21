@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 use crate::{data_frame_operations::io_operations::save_df_as_csv, MarketKind};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PerformanceReportAggMarket {
+pub struct PerformanceReportAggMarkets {
     pub markets: Vec<MarketKind>,
     pub report: DataFrame,
 }
 
-impl PerformanceReportAggMarket {
+impl PerformanceReportAggMarkets {
     pub fn save_as_csv(&self, file_name: &str) {
         save_df_as_csv(
             &mut self.report.clone(),
