@@ -22,7 +22,7 @@ pub use bot::time_interval::TimeInterval;
 pub use bot::{BotBuilder, Bot};
 pub use enums::{
     bot::{StopLossKind, TakeProfitKind, TimeFrameKind},
-    column_names::DataProviderColumnKind,
+    column_names::{DataProviderColumnKind, PnLReportColumnKind, PerformanceReportColumnKind, TradeBreakDownReportColumnKind},
     data::MarketSimulationDataKind,
     indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
