@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BacktestResult {
-    market_and_year: MarketAndYearBacktestResult,
-    agg_market_and_year: AggMarketsAndYearBacktestResult,
-    market_and_agg_year: MarketAndAggYearsBacktestResult,
-    agg_market_and_agg_year: AggMarketsAndAggYearsBacktestResult,
+    pub market_and_year: MarketAndYearBacktestResult,
+    pub agg_market_and_year: AggMarketsAndYearBacktestResult,
+    pub market_and_agg_year: MarketAndAggYearsBacktestResult,
+    pub agg_market_and_agg_year: AggMarketsAndAggYearsBacktestResult,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
