@@ -1,4 +1,4 @@
-mod backtest_result;
+pub mod backtest_result;
 mod bot;
 mod calculator;
 mod chapaty;
