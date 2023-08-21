@@ -19,13 +19,6 @@ pub struct TradePnL {
 }
 
 impl TradePnL {
-    pub fn _trade_outcome(&self) -> String {
-        if self.is_trade_timeout() {
-            self.handle_timeout_trade()
-        } else {
-            self.handle_regular_trade_outcome()
-        }
-    }
 
     pub fn exit_price(&self) -> f64 {
         if self.is_trade_timeout() {
@@ -71,29 +64,7 @@ impl TradePnL {
 
         is_stop_loss_timeout && is_take_profit_timeout
     }
-
-    fn handle_timeout_trade(&self) -> String {
-        if self.is_timeout_trade_winner() {
-            "Winner".to_string()
-        } else {
-            "Loser".to_string()
-        }
-    }
-
-    fn handle_regular_trade_outcome(&self) -> String {
-        if self.is_regular_trade_loser() {
-            "Loser".to_string()
-        } else if self.is_regular_trade_winner() {
-            "Winner".to_string()
-        } else {
-            "Not Clear".to_string()
-        }
-    }
-
-    fn is_timeout_trade_winner(&self) -> bool {
-        self.timeout.clone().unwrap().profit.clone().unwrap() > 0.0
-    }
-
+    
     fn is_regular_trade_loser(&self) -> bool {
         let sl_ts = get_entry_ts(&self.stop_loss);
         let tp_ts = get_entry_ts(&self.take_profit);
