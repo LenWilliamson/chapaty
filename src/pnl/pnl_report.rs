@@ -123,7 +123,7 @@ impl PnLReportDataRow {
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
         let expected_loss_dollar = expected_loss_tick * tick_to_dollar;
-        let crv = (expected_win_tick / expected_loss_tick).abs();
+        let crv = compute_crv(expected_win_tick, expected_loss_tick);
 
         let n = self.get_decimal_places();
 
