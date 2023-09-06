@@ -63,7 +63,10 @@ impl PnLReportDataRow {
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
         let expected_loss_dollar = expected_loss_tick * tick_to_dollar;
-        let crv = compute_crv(expected_win_tick, expected_loss_tick);
+        let crv = match self.trade.trade_kind {
+            TradeDirectionKind::None => 0.0,
+            _ => compute_crv(expected_win_tick, expected_loss_tick),
+        };
         let entry_ts = self.get_entry_ts();
         let take_profit_ts = self.get_take_profit_ts();
         let stop_loss_ts = self.get_stop_loss_ts();

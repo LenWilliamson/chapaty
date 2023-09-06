@@ -12,12 +12,12 @@ async fn it_test() {
     let strategy = common::setup_strategy();
     let data_provider = common::setup_data_provider();
     // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
-    let years = vec![2019];
+    let years = vec![2022];
     let markets = vec![
         MarketKind::AudUsdFuture,
         // MarketKind::EurUsdFuture,
         // MarketKind::GbpUsdFuture,
-        // MarketKind::CadUsdFuture,
+        MarketKind::CadUsdFuture,
         // MarketKind::YenUsdFuture,
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
@@ -34,7 +34,7 @@ async fn it_test() {
         .with_years(years)
         .with_markets(markets)
         .with_market_simulation_data(market_simulation_data)
-        .with_time_interval(time_interval)
+        // .with_time_interval(time_interval)
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
