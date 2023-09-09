@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     data_frame_operations::io_operations::save_df_as_csv,
-    MarketKind,
+    MarketKind, PnLReportColumnKind,
 };
 
 use super::pnl_statement_agg_markets::PnLStatementAggMarkets;
@@ -32,7 +32,10 @@ impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
             strategy_name: value.strategy_name.clone(),
             markets: value.markets.clone(),
             years: value.years.clone(),
-            pnl: value.agg_year().with_row_count("id", Some(1)).unwrap(),
+            pnl: value
+                .agg_year()
+                .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+                .unwrap(),
         }
     }
 }
@@ -46,7 +49,7 @@ impl PnLStatementAggMarketsAggYears {
             .with_strategy(self.strategy_name.clone())
             .build()
             .as_trade_breakdown_df()
-            .with_row_count("id", Some(1))
+            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap()
     }
 
@@ -58,6 +61,8 @@ impl PnLStatementAggMarketsAggYears {
             .with_strategy(self.strategy_name.clone())
             .build()
             .as_performance_report_df()
+            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .unwrap()
     }
 
     pub fn compute_equity_curve(&self) -> Vec<f64> {

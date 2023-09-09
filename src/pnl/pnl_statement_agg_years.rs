@@ -9,7 +9,7 @@ use crate::{
     equity_curve::EquityCurvesAggYears,
     performance_report::PerformanceReportsAggYears,
     trade_breakdown_report::TradeBreakDownReportsAggYears,
-    MarketKind,
+    MarketKind, PnLReportColumnKind,
 };
 
 use super::pnl_statement::PnLStatement;
@@ -49,7 +49,7 @@ impl PnLStatementAggYears {
                         .with_strategy(self.strategy_name.clone())
                         .build()
                         .as_trade_breakdown_df()
-                        .with_row_count("id", Some(1))
+                        .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
                         .unwrap(),
                 )
             })
@@ -78,7 +78,7 @@ impl PnLStatementAggYears {
                         .with_strategy(self.strategy_name.clone())
                         .build()
                         .as_performance_report_df()
-                        .with_row_count("id", Some(1))
+                        .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
                         .unwrap(),
                 )
             })
@@ -113,7 +113,7 @@ impl From<PnLStatement> for PnLStatementAggYears {
             .map(|(market, pnl_reports)| {
                 (
                     *market,
-                    pnl_reports.agg_year().with_row_count("id", Some(1)).unwrap(),
+                    pnl_reports.agg_year().with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1)).unwrap(),
                 )
             })
             .collect();

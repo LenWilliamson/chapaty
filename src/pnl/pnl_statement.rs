@@ -4,7 +4,7 @@ use crate::{
     equity_curve::{EquityCurves, EquityCurvesReport},
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     performance_report::PerformanceReports,
-    trade_breakdown_report::TradeBreakdownReports,
+    trade_breakdown_report::TradeBreakdownReports, PnLReportColumnKind,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};
@@ -41,10 +41,10 @@ impl PnLStatement {
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_lazy_frame()
             .sort_by_date_and_market()
-            .drop_columns(vec!["id"])
+            .drop_columns(vec![&PnLReportColumnKind::Id.to_string()])
             .collect()
             .unwrap()
-            .with_row_count("id", Some(1))
+            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap()
     }
 
@@ -78,7 +78,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_count("id", Some(1))
+                        .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
                         .unwrap(),
                 )
             })
@@ -115,7 +115,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_count("id", Some(1))
+                        .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
                         .unwrap(),
                 )
             })

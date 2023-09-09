@@ -10,7 +10,7 @@ use crate::{
     lazy_frame_operations::trait_extensions::{MyLazyFrameVecOperations, MyLazyFrameOperations},
     performance_report::PerformanceReportAggMarkets,
     trade_breakdown_report::TradeBreakDownReportAggMarkets,
-    MarketKind,
+    MarketKind, PnLReportColumnKind,
 };
 
 use super::pnl_statement::PnLStatement;
@@ -40,7 +40,7 @@ impl PnLStatementAggMarkets {
         });
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
-            .drop_columns(vec!["id"])
+            .drop_columns(vec![&PnLReportColumnKind::Id.to_string()])
             .collect()
             .unwrap()
     }
@@ -64,7 +64,7 @@ impl PnLStatementAggMarkets {
             .map(|df| df.lazy())
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_data_frame()
-            .with_row_count("id", Some(1))
+            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap();
 
         TradeBreakDownReportAggMarkets {
@@ -91,7 +91,7 @@ impl PnLStatementAggMarkets {
             .map(|df| df.lazy())
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_data_frame()
-            .with_row_count("id", Some(1))
+            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap();
 
         PerformanceReportAggMarkets {
