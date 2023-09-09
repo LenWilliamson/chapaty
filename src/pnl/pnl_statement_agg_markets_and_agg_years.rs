@@ -32,7 +32,7 @@ impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
             strategy_name: value.strategy_name.clone(),
             markets: value.markets.clone(),
             years: value.years.clone(),
-            pnl: value.agg_year(),
+            pnl: value.agg_year().with_row_count("id", Some(1)).unwrap(),
         }
     }
 }
@@ -46,6 +46,8 @@ impl PnLStatementAggMarketsAggYears {
             .with_strategy(self.strategy_name.clone())
             .build()
             .as_trade_breakdown_df()
+            .with_row_count("id", Some(1))
+            .unwrap()
     }
 
     pub fn compute_performance_report(&self) -> DataFrame {

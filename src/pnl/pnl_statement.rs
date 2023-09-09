@@ -40,8 +40,11 @@ impl PnLStatement {
             .map(|pnl_reports| pnl_reports.reports.get(year).unwrap().clone().lazy())
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_lazy_frame()
-            .sort_by_date()
+            .sort_by_date_and_market()
+            .drop_columns(vec!["id"])
             .collect()
+            .unwrap()
+            .with_row_count("id", Some(1))
             .unwrap()
     }
 
@@ -75,7 +78,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_count("#", Some(1))
+                        .with_row_count("id", Some(1))
                         .unwrap(),
                 )
             })
@@ -112,7 +115,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_count("#", Some(1))
+                        .with_row_count("id", Some(1))
                         .unwrap(),
                 )
             })

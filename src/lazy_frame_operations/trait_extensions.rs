@@ -29,6 +29,7 @@ pub trait MyLazyFrameOperations {
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64>;
     fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame;
     fn sort_by_date(self) -> Self;
+    fn sort_by_date_and_market(self) -> Self;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
@@ -123,6 +124,12 @@ impl MyLazyFrameOperations for LazyFrame {
     }
     fn sort_by_date(self) -> Self {
         self.sort(&PnLReportColumnKind::Date.to_string(), Default::default())
+    }
+
+    fn sort_by_date_and_market(self) -> Self {
+        let market = PnLReportColumnKind::Market.to_string();
+        let date = PnLReportColumnKind::Date.to_string();
+        self.sort_by_exprs(vec![col(&date), col(&market)], vec![false, false], false, false)
     }
 }
 

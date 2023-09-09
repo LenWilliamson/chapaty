@@ -42,12 +42,15 @@ impl PnLStatementAggYears {
             .map(|(market, pnl)| {
                 (
                     *market,
-                    request_builder.clone()
+                    request_builder
+                        .clone()
                         .with_pnl(pnl.clone())
                         .with_market(*market)
                         .with_strategy(self.strategy_name.clone())
                         .build()
-                        .as_trade_breakdown_df(),
+                        .as_trade_breakdown_df()
+                        .with_row_count("id", Some(1))
+                        .unwrap(),
                 )
             })
             .collect();
@@ -68,12 +71,15 @@ impl PnLStatementAggYears {
             .map(|(market, pnl)| {
                 (
                     *market,
-                    request_builder.clone()
+                    request_builder
+                        .clone()
                         .with_pnl(pnl.clone())
                         .with_market(*market)
                         .with_strategy(self.strategy_name.clone())
                         .build()
-                        .as_performance_report_df(),
+                        .as_performance_report_df()
+                        .with_row_count("id", Some(1))
+                        .unwrap(),
                 )
             })
             .collect();
@@ -104,7 +110,12 @@ impl From<PnLStatement> for PnLStatementAggYears {
         let pnl_data = value
             .pnl_data
             .iter()
-            .map(|(market, pnl_reports)| (*market, pnl_reports.agg_year()))
+            .map(|(market, pnl_reports)| {
+                (
+                    *market,
+                    pnl_reports.agg_year().with_row_count("id", Some(1)).unwrap(),
+                )
+            })
             .collect();
         let years = value.pnl_data[&value.markets[0]].years.clone();
         Self {
