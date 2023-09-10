@@ -104,7 +104,7 @@ impl PnLStatementAggMarkets {
         let equity_curves = self
             .pnl_data
             .iter()
-            .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report, false)))
+            .map(|(year, pnl_report)| (*year, as_equity_curve(&pnl_report, true)))
             .collect();
 
         EquityCurvesAggMarkets {
