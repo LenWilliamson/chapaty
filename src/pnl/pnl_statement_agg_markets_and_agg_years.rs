@@ -34,7 +34,7 @@ impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
             years: value.years.clone(),
             pnl: value
                 .agg_year()
-                .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+                .with_row_count(&PnLReportColumnKind::Uid.to_string(), Some(1))
                 .unwrap(),
         }
     }

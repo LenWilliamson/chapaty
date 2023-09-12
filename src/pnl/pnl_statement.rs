@@ -41,10 +41,9 @@ impl PnLStatement {
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_lazy_frame()
             .sort_by_date_and_market()
-            .drop_columns(vec![&PnLReportColumnKind::Id.to_string()])
             .collect()
             .unwrap()
-            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_count(&PnLReportColumnKind::Uid.to_string(), Some(1))
             .unwrap()
     }
 
