@@ -129,7 +129,12 @@ impl MyLazyFrameOperations for LazyFrame {
     fn sort_by_date_and_market(self) -> Self {
         let market = PnLReportColumnKind::Market.to_string();
         let date = PnLReportColumnKind::Date.to_string();
-        self.sort_by_exprs(vec![col(&date), col(&market)], vec![false, false], false, false)
+        self.sort_by_exprs(
+            vec![col(&date), col(&market)],
+            vec![false, false],
+            false,
+            false,
+        )
     }
 }
 
