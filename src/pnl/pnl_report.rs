@@ -40,7 +40,7 @@ impl PnLReports {
         });
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
-            .drop_columns(vec![&PnLReportColumnKind::Id.to_string()])
+            .drop_columns(vec![&PnLReportColumnKind::Uid.to_string(), &PnLReportColumnKind::Id.to_string()])
             .collect()
             .unwrap()
     }
@@ -254,6 +254,8 @@ impl FromIterator<PnLReportDataRow> for DataFrame {
             .collect()
             .unwrap()
             .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .unwrap()
+            .with_row_count(&PnLReportColumnKind::Uid.to_string(), Some(1))
             .unwrap()
     }
 }

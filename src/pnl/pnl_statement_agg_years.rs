@@ -113,7 +113,12 @@ impl From<PnLStatement> for PnLStatementAggYears {
             .map(|(market, pnl_reports)| {
                 (
                     *market,
-                    pnl_reports.agg_year().with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1)).unwrap(),
+                    pnl_reports
+                        .agg_year()
+                        .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+                        .unwrap()
+                        .with_row_count(&PnLReportColumnKind::Uid.to_string(), Some(1))
+                        .unwrap(),
                 )
             })
             .collect();
