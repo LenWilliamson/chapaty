@@ -129,7 +129,7 @@ fn pnl_aggregated_by_date(pnl: &DataFrame) -> DataFrame {
     let pl_dollar = PnLReportColumnKind::PlDollar.to_string();
     pnl.clone()
         .lazy()
-        .groupby([col(&date)])
+        .group_by([col(&date)])
         .agg([col(&pl_dollar).sum()])
         .sort_by_date()
         .collect()

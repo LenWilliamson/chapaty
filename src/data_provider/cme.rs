@@ -89,7 +89,7 @@ pub fn transform_cme_df(df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
     let df = CsvReader::new(Cursor::new(df_as_bytes))
         .has_header(false)
         .with_delimiter(b';')
-        .with_schema(Arc::new(schema))
+        .with_schema(Some(Arc::new(schema)))
         .finish()
         .unwrap();
 

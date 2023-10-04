@@ -37,7 +37,7 @@ impl AggTradesVolume {
                 col(&px).apply(|x| Ok(Some(round(&x))), GetOutput::default()),
                 col(&qx),
             ])
-            .groupby([col(&px_vol)])
+            .group_by([col(&px_vol)])
             .agg([col(&qx_vol).sum()])
             .sort(&px_vol, Default::default())
             .collect()
