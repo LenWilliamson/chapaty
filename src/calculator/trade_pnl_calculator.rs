@@ -333,7 +333,7 @@ mod test {
             indicator::{PriceHistogramKind, TradingIndicatorKind},
             my_any_value::MyAnyValueKind,
             trade_and_pre_trade::{PreTradeDataKind, TradeDataKind, TradeDirectionKind},
-        },
+        }, types::ohlc::OhlcCandle,
     };
     use polars::prelude::IntoLazy;
     use std::collections::HashMap;
@@ -345,11 +345,11 @@ mod test {
         )])
     }
 
-    fn set_up_pre_trade_market_values_ppp_long() -> HashMap<PreTradeDataKind, f64> {
+    fn set_up_pre_trade_market_values_ppp_long() -> HashMap<PreTradeDataKind, OhlcCandle> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, 39_424.14),
-            (PreTradeDataKind::LowestTradePrice, 36_220.54),
-            (PreTradeDataKind::HighestTradePrice, 39_843.0),
+            (PreTradeDataKind::LastTradePrice, OhlcCandle::new().with_close(39_424.14)),
+            (PreTradeDataKind::LowestTradePrice, OhlcCandle::new().with_low(36_220.54)),
+            (PreTradeDataKind::HighestTradePrice, OhlcCandle::new().with_high(39_843.0)),
         ])
     }
 
@@ -629,11 +629,11 @@ mod test {
         )])
     }
 
-    fn set_up_pre_trade_market_values_ppp_short() -> HashMap<PreTradeDataKind, f64> {
+    fn set_up_pre_trade_market_values_ppp_short() -> HashMap<PreTradeDataKind, OhlcCandle> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, 39_004.73),
-            (PreTradeDataKind::LowestTradePrice, 38_550.0),
-            (PreTradeDataKind::HighestTradePrice, 44_101.12),
+            (PreTradeDataKind::LastTradePrice, OhlcCandle::new().with_close(39_004.73)),
+            (PreTradeDataKind::LowestTradePrice, OhlcCandle::new().with_low(38_550.0)),
+            (PreTradeDataKind::HighestTradePrice, OhlcCandle::new().with_high(44_101.12)),
         ])
     }
 

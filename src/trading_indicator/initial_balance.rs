@@ -1,4 +1,7 @@
-use polars::prelude::{col, DataFrame, IntoLazy};
+use polars::{
+    chunked_array::ops::SortMultipleOptions,
+    prelude::{col, DataFrame, IntoLazy},
+};
 
 use crate::{
     calculator::trade_values_calculator::TradeValuesCalculator,
@@ -49,7 +52,16 @@ impl InitialBalanceCalculator {
             .df
             .clone()
             .lazy()
-            .top_k(k, &[col(&ots)], [true], true, true)
+            .top_k(
+                k,
+                &[col(&ots)],
+                SortMultipleOptions {
+                    descending: vec![true],
+                    nulls_last: true,
+                    multithreaded: false,
+                    maintain_order: true,
+                },
+            )
             .select(&[col(&high).max(), col(&low).min()])
             .collect()
             .unwrap();
@@ -85,7 +97,7 @@ mod test {
         };
         assert_eq!(target, initial_balance);
     }
-    
+
     #[tokio::test]
     async fn test_initial_balance_from_first_k_candles() {
         let df = download_df(
@@ -111,10 +123,11 @@ mod test {
         let df = download_df(
             "chapaty-ai-test".to_string(),
             "ppp/_test_data_files/trade_data.csv".to_string(),
-        ).await;
+        )
+        .await;
         let calculator = InitialBalanceCalculator {
             df,
-            market_simulation_data_kind: MarketSimulationDataKind::Ohlc1h
+            market_simulation_data_kind: MarketSimulationDataKind::Ohlc1h,
         };
 
         let target = InitialBalance {

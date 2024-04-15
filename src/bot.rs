@@ -192,7 +192,7 @@ impl Bot {
     fn determine_indicator_data_pair(&self) -> Arc<HashSet<IndicatorDataPair>> {
         let map = self
             .strategy
-            .get_required_pre_trade_vales()
+            .get_required_pre_trade_values()
             .trading_indicators
             .iter()
             .fold(HashSet::new(), |mut acc, trading_indicator| {
@@ -340,7 +340,7 @@ mod test {
             TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
         ];
         mock_strategy
-            .expect_get_required_pre_trade_vales()
+            .expect_get_required_pre_trade_values()
             .return_const(RequriedPreTradeValues {
                 market_values: Vec::new(),
                 trading_indicators,

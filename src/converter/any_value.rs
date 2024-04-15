@@ -38,7 +38,7 @@ impl AnyValueConverter for &AnyValue<'_> {
 
     fn unwrap_utf8(self) -> String {
         match self {
-            AnyValue::Utf8(x) => x.to_string(),
+            AnyValue::String(x) => x.to_string(),
             AnyValue::Null => panic!("Matching against NULL value"),
             _ => panic!("Matching against wrong value"),
         }

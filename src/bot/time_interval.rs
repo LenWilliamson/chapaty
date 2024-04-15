@@ -1,5 +1,5 @@
 use crate::enums::bot::TimeFrameKind;
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{DateTime, Datelike, Timelike};
 use polars::prelude::{BooleanChunked, IntoSeries, Series};
 use std::fmt;
 
@@ -72,7 +72,7 @@ impl InInterval for TimeInterval {
 
 impl TimeInterval {
     fn in_weekly_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool {
-        let ts = NaiveDateTime::from_timestamp_opt(utc_ts_in_milliseconds / 1000, 0).unwrap();
+        let ts = DateTime::from_timestamp(utc_ts_in_milliseconds / 1000, 0).unwrap();
         let weekend = ts.weekday() == chrono::Weekday::Sat || ts.weekday() == chrono::Weekday::Sun;
         let too_early = ts.hour() < self.start_h
             && ts.weekday().number_from_monday() <= self.start_day.number_from_monday();
@@ -82,7 +82,7 @@ impl TimeInterval {
     }
 
     fn in_daily_time_interval(&self, utc_ts_in_milliseconds: i64) -> bool {
-        let ts = NaiveDateTime::from_timestamp_opt(utc_ts_in_milliseconds / 1000, 0).unwrap();
+        let ts = DateTime::from_timestamp(utc_ts_in_milliseconds / 1000, 0).unwrap();
         let weekend = ts.weekday() == chrono::Weekday::Sat || ts.weekday() == chrono::Weekday::Sun;
         let too_early = ts.hour() < self.start_h;
         let too_late = ts.hour() >= self.end_h;
@@ -100,18 +100,11 @@ impl fmt::Display for TimeInterval {
     }
 }
 
-pub fn timestamp_in_milli_to_string(ts: i64) -> String {
-    NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
-        .unwrap()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lazy_frame_operations::closures::{get_cw_from_ts, get_weekday_from_ts};
-    use polars::prelude::{df, DataFrame, NamedFrom};
+    use polars::prelude::{df, DataFrame};
 
     /// This unit test checks for the DataFrame
     ///
@@ -156,7 +149,7 @@ mod tests {
             df.unwrap()
                 .apply("cw", get_cw_from_ts)
                 .unwrap()
-                .frame_equal(&target_df.unwrap()),
+                .equals(&target_df.unwrap()),
             true
         );
     }
@@ -204,7 +197,7 @@ mod tests {
             df.unwrap()
                 .apply("weekday", get_weekday_from_ts)
                 .unwrap()
-                .frame_equal(&target_df.unwrap()),
+                .equals(&target_df.unwrap()),
             true
         );
     }

@@ -40,7 +40,7 @@ impl PnLStatementAggMarkets {
         });
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
-            .drop_columns(vec![&PnLReportColumnKind::Uid.to_string()])
+            .drop(vec![&PnLReportColumnKind::Uid.to_string()])
             .collect()
             .unwrap()
     }
@@ -64,7 +64,7 @@ impl PnLStatementAggMarkets {
             .map(|df| df.lazy())
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_data_frame()
-            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap();
 
         TradeBreakDownReportAggMarkets {
@@ -91,7 +91,7 @@ impl PnLStatementAggMarkets {
             .map(|df| df.lazy())
             .collect::<Vec<LazyFrame>>()
             .concatenate_to_data_frame()
-            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap();
 
         PerformanceReportAggMarkets {

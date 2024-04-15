@@ -7,17 +7,17 @@ license = "Apache-2.0"
 
 
 [dependencies]
-chrono = "0.4.31"
-futures = "0.3.28"
+chrono = "0.4.37"
+futures = "0.3.30"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
-google-cloud-storage = "0.13.1"
-mockall = "0.11.4"
-polars = {version = "0.33.2", features = ["lazy", "partition_by", "serde", "cum_agg"]}
-rayon = "1.8.0"
-regex = "1.9.6"
-reqwest = "0.11.21"
-serde = "1.0.188"
-serde_json = "1.0.107"
-strum = "0.25.0"
-strum_macros = "0.25.2"
-tokio = { version = "1.32.0", features = ["full"] }
+google-cloud-storage = "0.16.0"
+mockall = "0.12.1"
+polars = {version = "0.39.1", features = ["lazy", "partition_by", "serde", "cum_agg"]}
+rayon = "1.10.0"
+regex = "1.10.4"
+reqwest = "0.11.27" # type conflicts with google-cloud-storage when migrating to ^0.12.0 
+serde = "1.0.197"
+serde_json = "1.0.115"
+strum = "0.26.2"
+strum_macros = "0.26.2"
+tokio = { version = "1.37.0", features = ["full"] }

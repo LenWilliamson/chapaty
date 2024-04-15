@@ -1,5 +1,7 @@
 use strum_macros::Display;
 
+use super::news::NewsKind;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TradeDataKind {
     EntryPrice,
@@ -16,6 +18,11 @@ pub enum PreTradeDataKind {
     LastTradePrice,
     LowestTradePrice,
     HighestTradePrice,
+
+    /// The news to trade, where
+    /// * `NewsKind` - determines which news
+    /// * `i32` - sets the number of `N` candles to wait
+    News(NewsKind, i32),
 }
 
 #[derive(Debug, Copy, Clone, Display, PartialEq)]

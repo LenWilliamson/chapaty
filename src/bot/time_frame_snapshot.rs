@@ -1,7 +1,7 @@
 use chrono::Weekday;
 use polars::export::num::FromPrimitive;
 use serde::{Deserialize, Serialize};
-#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub struct TimeFrameSnapshot {
     calendar_week: i64,
     weekday: Option<i64>,

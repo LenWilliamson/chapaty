@@ -107,7 +107,7 @@ impl PnLReportDataRowCalculator {
     fn compute_pre_trade_values(&self) -> RequiredPreTradeValuesWithData {
         let calculator_builder: PreTradeValuesCalculatorBuilder = self.into();
         calculator_builder
-            .with_required_pre_trade_values(self.strategy.get_required_pre_trade_vales())
+            .with_required_pre_trade_values(self.strategy.get_required_pre_trade_values())
             .build_and_compute()
     }
 

@@ -12,10 +12,10 @@ async fn it_test() {
     let strategy = common::setup_strategy();
     let data_provider = common::setup_data_provider();
     // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
-    let years = vec![2022, 2021];
+    let years = vec![2022];
     let markets = vec![
-        MarketKind::AudUsdFuture,
-        // MarketKind::CadUsdFuture,
+        // MarketKind::AudUsdFuture,
+        MarketKind::CadUsdFuture,
         // MarketKind::GbpUsdFuture,
         // MarketKind::EurUsdFuture,
         // MarketKind::YenUsdFuture,

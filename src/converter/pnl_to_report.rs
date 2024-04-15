@@ -2,6 +2,7 @@ use crate::{
     enums::column_names::{
         PerformanceReportColumnKind, PnLReportColumnKind, TradeBreakDownReportColumnKind,
     },
+    lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     pnl::metrics::{
         accumulated_profit, avg_loss, avg_trade, avg_win, avg_win_by_avg_loose, max_draw_down_abs,
         max_draw_down_rel, net_profit, number_loser_trades, number_no_entry,
@@ -10,9 +11,9 @@ use crate::{
         total_loss, total_number_loser_trades, total_number_trades, total_number_winner_trades,
         total_win,
     },
-    MarketKind, lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
+    MarketKind,
 };
-use polars::prelude::{col, df, DataFrame, IntoLazy, NamedFrom};
+use polars::prelude::{col, df, DataFrame, IntoLazy};
 
 pub struct PnLToReportRequest {
     pnl: DataFrame,

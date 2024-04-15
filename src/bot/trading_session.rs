@@ -19,8 +19,10 @@ use crate::{
     enums::{
         bot::TimeFrameKind, error::ChapatyErrorKind, indicator::TradingIndicatorKind,
         markets::MarketKind,
-    }, MarketSimulationDataKind,
+    },
+    MarketSimulationDataKind,
 };
+use chrono::NaiveDate;
 use polars::prelude::DataFrame;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
@@ -61,11 +63,30 @@ impl TradingSession {
             .into_par_iter()
             .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
             .map(|(cw, wd)| build_time_frame_snapshot(cw, Some(wd), None, None))
+            .filter(|snapshot| self.is_snapshot_on_news(snapshot))
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
             .map(|batch| self.compute_pnl_data_row(batch))
             .collect();
 
         pnl_report_data_rows.into_iter().collect()
+    }
+
+    fn is_snapshot_on_news(&self, snapshot: &TimeFrameSnapshot) -> bool {
+        let year = i32::try_from(self.year).unwrap();
+        let week = u32::try_from(snapshot.get_calendar_week_as_int()).unwrap();
+        let snapshot_date = NaiveDate::from_isoywd_opt(year, week, snapshot.get_weekday());
+        let strategy = &self.bot.strategy;
+        let is_snapshot_on_news = snapshot_date.map_or(false, |date| {
+            strategy
+                .get_news()
+                .contains(&date)
+        });
+
+        if strategy.is_trading_on_news() {
+            is_snapshot_on_news
+        } else {
+            !is_snapshot_on_news
+        }
     }
 
     fn run_backtesting_weekly(&self) -> DataFrame {
@@ -87,21 +108,24 @@ impl TradingSession {
         &self,
         snapshot: &TimeFrameSnapshot,
     ) -> Result<PreTradeData, ChapatyErrorKind> {
-        let mut builder = PreTradeDataBuilder::new();
-
-        builder = if is_on_monday(snapshot) {
-            let last_friday = snapshot.last_friday();
-            builder
-                .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
-                .with_indicators(self.get_trading_indicator(&last_friday)?)
+        let builder = PreTradeDataBuilder::new();
+        if self.bot.strategy.is_pre_trade_day_equal_to_trade_day() {
+            Ok(builder
+                .with_market_sim_data(self.get_market_sim_data_data(snapshot)?)
+                .with_indicators(self.get_trading_indicator(snapshot)?).build())
         } else {
-            let yesterday = snapshot.shift_back_by_n_weekdays(1);
-            builder
-                .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
-                .with_indicators(self.get_trading_indicator(&yesterday)?)
-        };
-
-        Ok(builder.build())
+            if is_on_monday(snapshot) {
+                let last_friday = snapshot.last_friday();
+                Ok(builder
+                    .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
+                    .with_indicators(self.get_trading_indicator(&last_friday)?).build())
+            } else {
+                let yesterday = snapshot.shift_back_by_n_weekdays(1);
+                Ok(builder
+                    .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
+                    .with_indicators(self.get_trading_indicator(&yesterday)?).build())
+            }
+        }
     }
 
     fn get_market_sim_data_data(
@@ -195,7 +219,7 @@ impl TradingSessionBuilder {
             indicator_data_pair: None,
             market: None,
             year: None,
-    market_sim_data_kind: None,
+            market_sim_data_kind: None,
             cache_computations: false,
         }
     }
@@ -383,7 +407,7 @@ mod test {
             trading_indicators,
         };
         mock_strategy
-            .expect_get_required_pre_trade_vales()
+            .expect_get_required_pre_trade_values()
             .return_const(required_pre_trade_values.clone());
         mock_strategy.expect_get_name().return_const("ppp");
         let data_provider = Arc::new(Binance);
@@ -588,7 +612,7 @@ mod test {
             trading_indicators,
         };
         mock_strategy
-            .expect_get_required_pre_trade_vales()
+            .expect_get_required_pre_trade_values()
             .return_const(required_pre_trade_values.clone());
         mock_strategy.expect_get_name().return_const("ppp");
         let data_provider = Arc::new(Binance);

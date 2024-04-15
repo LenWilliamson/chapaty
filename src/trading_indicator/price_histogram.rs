@@ -83,7 +83,7 @@ impl PriceHistogram {
     fn get_total_tpo_count(&self) -> f64 {
         let qx_col = self
             .df
-            .find_idx_by_name(VolumeProfileColumnKind::Quantity.to_string().as_str())
+            .get_column_index(VolumeProfileColumnKind::Quantity.to_string().as_str())
             .unwrap();
         self.df.get_columns()[qx_col].sum().unwrap()
     }
@@ -425,7 +425,7 @@ mod tests {
         bot::time_frame_snapshot::TimeFrameSnapshotBuilder,
         cloud_api::api_for_unit_tests::{download_df, download_df_map},
     };
-    use polars::{df, prelude::NamedFrom};
+    use polars::df;
 
     #[tokio::test]
     async fn test_poc() {

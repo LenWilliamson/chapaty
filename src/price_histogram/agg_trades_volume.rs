@@ -39,7 +39,7 @@ impl AggTradesVolume {
             ])
             .group_by([col(&px_vol)])
             .agg([col(&qx_vol).sum()])
-            .sort(&px_vol, Default::default())
+            .sort([&px_vol], Default::default())
             .collect()
             .unwrap()
     }
@@ -49,7 +49,7 @@ impl AggTradesVolume {
 mod tests {
     use super::*;
 
-    use polars::{df, prelude::NamedFrom};
+    use polars::df;
 
     /// This unit test asserts, if:
     /// * the `volume_profile` of a DataFrame is computed correctly
@@ -72,6 +72,6 @@ mod tests {
         .unwrap();
 
         let result = agg_trades_volume.vol_profile(df);
-        assert_eq!(result.frame_equal(&target), true)
+        assert_eq!(result.equals(&target), true)
     }
 }

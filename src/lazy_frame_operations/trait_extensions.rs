@@ -7,10 +7,11 @@ use crate::{
         bot::TimeFrameKind,
         column_names::{DataProviderColumnKind, PnLReportColumnKind},
     },
+    types::ohlc::OhlcCandle,
 };
+use chrono::NaiveDateTime;
 use polars::{
-    lazy::dsl::GetOutput,
-    prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame},
+    chunked_array::ops::SortMultipleOptions, lazy::dsl::GetOutput, prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame}
 };
 use std::path::PathBuf;
 
@@ -30,6 +31,7 @@ pub trait MyLazyFrameOperations {
     fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame;
     fn sort_by_date(self) -> Self;
     fn sort_by_date_and_market(self) -> Self;
+    fn find_ohlc_candle_by_ots(self, ts: &NaiveDateTime) -> OhlcCandle;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
@@ -107,6 +109,24 @@ impl MyLazyFrameOperations for LazyFrame {
         ])
     }
 
+    fn find_ohlc_candle_by_ots(self, open_ts: &NaiveDateTime) -> OhlcCandle {
+        let ots = DataProviderColumnKind::OpenTime.to_string();
+        let df = self
+            .filter(col(&ots).eq(open_ts.and_utc().timestamp_millis()))
+            .first()
+            .collect()
+            .unwrap();
+        let row = df.get(0).unwrap();
+
+        OhlcCandle::new()
+            .with_open_ts(row[0].unwrap_int64())
+            .with_open(row[1].unwrap_float64())
+            .with_high(row[2].unwrap_float64())
+            .with_low(row[3].unwrap_float64())
+            .with_close(row[4].unwrap_float64())
+            .with_close_ts(row[5].unwrap_int64())
+    }
+
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64> {
         let df = self.filter_ts_col_by_price(px).first().collect().unwrap();
         if df.is_not_an_empty_frame() {
@@ -123,7 +143,7 @@ impl MyLazyFrameOperations for LazyFrame {
             .unwrap()
     }
     fn sort_by_date(self) -> Self {
-        self.sort(&PnLReportColumnKind::Date.to_string(), Default::default())
+        self.sort([&PnLReportColumnKind::Date.to_string()], Default::default())
     }
 
     fn sort_by_date_and_market(self) -> Self {
@@ -131,9 +151,12 @@ impl MyLazyFrameOperations for LazyFrame {
         let date = PnLReportColumnKind::Date.to_string();
         self.sort_by_exprs(
             vec![col(&date), col(&market)],
-            vec![false, false],
-            false,
-            false,
+            SortMultipleOptions {
+                descending: vec![false, false],
+                nulls_last: false,
+                multithreaded: false,
+                maintain_order: false,
+            },
         )
     }
 }

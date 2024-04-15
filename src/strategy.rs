@@ -1,4 +1,6 @@
+pub mod news;
 pub mod ppp;
+
 use crate::{
     bot::trade::Trade,
     calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
@@ -7,10 +9,13 @@ use crate::{
         error::ChapatyErrorKind,
         indicator::TradingIndicatorKind,
         trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
-    }, MarketKind, trading_indicator::initial_balance::InitialBalance,
+    },
+    trading_indicator::initial_balance::InitialBalance,
+    MarketKind,
 };
+use chrono::NaiveDate;
 use mockall::automock;
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 
 #[derive(Clone, Copy)]
 pub struct StopLoss {
@@ -38,9 +43,15 @@ pub struct RequriedPreTradeValues {
 
 #[automock]
 pub trait Strategy {
-    fn get_required_pre_trade_vales(&self) -> RequriedPreTradeValues;
     fn get_trade(&self, trade_request_object: &TradeRequestObject) -> Trade;
-    fn get_trade_kind(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> TradeDirectionKind;
+    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues;
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
+    fn get_trade_kind(
+        &self,
+        pre_trade_values: &RequiredPreTradeValuesWithData,
+    ) -> TradeDirectionKind;
     fn get_name(&self) -> String;
+    fn is_pre_trade_day_equal_to_trade_day(&self) -> bool;
+    fn is_trading_on_news(&self) -> bool;
+    fn get_news(&self) -> HashSet<NaiveDate>;
 }

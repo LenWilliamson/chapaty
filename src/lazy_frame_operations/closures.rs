@@ -1,4 +1,4 @@
-use chrono::{Datelike, Duration, NaiveDateTime};
+use chrono::{DateTime, Datelike, Duration, NaiveDateTime};
 use polars::{
     prelude::{Float64Chunked, Int64Chunked},
     series::{IntoSeries, Series},
@@ -20,7 +20,7 @@ pub fn get_cw_from_ts(val: &Series) -> Series {
         .map(|o: Option<i64>| {
             o.map(|ts: i64| {
                 i64::try_from(
-                    NaiveDateTime::from_timestamp_opt(ts / 1000, 0)
+                    DateTime::from_timestamp(ts / 1000, 0)
                         .unwrap()
                         .iso_week()
                         .week(),
@@ -38,8 +38,7 @@ pub fn get_weekday_from_ts(val: &Series) -> Series {
         .into_iter()
         .map(|o: Option<i64>| {
             o.map(|utc_ts_in_milliseconds: i64| {
-                let ts =
-                    NaiveDateTime::from_timestamp_opt(utc_ts_in_milliseconds / 1000, 0).unwrap();
+                let ts = DateTime::from_timestamp(utc_ts_in_milliseconds / 1000, 0).unwrap();
 
                 match ts.weekday() {
                     chrono::Weekday::Mon => {
@@ -71,7 +70,7 @@ pub fn get_weekday_from_ts(val: &Series) -> Series {
 }
 
 pub fn comma_separated_string_to_f64(val: Series) -> Series {
-    val.utf8()
+    val.str()
         .unwrap()
         .into_iter()
         .map(|o| o.map(|x| x.replace(",", ".").parse::<f64>().unwrap()))
@@ -80,7 +79,7 @@ pub fn comma_separated_string_to_f64(val: Series) -> Series {
 }
 
 pub fn sub_time(val: Series, duration: Duration) -> Series {
-    val.utf8()
+    val.str()
         .unwrap()
         .into_iter()
         .map(|o| {
@@ -89,6 +88,7 @@ pub fn sub_time(val: Series, duration: Duration) -> Series {
                     .unwrap()
                     .checked_sub_signed(duration)
                     .unwrap()
+                    .and_utc()
                     .timestamp_millis()
             })
         })
@@ -99,7 +99,7 @@ pub fn sub_time(val: Series, duration: Duration) -> Series {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polars::prelude::{df, DataFrame, NamedFrom};
+    use polars::prelude::{df, DataFrame};
 
     /// This unit test checks for the DataFrame
     ///
@@ -116,8 +116,8 @@ mod tests {
     /// 0       ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,7
     /// 1       ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,7
     /// ```
-    #[tokio::test]
-    async fn test_get_cw_from_ts() {
+    #[test]
+    fn test_get_cw_from_ts() {
         let df: polars::prelude::PolarsResult<DataFrame> = df!(
             "atid" => &[0, 1],
             "px" => &[10.00, 20.00],
@@ -144,9 +144,14 @@ mod tests {
             df.unwrap()
                 .apply("cw", get_cw_from_ts)
                 .unwrap()
-                .frame_equal(&target_df.unwrap()),
+                .equals(&target_df.unwrap()),
             true
         );
+    }
+
+    #[test]
+    fn test_get_utc_time_from_ts() {
+        assert!(false)
     }
 
     /// This unit test checks for the DataFrame
@@ -164,8 +169,8 @@ mod tests {
     /// 0       ,10.00   ,1.00   ,0      ,0      ,1645300600000  ,false  ,true   ,6
     /// 1       ,20.00   ,1.00   ,0      ,0      ,1645400600000  ,true   ,true   ,7
     /// ```
-    #[tokio::test]
-    async fn test_get_weekday_from_ts() {
+    #[test]
+    fn test_get_weekday_from_ts() {
         let df: polars::prelude::PolarsResult<DataFrame> = df!(
             "atid" => &[0, 1],
             "px" => &[10.00, 20.00],
@@ -192,7 +197,7 @@ mod tests {
             df.unwrap()
                 .apply("weekday", get_weekday_from_ts)
                 .unwrap()
-                .frame_equal(&target_df.unwrap()),
+                .equals(&target_df.unwrap()),
             true
         );
     }

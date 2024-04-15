@@ -9,7 +9,7 @@ pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let ppp_builder = PppBuilder::new();
     let sl = StopLoss {
         kind: StopLossKind::PrevHighOrLow,
-        offset: -250.0,
+        offset: 0.0,
     };
     let tp = TakeProfit {
         kind: TakeProfitKind::PrevClose,

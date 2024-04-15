@@ -1,5 +1,7 @@
+use strum::IntoEnumIterator;
+
 use super::*;
-use crate::enums::indicator::PriceHistogramKind;
+use crate::enums::{indicator::PriceHistogramKind, news::NewsKind};
 
 pub struct Ppp {
     stop_loss: StopLoss,
@@ -132,7 +134,7 @@ impl Ppp {
 
 impl FromStr for PppBuilder {
     type Err = ChapatyErrorKind;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, ChapatyErrorKind> {
         match s {
             "PPP" | "Ppp" | "ppp" => Ok(PppBuilder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
@@ -152,7 +154,7 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_required_pre_trade_vales(&self) -> RequriedPreTradeValues {
+    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
         let market_values = vec![
             PreTradeDataKind::LastTradePrice,
             PreTradeDataKind::LowestTradePrice,
@@ -200,6 +202,21 @@ impl Strategy for Ppp {
     fn get_name(&self) -> String {
         "ppp".to_string()
     }
+
+    fn is_pre_trade_day_equal_to_trade_day(&self) -> bool {
+        false
+    }
+
+    fn is_trading_on_news(&self) -> bool {
+        false
+    }
+
+    fn get_news(&self) -> HashSet<NaiveDate> {
+        NewsKind::iter().fold(HashSet::new(), |mut acc, news_kind| {
+            acc.extend(news_kind.get_news_dates());
+            acc
+        })
+    }
 }
 
 #[cfg(test)]
@@ -211,6 +228,7 @@ mod tests {
             indicator::{PriceHistogramKind, TradingIndicatorKind},
             trade_and_pre_trade::TradeDirectionKind,
         },
+        types::ohlc::OhlcCandle,
     };
     use std::collections::HashMap;
 
@@ -241,7 +259,10 @@ mod tests {
         trading_indicators.insert(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m), poc);
 
         let mut pre_trade_data_map = HashMap::new();
-        pre_trade_data_map.insert(PreTradeDataKind::LastTradePrice, 99.0);
+        pre_trade_data_map.insert(
+            PreTradeDataKind::LastTradePrice,
+            OhlcCandle::new().with_close(99.0),
+        );
 
         let mut pre_trade_values = RequiredPreTradeValuesWithData {
             indicator_values: trading_indicators,
@@ -251,17 +272,19 @@ mod tests {
             strategy.get_trade_kind(&pre_trade_values),
             TradeDirectionKind::Short
         );
-        pre_trade_values
-            .market_valeus
-            .insert(PreTradeDataKind::LastTradePrice, 101.0);
+        pre_trade_values.market_valeus.insert(
+            PreTradeDataKind::LastTradePrice,
+            OhlcCandle::new().with_close(101.0),
+        );
         assert_eq!(
             strategy.get_trade_kind(&pre_trade_values),
             TradeDirectionKind::Long
         );
 
-        pre_trade_values
-            .market_valeus
-            .insert(PreTradeDataKind::LastTradePrice, poc);
+        pre_trade_values.market_valeus.insert(
+            PreTradeDataKind::LastTradePrice,
+            OhlcCandle::new().with_close(poc),
+        );
         assert_eq!(
             strategy.get_trade_kind(&pre_trade_values),
             TradeDirectionKind::None

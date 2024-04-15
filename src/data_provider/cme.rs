@@ -76,19 +76,19 @@ pub fn transform_cme_df(df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
         vec![
             Field::new(
                 &DataProviderColumnKind::OpenTime.to_string(),
-                DataType::Utf8,
+                DataType::String,
             ),
-            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Utf8),
-            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Utf8),
-            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Utf8),
-            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::Utf8),
+            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::String),
+            Field::new(&DataProviderColumnKind::High.to_string(), DataType::String),
+            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::String),
+            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::String),
         ]
         .into_iter(),
     );
 
     let df = CsvReader::new(Cursor::new(df_as_bytes))
         .has_header(false)
-        .with_delimiter(b';')
+        .with_separator(b';')
         .with_schema(Some(Arc::new(schema)))
         .finish()
         .unwrap();
@@ -134,7 +134,7 @@ fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 mod tests {
     use super::*;
     use crate::cloud_api::api_for_unit_tests::download_df_as_bytes;
-    use polars::prelude::{df, NamedFrom};
+    use polars::prelude::df;
 
     #[tokio::test]
     async fn test_transform_df() {
@@ -151,6 +151,6 @@ mod tests {
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
         let result = transform_cme_df(df, 1);
 
-        assert_eq!(target.unwrap().frame_equal(&result), true);
+        assert_eq!(target.unwrap().equals(&result), true);
     }
 }

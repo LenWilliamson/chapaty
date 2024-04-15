@@ -4,7 +4,7 @@ use crate::{
     enums::{column_names::DataProviderColumnKind, markets::MarketKind},
 };
 
-use polars::prelude::{df, AnyValue, DataFrame, IntoLazy, NamedFrom};
+use polars::prelude::{df, AnyValue, DataFrame, IntoLazy};
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use std::{collections::HashMap, convert::identity};
 
@@ -26,10 +26,10 @@ impl Tpo {
     fn tpo(&self, df: DataFrame) -> DataFrame {
         // Get index of respective columns in `DataFrame`
         let high_idx = df
-            .find_idx_by_name(DataProviderColumnKind::High.to_string().as_str())
+            .get_column_index(DataProviderColumnKind::High.to_string().as_str())
             .unwrap();
         let low_idx = df
-            .find_idx_by_name(DataProviderColumnKind::Low.to_string().as_str())
+            .get_column_index(DataProviderColumnKind::Low.to_string().as_str())
             .unwrap();
 
         // Get a reference to the respective columns
@@ -51,7 +51,7 @@ impl Tpo {
         result
             .unwrap()
             .lazy()
-            .sort("px", Default::default())
+            .sort(["px"], Default::default())
             .collect()
             .unwrap()
     }

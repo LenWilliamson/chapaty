@@ -1,15 +1,14 @@
 use crate::{
-    bot::time_interval::timestamp_in_milli_to_string,
     calculator::pnl_report_data_row_calculator::PnLReportDataRow,
-    converter::market_decimal_places::MyDecimalPlaces,
+    converter::{market_decimal_places::MyDecimalPlaces, timeformat::timestamp_in_milli_to_string},
     data_frame_operations::io_operations::save_df_as_csv,
     enums::markets::MarketKind,
     enums::{column_names, trade_and_pre_trade::TradeDirectionKind},
-    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations}, PnLReportColumnKind,
+    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
+    PnLReportColumnKind,
 };
 use chrono::NaiveDate;
 use polars::df;
-use polars::prelude::NamedFrom;
 use polars::prelude::{DataFrame, IntoLazy};
 use std::{collections::HashMap, convert::identity};
 
@@ -40,7 +39,10 @@ impl PnLReports {
         });
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
-            .drop_columns(vec![&PnLReportColumnKind::Uid.to_string(), &PnLReportColumnKind::Id.to_string()])
+            .drop(vec![
+                &PnLReportColumnKind::Uid.to_string(),
+                &PnLReportColumnKind::Id.to_string(),
+            ])
             .collect()
             .unwrap()
     }
@@ -253,9 +255,9 @@ impl FromIterator<PnLReportDataRow> for DataFrame {
             .sort_by_date()
             .collect()
             .unwrap()
-            .with_row_count(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
             .unwrap()
-            .with_row_count(&PnLReportColumnKind::Uid.to_string(), Some(1))
+            .with_row_index(&PnLReportColumnKind::Uid.to_string(), Some(1))
             .unwrap()
     }
 }
