@@ -5,7 +5,7 @@ pub mod serialize;
 mod tests {
     use super::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map};
     use crate::bot::time_frame_snapshot::TimeFrameSnapshotBuilder;
-    use polars::{df, prelude::NamedFrom};
+    use polars::df;
     use std::collections::HashMap;
 
     #[test]

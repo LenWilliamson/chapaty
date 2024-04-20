@@ -58,7 +58,7 @@ fn get_number_of_trades_from_summary(df: DataFrame, trade: &str) -> u32 {
     if rows == 0 {
         return 0;
     }
-    trades["counts"].get(0).unwrap().unwrap_uint32()
+    trades["count"].get(0).unwrap().unwrap_uint32()
 }
 
 pub fn total_number_trades(df: DataFrame) -> u32 {
@@ -72,10 +72,10 @@ pub fn total_number_trades(df: DataFrame) -> u32 {
                 .and(col(&status_col).neq(lit("Not Clear")))
                 .and(col(&status_col).neq(lit("No Trade"))),
         )
-        .select(&[col("counts").sum()])
+        .select(&[col("count").sum()])
         .collect()
         .unwrap();
-    total["counts"].get(0).unwrap().unwrap_uint32()
+    total["count"].get(0).unwrap().unwrap_uint32()
 }
 
 // Ratio Avg Win/Avg Lose = CRV
@@ -363,7 +363,7 @@ mod tests {
         let res = status_summary(df);
         let target = df!(
             "Status" => &["Loser", "NoEntry", "Winner"],
-            "counts" => &[3_u32, 1, 3],
+            "count" => &[3_u32, 1, 3],
         );
 
         assert_eq!(
@@ -406,7 +406,7 @@ mod tests {
         let res = timeout_summary(df);
         let target = df!(
             "Status" => &["Loser", "Winner"],
-            "counts" => &[2_u32, 1],
+            "count" => &[2_u32, 1],
         );
 
         assert_eq!(
@@ -626,7 +626,7 @@ mod tests {
     fn test_count_number_of_trades() {
         let df = df!(
             "Status" => &["Winner", "Timeout", "Loser", "NoEntry"],
-            "counts" => &[2_u32, 3, 1, 1],
+            "count" => &[2_u32, 3, 1, 1],
         )
         .unwrap();
 

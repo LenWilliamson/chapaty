@@ -11,7 +11,9 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use polars::{
-    chunked_array::ops::SortMultipleOptions, lazy::dsl::GetOutput, prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame}
+    chunked_array::ops::SortMultipleOptions,
+    lazy::dsl::GetOutput,
+    prelude::{col, lit, DataFrame, LazyCsvReader, LazyFileListReader, LazyFrame},
 };
 use std::path::PathBuf;
 
@@ -31,7 +33,7 @@ pub trait MyLazyFrameOperations {
     fn get_row_of_poc_as_df(self, poc: f64) -> DataFrame;
     fn sort_by_date(self) -> Self;
     fn sort_by_date_and_market(self) -> Self;
-    fn find_ohlc_candle_by_ots(self, ts: &NaiveDateTime) -> OhlcCandle;
+    fn find_ohlc_candle_by_ots(self, ts: &NaiveDateTime) -> Option<OhlcCandle>;
 }
 
 impl MyLazyFrameOperations for LazyFrame {
@@ -109,22 +111,28 @@ impl MyLazyFrameOperations for LazyFrame {
         ])
     }
 
-    fn find_ohlc_candle_by_ots(self, open_ts: &NaiveDateTime) -> OhlcCandle {
+    fn find_ohlc_candle_by_ots(self, open_ts: &NaiveDateTime) -> Option<OhlcCandle> {
         let ots = DataProviderColumnKind::OpenTime.to_string();
         let df = self
             .filter(col(&ots).eq(open_ts.and_utc().timestamp_millis()))
             .first()
             .collect()
             .unwrap();
-        let row = df.get(0).unwrap();
 
-        OhlcCandle::new()
-            .with_open_ts(row[0].unwrap_int64())
-            .with_open(row[1].unwrap_float64())
-            .with_high(row[2].unwrap_float64())
-            .with_low(row[3].unwrap_float64())
-            .with_close(row[4].unwrap_float64())
-            .with_close_ts(row[5].unwrap_int64())
+        if df.is_not_an_empty_frame() {
+            let row = df.get(0).unwrap();
+            Some(
+                OhlcCandle::new()
+                    .with_open_ts(row[0].unwrap_int64())
+                    .with_open(row[1].unwrap_float64())
+                    .with_high(row[2].unwrap_float64())
+                    .with_low(row[3].unwrap_float64())
+                    .with_close(row[4].unwrap_float64())
+                    .with_close_ts(row[5].unwrap_int64()),
+            )
+        } else {
+            None
+        }
     }
 
     fn find_timestamp_when_price_reached(self, px: f64) -> Option<i64> {

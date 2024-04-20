@@ -14,7 +14,7 @@ use crate::{
 };
 use chrono::{Duration, NaiveDate, NaiveTime};
 use polars::prelude::{col, IntoLazy};
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::identity};
 
 #[derive(Clone)]
 pub struct RequiredPreTradeValuesWithData {
@@ -41,7 +41,7 @@ impl RequiredPreTradeValuesWithData {
             .unwrap()
             .get_last_trade_price_unchecked()
     }
-    pub fn news_candle(&self, news_kind: &NewsKind, n: i32) -> Option<&OhlcCandle> {
+    pub fn news_candle(&self, news_kind: &NewsKind, n: u32) -> Option<&OhlcCandle> {
         self.market_valeus
             .get(&PreTradeDataKind::News(*news_kind, n))
     }
@@ -110,6 +110,7 @@ impl PreTradeValuesCalculator {
             }
             PreTradeDataKind::News(news_kind, n) => {
                 let res = self.get_news_candle(news_kind, *n);
+                let res = res.map_or(OhlcCandle::new(), identity);
                 map.insert(PreTradeDataKind::News(*news_kind, *n), res);
             }
         };
@@ -167,17 +168,17 @@ impl PreTradeValuesCalculator {
         ph.value_area(0.63)
     }
 
-    // TODO Testen ob wir hier die richtige candle berechnen
-    fn get_news_candle(&self, news_kind: &NewsKind, n: i32) -> OhlcCandle {
+    fn get_news_candle(&self, news_kind: &NewsKind, n: u32) -> Option<OhlcCandle> {
         let df = self.pre_trade_data.market_sim_data.clone();
         let year = i32::try_from(self.year).unwrap();
         let week = u32::try_from(self.snapshot.get_calendar_week_as_int()).unwrap();
         let date = NaiveDate::from_isoywd_opt(year, week, self.snapshot.get_weekday()).unwrap();
-        let time = self.get_number_of_n_candles_after_news_event(news_kind, n.into());
-        df.lazy().find_ohlc_candle_by_ots(&date.and_time(time))
+        let ots = self.get_ots_of_n_candles_after_news_event(news_kind, n.into());
+        df.lazy().find_ohlc_candle_by_ots(&date.and_time(ots))
     }
 
-    fn get_number_of_n_candles_after_news_event(&self, news_kind: &NewsKind, n: i64) -> NaiveTime {
+    fn get_ots_of_n_candles_after_news_event(&self, news_kind: &NewsKind, n: u32) -> NaiveTime {
+        let n: i64 = n.into();
         match self.market_sim_data_kind {
             MarketSimulationDataKind::Ohlc1m | MarketSimulationDataKind::Ohlcv1m => {
                 news_kind
@@ -284,8 +285,7 @@ impl PreTradeValuesCalculatorBuilder {
 mod test {
     use super::*;
     use crate::{
-        calculator::pre_trade_values_calculator::PreTradeData,
-        cloud_api::api_for_unit_tests::download_df,
+        bot::time_frame_snapshot::TimeFrameSnapshotBuilder, calculator::pre_trade_values_calculator::PreTradeData, cloud_api::api_for_unit_tests::download_df
     };
     use std::collections::HashMap;
 
@@ -389,5 +389,201 @@ mod test {
                 .compute_highest_trade_price()
                 .get_highest_trade_price_unchecked()
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_ots_of_n_candles_after_news_event() {
+        let df = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "cme/ohlc/6e-1h-nfp-testdata.csv".to_string(),
+        )
+        .await;
+
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators: Vec::new(),
+        };
+
+        let caclulator = PreTradeValuesCalculator {
+            year: 2022,
+            snapshot: TimeFrameSnapshot::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            pre_trade_data: pre_trade_data.clone(),
+            required_pre_trade_values: required_pre_trade_values.clone(),
+        };
+        
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 35, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 34, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 33, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 32, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 31, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0)
+        );
+
+        let caclulator = PreTradeValuesCalculator {
+            year: 2022,
+            snapshot: TimeFrameSnapshot::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
+            pre_trade_data: pre_trade_data.clone(),
+            required_pre_trade_values: required_pre_trade_values.clone(),
+        };
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(17, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(16, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(15, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(14, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(13, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1)
+        );
+
+        assert_eq!(
+            NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_get_news_candle() {
+        let df = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "cme/ohlc/6e-1h-nfp-testdata.csv".to_string(),
+        )
+        .await;
+
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators: Vec::new(),
+        };
+
+        let snapshot = TimeFrameSnapshotBuilder::new(48).with_weekday(5).build();
+
+        let caclulator = PreTradeValuesCalculator {
+            year: 2022,
+            snapshot,
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
+            pre_trade_data: pre_trade_data.clone(),
+            required_pre_trade_values: required_pre_trade_values.clone(),
+        };
+
+        assert_eq!(
+            None,
+            caclulator.get_news_candle(&NewsKind::UsaNFP, 0)
+        );
+        
+        assert_eq!(
+            None,
+            caclulator.get_news_candle(&NewsKind::UsaNFP, 5)
+        );
+
+        let df = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "cme/ohlc/6e-1m-nfp-testdata.csv".to_string(),
+        )
+        .await;
+
+        let pre_trade_data = PreTradeData {
+            market_sim_data: df,
+            indicators: HashMap::new(),
+        };
+        
+        let caclulator = PreTradeValuesCalculator {
+            year: 2022,
+            snapshot,
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            pre_trade_data,
+            required_pre_trade_values,
+        };
+
+        let ohlc_candle = OhlcCandle {
+            open_ts: Some(1669984200000),
+            open: Some(1.06125),
+            high: Some(1.06135),
+            low: Some(1.06125),
+            close: Some(1.0613),
+            close_ts: Some(1669984259999),
+        };
+    
+        assert_eq!(
+            Some(ohlc_candle),
+            caclulator.get_news_candle(&NewsKind::UsaNFP, 0)
+        );
+        
+        let ohlc_candle = OhlcCandle {
+            open_ts: Some(1669984260000),
+            open: Some(1.06135),
+            high: Some(1.0615),
+            low: Some(1.0613),
+            close: Some(1.0615),
+            close_ts: Some(1669984319999),
+        };
+    
+        assert_eq!(
+            Some(ohlc_candle),
+            caclulator.get_news_candle(&NewsKind::UsaNFP, 1)
+        );
+        
+        let ohlc_candle = OhlcCandle {
+            open_ts: Some(1669984320000),
+            open: Some(1.0615),
+            high: Some(1.06155),
+            low: Some(1.0614),
+            close: Some(1.0615),
+            close_ts: Some(1669984379999),
+        };
+    
+        assert_eq!(
+            Some(ohlc_candle),
+            caclulator.get_news_candle(&NewsKind::UsaNFP, 2)
+        );
+        
     }
 }

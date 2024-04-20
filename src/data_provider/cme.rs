@@ -133,7 +133,7 @@ fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cloud_api::api_for_unit_tests::download_df_as_bytes;
+    use crate::{cloud_api::api_for_unit_tests::download_df_as_bytes, data_frame_operations::io_operations::save_df_as_csv};
     use polars::prelude::df;
 
     #[tokio::test]
@@ -152,5 +152,16 @@ mod tests {
         let result = transform_cme_df(df, 1);
 
         assert_eq!(target.unwrap().equals(&result), true);
+    }
+
+    #[tokio::test]
+    async fn transform_df_and_save() {
+
+        // let file = "cme/ohlc/6e-1m-nfp-testdata.csv".to_string();
+        // let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
+        // let mut result = transform_cme_df(df, 1);
+        // save_df_as_csv(&mut result, "6e-1m-nfp-testdata");
+
+        assert!(true);
     }
 }

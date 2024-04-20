@@ -257,7 +257,7 @@ fn usa_nfp_news_dates() -> HashSet<NaiveDate> {
         "2023-11-03",
     ]
     .iter()
-    .map(|date| naive_date_from_str(date, "%d-%m-%Y"))
+    .map(|date| naive_date_from_str(date, "%Y-%m-%d"))
     .collect()
 }
 
@@ -495,7 +495,7 @@ fn usa_cpi_news_dates() -> HashSet<NaiveDate> {
         "2023-10-12",
     ]
     .iter()
-    .map(|date| naive_date_from_str(date, "%d-%m-%Y"))
+    .map(|date| naive_date_from_str(date, "%Y-%m-%d"))
     .collect()
 }
 

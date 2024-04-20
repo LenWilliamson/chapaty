@@ -149,11 +149,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_utc_time_from_ts() {
-        assert!(false)
-    }
-
     /// This unit test checks for the DataFrame
     ///
     /// ```

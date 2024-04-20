@@ -21,8 +21,8 @@ pub enum PreTradeDataKind {
 
     /// The news to trade, where
     /// * `NewsKind` - determines which news
-    /// * `i32` - sets the number of `N` candles to wait
-    News(NewsKind, i32),
+    /// * `u32` - sets the number of `N` candles to wait
+    News(NewsKind, u32),
 }
 
 #[derive(Debug, Copy, Clone, Display, PartialEq)]

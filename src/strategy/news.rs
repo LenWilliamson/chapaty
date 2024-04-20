@@ -91,15 +91,15 @@ impl Strategy for News {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         Trade {
             entry_price: self.get_entry_price(&request.pre_trade_values),
-            stop_loss: self.get_sl_price(request),
-            take_profit: self.get_tp_price(request),
+            stop_loss: None, //self.get_sl_price(request),
+            take_profit: None, //self.get_tp_price(request),
             trade_kind: self.get_trade_kind(&request.pre_trade_values),
         }
     }
 
     fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
         let market_values = (0..=self.number_candles_to_wait).into_iter().fold(Vec::new(), |mut acc, n| {
-            acc.push(PreTradeDataKind::News(self.news_kind, self.number_candles_to_wait));
+            acc.push(PreTradeDataKind::News(self.news_kind, self.number_candles_to_wait.try_into().unwrap()));
             acc
         });
         RequriedPreTradeValues {
@@ -110,14 +110,14 @@ impl Strategy for News {
 
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
         pre_trade_values
-            .news_candle(&self.news_kind, self.number_candles_to_wait)
+            .news_candle(&self.news_kind, self.number_candles_to_wait.try_into().unwrap())
             .unwrap()
             .open
             .unwrap()
     }
 
     fn get_trade_kind(&self,pre_trade_values: &RequiredPreTradeValuesWithData) -> TradeDirectionKind {
-
+        TradeDirectionKind::None
     }
 
     fn get_name(&self) -> String {

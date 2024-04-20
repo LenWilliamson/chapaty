@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct OhlcCandle {
     pub open_ts: Option<i64>,
     pub open: Option<f64>,
