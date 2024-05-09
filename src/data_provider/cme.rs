@@ -154,13 +154,14 @@ mod tests {
         assert_eq!(target.unwrap().equals(&result), true);
     }
 
+    #[ignore]
     #[tokio::test]
     async fn transform_df_and_save() {
 
-        // let file = "cme/ohlc/6e-1m-nfp-testdata.csv".to_string();
-        // let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
-        // let mut result = transform_cme_df(df, 1);
-        // save_df_as_csv(&mut result, "6e-1m-nfp-testdata");
+        let file = "cme/ohlc/6e-1m-nfp-testdata.csv".to_string();
+        let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
+        let mut result = transform_cme_df(df, 1);
+        save_df_as_csv(&mut result, "6e-1m-nfp-testdata");
 
         assert!(true);
     }
