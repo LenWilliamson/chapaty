@@ -30,6 +30,7 @@ pub use enums::{
     data::MarketSimulationDataKind,
     indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
+    news::NewsKind,
 };
 pub use polars::prelude::DataFrame;
 

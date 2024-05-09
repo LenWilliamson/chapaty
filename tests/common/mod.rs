@@ -1,11 +1,9 @@
 use chapaty::{
-    data_provider::{cme::Cme, DataProvider},
-    strategy::{ppp::PppBuilder, StopLoss, Strategy, TakeProfit},
-    PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind,
+    data_provider::{cme::Cme, DataProvider}, strategy::{news::NewsBuilder, ppp::PppBuilder, StopLoss, Strategy, TakeProfit}, NewsKind, PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind
 };
 use std::sync::Arc;
 
-pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
+pub fn setup_ppp_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let ppp_builder = PppBuilder::new();
     let sl = StopLoss {
         kind: StopLossKind::PrevHighOrLow,
@@ -28,6 +26,27 @@ pub fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss(sl)
         .with_take_profit(tp)
         .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .build();
+    Arc::new(strategy)
+}
+
+pub fn setup_news_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let news_builder = NewsBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PrevHighOrLow,
+        offset: 0.0,
+    };
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PrevClose,
+        offset: 0.0,
+    };
+
+    let strategy = news_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_news_kind(NewsKind::UsaNFP)
+        .with_is_counter_trade(true)
+        .with_number_candles_to_wait(10)
         .build();
     Arc::new(strategy)
 }
