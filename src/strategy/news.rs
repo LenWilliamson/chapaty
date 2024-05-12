@@ -88,6 +88,14 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
+fn is_no_entry(entry_price: f64, take_profit: f64, trade_direction: &TradeDirectionKind) -> bool {
+    match trade_direction {
+        TradeDirectionKind::Long => entry_price < take_profit,
+        TradeDirectionKind::Short => entry_price > take_profit,
+        TradeDirectionKind::None => true,
+    }
+}
+
 impl News {
     fn get_sl_price(&self, request: &TradeRequestObject) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
@@ -98,11 +106,24 @@ impl News {
     }
 
     fn get_tp_price(&self, request: &TradeRequestObject) -> Option<f64> {
-        match self.get_trade_kind(&request.pre_trade_values) {
+        let pre_trade_values = &request.pre_trade_values;
+        let trade_direction = self.get_trade_kind(pre_trade_values);
+        let some_take_profit = match trade_direction {
             TradeDirectionKind::Long => Some(self.get_tp_long(request)),
             TradeDirectionKind::Short => Some(self.get_tp_short(request)),
             TradeDirectionKind::None => None,
-        }
+        };
+
+        let entry_price = self.get_entry_price(pre_trade_values);
+        some_take_profit
+            .map(|take_profit| {
+                if is_no_entry(entry_price, take_profit, &trade_direction) {
+                    None
+                } else {
+                    Some(take_profit)
+                }
+            })
+            .flatten()
     }
 
     fn get_sl_price_long(&self, request: &TradeRequestObject) -> f64 {
@@ -111,11 +132,10 @@ impl News {
         let entry_price = self.get_entry_price(pre_trade_values);
         let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
         let low_of_news_candle = news_candle.low.unwrap();
-        let high_of_news_candle = news_candle.high.unwrap();
         match self.stop_loss.kind {
             StopLossKind::PriceUponTradeEntry => entry_price - offset,
             StopLossKind::PrevHighOrLow if self.is_counter_trade => low_of_news_candle - offset,
-            StopLossKind::PrevHighOrLow => high_of_news_candle - offset,
+            StopLossKind::PrevHighOrLow => low_of_news_candle - offset,
             StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
         }
     }
@@ -125,13 +145,12 @@ impl News {
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let entry_price = self.get_entry_price(pre_trade_values);
         let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
-        let low_of_news_candle = news_candle.low.unwrap();
         let high_of_news_candle = news_candle.high.unwrap();
         match self.stop_loss.kind {
             StopLossKind::PriceUponTradeEntry => entry_price + offset,
             StopLossKind::PrevHighOrLow if self.is_counter_trade => high_of_news_candle + offset,
             // TODO might be too tight
-            StopLossKind::PrevHighOrLow => low_of_news_candle + offset,
+            StopLossKind::PrevHighOrLow => high_of_news_candle + offset,
             StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
         }
     }
