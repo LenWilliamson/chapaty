@@ -149,7 +149,6 @@ impl News {
         match self.stop_loss.kind {
             StopLossKind::PriceUponTradeEntry => entry_price + offset,
             StopLossKind::PrevHighOrLow if self.is_counter_trade => high_of_news_candle + offset,
-            // TODO might be too tight
             StopLossKind::PrevHighOrLow => high_of_news_candle + offset,
             StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
         }
