@@ -8,7 +8,7 @@ use chrono::Duration;
 use polars::{
     io::csv::read::{CsvParseOptions, CsvReadOptions},
     lazy::dsl::GetOutput,
-    prelude::{col, CsvReader, IntoLazy, SerReader},
+    prelude::{col, IntoLazy, SerReader},
 };
 use std::{io::Cursor, sync::Arc};
 

@@ -402,7 +402,7 @@ mod test {
         data_provider::{binance::Binance, MockDataProvider},
         enums::indicator::PriceHistogramKind,
         strategy::{
-            MockStrategy, RequriedPreTradeValues,  Strategy, 
+            MockStrategy, RequriedPreTradeValues,   
         },
         BotBuilder, MarketSimulationDataKind, NewsKind, TimeInterval,
     };

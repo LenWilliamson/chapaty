@@ -1,9 +1,6 @@
 use super::*;
 use crate::{enums::bot::DataProviderKind, DataProviderColumnKind};
-use polars::{
-    io::csv::read::CsvReadOptions,
-    prelude::{CsvReader, SerReader},
-};
+use polars::{io::csv::read::CsvReadOptions, prelude::SerReader};
 use std::{io::Cursor, sync::Arc};
 
 pub struct Binance;

@@ -1,8 +1,8 @@
 use crate::{chapaty, config, serde::deserialize::deserialize_data_frame_map};
 use google_cloud_storage::http::objects::{download::Range, get::GetObjectRequest};
 use polars::{
-    io::csv::read::{CsvParseOptions, CsvReadOptions},
-    prelude::{CsvReader, DataFrame, SerReader},
+    io::csv::read::CsvReadOptions,
+    prelude::{DataFrame, SerReader},
 };
 use std::io::Cursor;
 
