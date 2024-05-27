@@ -94,7 +94,6 @@ pub fn avg_win(df: DataFrame) -> f64 {
         .select([col(&pl_dollar_col)])
         .filter(col(&pl_dollar_col).gt(0.0))
         .mean()
-        .unwrap()
         .collect()
         .unwrap();
 
@@ -112,7 +111,6 @@ pub fn avg_loss(df: DataFrame) -> f64 {
         .select([col(&pl_dollar_col)])
         .filter(col(&pl_dollar_col).lt(0.0))
         .mean()
-        .unwrap()
         .collect()
         .unwrap();
     if let AnyValue::Null = res[pl_dollar_col.as_str()].get(0).unwrap() {
@@ -128,7 +126,6 @@ pub fn total_win(df: DataFrame) -> f64 {
         .select([col(&pl_dollar_col)])
         .filter(col(&pl_dollar_col).gt(0.0))
         .sum()
-        .unwrap()
         .collect()
         .unwrap();
 
@@ -146,7 +143,6 @@ pub fn total_loss(df: DataFrame) -> f64 {
         .select([col(&pl_dollar_col)])
         .filter(col(&pl_dollar_col).lt(0.0))
         .sum()
-        .unwrap()
         .collect()
         .unwrap();
 
@@ -172,7 +168,6 @@ pub fn timeout_win(df: DataFrame) -> f64 {
         )
         .select([col(&pl_dollar_col)])
         .sum()
-        .unwrap()
         .collect()
         .unwrap();
 
@@ -198,7 +193,6 @@ pub fn timeout_loss(df: DataFrame) -> f64 {
         )
         .select([col(&pl_dollar_col)])
         .sum()
-        .unwrap()
         .collect()
         .unwrap();
 
@@ -260,7 +254,6 @@ pub fn net_profit(df: DataFrame) -> f64 {
         .lazy()
         .select(&[col(&pl_dollar_col)])
         .sum()
-        .unwrap()
         .collect()
         .unwrap();
     res[pl_dollar_col.as_str()].get(0).unwrap().unwrap_float64()

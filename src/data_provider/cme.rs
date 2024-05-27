@@ -6,6 +6,7 @@ use crate::{
 };
 use chrono::Duration;
 use polars::{
+    io::csv::read::{CsvParseOptions, CsvReadOptions},
     lazy::dsl::GetOutput,
     prelude::{col, CsvReader, IntoLazy, SerReader},
 };
@@ -86,10 +87,11 @@ pub fn transform_cme_df(df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
         .into_iter(),
     );
 
-    let df = CsvReader::new(Cursor::new(df_as_bytes))
-        .has_header(false)
-        .with_separator(b';')
+    let df = CsvReadOptions::default()
+        .with_has_header(false)
         .with_schema(Some(Arc::new(schema)))
+        .with_parse_options(CsvParseOptions::default().with_separator(b';'))
+        .into_reader_with_file_handle(Cursor::new(df_as_bytes))
         .finish()
         .unwrap();
 
@@ -133,7 +135,10 @@ fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{cloud_api::api_for_unit_tests::download_df_as_bytes, data_frame_operations::io_operations::save_df_as_csv};
+    use crate::{
+        cloud_api::api_for_unit_tests::download_df_as_bytes,
+        data_frame_operations::io_operations::save_df_as_csv,
+    };
     use polars::prelude::df;
 
     #[tokio::test]
@@ -157,7 +162,6 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn transform_df_and_save() {
-
         let file = "cme/ohlc/6e-1m-nfp-testdata.csv".to_string();
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
         let mut result = transform_cme_df(df, 1);

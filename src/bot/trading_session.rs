@@ -63,7 +63,7 @@ impl TradingSession {
             .into_par_iter()
             .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
             .map(|(cw, wd)| build_time_frame_snapshot(cw, Some(wd), None, None))
-            .filter(|snapshot| self.is_snapshot_on_news(snapshot))
+            .filter(|snapshot| self.is_backtest_on_news(snapshot))
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
             .map(|batch| self.compute_pnl_data_row(batch))
             .collect();
@@ -71,18 +71,23 @@ impl TradingSession {
         pnl_report_data_rows.into_iter().collect()
     }
 
-    fn is_snapshot_on_news(&self, snapshot: &TimeFrameSnapshot) -> bool {
+    /// Determines if the time frame snapshot should be dropped. A strategy is evaluated
+    /// on a set of news dates, or on the complement of that set of news dates.
+    ///
+    /// # Returns
+    /// - `true`
+    ///     - if the snapshot is on a news event and the bot is only trading on news
+    ///     - if the snapshot is **not** on a news event and the bot is **not** only trading on news.
+    /// - `false` in all other cases
+    fn is_backtest_on_news(&self, snapshot: &TimeFrameSnapshot) -> bool {
         let year = i32::try_from(self.year).unwrap();
         let week = u32::try_from(snapshot.get_calendar_week_as_int()).unwrap();
         let snapshot_date = NaiveDate::from_isoywd_opt(year, week, snapshot.get_weekday());
         let strategy = &self.bot.strategy;
-        let is_snapshot_on_news = snapshot_date.map_or(false, |date| {
-            strategy
-                .get_news()
-                .contains(&date)
-        });
+        let is_snapshot_on_news =
+            snapshot_date.map_or(false, |date| strategy.get_news().contains(&date));
 
-        if strategy.is_trading_on_news() {
+        if strategy.is_only_trading_on_news() {
             is_snapshot_on_news
         } else {
             !is_snapshot_on_news
@@ -112,18 +117,21 @@ impl TradingSession {
         if self.bot.strategy.is_pre_trade_day_equal_to_trade_day() {
             Ok(builder
                 .with_market_sim_data(self.get_market_sim_data_data(snapshot)?)
-                .with_indicators(self.get_trading_indicator(snapshot)?).build())
+                .with_indicators(self.get_trading_indicator(snapshot)?)
+                .build())
         } else {
             if is_on_monday(snapshot) {
                 let last_friday = snapshot.last_friday();
                 Ok(builder
                     .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
-                    .with_indicators(self.get_trading_indicator(&last_friday)?).build())
+                    .with_indicators(self.get_trading_indicator(&last_friday)?)
+                    .build())
             } else {
                 let yesterday = snapshot.shift_back_by_n_weekdays(1);
                 Ok(builder
                     .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
-                    .with_indicators(self.get_trading_indicator(&yesterday)?).build())
+                    .with_indicators(self.get_trading_indicator(&yesterday)?)
+                    .build())
             }
         }
     }
@@ -386,14 +394,17 @@ impl TradingSessionBuilder {
 
 #[cfg(test)]
 mod test {
+
     use super::*;
     use crate::{
         cloud_api::api_for_unit_tests::{download_df, download_df_map},
         config,
-        data_provider::binance::Binance,
+        data_provider::{binance::Binance, MockDataProvider},
         enums::indicator::PriceHistogramKind,
-        strategy::{MockStrategy, RequriedPreTradeValues},
-        BotBuilder, MarketSimulationDataKind, TimeInterval,
+        strategy::{
+            MockStrategy, RequriedPreTradeValues,  Strategy, 
+        },
+        BotBuilder, MarketSimulationDataKind, NewsKind, TimeInterval,
     };
     use std::sync::Arc;
 
@@ -687,5 +698,104 @@ mod test {
                 .get(&required_pre_trade_values.trading_indicators[0])
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_is_backtest_on_news() {
+        // Test Setup
+        let mut mock_strategy = MockStrategy::new();
+        mock_strategy.expect_is_only_trading_on_news().return_const(true);
+        mock_strategy
+            .expect_get_news()
+            .return_const(NewsKind::UsaNFP.get_news_dates());
+        let data_provider = MockDataProvider::new();
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
+
+        // Test Initialization with news trading
+        let bot = BotBuilder::new(Arc::new(mock_strategy), Arc::new(data_provider))
+            .with_google_cloud_storage_client(cloud_storage_client.clone())
+            .with_google_cloud_bucket(bucket.clone())
+            .with_time_frame(TimeFrameKind::Weekly)
+            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
+
+        let session = TradingSession {
+            bot: Arc::new(bot),
+            indicator_data_pair: Arc::new(HashSet::new()),
+            market: MarketKind::EurUsdFuture,
+            year: 2022,
+            data: ExecutionData::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            cache_computations: false,
+        };
+
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
+        assert!(session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
+        assert!(session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(14);
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
+
+        // Test Initialization no news trading
+        let mut mock_strategy = MockStrategy::new();
+        mock_strategy.expect_is_only_trading_on_news().return_const(false);
+        mock_strategy
+            .expect_get_news()
+            .return_const(NewsKind::UsaNFP.get_news_dates());
+        let data_provider = MockDataProvider::new();
+
+        let bot = BotBuilder::new(Arc::new(mock_strategy), Arc::new(data_provider))
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_frame(TimeFrameKind::Weekly)
+            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
+
+        let session = TradingSession {
+            bot: Arc::new(bot),
+            indicator_data_pair: Arc::new(HashSet::new()),
+            market: MarketKind::EurUsdFuture,
+            year: 2022,
+            data: ExecutionData::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            cache_computations: false,
+        };
+
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
+        assert!(session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
+        assert!(session.is_backtest_on_news(&snapshot));
+
+        let snapshot = TimeFrameSnapshotBuilder::new(14);
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
     }
 }

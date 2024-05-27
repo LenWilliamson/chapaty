@@ -195,6 +195,7 @@ impl MyLazyFrameVecOperations for Vec<LazyFrame> {
 mod tests {
     use super::*;
     use crate::cloud_api::api_for_unit_tests::download_df;
+    use chrono::NaiveDate;
     use polars::prelude::IntoLazy;
 
     #[tokio::test]
@@ -241,5 +242,30 @@ mod tests {
             Some(_) => assert!(false),
             None => assert!(true),
         };
+    }
+
+    #[tokio::test]
+    async fn find_ohlc_candle_by_ots() {
+        let ldf = download_df(
+            "chapaty-ai-hdb-test".to_string(),
+            "cme/ohlc/6e-1m-nfp-testdata.csv".to_string(),
+        )
+        .await
+        .lazy();
+        let ots = NaiveDate::from_ymd_opt(2022, 12, 2)
+            .and_then(|date| date.and_hms_opt(0, 44, 0))
+            .unwrap();
+
+        let res = ldf.find_ohlc_candle_by_ots(&ots).unwrap();
+        let expect = OhlcCandle {
+            open_ts: Some(1669941840000),
+            open: Some(1.06065),
+            high: Some(1.0607),
+            low: Some(1.06065),
+            close: Some(1.0607),
+            close_ts: Some(1669941899999),
+        };
+
+        assert_eq!(res, expect)
     }
 }

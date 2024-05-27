@@ -1,6 +1,9 @@
 use super::*;
 use crate::{enums::bot::DataProviderKind, DataProviderColumnKind};
-use polars::prelude::{CsvReader, SerReader};
+use polars::{
+    io::csv::read::CsvReadOptions,
+    prelude::{CsvReader, SerReader},
+};
 use std::{io::Cursor, sync::Arc};
 
 pub struct Binance;
@@ -23,9 +26,10 @@ impl DataProvider for Binance {
     }
 
     fn get_df_from_bytes(&self, request: BytesToDataFrameRequest) -> DataFrame {
-        CsvReader::new(Cursor::new(request.df_as_bytes))
-            .has_header(false)
+        CsvReadOptions::default()
+            .with_has_header(false)
             .with_schema(Some(Arc::new(schema(&request.bytes_source_dir))))
+            .into_reader_with_file_handle(Cursor::new(request.df_as_bytes))
             .finish()
             .unwrap()
     }

@@ -285,7 +285,9 @@ impl PreTradeValuesCalculatorBuilder {
 mod test {
     use super::*;
     use crate::{
-        bot::time_frame_snapshot::TimeFrameSnapshotBuilder, calculator::pre_trade_values_calculator::PreTradeData, cloud_api::api_for_unit_tests::download_df
+        bot::time_frame_snapshot::TimeFrameSnapshotBuilder,
+        calculator::pre_trade_values_calculator::PreTradeData,
+        cloud_api::api_for_unit_tests::download_df,
     };
     use std::collections::HashMap;
 
@@ -416,7 +418,7 @@ mod test {
             pre_trade_data: pre_trade_data.clone(),
             required_pre_trade_values: required_pre_trade_values.clone(),
         };
-        
+
         assert_eq!(
             NaiveTime::from_hms_opt(12, 35, 0).unwrap(),
             caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5)
@@ -514,15 +516,9 @@ mod test {
             required_pre_trade_values: required_pre_trade_values.clone(),
         };
 
-        assert_eq!(
-            None,
-            caclulator.get_news_candle(&NewsKind::UsaNFP, 0)
-        );
-        
-        assert_eq!(
-            None,
-            caclulator.get_news_candle(&NewsKind::UsaNFP, 5)
-        );
+        assert_eq!(None, caclulator.get_news_candle(&NewsKind::UsaNFP, 0));
+
+        assert_eq!(None, caclulator.get_news_candle(&NewsKind::UsaNFP, 5));
 
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
@@ -534,7 +530,7 @@ mod test {
             market_sim_data: df,
             indicators: HashMap::new(),
         };
-        
+
         let caclulator = PreTradeValuesCalculator {
             year: 2022,
             snapshot,
@@ -551,12 +547,12 @@ mod test {
             close: Some(1.0613),
             close_ts: Some(1669984259999),
         };
-    
+
         assert_eq!(
             Some(ohlc_candle),
             caclulator.get_news_candle(&NewsKind::UsaNFP, 0)
         );
-        
+
         let ohlc_candle = OhlcCandle {
             open_ts: Some(1669984260000),
             open: Some(1.06135),
@@ -565,12 +561,12 @@ mod test {
             close: Some(1.0615),
             close_ts: Some(1669984319999),
         };
-    
+
         assert_eq!(
             Some(ohlc_candle),
             caclulator.get_news_candle(&NewsKind::UsaNFP, 1)
         );
-        
+
         let ohlc_candle = OhlcCandle {
             open_ts: Some(1669984320000),
             open: Some(1.0615),
@@ -579,11 +575,10 @@ mod test {
             close: Some(1.0615),
             close_ts: Some(1669984379999),
         };
-    
+
         assert_eq!(
             Some(ohlc_candle),
             caclulator.get_news_candle(&NewsKind::UsaNFP, 2)
         );
-        
     }
 }

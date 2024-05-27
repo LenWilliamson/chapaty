@@ -259,7 +259,7 @@ impl Strategy for News {
         true
     }
 
-    fn is_trading_on_news(&self) -> bool {
+    fn is_only_trading_on_news(&self) -> bool {
         true
     }
 

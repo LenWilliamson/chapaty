@@ -35,7 +35,7 @@ pub struct TradeRequestObject {
     pub market: MarketKind,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RequriedPreTradeValues {
     pub market_values: Vec<PreTradeDataKind>,
     pub trading_indicators: Vec<TradingIndicatorKind>,
@@ -52,6 +52,9 @@ pub trait Strategy {
     ) -> TradeDirectionKind;
     fn get_name(&self) -> String;
     fn is_pre_trade_day_equal_to_trade_day(&self) -> bool;
-    fn is_trading_on_news(&self) -> bool;
+
+    /// Returns `true` if the strategy shall only be evaluated on news. Otherwise the strategy 
+    /// is evaluated on all days but news.
+    fn is_only_trading_on_news(&self) -> bool;
     fn get_news(&self) -> HashSet<NaiveDate>;
 }

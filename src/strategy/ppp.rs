@@ -207,7 +207,7 @@ impl Strategy for Ppp {
         false
     }
 
-    fn is_trading_on_news(&self) -> bool {
+    fn is_only_trading_on_news(&self) -> bool {
         false
     }
 
