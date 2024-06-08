@@ -234,6 +234,16 @@ impl Strategy for News {
             .unwrap()
     }
 
+    fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64> {
+        pre_trade_values
+            .news_candle(
+                &self.news_kind,
+                self.number_candles_to_wait.try_into().unwrap(),
+            )
+            .unwrap()
+            .open_ts
+    }
+
     fn get_trade_kind(
         &self,
         pre_trade_values: &RequiredPreTradeValuesWithData,

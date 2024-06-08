@@ -179,6 +179,10 @@ impl Strategy for Ppp {
         }
     }
 
+    fn get_entry_ts(&self, _pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64> {
+        None
+    }
+
     /// This function determines the `TradeKind` based on the entry price and last traded price.
     /// * `Short` - last traded price < entry price
     /// * `Long` - last traded price > entry price

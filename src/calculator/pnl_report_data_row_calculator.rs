@@ -118,6 +118,7 @@ impl PnLReportDataRowCalculator {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
         calculator_builder
             .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
+            .with_entry_ts(self.strategy.get_entry_ts(&pre_trade_values))
             .build_and_compute()
     }
 

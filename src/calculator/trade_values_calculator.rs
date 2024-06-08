@@ -13,6 +13,7 @@ pub struct TradeValuesCalculator {
     pub market_sim_data: DataFrame,
     pub market_sim_data_kind: MarketSimulationDataKind,
     entry_price: f64,
+    entry_ts: Option<i64>,
 }
 
 #[derive(Default, Clone)]
@@ -45,18 +46,21 @@ impl TradeValuesWithData {
 
 impl TradeValuesCalculator {
     pub fn compute(&self) -> Option<TradeValuesWithData> {
+        self.entry_ts
+            .or_else(|| self.compute_entry_ts())
+            .and_then(|entry_ts| {
+                let trade = TradeValuesWithData {
+                    trade: self.get_result(entry_ts),
+                };
+                Some(trade)
+            })
+    }
+
+    fn compute_entry_ts(&self) -> Option<i64> {
         self.market_sim_data
             .clone()
             .lazy()
             .find_timestamp_when_price_reached(self.entry_price)
-            .and_then(
-                |entry_ts| {
-                    let trade = TradeValuesWithData {
-                        trade: self.get_result(entry_ts),
-                    };
-                    Some(trade)
-                },
-            )
     }
 
     fn get_result(&self, entry_ts: i64) -> HashMap<TradeDataKind, MyAnyValueKind> {
@@ -155,6 +159,7 @@ pub struct TradeValuesCalculatorBuilder {
     market_sim_data: Option<DataFrame>,
     market_sim_data_kind: Option<MarketSimulationDataKind>,
     entry_price: Option<f64>,
+    entry_ts: Option<i64>,
 }
 
 impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
@@ -162,6 +167,7 @@ impl From<&PnLReportDataRowCalculator> for TradeValuesCalculatorBuilder {
         Self {
             market_sim_data: Some(value.market_sim_data.clone()),
             market_sim_data_kind: Some(value.market_sim_data_kind),
+            entry_ts: None,
             entry_price: None,
         }
     }
@@ -175,11 +181,16 @@ impl TradeValuesCalculatorBuilder {
         }
     }
 
+    pub fn with_entry_ts(self, entry_ts: Option<i64>) -> Self {
+        Self { entry_ts, ..self }
+    }
+
     pub fn build(self) -> TradeValuesCalculator {
         TradeValuesCalculator {
             market_sim_data: self.market_sim_data.unwrap(),
             market_sim_data_kind: self.market_sim_data_kind.unwrap(),
             entry_price: self.entry_price.unwrap(),
+            entry_ts: self.entry_ts,
         }
     }
 
@@ -205,6 +216,7 @@ mod test {
             entry_price: 42_000.0,
             market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
             market_sim_data: market_sim_data.clone(),
+            entry_ts: None,
         };
 
         // Define target values from test data
@@ -256,6 +268,7 @@ mod test {
             entry_price: 0.0,
             market_sim_data_kind: MarketSimulationDataKind::Ohlc1h,
             market_sim_data,
+            entry_ts: None,
         };
 
         assert!(calculator.compute().is_none())

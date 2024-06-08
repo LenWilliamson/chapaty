@@ -46,6 +46,7 @@ pub trait Strategy {
     fn get_trade(&self, trade_request_object: &TradeRequestObject) -> Trade;
     fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues;
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
+    fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64>;
     fn get_trade_kind(
         &self,
         pre_trade_values: &RequiredPreTradeValuesWithData,

@@ -124,9 +124,9 @@ impl TradePnLCalculator {
     }
 
     fn try_handle_exit(&self, exit_px: Option<f64>) -> Option<PnL> {
-        exit_px.and_then(|px| Some(self.then_handle_exit(px)))
+        exit_px.and_then(|px| Some(self.handle_exit(px)))
     }
-    fn then_handle_exit(&self, exit_px: f64) -> PnL {
+    fn handle_exit(&self, exit_px: f64) -> PnL {
         let ts = self.trade_exit_ts(exit_px);
         let profit = ts.and_then(|_| Some(self.trade.profit(exit_px)));
 
