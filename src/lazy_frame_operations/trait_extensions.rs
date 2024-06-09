@@ -248,7 +248,7 @@ mod tests {
     async fn find_ohlc_candle_by_ots() {
         let ldf = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/6e-1m-nfp-testdata.csv".to_string(),
+            "cme/ohlc/unittest/6e-1m-nfp-testdata.csv".to_string(),
         )
         .await
         .lazy();

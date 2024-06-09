@@ -141,7 +141,7 @@ mod tests {
     async fn test_tpo_cme() {
         let df_ohlc_data = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
+            "cme/ohlc/unittest/ohlc_data_for_tpo_test.csv".to_string(),
         )
         .await;
 

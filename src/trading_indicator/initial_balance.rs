@@ -82,7 +82,7 @@ mod test {
     async fn test_initial_balance_ohlc30m() {
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
+            "cme/ohlc/unittest/ohlc_data_for_tpo_test.csv".to_string(),
         )
         .await;
 
@@ -102,7 +102,7 @@ mod test {
     async fn test_initial_balance_from_first_k_candles() {
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/ohlc_data_for_tpo_test.csv".to_string(),
+            "cme/ohlc/unittest/ohlc_data_for_tpo_test.csv".to_string(),
         )
         .await;
 

@@ -152,7 +152,7 @@ mod tests {
             "cts" => &[1661990459999_i64, 1661990519999,1661990579999, 1661990639999,1661990699999, 1661990759999],
         );
 
-        let file = "cme/ohlc/6e-1m-2022-09-01.csv".to_string();
+        let file = "cme/ohlc/unittest/6e-1m-2022-09-01.csv".to_string();
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
         let result = transform_cme_df(df, 1);
 
@@ -162,7 +162,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn transform_df_and_save() {
-        let file = "cme/ohlc/6e-1m-nfp-testdata.csv".to_string();
+        let file = "cme/ohlc/unittest/6e-1m-nfp-testdata.csv".to_string();
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
         let mut result = transform_cme_df(df, 1);
         save_df_as_csv(&mut result, "6e-1m-nfp-testdata");

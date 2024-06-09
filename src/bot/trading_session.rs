@@ -365,7 +365,6 @@ impl TradingSessionBuilder {
         &self,
         path_finder: &PathFinder,
     ) -> chapaty::types::DataFrameMap {
-        let cloud_storage_client_builder = self.initalize_cloud_storage_client_builder();
         let bot = self.bot.clone().unwrap();
 
         let market_sim_data = bot.market_simulation_data.into();
@@ -375,7 +374,8 @@ impl TradingSessionBuilder {
         let file_path_with_fallback =
             path_finder.get_file_path_with_fallback(file_name, &market_sim_data);
 
-        let cloud_storage_client = cloud_storage_client_builder
+        let cloud_storage_client = self
+            .initalize_cloud_storage_client_builder()
             .with_file_path_with_fallback(file_path_with_fallback)
             .build();
 
@@ -401,9 +401,7 @@ mod test {
         config,
         data_provider::{binance::Binance, MockDataProvider},
         enums::indicator::PriceHistogramKind,
-        strategy::{
-            MockStrategy, RequriedPreTradeValues,   
-        },
+        strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder, MarketSimulationDataKind, NewsKind, TimeInterval,
     };
     use std::sync::Arc;
@@ -704,7 +702,9 @@ mod test {
     async fn test_is_backtest_on_news() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
-        mock_strategy.expect_is_only_trading_on_news().return_const(true);
+        mock_strategy
+            .expect_is_only_trading_on_news()
+            .return_const(true);
         mock_strategy
             .expect_get_news()
             .return_const(NewsKind::UsaNFP.get_news_dates());
@@ -755,7 +755,9 @@ mod test {
 
         // Test Initialization no news trading
         let mut mock_strategy = MockStrategy::new();
-        mock_strategy.expect_is_only_trading_on_news().return_const(false);
+        mock_strategy
+            .expect_is_only_trading_on_news()
+            .return_const(false);
         mock_strategy
             .expect_get_news()
             .return_const(NewsKind::UsaNFP.get_news_dates());

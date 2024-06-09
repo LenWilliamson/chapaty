@@ -397,7 +397,7 @@ mod test {
     async fn test_get_ots_of_n_candles_after_news_event() {
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/6e-1h-nfp-testdata.csv".to_string(),
+            "cme/ohlc/unittest/6e-1h-nfp-testdata.csv".to_string(),
         )
         .await;
 
@@ -492,7 +492,7 @@ mod test {
     async fn test_get_get_news_candle() {
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/6e-1h-nfp-testdata.csv".to_string(),
+            "cme/ohlc/unittest/6e-1h-nfp-testdata.csv".to_string(),
         )
         .await;
 
@@ -522,7 +522,7 @@ mod test {
 
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
-            "cme/ohlc/6e-1m-nfp-testdata.csv".to_string(),
+            "cme/ohlc/unittest/6e-1m-nfp-testdata.csv".to_string(),
         )
         .await;
 
