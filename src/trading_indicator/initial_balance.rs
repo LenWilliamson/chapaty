@@ -38,6 +38,8 @@ impl InitialBalanceCalculator {
             MarketSimulationDataKind::Ohlc30m | MarketSimulationDataKind::Ohlcv30m => {
                 self.initial_balance_from_first_k_candles(2)
             }
+            MarketSimulationDataKind::Ohlc5m => self.initial_balance_from_first_k_candles(12),
+            MarketSimulationDataKind::Ohlc15m => self.initial_balance_from_first_k_candles(4),
             MarketSimulationDataKind::Ohlc1m | MarketSimulationDataKind::Ohlcv1m => {
                 self.initial_balance_from_first_k_candles(60)
             }

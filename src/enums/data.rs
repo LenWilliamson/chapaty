@@ -10,6 +10,12 @@ pub enum MarketSimulationDataKind {
     #[strum(serialize = "ohlc-1m")]
     Ohlc1m,
 
+    #[strum(serialize = "ohlc-5m")]
+    Ohlc5m,
+
+    #[strum(serialize = "ohlc-15m")]
+    Ohlc15m,
+
     #[strum(serialize = "ohlc-30m")]
     Ohlc30m,
 
@@ -42,6 +48,12 @@ pub enum HdbSourceDirKind {
     #[strum(serialize = "ohlc-1m")]
     Ohlc1m,
 
+    #[strum(serialize = "ohlc-5m")]
+    Ohlc5m,
+
+    #[strum(serialize = "ohlc-15m")]
+    Ohlc15m,
+
     #[strum(serialize = "ohlc-30m")]
     Ohlc30m,
 
@@ -68,6 +80,8 @@ impl HdbSourceDirKind {
     pub fn get_ts_col_as_str(&self) -> String {
         match self {
             HdbSourceDirKind::Ohlc1m
+            | HdbSourceDirKind::Ohlc5m
+            | HdbSourceDirKind::Ohlc15m
             | HdbSourceDirKind::Ohlc30m
             | HdbSourceDirKind::Ohlc1h
             | HdbSourceDirKind::Ohlcv1m
@@ -83,6 +97,8 @@ impl From<MarketSimulationDataKind> for HdbSourceDirKind {
     fn from(value: MarketSimulationDataKind) -> Self {
         match value {
             MarketSimulationDataKind::Ohlc1m => HdbSourceDirKind::Ohlc1m,
+            MarketSimulationDataKind::Ohlc5m => HdbSourceDirKind::Ohlc5m,
+            MarketSimulationDataKind::Ohlc15m => HdbSourceDirKind::Ohlc15m,
             MarketSimulationDataKind::Ohlc30m => HdbSourceDirKind::Ohlc30m,
             MarketSimulationDataKind::Ohlc1h => HdbSourceDirKind::Ohlc1h,
             MarketSimulationDataKind::Ohlcv1m => HdbSourceDirKind::Ohlcv1m,

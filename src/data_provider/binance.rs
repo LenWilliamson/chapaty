@@ -35,6 +35,8 @@ impl DataProvider for Binance {
 fn schema(data: &HdbSourceDirKind) -> Schema {
     match data {
         HdbSourceDirKind::Ohlc1m
+        | HdbSourceDirKind::Ohlc5m
+        | HdbSourceDirKind::Ohlc15m
         | HdbSourceDirKind::Ohlc30m
         | HdbSourceDirKind::Ohlc1h
         | HdbSourceDirKind::Ohlcv1m

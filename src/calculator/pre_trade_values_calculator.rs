@@ -186,6 +186,18 @@ impl PreTradeValuesCalculator {
                     .overflowing_add_signed(Duration::minutes(n))
                     .0
             }
+            MarketSimulationDataKind::Ohlc5m => {
+                news_kind
+                    .utc_time()
+                    .overflowing_add_signed(Duration::minutes(n * 5))
+                    .0
+            }
+            MarketSimulationDataKind::Ohlc15m => {
+                news_kind
+                    .utc_time()
+                    .overflowing_add_signed(Duration::minutes(n * 15))
+                    .0
+            }
             MarketSimulationDataKind::Ohlc30m | MarketSimulationDataKind::Ohlcv30m => {
                 news_kind
                     .utc_time()

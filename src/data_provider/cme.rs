@@ -34,6 +34,8 @@ impl DataProvider for Cme {
     fn get_df_from_bytes(&self, request: BytesToDataFrameRequest) -> DataFrame {
         let offset = match request.bytes_source_dir {
             HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
+            HdbSourceDirKind::Ohlc5m  => 5,
+            HdbSourceDirKind::Ohlc15m => 15,
             HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlcv30m => 30,
             HdbSourceDirKind::Ohlc1h | HdbSourceDirKind::Ohlcv1h => 60,
             _ => panic!(
