@@ -33,20 +33,21 @@ pub fn setup_ppp_strategy() -> Arc<dyn Strategy + Send + Sync> {
 pub fn setup_news_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let news_builder = NewsBuilder::new();
     let sl = StopLoss {
-        kind: StopLossKind::PrevHighOrLow,
-        offset: 0.0,
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset: 0.3,
     };
     let tp = TakeProfit {
-        kind: TakeProfitKind::PrevClose,
-        offset: 0.0,
+        kind: TakeProfitKind::PriceUponTradeEntry,
+        offset: 0.9,
     };
 
     let strategy = news_builder
         .with_stop_loss(sl)
         .with_take_profit(tp)
         .with_news_kind(NewsKind::UsaNFP)
-        .with_is_counter_trade(true)
-        .with_number_candles_to_wait(10)
+        .with_is_counter_trade(false)
+        .with_number_candles_to_wait(1)
+        .with_loss_to_win_ratio(2.0)
         .build();
     Arc::new(strategy)
 }

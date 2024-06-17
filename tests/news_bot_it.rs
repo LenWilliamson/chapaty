@@ -31,7 +31,7 @@ async fn it_test() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc15m;
+    let market_simulation_data = MarketSimulationDataKind::Ohlc5m;
     let time_interval = common::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;

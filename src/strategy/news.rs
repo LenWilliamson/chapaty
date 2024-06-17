@@ -10,6 +10,9 @@ pub struct News {
     take_profit: TakeProfit,
     number_candles_to_wait: i32,
     is_counter_trade: bool,
+
+    /// The number of loser trades it takes to counterbalance a winner
+    loss_to_win_ratio: f64,
 }
 
 pub struct NewsBuilder {
@@ -18,6 +21,9 @@ pub struct NewsBuilder {
     take_profit: Option<TakeProfit>,
     number_candles_to_wait: Option<i32>,
     is_counter_trade: Option<bool>,
+
+    /// The number of loser trades it takes to counterbalance a winner
+    loss_to_win_ratio: Option<f64>,
 }
 
 impl NewsBuilder {
@@ -28,6 +34,7 @@ impl NewsBuilder {
             take_profit: None,
             number_candles_to_wait: None,
             is_counter_trade: None,
+            loss_to_win_ratio: None,
         }
     }
 
@@ -66,6 +73,17 @@ impl NewsBuilder {
         }
     }
 
+    /// The number of loser trades it takes to counterbalance a winner
+    pub fn with_loss_to_win_ratio(self, loss_to_win_ratio: f64) -> Self {
+        if loss_to_win_ratio == 0.0 {
+            panic!("loss_to_win_ratio needs to be greater 0")
+        }
+        Self {
+            loss_to_win_ratio: Some(loss_to_win_ratio.abs()),
+            ..self
+        }
+    }
+
     pub fn build(self) -> News {
         News {
             news_kind: self.news_kind.unwrap(),
@@ -73,6 +91,7 @@ impl NewsBuilder {
             take_profit: self.take_profit.unwrap(),
             number_candles_to_wait: self.number_candles_to_wait.unwrap(),
             is_counter_trade: self.is_counter_trade.unwrap(),
+            loss_to_win_ratio: self.loss_to_win_ratio.unwrap(),
         }
     }
 }
@@ -88,15 +107,39 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
-fn is_no_entry(entry_price: f64, take_profit: f64, trade_direction: &TradeDirectionKind) -> bool {
-    match trade_direction {
-        TradeDirectionKind::Long => entry_price < take_profit,
-        TradeDirectionKind::Short => entry_price > take_profit,
-        TradeDirectionKind::None => true,
-    }
-}
-
 impl News {
+    fn is_no_entry(
+        &self,
+        entry_price: f64,
+        take_profit: f64,
+        trade_direction: &TradeDirectionKind,
+    ) -> bool {
+        if self.is_counter_trade {
+            match trade_direction {
+                TradeDirectionKind::Long => entry_price > take_profit,
+                TradeDirectionKind::Short => entry_price < take_profit,
+                TradeDirectionKind::None => true,
+            }
+        } else {
+            false
+        }
+    }
+
+    fn compute_offset(&self, news_candle: &OhlcCandle, multiplier: f64) -> f64 {
+        let open_px = news_candle.open.unwrap();
+        let close_px = news_candle.close.unwrap();
+
+        (open_px - close_px).abs() * (multiplier - 1.0)
+    }
+
+    fn compute_sl_offset(&self, news_candle: &OhlcCandle) -> f64 {
+        self.compute_offset(news_candle, self.stop_loss.offset)
+    }
+
+    fn compute_tp_offset(&self, news_candle: &OhlcCandle) -> f64 {
+        self.compute_offset(news_candle, self.take_profit.offset)
+    }
+
     fn get_sl_price(&self, request: &TradeRequestObject) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
@@ -109,15 +152,15 @@ impl News {
         let pre_trade_values = &request.pre_trade_values;
         let trade_direction = self.get_trade_kind(pre_trade_values);
         let some_take_profit = match trade_direction {
-            TradeDirectionKind::Long => Some(self.get_tp_long(request)),
-            TradeDirectionKind::Short => Some(self.get_tp_short(request)),
+            TradeDirectionKind::Long => Some(self.get_tp_price_long(request)),
+            TradeDirectionKind::Short => Some(self.get_tp_price_short(request)),
             TradeDirectionKind::None => None,
         };
 
         let entry_price = self.get_entry_price(pre_trade_values);
         some_take_profit
             .map(|take_profit| {
-                if is_no_entry(entry_price, take_profit, &trade_direction) {
+                if self.is_no_entry(entry_price, take_profit, &trade_direction) {
                     None
                 } else {
                     Some(take_profit)
@@ -126,64 +169,69 @@ impl News {
             .flatten()
     }
 
+    fn compute_sl_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
+        let pre_trade_values = &request.pre_trade_values;
+        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
+        let open = news_candle.open.unwrap();
+        let entry_price = self.get_entry_price(pre_trade_values);
+        let offset = if self.is_counter_trade {
+            (self.compute_tp_price(request, is_long_trade) - entry_price).abs()
+                * (1.0 / self.loss_to_win_ratio)
+        } else {
+            self.compute_sl_offset(news_candle)
+        };
+        let sign = if is_long_trade { -1.0 } else { 1.0 };
+
+        match self.stop_loss.kind {
+            StopLossKind::PriceUponTradeEntry if self.is_counter_trade => {
+                entry_price + sign * offset
+            }
+            StopLossKind::PriceUponTradeEntry => open + sign * offset,
+            StopLossKind::PrevHighOrLow => panic!("No PrevHighOrLow available for News Trade!"),
+            StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
+        }
+    }
+
+    /// Function to compute the stop loss price for long trades
     fn get_sl_price_long(&self, request: &TradeRequestObject) -> f64 {
-        let pre_trade_values = &request.pre_trade_values;
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
-        let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
-        let low_of_news_candle = news_candle.low.unwrap();
-        match self.stop_loss.kind {
-            StopLossKind::PriceUponTradeEntry => entry_price - offset,
-            StopLossKind::PrevHighOrLow if self.is_counter_trade => low_of_news_candle - offset,
-            StopLossKind::PrevHighOrLow => low_of_news_candle - offset,
-            StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
-        }
+        self.compute_sl_price(request, true)
     }
 
+    /// Function to compute the stop loss price for short trades
     fn get_sl_price_short(&self, request: &TradeRequestObject) -> f64 {
-        let pre_trade_values = &request.pre_trade_values;
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
-        let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
-        let high_of_news_candle = news_candle.high.unwrap();
-        match self.stop_loss.kind {
-            StopLossKind::PriceUponTradeEntry => entry_price + offset,
-            StopLossKind::PrevHighOrLow if self.is_counter_trade => high_of_news_candle + offset,
-            StopLossKind::PrevHighOrLow => high_of_news_candle + offset,
-            StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
-        }
+        self.compute_sl_price(request, false)
     }
 
-    fn get_tp_long(&self, request: &TradeRequestObject) -> f64 {
+    fn compute_tp_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let open = news_candle.open.unwrap();
-        let close = news_candle.close.unwrap();
         let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = request.market.try_offset_in_tick(self.take_profit.offset);
+        let offset = if self.is_counter_trade {
+            self.compute_tp_offset(news_candle)
+        } else {
+            (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
+                * self.loss_to_win_ratio
+        };
+        let sign = if is_long_trade { 1.0 } else { -1.0 };
+
         match self.take_profit.kind {
-            TakeProfitKind::PrevClose if self.is_counter_trade => open + offset,
-            TakeProfitKind::PrevClose => close + offset,
-            TakeProfitKind::PriceUponTradeEntry => entry_price + offset,
+            TakeProfitKind::PriceUponTradeEntry if self.is_counter_trade => open + sign * offset,
+            TakeProfitKind::PriceUponTradeEntry => entry_price + sign * offset,
+            TakeProfitKind::PrevClose => panic!("No PrevClose available for News Trade!"),
             TakeProfitKind::PrevHighOrLow => panic!("No Value Area available for News Trade!"),
             TakeProfitKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
         }
     }
 
-    fn get_tp_short(&self, request: &TradeRequestObject) -> f64 {
-        let pre_trade_values = &request.pre_trade_values;
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
-        let open = news_candle.open.unwrap();
-        let close = news_candle.close.unwrap();
-        let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = request.market.try_offset_in_tick(self.take_profit.offset);
-        match self.take_profit.kind {
-            TakeProfitKind::PrevClose if self.is_counter_trade => open - offset,
-            TakeProfitKind::PrevClose => close - offset,
-            TakeProfitKind::PriceUponTradeEntry => entry_price - offset,
-            TakeProfitKind::PrevHighOrLow => panic!("No Value Area available for News Trade!"),
-            TakeProfitKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
-        }
+    /// Function to compute the take profit for long trades
+    fn get_tp_price_long(&self, request: &TradeRequestObject) -> f64 {
+        self.compute_tp_price(request, true)
+    }
+
+    /// Function to compute the take profit for short trades
+    fn get_tp_price_short(&self, request: &TradeRequestObject) -> f64 {
+        self.compute_tp_price(request, false)
     }
 }
 
