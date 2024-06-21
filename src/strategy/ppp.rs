@@ -235,6 +235,7 @@ impl Strategy for Ppp {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::{
         calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,

@@ -173,40 +173,45 @@ impl PreTradeValuesCalculator {
         let year = i32::try_from(self.year).unwrap();
         let week = u32::try_from(self.snapshot.get_calendar_week_as_int()).unwrap();
         let date = NaiveDate::from_isoywd_opt(year, week, self.snapshot.get_weekday()).unwrap();
-        let ots = self.get_ots_of_n_candles_after_news_event(news_kind, n.into());
+        let ots = self.get_ots_of_n_candles_after_news_event(news_kind, n.into(), &date);
         df.lazy().find_ohlc_candle_by_ots(&date.and_time(ots))
     }
 
-    fn get_ots_of_n_candles_after_news_event(&self, news_kind: &NewsKind, n: u32) -> NaiveTime {
+    fn get_ots_of_n_candles_after_news_event(
+        &self,
+        news_kind: &NewsKind,
+        n: u32,
+        date: &NaiveDate,
+    ) -> NaiveTime {
         let n: i64 = n.into();
         match self.market_sim_data_kind {
             MarketSimulationDataKind::Ohlc1m | MarketSimulationDataKind::Ohlcv1m => {
                 news_kind
-                    .utc_time()
+                    .utc_time_daylight_saving_adjusted(date)
                     .overflowing_add_signed(Duration::minutes(n))
                     .0
             }
             MarketSimulationDataKind::Ohlc5m => {
                 news_kind
-                    .utc_time()
+                    .utc_time_daylight_saving_adjusted(date)
                     .overflowing_add_signed(Duration::minutes(n * 5))
                     .0
             }
             MarketSimulationDataKind::Ohlc15m => {
                 news_kind
-                    .utc_time()
+                    .utc_time_daylight_saving_adjusted(date)
                     .overflowing_add_signed(Duration::minutes(n * 15))
                     .0
             }
             MarketSimulationDataKind::Ohlc30m | MarketSimulationDataKind::Ohlcv30m => {
                 news_kind
-                    .utc_time()
+                    .utc_time_daylight_saving_adjusted(date)
                     .overflowing_add_signed(Duration::minutes(n * 30))
                     .0
             }
             MarketSimulationDataKind::Ohlc1h | MarketSimulationDataKind::Ohlcv1h => {
                 news_kind
-                    .utc_time()
+                    .utc_time_daylight_saving_adjusted(date)
                     .overflowing_add_signed(Duration::hours(n))
                     .0
             }
@@ -431,34 +436,36 @@ mod test {
             required_pre_trade_values: required_pre_trade_values.clone(),
         };
 
+        let date = NaiveDate::from_ymd_opt(2022, 12, 2).unwrap();
+
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 35, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5)
+            NaiveTime::from_hms_opt(13, 35, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5, &date)
         );
 
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 34, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4)
+            NaiveTime::from_hms_opt(13, 34, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4, &date)
         );
 
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 33, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3)
+            NaiveTime::from_hms_opt(13, 33, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3, &date)
         );
 
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 32, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2)
+            NaiveTime::from_hms_opt(13, 32, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2, &date)
         );
 
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 31, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1)
+            NaiveTime::from_hms_opt(13, 31, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1, &date)
         );
 
         assert_eq!(
-            NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0)
+            NaiveTime::from_hms_opt(13, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0, &date)
         );
 
         let caclulator = PreTradeValuesCalculator {
@@ -470,33 +477,33 @@ mod test {
         };
 
         assert_eq!(
+            NaiveTime::from_hms_opt(18, 30, 0).unwrap(),
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5, &date)
+        );
+
+        assert_eq!(
             NaiveTime::from_hms_opt(17, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 5)
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4, &date)
         );
 
         assert_eq!(
             NaiveTime::from_hms_opt(16, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 4)
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3, &date)
         );
 
         assert_eq!(
             NaiveTime::from_hms_opt(15, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 3)
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2, &date)
         );
 
         assert_eq!(
             NaiveTime::from_hms_opt(14, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 2)
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1, &date)
         );
 
         assert_eq!(
             NaiveTime::from_hms_opt(13, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 1)
-        );
-
-        assert_eq!(
-            NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
-            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0)
+            caclulator.get_ots_of_n_candles_after_news_event(&NewsKind::UsaNFP, 0, &date)
         );
     }
 
@@ -528,6 +535,7 @@ mod test {
             required_pre_trade_values: required_pre_trade_values.clone(),
         };
 
+        // Not possible to get 13:30 News Candle on 1h charts
         assert_eq!(None, caclulator.get_news_candle(&NewsKind::UsaNFP, 0));
 
         assert_eq!(None, caclulator.get_news_candle(&NewsKind::UsaNFP, 5));
@@ -552,12 +560,12 @@ mod test {
         };
 
         let ohlc_candle = OhlcCandle {
-            open_ts: Some(1669984200000),
-            open: Some(1.06125),
-            high: Some(1.06135),
-            low: Some(1.06125),
-            close: Some(1.0613),
-            close_ts: Some(1669984259999),
+            open_ts: Some(1669987800000),
+            open: Some(1.0616),
+            high: Some(1.06175),
+            low: Some(1.06135),
+            close: Some(1.0614),
+            close_ts: Some(1669987859999),
         };
 
         assert_eq!(
@@ -566,12 +574,12 @@ mod test {
         );
 
         let ohlc_candle = OhlcCandle {
-            open_ts: Some(1669984260000),
+            open_ts: Some(1669987860000),
             open: Some(1.06135),
-            high: Some(1.0615),
+            high: Some(1.0614),
             low: Some(1.0613),
-            close: Some(1.0615),
-            close_ts: Some(1669984319999),
+            close: Some(1.0614),
+            close_ts: Some(1669987919999),
         };
 
         assert_eq!(
@@ -580,12 +588,12 @@ mod test {
         );
 
         let ohlc_candle = OhlcCandle {
-            open_ts: Some(1669984320000),
-            open: Some(1.0615),
+            open_ts: Some(1669987920000),
+            open: Some(1.06135),
             high: Some(1.06155),
-            low: Some(1.0614),
-            close: Some(1.0615),
-            close_ts: Some(1669984379999),
+            low: Some(1.06125),
+            close: Some(1.06135),
+            close_ts: Some(1669987979999),
         };
 
         assert_eq!(

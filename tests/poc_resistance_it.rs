@@ -13,7 +13,7 @@ async fn it_test() {
     // If news are at 11:45 -> only 1m, 5m, 15m
     // If news are at 12:30 -> only 1m, 5m, 15m, 30m
     // If news are at 15:00 -> only 1m, 5m, 15m, 30m, 1h
-    let strategy = common::setup_news_strategy();
+    let strategy = common::setup_ppp_strategy();
     // let strategy = common::setup_ppp_strategy();
     let data_provider = common::setup_data_provider();
     // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];

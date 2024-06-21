@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone};
+use chrono_tz::US;
 use strum_macros::{Display, EnumIter};
 
 use crate::converter::timeformat::naive_date_from_str;
@@ -26,12 +27,55 @@ impl NewsKind {
     //     }
     // }
 
-    pub fn utc_time(&self) -> NaiveTime {
-        match self {
-            Self::UsaCPI => NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
-            Self::UsaNFP => NaiveTime::from_hms_opt(12, 30, 0).unwrap(),
+    pub fn utc_time_daylight_saving_adjusted(&self, date: &NaiveDate) -> NaiveTime {
+        let daylight_saving_delta = TimeDelta::hours(1);
+
+        if self.is_not_daylight_saving(date) {
+            match self {
+                Self::UsaCPI => Self::UsaCPI.utc_derived_from_local_standard_time(),
+                Self::UsaNFP => Self::UsaNFP.utc_derived_from_local_standard_time(),
+            }
+        } else {
+            match self {
+                Self::UsaCPI => {
+                    Self::UsaCPI.utc_derived_from_local_standard_time() - daylight_saving_delta
+                }
+                Self::UsaNFP => {
+                    Self::UsaNFP.utc_derived_from_local_standard_time() - daylight_saving_delta
+                }
+            }
         }
     }
+
+    fn local_standard_time(&self) -> NaiveTime {
+        match self {
+            Self::UsaCPI => NaiveTime::from_hms_opt(8, 30, 0).unwrap(),
+            Self::UsaNFP => NaiveTime::from_hms_opt(8, 30, 0).unwrap(),
+        }
+    }
+
+    fn utc_derived_from_local_standard_time(&self) -> NaiveTime {
+        let est_utc_offset = TimeDelta::hours(5);
+
+        match self {
+            Self::UsaCPI => Self::UsaCPI.local_standard_time() + est_utc_offset,
+            Self::UsaNFP => Self::UsaNFP.local_standard_time() + est_utc_offset,
+        }
+    }
+
+    fn is_not_daylight_saving(&self, date: &NaiveDate) -> bool {
+        let utc_dt = NaiveDateTime::new(*date, self.utc_derived_from_local_standard_time());
+        let local_ts_daylight_adj = US::Eastern.from_utc_datetime(&utc_dt).time();
+
+        match self {
+            Self::UsaCPI => is_time_delta_zero(local_ts_daylight_adj, self.local_standard_time()),
+            Self::UsaNFP => is_time_delta_zero(local_ts_daylight_adj, self.local_standard_time()),
+        }
+    }
+}
+
+fn is_time_delta_zero(daylight_adjusted_ts: NaiveTime, local_standard_ts: NaiveTime) -> bool {
+    (daylight_adjusted_ts - local_standard_ts).abs() == TimeDelta::new(0, 0).unwrap()
 }
 
 fn usa_nfp_news_dates() -> HashSet<NaiveDate> {
@@ -501,6 +545,15 @@ fn usa_cpi_news_dates() -> HashSet<NaiveDate> {
         "2023-08-10",
         "2023-09-13",
         "2023-10-12",
+        "2023-11-14",
+        "2023-12-12",
+        "2024-01-11",
+        "2024-02-09",
+        "2024-02-13",
+        "2024-03-12",
+        "2024-04-10",
+        "2024-05-15",
+        "2024-06-12",
     ]
     .iter()
     .map(|date| naive_date_from_str(date, "%Y-%m-%d"))
@@ -520,3 +573,94 @@ fn usa_cpi_news_dates() -> HashSet<NaiveDate> {
 //         .map(|date| date.and_time(*time))
 //         .collect()
 // }
+
+#[cfg(test)]
+mod test {
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone};
+    use chrono_tz::US::{self, Eastern};
+
+    use crate::{enums::news::is_time_delta_zero, NewsKind};
+
+    #[test]
+    fn test_is_time_delta_zero() {
+        let nfp_local_std_time = NewsKind::UsaNFP.local_standard_time();
+        let est = NaiveDate::from_ymd_opt(2024, 2, 4).unwrap();
+        let edt = NaiveDate::from_ymd_opt(2024, 6, 7).unwrap();
+        let pm_13_30 = NaiveTime::from_hms_opt(13, 30, 0).unwrap();
+        let pm_12_30 = NaiveTime::from_hms_opt(12, 30, 0).unwrap();
+
+        let utc_dt_est = NaiveDateTime::new(est, pm_13_30);
+        let utc_dt_edt = NaiveDateTime::new(edt, pm_13_30);
+
+        // Winter time => News are at 13:30 UTC (our standard)
+        assert!(is_time_delta_zero(
+            US::Eastern.from_utc_datetime(&utc_dt_est).time(),
+            nfp_local_std_time
+        ));
+        assert_eq!(
+            false,
+            is_time_delta_zero(
+                US::Eastern.from_utc_datetime(&utc_dt_edt).time(),
+                nfp_local_std_time
+            )
+        );
+
+        let utc_dt_est = NaiveDateTime::new(est, pm_12_30);
+        let utc_dt_edt = NaiveDateTime::new(edt, pm_12_30);
+
+        // Summer time => News are at 12:30 UTC
+        assert!(is_time_delta_zero(
+            US::Eastern.from_utc_datetime(&utc_dt_edt).time(),
+            nfp_local_std_time
+        ));
+        assert_eq!(
+            false,
+            is_time_delta_zero(
+                US::Eastern.from_utc_datetime(&utc_dt_est).time(),
+                nfp_local_std_time
+            )
+        );
+    }
+
+    #[test]
+    fn test_is_not_daylight_saving() {
+        let est = NaiveDate::from_ymd_opt(2024, 2, 4).unwrap();
+        let edt = NaiveDate::from_ymd_opt(2024, 6, 7).unwrap();
+
+        let test = |news_kind: NewsKind| match news_kind {
+            NewsKind::UsaCPI => {
+                assert!(NewsKind::UsaNFP.is_not_daylight_saving(&est));
+                assert_eq!(false, NewsKind::UsaNFP.is_not_daylight_saving(&edt));
+            }
+            NewsKind::UsaNFP => {
+                assert!(NewsKind::UsaNFP.is_not_daylight_saving(&est));
+                assert_eq!(false, NewsKind::UsaNFP.is_not_daylight_saving(&edt));
+            }
+        };
+
+        test(NewsKind::UsaCPI);
+        test(NewsKind::UsaNFP);
+    }
+
+    #[test]
+    fn test_utc_time_daylight_saving_adjusted() {
+        let est = NaiveDate::from_ymd_opt(2024, 2, 4).unwrap();
+        let edt = NaiveDate::from_ymd_opt(2024, 6, 7).unwrap();
+        let pm_13_30 = NaiveTime::from_hms_opt(13, 30, 0).unwrap();
+        let pm_12_30 = NaiveTime::from_hms_opt(12, 30, 0).unwrap();
+
+        let test = |news_kind: NewsKind| match news_kind {
+            NewsKind::UsaCPI => {
+                assert_eq!(pm_13_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est));
+                assert_eq!(pm_12_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt));
+            }
+            NewsKind::UsaNFP => {
+                assert_eq!(pm_13_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est));
+                assert_eq!(pm_12_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt));
+            }
+        };
+
+        test(NewsKind::UsaCPI);
+        test(NewsKind::UsaNFP);
+    }
+}
