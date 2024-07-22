@@ -161,7 +161,7 @@ impl MyLazyFrameOperations for LazyFrame {
             vec![col(&date), col(&market)],
             SortMultipleOptions {
                 descending: vec![false, false],
-                nulls_last: false,
+                nulls_last: vec![true],
                 multithreaded: false,
                 maintain_order: false,
             },

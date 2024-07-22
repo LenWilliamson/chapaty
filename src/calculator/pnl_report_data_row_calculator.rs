@@ -7,7 +7,6 @@ use super::{
 };
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot, trade::Trade},
-    data_provider::DataProvider,
     enums::markets::MarketKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::{Strategy, TradeRequestObject},
@@ -27,7 +26,6 @@ pub struct PnLReportDataRow {
 }
 
 pub struct PnLReportDataRowCalculator {
-    pub data_provider: Arc<dyn DataProvider>,
     pub strategy: Arc<dyn Strategy>,
     pub market_sim_data: DataFrame,
     pub pre_trade_data: PreTradeData,
@@ -130,7 +128,6 @@ impl PnLReportDataRowCalculator {
 }
 
 pub struct PnLReportDataRowCalculatorBuilder {
-    data_provider: Option<Arc<dyn DataProvider>>,
     strategy: Option<Arc<dyn Strategy>>,
     market_sim_data: Option<DataFrame>,
     pre_trade_data: Option<PreTradeData>,
@@ -143,7 +140,6 @@ pub struct PnLReportDataRowCalculatorBuilder {
 impl PnLReportDataRowCalculatorBuilder {
     pub fn new() -> Self {
         Self {
-            data_provider: None,
             strategy: None,
             market_sim_data: None,
             pre_trade_data: None,
@@ -151,13 +147,6 @@ impl PnLReportDataRowCalculatorBuilder {
             year: None,
             time_frame_snapshot: None,
             market_sim_data_kind: None,
-        }
-    }
-
-    pub fn with_data_provider(self, data_provider: Arc<dyn DataProvider>) -> Self {
-        Self {
-            data_provider: Some(data_provider),
-            ..self
         }
     }
 
@@ -212,7 +201,6 @@ impl PnLReportDataRowCalculatorBuilder {
 
     pub fn build(self) -> PnLReportDataRowCalculator {
         PnLReportDataRowCalculator {
-            data_provider: self.data_provider.unwrap(),
             strategy: self.strategy.unwrap(),
             market_sim_data: self.market_sim_data.unwrap(),
             pre_trade_data: self.pre_trade_data.unwrap(),

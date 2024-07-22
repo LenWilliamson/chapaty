@@ -73,16 +73,7 @@ pub fn comma_separated_string_to_f64(val: Series) -> Series {
     val.str()
         .unwrap()
         .into_iter()
-        .map(|o| {
-            o.map(|x| {
-                let val = x.replace(",", ".").parse::<f64>();
-                if val.is_err() {
-                    panic!("err val {x} ### {val:?}");
-                } else {
-                    val.unwrap()
-                }
-            })
-        })
+        .map(|o| o.map(|x| x.replace(",", ".").parse::<f64>().unwrap()))
         .collect::<Float64Chunked>()
         .into_series()
 }

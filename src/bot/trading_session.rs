@@ -59,6 +59,7 @@ impl TradingSession {
     }
 
     fn run_backtesting_daily(&self) -> DataFrame {
+        // TODO Segfault can happen when you have an empty DF
         let pnl_report_data_rows: Vec<_> = (1..=52_i64)
             .into_par_iter()
             .flat_map(|cw| (1..=7).into_par_iter().map(move |wd| (cw, wd)))
@@ -172,7 +173,6 @@ impl TradingSession {
 
     fn compute_pnl_data_row(&self, batch: BacktestingBatchData) -> PnLReportDataRow {
         PnLReportDataRowCalculatorBuilder::new()
-            .with_data_provider(self.bot.data_provider.clone())
             .with_market_sim_data(batch.market_sim_data)
             .with_strategy(self.bot.strategy.clone())
             .with_pre_trade_data(batch.pre_trade_data)

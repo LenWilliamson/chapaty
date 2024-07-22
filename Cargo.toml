@@ -7,18 +7,18 @@ license = "Apache-2.0"
 
 
 [dependencies]
-chrono = "0.4.37"
+chrono = "0.4.38"
 chrono-tz = "0.9.0"
 futures = "0.3.30"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
 google-cloud-storage = "0.18.0"
 mockall = "0.12.1"
-polars = {version = "0.40.0", features = ["lazy", "partition_by", "serde", "cum_agg"]}
+polars = {version = "0.41.3", features = ["lazy", "partition_by", "serde", "cum_agg"]}
 rayon = "1.10.0"
-regex = "1.10.4"
-reqwest = "0.12.4" 
-serde = "1.0.197"
-serde_json = "1.0.115"
+regex = "1.10.5"
+reqwest = "0.12.5" 
+serde = "1.0.203"
+serde_json = "1.0.117"
 strum = "0.26.2"
-strum_macros = "0.26.2"
-tokio = { version = "1.37.0", features = ["full"] }
+strum_macros = "0.26.4"
+tokio = { version = "1.38.0", features = ["full"] }

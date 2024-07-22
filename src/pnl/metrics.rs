@@ -213,7 +213,7 @@ pub fn profit_factor(total_win: f64, total_loss: f64) -> f64 {
 pub fn status_summary(df: DataFrame) -> DataFrame {
     let status_col = PnLReportColumnKind::Status.to_string();
 
-    df[status_col.as_str()].value_counts(true, false).unwrap()
+    df[status_col.as_str()].value_counts(true, false, "count".to_string(), false).unwrap()
 }
 
 pub fn timeout_summary(df: DataFrame) -> DataFrame {

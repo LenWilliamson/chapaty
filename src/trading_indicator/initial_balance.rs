@@ -59,7 +59,7 @@ impl InitialBalanceCalculator {
                 &[col(&ots)],
                 SortMultipleOptions {
                     descending: vec![true],
-                    nulls_last: true,
+                    nulls_last: vec![true],
                     multithreaded: false,
                     maintain_order: true,
                 },

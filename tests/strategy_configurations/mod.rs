@@ -1,3 +1,4 @@
+
 use chapaty::{
     data_provider::{cme::Cme, DataProvider}, strategy::{news::NewsBuilder, ppp::PppBuilder, StopLoss, Strategy, TakeProfit}, NewsKind, PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind
 };
@@ -45,8 +46,8 @@ pub fn setup_news_strategy() -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss(sl)
         .with_take_profit(tp)
         .with_news_kind(NewsKind::UsaNFP)
-        .with_is_counter_trade(false)
-        .with_number_candles_to_wait(1)
+        .with_is_counter_trade(true)
+        .with_number_candles_to_wait(5)
         .with_loss_to_win_ratio(2.0)
         .build();
     Arc::new(strategy)
@@ -55,6 +56,7 @@ pub fn setup_news_strategy() -> Arc<dyn Strategy + Send + Sync> {
 pub fn setup_data_provider() -> Arc<dyn DataProvider + Send + Sync> {
     Arc::new(Cme)
 }
+
 
 pub fn setup_time_interval() -> TimeInterval {
     TimeInterval {

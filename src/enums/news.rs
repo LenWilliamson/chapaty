@@ -301,7 +301,7 @@ fn usa_nfp_news_dates() -> HashSet<NaiveDate> {
         "2023-11-03",
         "2023-12-08",
         "2024-01-05",
-        "2024-01-10",
+        // "2024-01-10",
         "2024-02-02",
         "2024-03-08",
         "2024-04-05",
@@ -576,8 +576,8 @@ fn usa_cpi_news_dates() -> HashSet<NaiveDate> {
 
 #[cfg(test)]
 mod test {
-    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone};
-    use chrono_tz::US::{self, Eastern};
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+    use chrono_tz::US::{self};
 
     use crate::{enums::news::is_time_delta_zero, NewsKind};
 
@@ -651,12 +651,24 @@ mod test {
 
         let test = |news_kind: NewsKind| match news_kind {
             NewsKind::UsaCPI => {
-                assert_eq!(pm_13_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est));
-                assert_eq!(pm_12_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt));
+                assert_eq!(
+                    pm_13_30,
+                    NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est)
+                );
+                assert_eq!(
+                    pm_12_30,
+                    NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt)
+                );
             }
             NewsKind::UsaNFP => {
-                assert_eq!(pm_13_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est));
-                assert_eq!(pm_12_30, NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt));
+                assert_eq!(
+                    pm_13_30,
+                    NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&est)
+                );
+                assert_eq!(
+                    pm_12_30,
+                    NewsKind::UsaNFP.utc_time_daylight_saving_adjusted(&edt)
+                );
             }
         };
 

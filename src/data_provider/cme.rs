@@ -34,7 +34,7 @@ impl DataProvider for Cme {
     fn get_df_from_bytes(&self, request: BytesToDataFrameRequest) -> DataFrame {
         let offset = match request.bytes_source_dir {
             HdbSourceDirKind::Ohlc1m | HdbSourceDirKind::Ohlcv1m => 1,
-            HdbSourceDirKind::Ohlc5m  => 5,
+            HdbSourceDirKind::Ohlc5m => 5,
             HdbSourceDirKind::Ohlc15m => 15,
             HdbSourceDirKind::Ohlc30m | HdbSourceDirKind::Ohlcv30m => 30,
             HdbSourceDirKind::Ohlc1h | HdbSourceDirKind::Ohlcv1h => 60,
@@ -136,12 +136,21 @@ fn cme_raw_to_ohlc_df(df: DataFrame, offset: i64) -> DataFrame {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+
     use super::*;
     use crate::{
         cloud_api::api_for_unit_tests::download_df_as_bytes,
+        converter::any_value::AnyValueConverter,
         data_frame_operations::io_operations::save_df_as_csv,
     };
-    use polars::prelude::df;
+    use chrono::{Datelike, NaiveDateTime};
+    use polars::{
+        datatypes::Int32Chunked,
+        io::SerWriter,
+        prelude::{df, CsvWriter},
+        series::{IntoSeries, Series},
+    };
 
     #[tokio::test]
     async fn test_transform_df() {
@@ -168,6 +177,83 @@ mod tests {
         let df = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
         let mut result = transform_cme_df(df, 1);
         save_df_as_csv(&mut result, "6e-1m-nfp-testdata");
+
+        assert!(true);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn split_df_to_years() {
+        let time_frame = "5m";
+        let market = "6e";
+        let file = format!("cme/ohlc/{market}-{time_frame}.csv").to_string();
+        let df_as_bytes = download_df_as_bytes("chapaty-ai-hdb-test".to_string(), file).await;
+
+        // add schema
+        let schema = Schema::from_iter(
+            vec![
+                Field::new(
+                    &DataProviderColumnKind::CloseTime.to_string(),
+                    DataType::String,
+                ),
+                Field::new(&DataProviderColumnKind::Open.to_string(), DataType::String),
+                Field::new(&DataProviderColumnKind::High.to_string(), DataType::String),
+                Field::new(&DataProviderColumnKind::Low.to_string(), DataType::String),
+                Field::new(&DataProviderColumnKind::Close.to_string(), DataType::String),
+            ]
+            .into_iter(),
+        );
+        let df = CsvReadOptions::default()
+            .with_has_header(false)
+            .with_schema(Some(Arc::new(schema)))
+            .with_parse_options(CsvParseOptions::default().with_separator(b';'))
+            .into_reader_with_file_handle(Cursor::new(df_as_bytes))
+            .finish()
+            .unwrap();
+
+        // helper function
+        let get_year_from_ts = |val: Series| {
+            val.str()
+                .unwrap()
+                .into_iter()
+                .map(|o| {
+                    o.map(|ts| {
+                        NaiveDateTime::parse_from_str(ts, "%d.%m.%Y %H:%M:%S")
+                            .unwrap()
+                            .year()
+                    })
+                })
+                .collect::<Int32Chunked>()
+                .into_series()
+        };
+
+        // add year col
+        let lzf_with_year_col = df.lazy().with_column(
+            col("cts")
+                .apply(move |x| Ok(Some(get_year_from_ts(x))), GetOutput::default())
+                .alias("year"),
+        );
+
+        let dfs: Vec<DataFrame> = lzf_with_year_col
+            .collect()
+            .unwrap()
+            .partition_by(["year"], false)
+            .unwrap();
+
+        // save to file
+        dfs.into_iter().for_each(|mut df| {
+            let ts = df.get(0).unwrap()[0].unwrap_utf8();
+            let year = NaiveDateTime::parse_from_str(&ts, "%d.%m.%Y %H:%M:%S")
+                .unwrap()
+                .year();
+
+            let mut file = File::create(format!("{market}-{time_frame}-{year}.csv")).unwrap();
+            CsvWriter::new(&mut file)
+                .include_header(false)
+                .with_separator(b';')
+                .finish(&mut df)
+                .unwrap()
+        });
 
         assert!(true);
     }
