@@ -1,11 +1,13 @@
 # Chapaty
 Chapaty is the open source software to backtast trading strategies on different markets. Your trading results on [chapaty-ai](https://www.chapaty-ai.com) are computed by this library. To use this library you need to provide your own data and follow the conventions for the historical data below.
+
 ## Data Providers and Markets
-Currently the following data providers and markets are supported. The historical market data reaches back until 2006 for FX markets.
-Data Provider|Markets|Data
---- | --- | ---
-CME | <p> **FX Futures:** 6A, 6B, 6BTC, 6C, 6E, 6J, 6N <p> **Commodities:** CL, NG, GC, ZC, ZS, ZW<p> | OHLC data on 1m time frame
-Binance | <p> BTCUSDT <p> ETHUSDT <p> | OHLCV data on 1m time frames and tick data
+Currently, the following data providers and markets are supported. The historical market data reaches back until 2006 for FX markets.
+
+| Data Provider | Markets | Data |
+| --- | --- | --- |
+| **CME** | <ul><li>**FX Futures:** 6A, 6B, 6BTC, 6C, 6E, 6J, 6N</li><li>**Commodities:** CL, NG, GC, ZC, ZS, ZW</li></ul> | OHLC data on 1m time frame |
+| **Binance** | <ul><li>BTCUSDT</li><li>ETHUSDT</li></ul> | OHLCV data on 1m time frames and tick data |
 
 ## Directory Layout
 All the data is stored inside a Google Cloud Storage bucket. There are two buckets. We use one bucket to store the historical market data. We have a second bucket to cache the computed results to decrease the computation time to evaluate a bot on historical market data.
