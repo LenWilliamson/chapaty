@@ -2,3 +2,4 @@
 /Cargo.lock
 *.csv
 !tests/expected_results/**/*.csv
+*.DS_Store

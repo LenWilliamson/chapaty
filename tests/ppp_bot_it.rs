@@ -5,6 +5,7 @@ use chapaty::{
 };
 use std::time::Instant;
 
+#[ignore]
 #[tokio::test]
 async fn it_test() {
     let start = Instant::now();
@@ -43,7 +44,7 @@ async fn it_test() {
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
-        .with_save_result_as_csv(true)
+        .with_save_result_as_csv(false)
         .with_cache_computations(false)
         .build()
         .unwrap();

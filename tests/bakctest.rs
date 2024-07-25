@@ -14,8 +14,8 @@ async fn it_test() {
     let strategy = strategy_configurations::setup_news_strategy();
     // let strategy = strategy_configurations::setup_ppp_strategy();
     let data_provider = strategy_configurations::setup_data_provider();
-    // let years = vec![2008, 2010, 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
-    let years = vec![2024];
+    let years = vec![2008, 2010, 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+
 
     let markets = vec![
         // MarketKind::AudUsdFuture,
@@ -31,8 +31,8 @@ async fn it_test() {
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
     let bucket = config::GoogleCloudBucket {
-        historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
-        cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
+        cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
     let bot = BotBuilder::new(strategy, data_provider)
         .with_years(years)
