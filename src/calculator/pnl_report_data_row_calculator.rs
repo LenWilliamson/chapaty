@@ -65,7 +65,10 @@ impl PnLReportDataRowCalculator {
     fn handle_trade(&self, values: TradeAndPreTradeValuesWithData) -> PnLReportDataRow {
         let request = self.trade_object_request(&values);
         let entry_ts = values.trade.as_ref().unwrap().entry_ts();
-        let trade = self.strategy.get_trade(&request);
+        let trade = self
+            .strategy
+            .get_trade(&request)
+            .curate_precision(&self.market);
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(entry_ts)
             .with_trade(trade.clone())

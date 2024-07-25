@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
+use crate::converter::market_decimal_places::MyDecimalPlaces;
+
 #[derive(Copy, Clone, Debug, Display, EnumString, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MarketKind {
     #[strum(serialize = "btcusdt")]
@@ -29,6 +31,19 @@ pub enum MarketKind {
 }
 
 impl MarketKind {
+    pub fn round_float_to_correct_decimal_place(&self, f: f64) -> f64 {
+        match self {
+            MarketKind::BtcUsdt => f.round_to_n_decimal_places(2),
+            MarketKind::EurUsdFuture => f.round_nth_decimal_place_to_nearest_5_or_0(5),
+            MarketKind::AudUsdFuture => f.round_nth_decimal_place_to_nearest_5_or_0(5),
+            MarketKind::GbpUsdFuture => f.round_to_n_decimal_places(4),
+            MarketKind::CadUsdFuture => f.round_nth_decimal_place_to_nearest_5_or_0(5),
+            MarketKind::YenUsdFuture => f.round_nth_decimal_place_to_nearest_5_or_0(7),
+            MarketKind::NzdUsdFuture => f.round_nth_decimal_place_to_nearest_5_or_0(5),
+            MarketKind::BtcUsdFuture => f.round_to_n_decimal_places(0),
+        }
+    }
+
     pub fn decimal_places(&self) -> i32 {
         match self {
             MarketKind::BtcUsdt => 2,

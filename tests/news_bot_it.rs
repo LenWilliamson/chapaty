@@ -30,7 +30,7 @@ async fn it_test() {
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
-        .with_save_result_as_csv(false)
+        .with_save_result_as_csv(true)
         .with_cache_computations(false)
         .build()
         .unwrap();

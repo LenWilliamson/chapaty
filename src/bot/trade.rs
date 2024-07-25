@@ -1,4 +1,4 @@
-use crate::enums::trade_and_pre_trade::TradeDirectionKind;
+use crate::{enums::trade_and_pre_trade::TradeDirectionKind, MarketKind};
 
 #[derive(Debug, Clone)]
 pub struct Trade {
@@ -15,6 +15,19 @@ impl Trade {
             TradeDirectionKind::Short => entry_px - exit_px,
             TradeDirectionKind::Long => exit_px - entry_px,
             TradeDirectionKind::None => 0.0,
+        }
+    }
+
+    pub fn curate_precision(self, market: &MarketKind) -> Trade {
+        Self {
+            entry_price: market.round_float_to_correct_decimal_place(self.entry_price),
+            stop_loss: self
+                .stop_loss
+                .and_then(|px| Some(market.round_float_to_correct_decimal_place(px))),
+            take_profit: self
+                .take_profit
+                .and_then(|px| Some(market.round_float_to_correct_decimal_place(px))),
+            trade_kind: self.trade_kind,
         }
     }
 }
