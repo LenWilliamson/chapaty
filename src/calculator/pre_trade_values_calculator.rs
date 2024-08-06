@@ -42,8 +42,22 @@ impl RequiredPreTradeValuesWithData {
             .get_last_trade_price_unchecked()
     }
     pub fn news_candle(&self, news_kind: &NewsKind, n: u32) -> Option<&OhlcCandle> {
-        self.market_valeus
-            .get(&PreTradeDataKind::News(*news_kind, n))
+        let mut offset = 0;
+
+        while let Some(candle) = self
+            .market_valeus
+            .get(&PreTradeDataKind::News(*news_kind, n - offset))
+        {
+            if candle.is_valid() {
+                return Some(candle);
+            }
+            if offset >= n {
+                break;
+            }
+            offset += 1;
+        }
+
+        None
     }
     pub fn value_area_high(&self, ph: PriceHistogramKind) -> f64 {
         *self

@@ -8,13 +8,14 @@ use std::time::Instant;
 
 #[ignore]
 #[tokio::test]
-async fn it_test() {
+async fn backtest() {
     let start = Instant::now();
 
     let strategy = strategy_configurations::setup_news_strategy();
     // let strategy = strategy_configurations::setup_ppp_strategy();
     let data_provider = strategy_configurations::setup_data_provider();
-    let years = vec![2008, 2010, 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+    // let years = vec![2008, 2010, 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+    let years = vec![2015];
 
 
     let markets = vec![
