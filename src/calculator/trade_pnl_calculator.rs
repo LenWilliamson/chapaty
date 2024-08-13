@@ -110,7 +110,7 @@ impl TradePnLCalculator {
         let stop_loss = self.try_handle_exit(self.trade.stop_loss);
         let take_profit = self.try_handle_exit(self.trade.take_profit);
         let mut timeout = None;
-        if is_sl_and_tp_valid(&stop_loss, &take_profit)
+        if self.trade.is_valid
             && is_limit_order_open(stop_loss.clone().unwrap(), take_profit.clone().unwrap())
         {
             timeout = Some(self.handle_timeout())
@@ -160,10 +160,6 @@ fn is_limit_order_open(sl: PnL, tp: PnL) -> bool {
     let is_tp_order_open = is_order_open(tp.ts);
 
     is_sl_order_open && is_tp_order_open
-}
-
-fn is_sl_and_tp_valid(sl: &Option<PnL>, tp: &Option<PnL>) -> bool {
-    sl.as_ref().and(tp.as_ref()).is_some()
 }
 
 fn is_order_open(timestamp: Option<i64>) -> bool {
@@ -397,6 +393,7 @@ mod test {
             stop_loss: Some(stop_loss),
             take_profit: Some(take_profit),
             trade_kind: TradeDirectionKind::Long,
+            is_valid: true
         }
     }
 
@@ -681,6 +678,7 @@ mod test {
             stop_loss: Some(stop_loss),
             take_profit: Some(take_profit),
             trade_kind: TradeDirectionKind::Short,
+            is_valid: true,
         }
     }
 

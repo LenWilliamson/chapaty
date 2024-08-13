@@ -5,15 +5,45 @@
 This document outlines the key design decisions made during the development of `chapaty`. The goal is to provide a comprehensive explanation of the choices made, particularly in addressing bugs or unexpected scenarios. This documentation serves as a reference for future development, ensuring that the rationale behind each decision is clear and that any modifications or extensions of the codebase are informed by past experiences.
 
 **Table of Contents:**
-
-1. [Design Decision 1: Handling Missing Data Points in OHLC Data](#design-decision-1-handling-missing-data-points-in-ohlc-data)  
-   1.1 [Context](#context)  
-   1.2 [Problem](#problem)  
-   1.3 [Solution](#solution)  
-   1.4 [Rationale](#rationale)  
-   1.5 [Considerations](#considerations)
+1. [Commit Message for Bugfix](#commit-message-for-bugfix)
+2. [Design Decision 1: Handling Missing Data Points in OHLC Data](#design-decision-1-handling-missing-data-points-in-ohlc-data)  
+   2.1 [Context](#context)  
+   2.2 [Problem](#problem)  
+   2.3 [Solution](#solution)  
+   2.4 [Rationale](#rationale)  
+   2.5 [Considerations](#considerations)
+3. [Design Decision 2: Handling No Entry Trades](#design-decision-2-handling-no-entry-trades)  
+   3.1 [Context](#context-1)  
+   3.2 [Problem](#problem-1)  
+   3.3 [Solution](#solution-1)  
+   3.4 [Rationale](#rationale-1)  
+   3.5 [Considerations](#considerations-1)
 
 ---
+
+## Commit Message for Bugfix
+
+To ensure changes are traceable and easily understandable, commit messages for bug fixes should follow this format:
+
+1. **Open an Issue:** Before making a commit, create an issue detailing the bug or enhancement needed.
+2. **Add Integration Test:** Add an integration test that shows that this bugfix does not longer occur. 
+3. **Commit Message Format:** `Bugfix: <strategy> <contract> <timestamp> <description>`
+
+   - **Strategy:** The trading or analysis strategy affected by the bug.
+   - **Contract:** The financial instrument or data set involved.
+   - **Timestamp:** The date and time related to the issue.
+   - **Description:** A brief summary of the bug or the fix implemented.
+
+**Example:**
+
+Suppose there is a bug where a "No Entry" trade is falsely handled as a "report_with_trade()" in the "News Counter NFP" strategy for the "6E JUN24" contract on "2011-12-01 13:30".
+
+The commit message should look like this:
+```
+#issue-id Bugfix: News Counter NFP 6E JUN24 2011-12-01 13:30 NoEntry trade is falsely handled as report_with_trade()
+```
+
+This format helps in tracking the origin of the issue and understanding the context of the fix, making it easier to review and maintain the codebase.
 
 ## Design Decision 1: Handling Missing Data Points in OHLC Data
 
@@ -87,6 +117,68 @@ The fallback mechanism was chosen to enhance the software's robustness in real-w
 - **Accuracy**: The fallback data may not perfectly represent the missing data point, potentially affecting backtesting accuracy.
 - **Monitoring**: It is crucial to log occurrences of missing data and fallback usage to monitor data quality and address any systemic issues. This can be done using the [log](https://github.com/rust-lang/log) crate, along with [env_logger](https://github.com/rust-cli/env_logger).
 
+
+## Design Decision 2: Handling No Entry Trades
+
+### Context
+
+In the current implementation, the decision to process a trade or handle a non-entry is made by the `compute` method in the `PnLReportDataRowCalculator`:
+
+```rust
+impl PnLReportDataRowCalculator {
+    pub fn compute(&self) -> PnLReportDataRow {
+        let data = self.get_trade_and_pre_trade_values_with_data();
+        match data.trade {
+            Some(_) => self.handle_trade(data),
+            None => self.handle_no_entry(data),
+        }
+    }
+    // Additional code...
+}
+```
+
+This approach was initially designed for the PPP strategy, where an entry price might not be hit within a day, leading to `None` for the entry timestamp and consequently no trade data (`data.trade`). When converting the `PnLReportDataRow` into a `DataFrame`:
+
+```rust
+impl From<PnLReportDataRow> for DataFrame {
+    fn from(value: PnLReportDataRow) -> Self {
+        match value.trade_pnl {
+            Some(_) => value.report_with_trade(),
+            None => value.report_without_trade(),
+        }
+    }
+}
+```
+
+### Problem
+
+The introduction of new strategies, such as news trading, which require timely entries around news events, has highlighted a flaw in this approach. In these strategies, a valid entry timestamp is expected, but not every valid entry timestamp results in a valid trade. The current implementation erroneously assumes that any valid entry timestamp signifies a valid trade, leading to potential errors when the trade does not meet validity criteria.
+
+### Solution
+
+To address this, we need to ensure that not only is `trade_pnl` present, but also that the trade itself is valid. This adjustment involves modifying the conversion logic to:
+
+```rust
+impl From<PnLReportDataRow> for DataFrame {
+    fn from(value: PnLReportDataRow) -> Self {
+        match (&value.trade_pnl, value.trade.is_valid) {
+            (None, _) | (_, false) => value.report_without_trade(),
+            _ => value.report_with_trade(),
+        }
+    }
+}
+```
+
+Additionally, default values for missing take profit or stop loss are now set to the `entry_price` of the trade.
+
+### Rationale
+
+The previous implementation was based on the assumption that any trade with a valid entry timestamp was automatically a valid trade. This approach did not account for the evolving requirements of new trading strategies that need to differentiate between valid and invalid trades more rigorously.
+
+### Considerations
+
+Future updates may involve revising the program flow so that the validity of a trade is determined solely by the trading strategy itself. This would help to separate concerns and provide a cleaner API.
+
 ---
 
-This document will be periodically updated to reflect new design decisions and changes in the software architecture. Contributions and suggestions for improvement are welcome.
+This revision clarifies the problem by separating the implementation details from the core issue, making it easier to understand the context and implications.

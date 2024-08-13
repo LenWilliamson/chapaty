@@ -6,6 +6,7 @@ pub struct Trade {
     pub stop_loss: Option<f64>,
     pub take_profit: Option<f64>,
     pub trade_kind: TradeDirectionKind,
+    pub is_valid: bool,
 }
 
 impl Trade {
@@ -28,6 +29,7 @@ impl Trade {
                 .take_profit
                 .and_then(|px| Some(market.round_float_to_correct_decimal_place(px))),
             trade_kind: self.trade_kind,
+            ..self
         }
     }
 }
@@ -44,6 +46,7 @@ mod test {
             stop_loss: Some(-1.0),
             take_profit: Some(-1.0),
             trade_kind: TradeDirectionKind::Long,
+            is_valid: true
         };
 
         assert_eq!(1.0, trade_long.profit(101.0));
@@ -55,6 +58,7 @@ mod test {
             stop_loss: Some(-1.0),
             take_profit: Some(-1.0),
             trade_kind: TradeDirectionKind::Short,
+            is_valid: true
         };
 
         assert_eq!(-1.0, trade_short.profit(101.0));

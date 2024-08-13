@@ -161,6 +161,7 @@ impl Strategy for Ppp {
             stop_loss: self.get_sl_price(request),
             take_profit: self.get_tp_price(request),
             trade_kind: self.get_trade_kind(&request.pre_trade_values),
+            is_valid: true,
         }
     }
 

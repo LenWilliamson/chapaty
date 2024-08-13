@@ -249,11 +249,20 @@ impl FromStr for NewsBuilder {
 
 impl Strategy for News {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
+        let take_profit = self.get_tp_price(request);
+
+        let stop_loss = take_profit
+            .map(|_| self.get_sl_price(request))
+            .unwrap_or(None);
+
+        let is_valid_trade = take_profit.and(stop_loss).is_some();
+
         Trade {
             entry_price: self.get_entry_price(&request.pre_trade_values),
-            stop_loss: self.get_sl_price(request),
-            take_profit: self.get_tp_price(request),
+            stop_loss,
+            take_profit,
             trade_kind: self.get_trade_kind(&request.pre_trade_values),
+            is_valid: is_valid_trade,
         }
     }
 
