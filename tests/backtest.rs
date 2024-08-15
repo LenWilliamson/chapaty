@@ -14,8 +14,8 @@ async fn backtest() {
     let strategy = strategy_configurations::setup_news_strategy();
     // let strategy = strategy_configurations::setup_ppp_strategy();
     let data_provider = strategy_configurations::setup_data_provider();
-    // let years = vec![2008, 2010, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
-    let years = vec![2011];
+    // let years = vec![2008, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+    let years = vec![2009];
 
 
     let markets = vec![
