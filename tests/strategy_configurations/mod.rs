@@ -1,4 +1,4 @@
-
+pub mod setup;
 use chapaty::{
     data_provider::{cme::Cme, DataProvider}, strategy::{news::NewsBuilder, ppp::PppBuilder, StopLoss, Strategy, TakeProfit}, NewsKind, PriceHistogramKind, StopLossKind, TakeProfitKind, TimeInterval, TradingIndicatorKind
 };

@@ -11,6 +11,7 @@ use std::time::Instant;
 async fn it_test() {
     let start = Instant::now();
 
+    strategy_configurations::setup::setup();
     // Contract 6E JUN24
     let strategy = strategy_configurations::setup_news_strategy();
     let data_provider = strategy_configurations::setup_data_provider();

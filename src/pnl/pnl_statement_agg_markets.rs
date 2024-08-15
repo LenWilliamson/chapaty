@@ -40,7 +40,7 @@ impl PnLStatementAggMarkets {
         });
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
-            .drop(vec![&PnLReportColumnKind::Uid.to_string()])
+            .drop(vec![PnLReportColumnKind::Uid.to_string()])
             .collect()
             .unwrap()
     }

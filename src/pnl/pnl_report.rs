@@ -40,8 +40,8 @@ impl PnLReports {
         ldfs.concatenate_to_lazy_frame()
             .sort_by_date()
             .drop(vec![
-                &PnLReportColumnKind::Uid.to_string(),
-                &PnLReportColumnKind::Id.to_string(),
+                PnLReportColumnKind::Uid.to_string(),
+                PnLReportColumnKind::Id.to_string(),
             ])
             .collect()
             .unwrap()
