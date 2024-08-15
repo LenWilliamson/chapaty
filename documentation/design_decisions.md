@@ -4,43 +4,47 @@
 
 This document outlines the key design decisions made during the development of `chapaty`. It aims to provide a comprehensive explanation of these choices, especially in handling bugs or unexpected scenarios. This reference ensures that future development is informed by past decisions and maintains a clear rationale for each design choice.
 
-## Handling Bugfixes
+## Handling Bug Fixes
 
-To maintain traceability and clarity when addressing bugs, follow these steps for bug fixes:
+To ensure traceability and clarity when addressing bugs, follow these steps:
 
-1. **Open an Issue:** Before making any changes, create a detailed issue report. Include:
-   - **Context:** Describe the circumstances under which the bug occurs.
-   - **Problem:** Clearly state the issue and its impact.
-   - **Reproducibility:** Provide the parameters and data used so others can replicate the problem.
+1. **Open an Issue:** 
+   - **Create a Detailed Report:** Before making any changes, open an issue in the tracking system.
+   - **Include the Following Information:**
+     - **Context:** Describe the circumstances under which the bug occurs.
+     - **Problem:** Clearly state the issue and its impact on the system.
+     - **Reproducibility:** Provide detailed steps, parameters, and data required to replicate the issue.
 
-2. **Fix the Bug:** Implement a solution for the issue. Ensure that the fix does not break existing functionality by running all tests.
+2. **Fix the Bug:** 
+   - **Implement a Solution:** Apply a fix for the identified problem.
+   - **Verify Functionality:** Ensure that the fix resolves the issue without introducing new problems by running all existing tests.
 
-3. **Add an Integration Test:** Create a new integration test to verify that the bug is resolved and ensure it does not recur.
+3. **Add an Integration Test:** 
+   - **Create a Test Case:** Develop a new integration test that verifies the bug has been resolved.
+   - **Ensure No Recurrence:** Confirm that the issue does not reappear with the applied fix.
 
-4. **Update Documentation:** Document the fix in the codebase here. Link to the new integration test and provide an explanation of the changes made.
+4. **Update Documentation:** 
+   - **Document the Fix:** Update the relevant sections of the codebase documentation to reflect the changes made.
+   - **Link to the Test:** Include a reference to the new integration test and explain the nature of the changes.
 
-5. **Commit Message Format:** Use the following format for commit messages to maintain traceability:
-   ```
-   #issue-ID Bugfix: <strategy> <contract> <timestamp> <description>
-   ```
+5. **Commit Message Format:** 
+   - **Follow This Format:** 
+     ```
+     #issue-ID Bugfix: <description>
+     ```
+   - **Description:** Provide a concise summary of the bug or the fix. Use the issue title or a relevant summary for clarity.
 
-   - **Strategy:** The trading or analysis strategy impacted.
-   - **Contract:** The financial instrument or dataset involved.
-   - **Timestamp:** The date and time relevant to the issue.
-   - **Description:** A concise summary of the bug or the fix.
-
-6. **Close the Issue:** Once the fix is verified, close the issue in the tracking system.
+6. **Close the Issue:** Once the fix is verified and integrated, close the issue in the tracking system.
 
 **Example:**
 
-For a bug where a "No Entry" trade is incorrectly handled as a "report_with_trade()" in the "News Counter NFP" strategy for the "6E JUN24" contract on "2011-12-01 13:30":
+If a bug causes a "No Entry" trade to be incorrectly handled as a "report_with_trade()" in the "News Counter NFP" strategy for the "6E JUN24" contract on "2011-12-01 13:30", the commit message should be:
 
-The commit message should be:
 ```
-#issue-ID Bugfix: News Counter NFP 6E JUN24 2011-12-01 13:30 NoEntry trade is falsely handled as report_with_trade()
+#issue-ID Bugfix: Corrected handling of No Entry trades in News Counter NFP strategy for 6E JUN24 on 2011-12-01
 ```
 
-This structured format helps track the origin and resolution of issues, facilitating easier code reviews and maintenance.
+This structured approach helps maintain clear tracking of issues and resolutions, facilitating easier code reviews and ongoing maintenance.
 
 ---
 
