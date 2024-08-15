@@ -20,12 +20,14 @@ use std::{collections::HashSet, str::FromStr};
 #[derive(Clone, Copy)]
 pub struct StopLoss {
     pub kind: StopLossKind,
+    /// Offset is used by bot diffrently, can be USD or percentage, etc..
     pub offset: f64,
 }
 
 #[derive(Clone, Copy)]
 pub struct TakeProfit {
     pub kind: TakeProfitKind,
+    /// Offset is used by bot diffrently, can be USD or percentage, etc..
     pub offset: f64,
 }
 

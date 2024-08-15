@@ -62,7 +62,6 @@ pub struct BotBuilder {
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
-    // news_filter: Option<Vec<EconomicNews>>,
 }
 
 #[automock]

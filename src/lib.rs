@@ -28,6 +28,7 @@ pub use enums::{
         TradeBreakDownReportColumnKind,
     },
     data::MarketSimulationDataKind,
+    error,
     indicator::{PriceHistogramKind, TradingIndicatorKind},
     markets::MarketKind,
     news::NewsKind,

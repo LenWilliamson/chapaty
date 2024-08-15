@@ -1,22 +1,23 @@
-mod strategy_configurations;
+mod test_configurations;
 
 use chapaty::{
     config::{self},
-    BotBuilder, MarketKind, MarketSimulationDataKind, TimeFrameKind,
+    data_provider::cme::Cme,
+    strategy::{news::NewsBuilder, StopLoss, Strategy, TakeProfit},
+    BotBuilder, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind,
+    TimeFrameKind,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 #[ignore]
 #[tokio::test]
 async fn backtest() {
     let start = Instant::now();
 
-    let strategy = strategy_configurations::setup_news_strategy();
-    // let strategy = strategy_configurations::setup_ppp_strategy();
-    let data_provider = strategy_configurations::setup_data_provider();
+    let strategy = setup_strategy();
+    let data_provider = Arc::new(Cme);
     // let years = vec![2008, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
     let years = vec![2009];
-
 
     let markets = vec![
         // MarketKind::AudUsdFuture,
@@ -54,4 +55,27 @@ async fn backtest() {
     println!("Time elapsed is: {duration:?}");
 
     assert_eq!(0, 0);
+}
+
+fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let news_builder = NewsBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset: 0.3,
+    };
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PriceUponTradeEntry,
+        offset: 0.9,
+    };
+
+    let strategy = news_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_news_kind(NewsKind::UsaNFP)
+        .with_is_counter_trade(true)
+        .with_number_candles_to_wait(5)
+        .with_loss_to_win_ratio(2.0)
+        .build();
+
+    Arc::new(strategy)
 }

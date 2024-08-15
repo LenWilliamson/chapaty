@@ -1,58 +1,108 @@
-mod strategy_configurations;
+mod test_configurations;
 use chapaty::{
     config::{self},
-    BotBuilder, MarketKind, MarketSimulationDataKind, TimeFrameKind,
+    data_provider::cme::Cme,
+    strategy::{ppp::PppBuilder, StopLoss, Strategy, TakeProfit},
+    MarketKind, MarketSimulationDataKind, PriceHistogramKind, StopLossKind, TakeProfitKind,
+    TimeFrameKind, TimeInterval, TradingIndicatorKind,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
+use test_configurations::{
+    bot_config::BotConfig,
+    get_expected_result,
+    test_runner::{self, TestRunner},
+};
 
 #[ignore]
 #[tokio::test]
-async fn it_test() {
+async fn ppp_bot_strategy_1_it() {
     let start = Instant::now();
+    let expected_result = "";
 
-    // If news strategy, limit the possible range of ohlc time frames
-    // If news are at 11:45 -> only 1m, 5m, 15m
-    // If news are at 12:30 -> only 1m, 5m, 15m, 30m
-    // If news are at 15:00 -> only 1m, 5m, 15m, 30m, 1h
-    let strategy = strategy_configurations::setup_ppp_strategy();
-    // let strategy = strategy_configurations::setup_ppp_strategy();
-    let data_provider = strategy_configurations::setup_data_provider();
-    // let years = vec![2022, 2021, 2020, 2019, 2018, 2017];
-    let years = vec![2022];
-    let markets = vec![
-        // MarketKind::AudUsdFuture,
-        // MarketKind::CadUsdFuture,
-        // MarketKind::GbpUsdFuture,
-        MarketKind::EurUsdFuture,
-        // MarketKind::YenUsdFuture,
-        // MarketKind::NzdUsdFuture,
-        // MarketKind::BtcUsdFuture,
-    ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
-    let time_interval = strategy_configurations::setup_time_interval();
-    let time_frame = TimeFrameKind::Daily;
-    let client = config::get_google_cloud_storage_client().await;
+    ppp_bot_it(setup_strategy_1(), &expected_result).await;
+
+    let duration = start.elapsed();
+    println!("Time elapsed is: {duration:?} for ppp_bot_strategy_1_it().");
+}
+
+#[ignore]
+#[tokio::test]
+async fn ppp_bot_strategy_2_it() {
+    let start = Instant::now();
+    let expected_result = "";
+
+    ppp_bot_it(setup_strategy_2(), &expected_result).await;
+
+    let duration = start.elapsed();
+    println!("Time elapsed is: {duration:?} for ppp_bot_strategy_2_it().");
+}
+
+async fn ppp_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: &str) {
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let bot = BotBuilder::new(strategy, data_provider)
-        .with_years(years)
-        .with_markets(markets)
-        .with_market_simulation_data(market_simulation_data)
-        // .with_time_interval(time_interval)
-        .with_time_frame(time_frame)
-        .with_google_cloud_storage_client(client)
-        .with_google_cloud_bucket(bucket)
-        .with_save_result_as_csv(false)
-        .with_cache_computations(false)
-        .build()
-        .unwrap();
+    let bot_config = BotConfig {
+        client: config::get_google_cloud_storage_client().await,
+        bucket,
+        strategy,
+        data_provider: Arc::new(Cme),
+        market: MarketKind::EurUsdFuture,
+        year: 2022,
+        market_simulation_data: MarketSimulationDataKind::Ohlc1m,
+        time_interval: Some(setup_time_interval()),
+        time_frame: TimeFrameKind::Daily,
+    };
 
-    let _ = bot.backtest().await;
+    let tr = TestRunner::new(bot_config);
+    let bot = tr.setup().unwrap();
+    let test_result = tr.run(bot).await;
+    test_runner::assert(test_result, get_expected_result(expected_result));
+}
 
-    let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?}");
+pub fn setup_strategy_1() -> Arc<dyn Strategy + Send + Sync> {
+    let ppp_builder = PppBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PrevHighOrLow,
+        offset: 0.0,
+    };
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PrevClose,
+        offset: 0.0,
+    };
 
-    assert_eq!(0, 0);
+    let strategy = ppp_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .build();
+    Arc::new(strategy)
+}
+
+pub fn setup_strategy_2() -> Arc<dyn Strategy + Send + Sync> {
+    let ppp_builder = PppBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PrevHighOrLow,
+        offset: 125_000.0,
+    };
+    let tp = TakeProfit {
+        kind: TakeProfitKind::PrevClose,
+        offset: 125.0,
+    };
+
+    let strategy = ppp_builder
+        .with_stop_loss(sl)
+        .with_take_profit(tp)
+        .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .build();
+    Arc::new(strategy)
+}
+
+fn setup_time_interval() -> TimeInterval {
+    TimeInterval {
+        start_day: chrono::Weekday::Mon,
+        start_h: 1,
+        end_day: chrono::Weekday::Fri,
+        end_h: 23,
+    }
 }
