@@ -1,4 +1,4 @@
-mod test_configurations;
+pub mod test_configurations;
 
 use chapaty::{
     config::{self},
