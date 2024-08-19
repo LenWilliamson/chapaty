@@ -58,38 +58,38 @@ pub fn get_expected_result(file_name: &str) -> DataFrame {
 
 ---
 
-### 3. Is my builder pattern with `build_and_compute()` a good practice?
+### 3. Is combining building and computation in `build_and_compute()` a good practice?
 
 **Context:**
-- I am implementing a builder pattern to construct complex objects in Chapaty.
-- The pattern includes a `build_and_compute()` method that finalizes the object and performs some computation.
+- I am using the builder pattern to construct complex objects in Chapaty.
+- The pattern includes a `build_and_compute()` method that both finalizes the object and performs a computation.
 
 **Question:**
-- Is it considered good practice in Rust to combine building and computation in a single method like this? I have a `XyzCalculator` who's only task is to compute the `Xyz` object. And I have a builder to construct `XyzCalculator`. 
+- In "general", is it considered good practice to combine the construction and computation of an object in a single method like `build_and_compute()`? I have a `XyzCalculator` whose sole purpose is to compute the `Xyz` object, and a builder to create the `XyzCalculator`.
 
 **Code Example:**
-I'm using for example the `TardePnLCalculator` in this fashion
+Here’s how I use the `TradePnLCalculator`:
 ```rust
 // Using the TradePnLCalculator
 let trade_pnl = TradePnLCalculatorBuilder::new()
-        // set params for builder...
+        // Set parameters for the builder...
         .build_and_compute();
 ```
-where, the object itself is constructed this way:
+The object is constructed as follows:
 ```rust
 impl TradePnLCalculator {
     pub fn compute(&self) -> TradePnL {
-        // computes the pnl of a trade
+        // Computes the PnL of a trade
     }
 }
 
 impl TradePnLCalculatorBuilder {
     pub fn new() -> Self {
-        // create a builder to init the TradePnLCalculator
+        // Initializes the builder for TradePnLCalculator
     }
 
     pub fn build(self) -> TradePnLCalculator {
-        // builds a calculator that computes the trade pnl
+        // Constructs a TradePnLCalculator
     }
 
     pub fn build_and_compute(self) -> TradePnL {
@@ -97,10 +97,6 @@ impl TradePnLCalculatorBuilder {
     }
 }
 ```
-
-**Expectations for Feedback:**
-- Are there any drawbacks to this approach?
-- Should building and computing be separated into distinct methods?
 
 ---
 
