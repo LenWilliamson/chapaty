@@ -14,19 +14,20 @@ use test_configurations::{
     test_runner::{self, TestRunner},
 };
 
-/// Integration test for verifying the precision curation logic in `chapaty`.
+/// Integration test for handling missing OHLC data in backtesting.
 /// 
-/// This test is directly related to [Design Decision 1: Curating Data]
-/// in the project documentation. It validates the correctness of the rounding mechanism applied
-/// to the symbols we can trade, ensuring that floating-point precision is
-/// handled according to the tick sizes specified in the market contract specifications.
+/// This test is directly related to [Design Decision 2: Handling Missing Data Points in OHLC Data].
+/// During backtesting, missing OHLC data points led to `None` values in `RequiredPreTradeValuesWithData`,
+/// causing panics during the runtime. This update introduces a fallback mechanism in the `news_candle` function,
+/// which searches for the most recent valid data when the expected data is missing, ensuring continuity 
+/// and preventing crashes.
 /// 
 /// ### Test Data
 /// 
 /// The test uses historical market data for the `6E JUN24` contract, provided via the 
 /// NinjaTrader CME Marketdata Level 1.
 #[tokio::test]
-async fn curating_data_it() {
+async fn handling_missing_data_points_in_ohlc_data_it() {
     let start = Instant::now();
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
@@ -38,7 +39,7 @@ async fn curating_data_it() {
         strategy: setup_strategy(),
         data_provider: Arc::new(Cme),
         market: MarketKind::EurUsdFuture,
-        year: 2024,
+        year: 2015,
         market_simulation_data: MarketSimulationDataKind::Ohlc1m,
         time_interval: None,
         time_frame: TimeFrameKind::Daily,
@@ -47,11 +48,11 @@ async fn curating_data_it() {
     let tr = TestRunner::new(bot_config);
     let bot = tr.setup().unwrap();
     let test_result = tr.run(bot).await;
-    let file_name = "tests/expected_results/expecteted_curating_data.csv";
+    let file_name = "tests/expected_results/expected_handling_missing_data_points_in_ohlc_data.csv";
     test_runner::assert(test_result, get_expected_result(&file_name));
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for curating_data_it().");
+    println!("Time elapsed is: {duration:?} for handling_missing_data_points_in_ohlc_data_it().");
 }
 
 fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {

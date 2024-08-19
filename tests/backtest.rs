@@ -9,6 +9,13 @@ use chapaty::{
 };
 use std::{sync::Arc, time::Instant};
 
+/// Example integration test for configuring and running a backtest using the `chapaty` API.
+/// 
+/// This test demonstrates how to set up a backtest with a custom strategy and market conditions 
+/// using the `chapaty` library. It is intended as a template for quickly testing and configuring 
+/// custom strategies.
+/// 
+/// Marked as `#[ignore]` since it's primarily for demonstration and quick validation of strategies.
 #[ignore]
 #[tokio::test]
 async fn backtest() {
