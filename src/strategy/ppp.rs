@@ -190,8 +190,8 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_entry_ts(&self, _pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64> {
-        None
+    fn get_entry_ts(&self, _pre_trade_values: &RequiredPreTradeValuesWithData) -> (Option<i64>, bool) {
+        (None, true)
     }
 
     /// This function determines the `TradeKind` based on the entry price and last traded price.
@@ -277,29 +277,29 @@ mod tests {
         let mut pre_trade_data_map = HashMap::new();
         pre_trade_data_map.insert(
             PreTradeDataKind::LastTradePrice,
-            OhlcCandle::new().with_close(99.0),
+            Some(OhlcCandle::new().with_close(99.0)),
         );
 
         let mut pre_trade_values = RequiredPreTradeValuesWithData {
             indicator_values: trading_indicators,
-            market_valeus: pre_trade_data_map,
+            market_values: pre_trade_data_map,
         };
         assert_eq!(
             strategy.get_trade_kind(&pre_trade_values),
             TradeDirectionKind::Short
         );
-        pre_trade_values.market_valeus.insert(
+        pre_trade_values.market_values.insert(
             PreTradeDataKind::LastTradePrice,
-            OhlcCandle::new().with_close(101.0),
+            Some(OhlcCandle::new().with_close(101.0)),
         );
         assert_eq!(
             strategy.get_trade_kind(&pre_trade_values),
             TradeDirectionKind::Long
         );
 
-        pre_trade_values.market_valeus.insert(
+        pre_trade_values.market_values.insert(
             PreTradeDataKind::LastTradePrice,
-            OhlcCandle::new().with_close(poc),
+            Some(OhlcCandle::new().with_close(poc)),
         );
         assert_eq!(
             strategy.get_trade_kind(&pre_trade_values),

@@ -67,7 +67,7 @@ impl Tpo {
             tpos.entry(self.create_key(x))
                 .and_modify(|(_, qx)| *qx += 1.0)
                 .or_insert((x.round_to_n_decimal_places(self.max_digits()), 1.0));
-            x += self.market.tick_step_size().map_or_else(|| 0.01, identity);
+            x += self.market.tick_step_size().map_or( 0.01, identity);
         }
 
         // add possible last entry

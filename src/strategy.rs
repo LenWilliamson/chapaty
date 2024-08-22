@@ -48,7 +48,20 @@ pub trait Strategy {
     fn get_trade(&self, trade_request_object: &TradeRequestObject) -> Trade;
     fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues;
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
-    fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64>;
+    
+    /// Returns the entry timestamp and a flag indicating whether
+    /// the entry timestamp should be computed if `None` is returned.
+    ///
+    /// # Arguments
+    ///
+    /// * `pre_trade_values` - A reference to the required pre-trade values with data.
+    ///
+    /// # Returns
+    ///
+    /// * `(Option<i64>, bool)` - The first value is the entry timestamp (if available).
+    ///   The second value is a boolean indicating if the timestamp should be computed
+    ///   when the `Option<i64>` is `None`.
+    fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> (Option<i64>, bool);
     fn get_trade_kind(
         &self,
         pre_trade_values: &RequiredPreTradeValuesWithData,

@@ -341,11 +341,11 @@ mod test {
         )])
     }
 
-    fn set_up_pre_trade_market_values_ppp_long() -> HashMap<PreTradeDataKind, OhlcCandle> {
+    fn set_up_pre_trade_market_values_ppp_long() -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, OhlcCandle::new().with_close(39_424.14)),
-            (PreTradeDataKind::LowestTradePrice, OhlcCandle::new().with_low(36_220.54)),
-            (PreTradeDataKind::HighestTradePrice, OhlcCandle::new().with_high(39_843.0)),
+            (PreTradeDataKind::LastTradePrice, Some(OhlcCandle::new().with_close(39_424.14))),
+            (PreTradeDataKind::LowestTradePrice, Some(OhlcCandle::new().with_low(36_220.54))),
+            (PreTradeDataKind::HighestTradePrice, Some(OhlcCandle::new().with_high(39_843.0))),
         ])
     }
 
@@ -382,7 +382,7 @@ mod test {
 
     fn set_up_pre_trade_values_ppp_long() -> RequiredPreTradeValuesWithData {
         RequiredPreTradeValuesWithData {
-            market_valeus: set_up_pre_trade_market_values_ppp_long(),
+            market_values: set_up_pre_trade_market_values_ppp_long(),
             indicator_values: set_up_pre_trade_indicator_values_ppp_long(),
         }
     }
@@ -626,11 +626,11 @@ mod test {
         )])
     }
 
-    fn set_up_pre_trade_market_values_ppp_short() -> HashMap<PreTradeDataKind, OhlcCandle> {
+    fn set_up_pre_trade_market_values_ppp_short() -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, OhlcCandle::new().with_close(39_004.73)),
-            (PreTradeDataKind::LowestTradePrice, OhlcCandle::new().with_low(38_550.0)),
-            (PreTradeDataKind::HighestTradePrice, OhlcCandle::new().with_high(44_101.12)),
+            (PreTradeDataKind::LastTradePrice, Some(OhlcCandle::new().with_close(39_004.73))),
+            (PreTradeDataKind::LowestTradePrice, Some(OhlcCandle::new().with_low(38_550.0))),
+            (PreTradeDataKind::HighestTradePrice, Some(OhlcCandle::new().with_high(44_101.12))),
         ])
     }
 
@@ -667,7 +667,7 @@ mod test {
 
     fn set_up_pre_trade_values_ppp_short() -> RequiredPreTradeValuesWithData {
         RequiredPreTradeValuesWithData {
-            market_valeus: set_up_pre_trade_market_values_ppp_short(),
+            market_values: set_up_pre_trade_market_values_ppp_short(),
             indicator_values: set_up_pre_trade_indicator_values_ppp_short(),
         }
     }

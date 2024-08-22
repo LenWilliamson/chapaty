@@ -157,16 +157,14 @@ impl News {
             TradeDirectionKind::None => None,
         };
 
-        let entry_price = self.get_entry_price(pre_trade_values);
-        some_take_profit
-            .map(|take_profit| {
-                if self.is_no_entry(entry_price, take_profit, &trade_direction) {
-                    None
-                } else {
-                    Some(take_profit)
-                }
-            })
-            .flatten()
+        some_take_profit.and_then(|take_profit| {
+            let entry_px = self.get_entry_price(pre_trade_values);
+            if self.is_no_entry(entry_px, take_profit, &trade_direction) {
+                None
+            } else {
+                Some(take_profit)
+            }
+        })
     }
 
     fn compute_sl_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
@@ -251,14 +249,17 @@ impl Strategy for News {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         let take_profit = self.get_tp_price(request);
 
-        let stop_loss = take_profit
-            .map(|_| self.get_sl_price(request))
-            .unwrap_or(None);
+        let stop_loss = take_profit.map(|_| self.get_sl_price(request)).flatten();
 
         let is_valid_trade = take_profit.and(stop_loss).is_some();
 
+        let entry_price = self
+            .get_entry_ts(&request.pre_trade_values)
+            .0
+            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values));
+
         Trade {
-            entry_price: self.get_entry_price(&request.pre_trade_values),
+            entry_price,
             stop_loss,
             take_profit,
             trade_kind: self.get_trade_kind(&request.pre_trade_values),
@@ -291,14 +292,19 @@ impl Strategy for News {
             .unwrap()
     }
 
-    fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<i64> {
-        pre_trade_values
-            .news_candle(
-                &self.news_kind,
-                self.number_candles_to_wait.try_into().unwrap(),
-            )
-            .unwrap()
-            .open_ts
+    fn get_entry_ts(
+        &self,
+        pre_trade_values: &RequiredPreTradeValuesWithData,
+    ) -> (Option<i64>, bool) {
+        (
+            pre_trade_values
+                .news_candle(
+                    &self.news_kind,
+                    self.number_candles_to_wait.try_into().unwrap(),
+                )
+                .and_then(|ohlc_candle| ohlc_candle.open_ts),
+            false,
+        )
     }
 
     fn get_trade_kind(
@@ -306,15 +312,18 @@ impl Strategy for News {
         pre_trade_values: &RequiredPreTradeValuesWithData,
     ) -> TradeDirectionKind {
         // Rassler vs. Counter -> anhand is_counter_trade unterscheiden
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
-        if self.is_counter_trade {
-            match news_candle_trade_direction(&news_candle) {
-                TradeDirectionKind::Long => TradeDirectionKind::Short,
-                TradeDirectionKind::Short => TradeDirectionKind::Long,
-                TradeDirectionKind::None => TradeDirectionKind::None,
+        if let Some(news_candle) = pre_trade_values.news_candle(&self.news_kind, 0) {
+            if self.is_counter_trade {
+                match news_candle_trade_direction(&news_candle) {
+                    TradeDirectionKind::Long => TradeDirectionKind::Short,
+                    TradeDirectionKind::Short => TradeDirectionKind::Long,
+                    TradeDirectionKind::None => TradeDirectionKind::None,
+                }
+            } else {
+                news_candle_trade_direction(&news_candle)
             }
         } else {
-            news_candle_trade_direction(&news_candle)
+            TradeDirectionKind::None
         }
     }
 

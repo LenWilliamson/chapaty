@@ -71,6 +71,13 @@ This structured approach helps maintain clear tracking of issues and resolutions
    3.4 [Rationale](#rationale-2)  
    3.5 [Considerations](#considerations-2)
 
+4. [Design Decision 4: Handling Missing News Candle in OHLC Data](#design-decision-4-handling-missing-news-candle-in-ohlc-data)  
+   4.1 [Context](#context-3)  
+   4.2 [Problem](#problem-3)  
+   4.3 [Solution](#solution-3)  
+   4.4 [Rationale](#rationale-3)  
+   4.5 [Considerations](#considerations-3)
+
 ---
 
 ## Design Decision 1: Curating Data
@@ -293,6 +300,84 @@ The previous implementation was based on the assumption that any trade with a va
 ### Considerations
 
 Future updates may involve revising the program flow so that the validity of a trade is determined solely by the trading strategy itself. This would help to separate concerns and provide a cleaner API.
+
+
+## Design Decision 4: Handling Missing News Candle in OHLC Data
+
+### Context
+It was initially assumed that this data would be complete and perfect. However, during runtime, it was observed that certain OHLC data points were missing, similar to [Design Decision 2: Handling Missing Data Points in OHLC Data](#design-decision-2-handling-missing-data-points-in-ohlc-data). We observed that not only certain time stamps are missing, but potentially there are gaps in the data. For example on Friday `03.04.2009` in the data export of the 6EJUN24 contract, data past 03:58 UTC time is missing, resulting in incomplete records. Therefore, we cannot calculate any pnl for that NFP news day.
+
+Example:
+```csv
+03.04.2009 03:56:00;1,5266;1,5266;1,5264;1,5264
+03.04.2009 03:57:00;1,5265;1,5265;1,5261;1,5265
+03.04.2009 03:58:00;1,5264;1,5264;1,5264;1,5264
+05.04.2009 22:01:00;1,5336;1,5338;1,5335;1,5335
+05.04.2009 22:02:00;1,5337;1,5337;1,5335;1,5335
+05.04.2009 22:03:00;1,5335;1,5337;1,5335;1,5337
+```
+
+This resulted in `panics` as we unwrapped `None` values at different locations in our code.
+
+### Problem
+When computing a data row for the PnL report, we first gather the trade and pre-trade data. First, pre-trade values are computed. Then we compute trade values. In case of the counter strategy for news trading, the pre trade values are the first n candles after the news came out (including the news candle itself). Because we have a gap in our data, we receive a struct `RequiredPreTradeValuesWithData` that contains a hash map with key value mappings from `News(NewsKind, u32) -> OhlcCandle`. In our case, we obtained Ohlc candles where all fields where `None` values.
+```rust
+News(USANFP, 0) -> OhlcCandle { open_ts: None, open: None, high: None, low: None, close: None, close_ts: None } // (news candle)
+News(USANFP, 1) -> OhlcCandle { open_ts: None, open: None, high: None, low: None, close: None, close_ts: None } // (first candle after news event)
+News(USANFP, 2) -> OhlcCandle { open_ts: None, open: None, high: None, low: None, close: None, close_ts: None } // (second candle after news event)
+.
+.
+.
+News(USANFP, n) -> OhlcCandle { open_ts: None, open: None, high: None, low: None, close: None, close_ts: None } // (nth canlde after news event)
+```
+After we computed the pre trade values, `chapaty` computes the trade values.
+```rust
+fn compute_trade_values(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<TradeValuesWithData> {
+    let calculator_builder: TradeValuesCalculatorBuilder = self.into();
+    calculator_builder
+        .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
+        .with_entry_ts(self.strategy.get_entry_ts(&pre_trade_values))
+        .build_and_compute()
+}
+```
+But calling `self.strategy.get_entry_price(&pre_trade_values)` and `self.strategy.get_entry_ts(&pre_trade_values)` causes a `panic` as we are unwrapping `None` values of our `OhlcCandle`.
+
+### Solution
+To account for gaps in the historical data, we maintain a hash map in our `RequiredPreTradeValuesWithData` that has values of type `Option<OhlcCandle>`.
+```rust
+#[derive(Clone)]
+pub struct RequiredPreTradeValuesWithData {
+    pub market_values: HashMap<PreTradeDataKind, Option<OhlcCandle>>,
+    pub indicator_values: HashMap<TradingIndicatorKind, f64>,
+}
+```
+Hence, we receive a struct `RequiredPreTradeValuesWithData` that contains a hash map with key value mappings from `News(NewsKind, u32) -> Option<OhlcCandle>>`. In our case, we now obtain 
+```rust
+News(USANFP, 0) -> None // (news candle)
+News(USANFP, 1) -> None // (first candle after news event)
+News(USANFP, 2) -> None // (second candle after news event)
+.
+.
+.
+News(USANFP, n) -> None // (nth canlde after news event)
+```
+To decide if we should skip a computation for the trade values, and therefore handle this trade as `handle_no_entry`, we had to modify the `Strategy` trait function
+```rust
+fn get_entry_ts(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> (Option<i64>, bool);
+```
+to return `(Option<i64>, bool)`, where thee first value is the entry timestamp (if available). The second value is a boolean indicating if the timestamp should be computed when the `Option<i64>` is `None`. This is necessary, as our news trading stratgies directly retturn an entry timestamp, as these strategies are timed around the news. Contrary to PPP or Magneto, or other stratgies, where `chapaty` determines the entry timestamp. Now, we skip the computation if there is no entry time stamp, due to gaps in data, and if for this strategy `chapaty` does not compute an entry timestamp if there is `None`, in that case the strategy sets `compute_entry_ts_if_none == false`. Because if we don't have a entry timestamp in our news strategy, then we don't have a trade, and therefore `chapaty` shouldn't compute an entry timestamp for us. It should handle that trade as a "no entry trade".
+
+### Rationale
+This solution was chosen to enhance the robustness of the backtesting framework. By introducing a fallback mechanism, the system can handle data gaps without causing runtime `panics`, allowing for a smoother and more resilient simulation process. If we have a gap during a trade that we'd like to perform, we simply output in our PnL report a row with `TradeDirection == Not Clear` and fill the rest with zeros. 
+
+```csv
+Date,Strategy,Market,TradeDirection
+2009-04-03,USANFP,6e,Not Clear
+```
+
+### Considerations
+- **Accuracy**: The missing trade is affecting backtesting accuracy, as we can not assess the accuracy of our strategy properly. However, we discovered that the data gaps only occured so far in three (2006, 2007 and 2009) out of 18 years and therefore we can neglect that inaccuracy for the moment. 
+- **Monitoring**: It is crucial to log occurrences of missing data and fallback usage to monitor data quality and address any systemic issues. This can be done using the [log](https://github.com/rust-lang/log) crate, along with [env_logger](https://github.com/rust-cli/env_logger).
 
 ---
 

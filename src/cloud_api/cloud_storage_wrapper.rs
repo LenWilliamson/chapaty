@@ -160,7 +160,7 @@ impl CloudStorageClient {
         let leaf_dir = self
             .indicator_data_pair
             .as_ref()
-            .map_or_else(|| self.simulation_data, |v| v.data);
+            .map_or( self.simulation_data, |v| v.data);
 
         futures::future::join_all(tasks)
             .await

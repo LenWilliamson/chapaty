@@ -14,51 +14,56 @@ use crate::{
 };
 use chrono::{Duration, NaiveDate, NaiveTime};
 use polars::prelude::{col, IntoLazy};
-use std::{collections::HashMap, convert::identity};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct RequiredPreTradeValuesWithData {
-    pub market_valeus: HashMap<PreTradeDataKind, OhlcCandle>,
+    pub market_values: HashMap<PreTradeDataKind, Option<OhlcCandle>>,
     pub indicator_values: HashMap<TradingIndicatorKind, f64>,
 }
 
 impl RequiredPreTradeValuesWithData {
     pub fn lowest_trade_price(&self) -> f64 {
-        self.market_valeus
-            .get(&PreTradeDataKind::LowestTradePrice)
+        let ohlc_candle_opt = match self.market_values.get(&PreTradeDataKind::LowestTradePrice) {
+            Some(ohlc_candle_opt) => ohlc_candle_opt,
+            None => panic!("Pre Trade Value of Kind LowestTradePrice was not requested"),
+        };
+
+        ohlc_candle_opt
+            .as_ref()
+            .and_then(OhlcCandle::get_lowest_trade_price)
             .unwrap()
-            .get_lowest_trade_price_unchecked()
     }
     pub fn highest_trade_price(&self) -> f64 {
-        self.market_valeus
-            .get(&PreTradeDataKind::HighestTradePrice)
+        let ohlc_candle_opt = match self.market_values.get(&PreTradeDataKind::HighestTradePrice) {
+            Some(ohlc_candle_opt) => ohlc_candle_opt,
+            None => panic!("Pre Trade Value of Kind HighestTradePrice was not requested"),
+        };
+
+        ohlc_candle_opt
+            .as_ref()
+            .and_then(OhlcCandle::get_highest_trade_price)
             .unwrap()
-            .get_highest_trade_price_unchecked()
     }
     pub fn last_trade_price(&self) -> f64 {
-        self.market_valeus
-            .get(&PreTradeDataKind::LastTradePrice)
+        let ohlc_candle_opt = match self.market_values.get(&PreTradeDataKind::LastTradePrice) {
+            Some(ohlc_candle_opt) => ohlc_candle_opt,
+            None => panic!("Pre Trade Value of Kind LastTradePrice was not requested"),
+        };
+
+        ohlc_candle_opt
+            .as_ref()
+            .and_then(OhlcCandle::get_last_trade_price)
             .unwrap()
-            .get_last_trade_price_unchecked()
     }
     pub fn news_candle(&self, news_kind: &NewsKind, n: u32) -> Option<&OhlcCandle> {
-        let mut offset = 0;
-
-        while let Some(candle) = self
-            .market_valeus
-            .get(&PreTradeDataKind::News(*news_kind, n - offset))
-        {
-            if candle.is_valid() {
-                return Some(candle);
-            }
-            if offset >= n {
-                break;
-            }
-            offset += 1;
-        }
-
-        None
+        (0..=n).find_map(|offset| {
+            self.market_values
+                .get(&PreTradeDataKind::News(*news_kind, n - offset))
+                .and_then(|candle| candle.as_ref())
+        })
     }
+
     pub fn value_area_high(&self, ph: PriceHistogramKind) -> f64 {
         *self
             .indicator_values
@@ -90,12 +95,12 @@ pub struct PreTradeValuesCalculator {
 impl PreTradeValuesCalculator {
     pub fn compute(&self) -> RequiredPreTradeValuesWithData {
         RequiredPreTradeValuesWithData {
-            market_valeus: self.compute_market_values(),
+            market_values: self.compute_market_values(),
             indicator_values: self.compute_indicator_values(),
         }
     }
 
-    fn compute_market_values(&self) -> HashMap<PreTradeDataKind, OhlcCandle> {
+    fn compute_market_values(&self) -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         self.required_pre_trade_values
             .market_values
             .iter()
@@ -106,25 +111,24 @@ impl PreTradeValuesCalculator {
 
     fn update_market_value_map(
         &self,
-        mut map: HashMap<PreTradeDataKind, OhlcCandle>,
+        mut map: HashMap<PreTradeDataKind, Option<OhlcCandle>>,
         val: &PreTradeDataKind,
-    ) -> HashMap<PreTradeDataKind, OhlcCandle> {
+    ) -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         match val {
             PreTradeDataKind::LastTradePrice => {
                 let res = self.compute_last_trade_price();
-                map.insert(PreTradeDataKind::LastTradePrice, res);
+                map.insert(PreTradeDataKind::LastTradePrice, Some(res));
             }
             PreTradeDataKind::LowestTradePrice => {
                 let res = self.compute_lowest_trade_price();
-                map.insert(PreTradeDataKind::LowestTradePrice, res);
+                map.insert(PreTradeDataKind::LowestTradePrice, Some(res));
             }
             PreTradeDataKind::HighestTradePrice => {
                 let res = self.compute_highest_trade_price();
-                map.insert(PreTradeDataKind::HighestTradePrice, res);
+                map.insert(PreTradeDataKind::HighestTradePrice, Some(res));
             }
             PreTradeDataKind::News(news_kind, n) => {
                 let res = self.get_news_candle(news_kind, *n);
-                let res = res.map_or(OhlcCandle::new(), identity);
                 map.insert(PreTradeDataKind::News(*news_kind, *n), res);
             }
         };
@@ -352,7 +356,8 @@ mod test {
             43_578.87,
             caclulator
                 .compute_last_trade_price()
-                .get_last_trade_price_unchecked()
+                .get_last_trade_price()
+                .unwrap()
         );
     }
 
@@ -386,7 +391,8 @@ mod test {
             37_934.89,
             caclulator
                 .compute_lowest_trade_price()
-                .get_lowest_trade_price_unchecked()
+                .get_lowest_trade_price()
+                .unwrap()
         );
     }
 
@@ -420,7 +426,8 @@ mod test {
             44_225.84,
             caclulator
                 .compute_highest_trade_price()
-                .get_highest_trade_price_unchecked()
+                .get_highest_trade_price()
+                .unwrap()
         );
     }
 

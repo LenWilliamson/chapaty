@@ -117,10 +117,17 @@ impl PnLReportDataRowCalculator {
         pre_trade_values: &RequiredPreTradeValuesWithData,
     ) -> Option<TradeValuesWithData> {
         let calculator_builder: TradeValuesCalculatorBuilder = self.into();
-        calculator_builder
-            .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
-            .with_entry_ts(self.strategy.get_entry_ts(&pre_trade_values))
-            .build_and_compute()
+        let (entry_ts, compute_entry_ts_if_none) = self.strategy.get_entry_ts(&pre_trade_values);
+        if should_skip_computation(&entry_ts, compute_entry_ts_if_none) {
+            // compute_entry_ts_if_none == false => if we don't have an entry_ts we don't have a trade
+            // therefore we don't need to compute anything
+            None
+        } else {
+            calculator_builder
+                .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
+                .with_entry_ts(entry_ts)
+                .build_and_compute()
+        }
     }
 
     fn get_trade_and_pre_trade_values_with_data(&self) -> TradeAndPreTradeValuesWithData {
@@ -129,6 +136,11 @@ impl PnLReportDataRowCalculator {
         TradeAndPreTradeValuesWithData { trade, pre_trade }
     }
 }
+
+fn should_skip_computation(entry_ts: &Option<i64>, compute_entry_ts_if_none: bool) -> bool {
+    entry_ts.is_none() && !compute_entry_ts_if_none
+}
+
 
 pub struct PnLReportDataRowCalculatorBuilder {
     strategy: Option<Arc<dyn Strategy>>,

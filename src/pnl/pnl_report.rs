@@ -60,8 +60,8 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_profit.map_or_else(|| entry_price, identity);
-        let stop_loss = self.trade.stop_loss.map_or_else(|| entry_price, identity);
+        let take_profit = self.trade.take_profit.map_or(entry_price, identity);
+        let stop_loss = self.trade.stop_loss.map_or(entry_price, identity);
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
@@ -120,8 +120,8 @@ impl PnLReportDataRow {
         let market = self.market.to_string();
         let trade_direction = self.trade.trade_kind.to_string();
         let entry_price = self.trade.entry_price;
-        let take_profit = self.trade.take_profit.map_or_else(|| entry_price, identity);
-        let stop_loss = self.trade.stop_loss.map_or_else(|| entry_price, identity);
+        let take_profit = self.trade.take_profit.map_or(entry_price, identity);
+        let stop_loss = self.trade.stop_loss.map_or(entry_price, identity);
         let expected_win_tick = self.expected_win_in_tick(tick_factor);
         let expected_loss_tick = self.expected_loss_in_tick(tick_factor);
         let expected_win_dollar = expected_win_tick * tick_to_dollar;
@@ -173,13 +173,13 @@ impl PnLReportDataRow {
     }
 
     fn get_tick_factor(&self) -> f64 {
-        self.market.tick_step_size().map_or_else(|| 1.0, identity)
+        self.market.tick_step_size().map_or( 1.0, identity)
     }
 
     fn get_tick_to_dollar_conversion_factor(&self) -> f64 {
         self.market
             .tik_to_dollar_conversion_factor()
-            .map_or_else(|| 1.0, identity)
+            .map_or( 1.0, identity)
     }
 
     fn get_entry_ts(&self) -> String {
@@ -206,14 +206,14 @@ impl PnLReportDataRow {
     fn expected_win_in_tick(&self, tick_factor: f64) -> f64 {
         let profit = self
             .trade
-            .profit(self.trade.take_profit.map_or_else(|| self.trade.entry_price, identity));
+            .profit(self.trade.take_profit.map_or( self.trade.entry_price, identity));
         (profit / tick_factor).round()
     }
 
     fn expected_loss_in_tick(&self, tick_factor: f64) -> f64 {
         let loss = self
             .trade
-            .profit(self.trade.stop_loss.map_or_else(|| self.trade.entry_price, identity));
+            .profit(self.trade.stop_loss.map_or( self.trade.entry_price, identity));
         (loss / tick_factor).round()
     }
 }

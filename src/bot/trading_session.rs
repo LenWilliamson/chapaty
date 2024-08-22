@@ -191,9 +191,9 @@ fn build_time_frame_snapshot(
     m: Option<i64>,
 ) -> TimeFrameSnapshot {
     let mut builder = TimeFrameSnapshotBuilder::new(cw);
-    builder = wd.map_or_else(|| builder.clone(), |weekday| builder.with_weekday(weekday));
-    builder = h.map_or_else(|| builder.clone(), |hour| builder.with_hour(hour));
-    builder = m.map_or_else(|| builder.clone(), |minute| builder.with_minute(minute));
+    builder = wd.map_or( builder.clone(), |weekday| builder.with_weekday(weekday));
+    builder = h.map_or( builder.clone(), |hour| builder.with_hour(hour));
+    builder = m.map_or( builder.clone(), |minute| builder.with_minute(minute));
 
     builder.build()
 }

@@ -35,7 +35,7 @@ impl PathFinder {
     fn get_base_path_to_cached_data(&self) -> PathBuf {
         let time_interval = self
             .time_interval
-            .map_or_else(|| "none".to_string(), |v| v.to_string());
+            .map_or( "none".to_string(), |v| v.to_string());
         let mut file_path = PathBuf::from(self.strategy_name.to_string());
         file_path.push(self.market.to_string());
         file_path.push(self.year.to_string());

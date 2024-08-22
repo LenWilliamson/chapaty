@@ -20,25 +20,16 @@ impl OhlcCandle {
         }
     }
 
-    pub fn is_valid(&self) -> bool {
-        self.open_ts.is_some()
-            && self.open.is_some()
-            && self.high.is_some()
-            && self.low.is_some()
-            && self.close.is_some()
-            && self.close_ts.is_some()
+    pub fn get_last_trade_price(&self) -> Option<f64> {
+        self.close
     }
 
-    pub fn get_last_trade_price_unchecked(&self) -> f64 {
-        self.close.unwrap()
+    pub fn get_lowest_trade_price(&self) -> Option<f64> {
+        self.low
     }
 
-    pub fn get_lowest_trade_price_unchecked(&self) -> f64 {
-        self.low.unwrap()
-    }
-
-    pub fn get_highest_trade_price_unchecked(&self) -> f64 {
-        self.high.unwrap()
+    pub fn get_highest_trade_price(&self) -> Option<f64> {
+        self.high
     }
 
     pub fn with_open_ts(self, open_ts: i64) -> Self {
