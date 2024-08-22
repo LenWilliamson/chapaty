@@ -406,7 +406,7 @@ To handle the gaps in historical data and prevent runtime panics, the following 
    - This prevents the system from generating invalid or misleading trade records, ensuring that gaps in the data are handled gracefully.
 
 3. **Graceful Handling of Missing Trades**:  
-   In cases where data gaps prevent the computation of a valid entry timestamp, the system will handle these instances as "no entry trades." This approach allows us to skip trade computations when no entry timestamp is available due to data gaps, treating those trades as "no entry trades."
+   In cases where data gaps prevent the computation of a valid entry timestamp, the system will handle these instances as "no entry trades." This approach allows us to skip trade computations when no entry timestamp is available due to data gaps, treating those trades as "no entry trades".
 
 
 
