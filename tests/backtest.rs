@@ -24,7 +24,7 @@ async fn backtest() {
     let strategy = setup_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
-    let years = vec![2006];
+    let years = (2006..=2024).collect();
 
     let markets = vec![
         // MarketKind::AudUsdFuture,
