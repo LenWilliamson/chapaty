@@ -4,36 +4,33 @@ use crate::{enums::news::NewsKind, types::ohlc::OhlcCandle};
 
 use super::*;
 
-pub struct News {
+pub struct NewsCounter {
     news_kind: NewsKind,
-    stop_loss: StopLoss,
+    stop_loss_kind: StopLossKind,
     take_profit: TakeProfit,
     number_candles_to_wait: i32,
-    is_counter_trade: bool,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: f64,
 }
 
-pub struct NewsBuilder {
+pub struct NewsCounterBuilder {
     news_kind: Option<NewsKind>,
-    stop_loss: Option<StopLoss>,
+    stop_loss_kind: Option<StopLossKind>,
     take_profit: Option<TakeProfit>,
     number_candles_to_wait: Option<i32>,
-    is_counter_trade: Option<bool>,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: Option<f64>,
 }
 
-impl NewsBuilder {
+impl NewsCounterBuilder {
     pub fn new() -> Self {
         Self {
             news_kind: None,
-            stop_loss: None,
+            stop_loss_kind: None,
             take_profit: None,
             number_candles_to_wait: None,
-            is_counter_trade: None,
             loss_to_win_ratio: None,
         }
     }
@@ -45,9 +42,9 @@ impl NewsBuilder {
         }
     }
 
-    pub fn with_stop_loss(self, stop_loss: StopLoss) -> Self {
+    pub fn with_stop_loss_kind(self, stop_loss_kind: StopLossKind) -> Self {
         Self {
-            stop_loss: Some(stop_loss),
+            stop_loss_kind: Some(stop_loss_kind),
             ..self
         }
     }
@@ -66,13 +63,6 @@ impl NewsBuilder {
         }
     }
 
-    pub fn with_is_counter_trade(self, is_counter_trade: bool) -> Self {
-        Self {
-            is_counter_trade: Some(is_counter_trade),
-            ..self
-        }
-    }
-
     /// The number of loser trades it takes to counterbalance a winner
     pub fn with_loss_to_win_ratio(self, loss_to_win_ratio: f64) -> Self {
         if loss_to_win_ratio == 0.0 {
@@ -84,13 +74,12 @@ impl NewsBuilder {
         }
     }
 
-    pub fn build(self) -> News {
-        News {
+    pub fn build(self) -> NewsCounter {
+        NewsCounter {
             news_kind: self.news_kind.unwrap(),
-            stop_loss: self.stop_loss.unwrap(),
+            stop_loss_kind: self.stop_loss_kind.unwrap(),
             take_profit: self.take_profit.unwrap(),
             number_candles_to_wait: self.number_candles_to_wait.unwrap(),
-            is_counter_trade: self.is_counter_trade.unwrap(),
             loss_to_win_ratio: self.loss_to_win_ratio.unwrap(),
         }
     }
@@ -107,21 +96,17 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
-impl News {
+impl NewsCounter {
     fn is_no_entry(
         &self,
         entry_price: f64,
         take_profit: f64,
         trade_direction: &TradeDirectionKind,
     ) -> bool {
-        if self.is_counter_trade {
-            match trade_direction {
-                TradeDirectionKind::Long => entry_price > take_profit,
-                TradeDirectionKind::Short => entry_price < take_profit,
-                TradeDirectionKind::None => true,
-            }
-        } else {
-            false
+        match trade_direction {
+            TradeDirectionKind::Long => entry_price > take_profit,
+            TradeDirectionKind::Short => entry_price < take_profit,
+            TradeDirectionKind::None => true,
         }
     }
 
@@ -130,10 +115,6 @@ impl News {
         let close_px = news_candle.close.unwrap();
 
         (open_px - close_px).abs() * (multiplier - 1.0)
-    }
-
-    fn compute_sl_offset(&self, news_candle: &OhlcCandle) -> f64 {
-        self.compute_offset(news_candle, self.stop_loss.offset)
     }
 
     fn compute_tp_offset(&self, news_candle: &OhlcCandle) -> f64 {
@@ -169,22 +150,13 @@ impl News {
 
     fn compute_sl_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
-        let open = news_candle.open.unwrap();
         let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = if self.is_counter_trade {
-            (self.compute_tp_price(request, is_long_trade) - entry_price).abs()
-                * (1.0 / self.loss_to_win_ratio)
-        } else {
-            self.compute_sl_offset(news_candle)
-        };
+        let offset = (self.compute_tp_price(request, is_long_trade) - entry_price).abs()
+            * (1.0 / self.loss_to_win_ratio);
         let sign = if is_long_trade { -1.0 } else { 1.0 };
 
-        match self.stop_loss.kind {
-            StopLossKind::PriceUponTradeEntry if self.is_counter_trade => {
-                entry_price + sign * offset
-            }
-            StopLossKind::PriceUponTradeEntry => open + sign * offset,
+        match self.stop_loss_kind {
+            StopLossKind::PriceUponTradeEntry => entry_price + sign * offset,
             StopLossKind::PrevHighOrLow => panic!("No PrevHighOrLow available for News Trade!"),
             StopLossKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
         }
@@ -204,18 +176,11 @@ impl News {
         let pre_trade_values = &request.pre_trade_values;
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let open = news_candle.open.unwrap();
-        let entry_price = self.get_entry_price(pre_trade_values);
-        let offset = if self.is_counter_trade {
-            self.compute_tp_offset(news_candle)
-        } else {
-            (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
-                * self.loss_to_win_ratio
-        };
+        let offset = self.compute_tp_offset(news_candle);
         let sign = if is_long_trade { 1.0 } else { -1.0 };
 
         match self.take_profit.kind {
-            TakeProfitKind::PriceUponTradeEntry if self.is_counter_trade => open + sign * offset,
-            TakeProfitKind::PriceUponTradeEntry => entry_price + sign * offset,
+            TakeProfitKind::PriceUponTradeEntry => open + sign * offset,
             TakeProfitKind::PrevClose => panic!("No PrevClose available for News Trade!"),
             TakeProfitKind::PrevHighOrLow => panic!("No Value Area available for News Trade!"),
             TakeProfitKind::ValueAreaHighOrLow => panic!("No Value Area available for News Trade!"),
@@ -233,11 +198,11 @@ impl News {
     }
 }
 
-impl FromStr for NewsBuilder {
+impl FromStr for NewsCounterBuilder {
     type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "NEWS" | "News" | "news" => Ok(NewsBuilder::new()),
+            "NEWS" | "News" | "news" => Ok(NewsCounterBuilder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
                 "This strategy <{s}> does not exists"
             ))),
@@ -245,7 +210,7 @@ impl FromStr for NewsBuilder {
     }
 }
 
-impl Strategy for News {
+impl Strategy for NewsCounter {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         let take_profit = self.get_tp_price(request);
 
@@ -313,14 +278,10 @@ impl Strategy for News {
     ) -> TradeDirectionKind {
         // Rassler vs. Counter -> anhand is_counter_trade unterscheiden
         if let Some(news_candle) = pre_trade_values.news_candle(&self.news_kind, 0) {
-            if self.is_counter_trade {
-                match news_candle_trade_direction(&news_candle) {
-                    TradeDirectionKind::Long => TradeDirectionKind::Short,
-                    TradeDirectionKind::Short => TradeDirectionKind::Long,
-                    TradeDirectionKind::None => TradeDirectionKind::None,
-                }
-            } else {
-                news_candle_trade_direction(&news_candle)
+            match news_candle_trade_direction(&news_candle) {
+                TradeDirectionKind::Long => TradeDirectionKind::Short,
+                TradeDirectionKind::Short => TradeDirectionKind::Long,
+                TradeDirectionKind::None => TradeDirectionKind::None,
             }
         } else {
             TradeDirectionKind::None

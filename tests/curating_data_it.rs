@@ -3,7 +3,7 @@ mod test_configurations;
 use chapaty::{
     config::{self},
     data_provider::cme::Cme,
-    strategy::{news::NewsBuilder, StopLoss, Strategy, TakeProfit},
+    strategy::{news_counter::NewsCounterBuilder, Strategy, TakeProfit},
     MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind,
 };
 
@@ -55,21 +55,16 @@ async fn curating_data_it() {
 }
 
 fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
-    let news_builder = NewsBuilder::new();
-    let sl = StopLoss {
-        kind: StopLossKind::PriceUponTradeEntry,
-        offset: 0.3,
-    };
+    let news_builder = NewsCounterBuilder::new();
     let tp = TakeProfit {
         kind: TakeProfitKind::PriceUponTradeEntry,
         offset: 0.9,
     };
 
     let strategy = news_builder
-        .with_stop_loss(sl)
+        .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
         .with_take_profit(tp)
         .with_news_kind(NewsKind::UsaNFP)
-        .with_is_counter_trade(true)
         .with_number_candles_to_wait(5)
         .with_loss_to_win_ratio(2.0)
         .build();

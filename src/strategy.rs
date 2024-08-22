@@ -1,4 +1,5 @@
-pub mod news;
+pub mod news_counter;
+pub mod news_rassler;
 pub mod ppp;
 
 use crate::{
@@ -52,11 +53,11 @@ pub trait Strategy {
     /// Returns the entry timestamp and a flag indicating whether
     /// the entry timestamp should be computed if `None` is returned.
     ///
-    /// # Arguments
+    /// ### Arguments
     ///
     /// * `pre_trade_values` - A reference to the required pre-trade values with data.
     ///
-    /// # Returns
+    /// ### Returns
     ///
     /// * `(Option<i64>, bool)` - The first value is the entry timestamp (if available).
     ///   The second value is a boolean indicating if the timestamp should be computed
