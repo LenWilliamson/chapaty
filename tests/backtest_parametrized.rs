@@ -116,7 +116,7 @@ async fn backtest_parametrized() {
 
     for (number_candles_to_wait, loss_to_win_ratio, offset) in strategy_parameters.iter() {
         let data_provider = Arc::new(Cme);
-        let years = vec![2024];
+        let years: Vec<_> = (2006..=2020).collect();
         let markets = vec![MarketKind::EurUsdFuture];
         let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
         let time_frame = TimeFrameKind::Daily;
