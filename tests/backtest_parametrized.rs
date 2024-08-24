@@ -30,18 +30,15 @@ async fn backtest_parametrized() {
 
     let strategy_parameters: Vec<(i32, f64, f64)> = (3..=15)
         .flat_map(|number_candles_to_wait| {
-            range(0.3, 3.5, 0.1)
+            range(0.3, 3.5, 0.1, 10.0)
                 .into_iter()
                 .flat_map(move |loss_to_win_ratio| {
-                    range(0.3, 3.5, 0.05)
+                    range(0.3, 3.5, 0.05, 100.0)
                         .into_iter()
                         .map(move |offset| (number_candles_to_wait, loss_to_win_ratio, offset))
                 })
         })
         .collect();
-
-    let tmp =  range(0.3, 3.5, 0.1);
-    dbg!(tmp);
 
     // let tasks: Vec<_> = strategy_parameters
     //     .into_iter()
@@ -206,15 +203,16 @@ fn setup_strategy_parametrized(
     Arc::new(strategy)
 }
 
-fn range(start: f64, end: f64, step: f64) -> Vec<f64> {
-    println!("HI");
+fn range(start: f64, end: f64, step: f64, setp_precision: f64) -> Vec<f64> {
     let mut vec = Vec::new();
-    let mut current = start;
+    let start_scaled = (start * setp_precision).round() as i32;
+    let end_scaled = (end * setp_precision).round() as i32;
+    let step_scaled = (step * setp_precision).round() as usize;
 
-    while current <= end {
-        vec.push(current);
-        current = (current + step * 10.0).round() / 10.0;
-        dbg!(current);
+    for i in (start_scaled..=end_scaled).step_by(step_scaled) {
+        let value = i as f64 / setp_precision;
+        vec.push(value);
     }
+
     vec
 }
