@@ -30,7 +30,7 @@ async fn backtest_parametrized() {
 
     let strategy_parameters: Vec<(i32, f64, f64)> = (3..=15)
         .flat_map(|number_candles_to_wait| {
-            range(0.5, 3.5, 0.1, 10.0)
+            range(0.5, 3.0, 0.1, 10.0)
                 .into_iter()
                 .flat_map(move |loss_to_win_ratio| {
                     range(0.3, 1.5, 0.05, 100.0)
