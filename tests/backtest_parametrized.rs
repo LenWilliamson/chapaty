@@ -114,10 +114,7 @@ async fn backtest_parametrized() {
 
     let mut res = Vec::new();
 
-    for (number_candles_to_wait, loss_to_win_ratio, offset) in strategy_parameters {
-        let start = Instant::now();
-        println!("Backtesting Bot with: number_candles_to_wait = {number_candles_to_wait}, loss_to_win_ratio = {loss_to_win_ratio}, offset = {offset}");
-
+    for (number_candles_to_wait, loss_to_win_ratio, offset) in strategy_parameters.iter() {
         let data_provider = Arc::new(Cme);
         let years = vec![2024];
         let markets = vec![MarketKind::EurUsdFuture];
@@ -130,7 +127,7 @@ async fn backtest_parametrized() {
         };
 
         let strategy =
-            setup_strategy_parametrized(offset, number_candles_to_wait, loss_to_win_ratio);
+            setup_strategy_parametrized(*offset, *number_candles_to_wait, *loss_to_win_ratio);
         let bot = BotBuilder::new(strategy, data_provider.clone())
             .with_years(years.clone())
             .with_markets(markets.clone())
@@ -156,27 +153,36 @@ async fn backtest_parametrized() {
             offset,
             total_profit,
         ));
-
-        let duration = start.elapsed();
-        println!("Time elapsed is: {duration:?} for backtesting.");
     }
 
-    let max_row = res.into_iter()
-        .inspect(|(number_candles_to_wait, loss_to_win_ratio, offset, total_profit)| {
-            println!(
-                "number_candles_to_wait = {number_candles_to_wait}, loss_to_win_ratio = {loss_to_win_ratio}, offset = {offset}, total_profit = {total_profit}",
-            );
-        })
-        .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap());
+    let max_profit = res
+        .iter()
+        .map(|&(_, _, _, total_profit)| total_profit)
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap();
 
-    if let Some((number_candles_to_wait, loss_to_win_ratio, offset, total_profit)) = max_row {
+    let max_rows: Vec<_> = res.into_iter()
+    .inspect(|(number_candles_to_wait, loss_to_win_ratio, offset, total_profit)| {
         println!(
+            "number_candles_to_wait = {number_candles_to_wait}, loss_to_win_ratio = {loss_to_win_ratio}, offset = {offset}, total_profit = {total_profit}",
+        );
+    })
+    .filter(|&(_, _, _, total_profit)| total_profit >= max_profit)
+    .collect();
+
+    if !max_rows.is_empty() {
+        for (number_candles_to_wait, loss_to_win_ratio, offset, total_profit) in max_rows {
+            println!(
             "Max profit row: number_candles_to_wait = {number_candles_to_wait}, loss_to_win_ratio = {loss_to_win_ratio}, offset = {offset}, total_profit = {total_profit}",
         );
+        }
     }
 
     let duration = start.elapsed();
-    println!("Total time elapsed is: {duration:?}");
+    println!(
+        "Total time elapsed testing {} combinations is: {duration:?}",
+        strategy_parameters.len()
+    );
 
     assert_eq!(0, 0);
 }
