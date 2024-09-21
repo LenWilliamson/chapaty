@@ -19,7 +19,7 @@ pub mod trade_breakdown_report;
 mod trading_indicator;
 mod types;
 
-pub use bot::time_interval::TimeInterval;
+pub use bot::{execution_data::ExecutionData, time_interval::TimeInterval};
 pub use bot::{Bot, BotBuilder};
 pub use enums::{
     bot::{StopLossKind, TakeProfitKind, TimeFrameKind},

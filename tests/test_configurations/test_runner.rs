@@ -17,7 +17,7 @@ impl TestRunner {
     }
 
     pub async fn run(&self, bot: Bot) -> TestResult {
-        let backtest_result = bot.backtest().await;
+        let backtest_result = bot.backtest().await.0;
 
         TestResult {
             market: self.config.market,

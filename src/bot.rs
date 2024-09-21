@@ -1,5 +1,5 @@
 mod backtesting_batch_data;
-mod execution_data;
+pub mod execution_data;
 pub mod indicator_data_pair;
 pub mod pre_trade_data;
 pub mod time_frame_snapshot;
@@ -27,16 +27,17 @@ use crate::{
     },
     strategy::Strategy,
 };
+use execution_data::ExecutionData;
 use google_cloud_storage::client::Client;
 use mockall::automock;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 #[derive(Clone)]
 pub struct Bot {
-    client: Client,
+    client: Option<Client>,
     name: String,
     bucket: GoogleCloudBucket,
     strategy: Arc<dyn Strategy + Send + Sync>,
@@ -48,6 +49,7 @@ pub struct Bot {
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
+    session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
 }
 pub struct BotBuilder {
     client: Option<Client>,
@@ -62,12 +64,18 @@ pub struct BotBuilder {
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
+    session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
 }
 
 #[automock]
 impl Bot {
-    pub async fn backtest(&self) -> BacktestResult {
-        let pnl_statement = self.compute_pnl_statement().await;
+    pub async fn backtest(
+        &self,
+    ) -> (
+        BacktestResult,
+        Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+    ) {
+        let (pnl_statement, session_cache) = self.compute_pnl_statement().await;
 
         let performance_report = pnl_statement.compute_performance_report();
         let trade_breakdown_report = pnl_statement.compute_trade_breakdown_report();
@@ -86,14 +94,14 @@ impl Bot {
             res.save_as_csv(&self.name);
         }
 
-        res
+        (res, session_cache)
     }
 
     pub fn get_shared_pointer(&self) -> Arc<Bot> {
         Arc::new(self.clone())
     }
 
-    pub fn get_client_ref(&self) -> &Client {
+    pub fn get_client_ref(&self) -> &Option<Client> {
         &self.client
     }
 
@@ -125,14 +133,21 @@ impl Bot {
         &self.time_interval
     }
 
-    async fn compute_pnl_statement(&self) -> PnLStatement {
+    async fn compute_pnl_statement(
+        &self,
+    ) -> (
+        PnLStatement,
+        Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+    ) {
+        let session_cache = Arc::new(Mutex::new(HashMap::new()));
         let tasks: Vec<_> = self
             .markets
             .clone()
             .into_iter()
             .map(|market| {
                 let _self = self.clone();
-                tokio::spawn(async move { _self.compute_pnl_reports(market).await })
+                let session_cache = Arc::clone(&session_cache);
+                tokio::spawn(async move { _self.compute_pnl_reports(market, session_cache).await })
             })
             .collect();
 
@@ -145,14 +160,21 @@ impl Bot {
             },
         );
 
-        PnLStatement {
-            strategy_name: self.strategy.get_name(),
-            markets: self.markets.clone(),
-            pnl_data,
-        }
+        (
+            PnLStatement {
+                strategy_name: self.strategy.get_name(),
+                markets: self.markets.clone(),
+                pnl_data,
+            },
+            session_cache,
+        )
     }
 
-    async fn compute_pnl_reports(&self, market: MarketKind) -> PnLReports {
+    async fn compute_pnl_reports(
+        &self,
+        market: MarketKind,
+        session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+    ) -> PnLReports {
         let trading_session_builder = TradingSessionBuilder::new()
             .with_bot(self.get_shared_pointer())
             .with_indicator_data_pair(self.determine_indicator_data_pair())
@@ -167,8 +189,23 @@ impl Bot {
             .map(|year| {
                 let builder = trading_session_builder.clone();
                 let strategy = self.strategy.get_name();
+                let cache_computations = self.cache_computations;
+                let session_cache = Arc::clone(&session_cache);
+                let some_session_cache = self.session_cache.clone();
                 tokio::spawn(async move {
-                    let session = builder.with_year(year).build().await;
+                    let session = builder
+                        .with_year(year)
+                        .with_session_cache(some_session_cache)
+                        .build()
+                        .await;
+                    if cache_computations {
+                        let mut cache = session_cache.lock().unwrap();
+
+                        cache
+                            .entry(market)
+                            .or_insert_with(HashMap::new)
+                            .insert(year, session.data.clone());
+                    }
                     PnLReport {
                         market,
                         year,
@@ -228,6 +265,7 @@ impl BotBuilder {
             time_frame: TimeFrameKind::Daily,
             save_result_as_csv: false,
             cache_computations: false,
+            session_cache: None,
         }
     }
 
@@ -285,17 +323,27 @@ impl BotBuilder {
         }
     }
 
+    pub fn with_session_cache_computations(
+        self,
+        session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+    ) -> Self {
+        Self {
+            session_cache: Some(session_cache),
+            ..self
+        }
+    }
+
     pub fn with_google_cloud_bucket(self, bucket: GoogleCloudBucket) -> Self {
         Self { bucket, ..self }
     }
 
     pub fn build(self) -> Result<Bot, ChapatyErrorKind> {
-        let client = self.client.ok_or(
-            ChapatyErrorKind::BuildBotError("Google Cloud Client is not initalized. Use BotBuilder::with_google_cloud_client for initalization"
-            .to_string()))?;
+        // let client = self.client.ok_or(
+        //     ChapatyErrorKind::BuildBotError("Google Cloud Client is not initalized. Use BotBuilder::with_google_cloud_client for initalization"
+        //     .to_string()))?;
 
         Ok(Bot {
-            client,
+            client: self.client,
             name: self.name,
             bucket: self.bucket,
             strategy: self.strategy,
@@ -307,6 +355,7 @@ impl BotBuilder {
             time_frame: self.time_frame,
             save_result_as_csv: self.save_result_as_csv,
             cache_computations: self.cache_computations,
+            session_cache: self.session_cache,
         })
     }
 }

@@ -27,7 +27,7 @@ use polars::prelude::DataFrame;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use tokio::task::JoinHandle;
 
@@ -191,9 +191,9 @@ fn build_time_frame_snapshot(
     m: Option<i64>,
 ) -> TimeFrameSnapshot {
     let mut builder = TimeFrameSnapshotBuilder::new(cw);
-    builder = wd.map_or( builder.clone(), |weekday| builder.with_weekday(weekday));
-    builder = h.map_or( builder.clone(), |hour| builder.with_hour(hour));
-    builder = m.map_or( builder.clone(), |minute| builder.with_minute(minute));
+    builder = wd.map_or(builder.clone(), |weekday| builder.with_weekday(weekday));
+    builder = h.map_or(builder.clone(), |hour| builder.with_hour(hour));
+    builder = m.map_or(builder.clone(), |minute| builder.with_minute(minute));
 
     builder.build()
 }
@@ -218,6 +218,7 @@ pub struct TradingSessionBuilder {
     year: Option<u32>,
     market_sim_data_kind: Option<MarketSimulationDataKind>,
     cache_computations: bool,
+    session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
 }
 
 impl TradingSessionBuilder {
@@ -229,6 +230,7 @@ impl TradingSessionBuilder {
             year: None,
             market_sim_data_kind: None,
             cache_computations: false,
+            session_cache: None,
         }
     }
 
@@ -274,8 +276,34 @@ impl TradingSessionBuilder {
         }
     }
 
+    pub fn with_session_cache(
+        self,
+        session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
+    ) -> Self {
+        Self {
+            session_cache,
+            ..self
+        }
+    }
+
     pub async fn build(self) -> TradingSession {
-        let data = self.populate_trading_session_data().await;
+        let data = match &self.session_cache {
+            Some(session_cache) => {
+                // Lock the Mutex to get access to the HashMap
+                let cache = session_cache.lock().unwrap();
+        
+                // Access the nested HashMap for the specific market and year
+                cache.get(&self.market.unwrap())
+                    .and_then(|year_map| year_map.get(&self.year.unwrap()))
+                    .unwrap()
+                    .clone() // Clone the ExecutionData if it exists
+            }
+            None => {
+                // If there's no session_cache, populate the trading session data
+                self.populate_trading_session_data().await
+            },
+        };
+        
         TradingSession {
             bot: self.bot.unwrap(),
             indicator_data_pair: self.indicator_data_pair.unwrap(),

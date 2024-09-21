@@ -6,6 +6,7 @@ This document tracks the performance improvements of the `chapaty` software, foc
 
 The chart below demonstrates the average time taken to backtest 20,000 trades across different versions of the software. Each point on the graph represents a new release where optimizations were applied to improve performance.
 
+TODO: Add Mermaid Support
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": { "lineColor":"#4CAF50", "fontSize":"16px", "fontFamily":"Arial"}} }%%
 line

@@ -5,8 +5,9 @@ use super::{
 use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
+    data_provider::BytesToDataFrameRequest,
     enums::{data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind},
-    serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map}, data_provider::BytesToDataFrameRequest,
+    serde::{deserialize::deserialize_data_frame_map, serialize::serialize_data_frame_map},
 };
 use google_cloud_storage::{
     client::Client,
@@ -68,11 +69,12 @@ impl CloudStorageClient {
             .transform_into_df_map(required_data_frames)
             .await;
 
-        if self.cache_computations {
-            self.upload_df_map(df_map).await.unwrap()
-        } else {
-            df_map
-        }
+        // if self.cache_computations {
+        //     self.upload_df_map(df_map).await.unwrap()
+        // } else {
+        //     df_map
+        // }
+        df_map
     }
 
     fn upload_df_map(
@@ -133,6 +135,8 @@ impl CloudStorageClient {
 
         let client = self.bot.get_client_ref();
         client
+            .clone()
+            .unwrap()
             .upload_object(&upload_request, bytes, &upload_type)
             .await
             .unwrap();
@@ -160,7 +164,7 @@ impl CloudStorageClient {
         let leaf_dir = self
             .indicator_data_pair
             .as_ref()
-            .map_or( self.simulation_data, |v| v.data);
+            .map_or(self.simulation_data, |v| v.data);
 
         futures::future::join_all(tasks)
             .await
@@ -170,7 +174,7 @@ impl CloudStorageClient {
                 let dp = self.bot.get_data_provider();
                 let request = BytesToDataFrameRequest {
                     df_as_bytes,
-                    bytes_source_dir: leaf_dir
+                    bytes_source_dir: leaf_dir,
                 };
                 dp.get_df_from_bytes(request)
             })
@@ -179,7 +183,9 @@ impl CloudStorageClient {
 
     pub async fn files_in_bucket(&self, bucket: &str) -> Vec<String> {
         let client = self.bot.get_client_ref();
-        let files_in_bucket = get_files_in_bucket2(client, bucket).await.unwrap();
+        let files_in_bucket = get_files_in_bucket2(&client.clone().unwrap(), bucket)
+            .await
+            .unwrap();
 
         files_in_bucket
             .into_iter()
@@ -202,6 +208,8 @@ impl CloudStorageClient {
 
         self.bot
             .get_client_ref()
+            .clone()
+            .unwrap()
             .download_object(&get_request, &Range::default())
             .await
             .map_err(|e| handle_google_cloud_error(e, object, bucket))
@@ -344,7 +352,7 @@ fn handle_google_cloud_error(error: Error, file: String, bucket: &str) -> Chapat
         if is_file_not_found_error(e) {
             return ChapatyErrorKind::FileNotFound(format!(
                 "{file} not found in cloud storage bucket <{bucket}>"
-            ))
+            ));
         }
     }
     ChapatyErrorKind::UnknownGoogleCloudStorageError(error.to_string())

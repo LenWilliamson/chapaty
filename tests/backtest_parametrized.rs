@@ -140,7 +140,7 @@ async fn backtest_parametrized() {
             .build()
             .unwrap();
 
-        let result = bot.backtest().await;
+        let result = bot.backtest().await.0;
         let total_profit = result
             .agg_market_and_agg_year
             .performance_report
