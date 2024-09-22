@@ -139,7 +139,7 @@ impl NewsCounter {
         };
 
         some_take_profit.and_then(|take_profit| {
-            let entry_px = self.get_entry_price(pre_trade_values);
+            let entry_px = self.get_entry_price(pre_trade_values).unwrap();
             if self.is_no_entry(entry_px, take_profit, &trade_direction) {
                 None
             } else {
@@ -150,7 +150,7 @@ impl NewsCounter {
 
     fn compute_sl_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
-        let entry_price = self.get_entry_price(pre_trade_values);
+        let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = (self.compute_tp_price(request, is_long_trade) - entry_price).abs()
             * (1.0 / self.loss_to_win_ratio);
         let sign = if is_long_trade { -1.0 } else { 1.0 };
@@ -221,7 +221,7 @@ impl Strategy for NewsCounter {
         let entry_price = self
             .get_entry_ts(&request.pre_trade_values)
             .0
-            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values));
+            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values).unwrap());
 
         Trade {
             entry_price,
@@ -246,7 +246,7 @@ impl Strategy for NewsCounter {
         }
     }
 
-    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
         pre_trade_values
             .news_candle(
                 &self.news_kind,
@@ -254,7 +254,6 @@ impl Strategy for NewsCounter {
             )
             .unwrap()
             .open
-            .unwrap()
     }
 
     fn get_entry_ts(

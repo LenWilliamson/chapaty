@@ -4,7 +4,7 @@ use crate::{enums::news::NewsKind, types::ohlc::OhlcCandle};
 
 use super::*;
 
-pub struct NewsRassler {
+pub struct NewsRasslerWithConfirmation {
     news_kind: NewsKind,
     stop_loss: StopLoss,
     take_profit_kind: TakeProfitKind,
@@ -14,7 +14,7 @@ pub struct NewsRassler {
     loss_to_win_ratio: f64,
 }
 
-pub struct NewsRasslerBuilder {
+pub struct NewsRasslerWithConfirmationBuilder {
     news_kind: Option<NewsKind>,
     stop_loss: Option<StopLoss>,
     take_profit_kind: Option<TakeProfitKind>,
@@ -24,7 +24,7 @@ pub struct NewsRasslerBuilder {
     loss_to_win_ratio: Option<f64>,
 }
 
-impl NewsRasslerBuilder {
+impl NewsRasslerWithConfirmationBuilder {
     pub fn new() -> Self {
         Self {
             news_kind: None,
@@ -74,8 +74,8 @@ impl NewsRasslerBuilder {
         }
     }
 
-    pub fn build(self) -> NewsRassler {
-        NewsRassler {
+    pub fn build(self) -> NewsRasslerWithConfirmation {
+        NewsRasslerWithConfirmation {
             news_kind: self.news_kind.unwrap(),
             stop_loss: self.stop_loss.unwrap(),
             take_profit_kind: self.take_profit_kind.unwrap(),
@@ -96,7 +96,7 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
-impl NewsRassler {
+impl NewsRasslerWithConfirmation {
     fn compute_offset(&self, news_candle: &OhlcCandle, multiplier: f64) -> f64 {
         let open_px = news_candle.open.unwrap();
         let close_px = news_candle.close.unwrap();
@@ -152,7 +152,7 @@ impl NewsRassler {
 
     fn compute_tp_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
-        let entry_price = self.get_entry_price(pre_trade_values);
+        let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
             * self.loss_to_win_ratio;
         let sign = if is_long_trade { 1.0 } else { -1.0 };
@@ -176,11 +176,11 @@ impl NewsRassler {
     }
 }
 
-impl FromStr for NewsRasslerBuilder {
+impl FromStr for NewsRasslerWithConfirmationBuilder {
     type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "NEWS" | "News" | "news" => Ok(NewsRasslerBuilder::new()),
+            "NEWS" | "News" | "news" => Ok(NewsRasslerWithConfirmationBuilder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
                 "This strategy <{s}> does not exists"
             ))),
@@ -188,7 +188,7 @@ impl FromStr for NewsRasslerBuilder {
     }
 }
 
-impl Strategy for NewsRassler {
+impl Strategy for NewsRasslerWithConfirmation {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         let take_profit = self.get_tp_price(request);
 
@@ -199,7 +199,7 @@ impl Strategy for NewsRassler {
         let entry_price = self
             .get_entry_ts(&request.pre_trade_values)
             .0
-            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values));
+            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values).unwrap());
 
         Trade {
             entry_price,
@@ -224,15 +224,40 @@ impl Strategy for NewsRassler {
         }
     }
 
-    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
+        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
+
+        let mut trade_kind = TradeDirectionKind::None;
+        let mut entry_candle = 0;
+        for t in 1..=self.number_candles_to_wait {
+            let candle = pre_trade_values
+                .news_candle(&self.news_kind, t as u32)
+                .unwrap();
+            if news_candle.high.le(&candle.high) && news_candle.low.ge(&candle.low) {
+                // News candle is inside the next candle
+                return None;
+            }
+
+            if news_candle.high < candle.close {
+                trade_kind = TradeDirectionKind::Long;
+                entry_candle = t;
+                break;
+            }
+
+            if news_candle.low > candle.close {
+                trade_kind = TradeDirectionKind::Short;
+                entry_candle = t;
+                break;
+            }
+        }
+        if entry_candle >= self.number_candles_to_wait || trade_kind == TradeDirectionKind::None {
+            return None;
+        }
+
         pre_trade_values
-            .news_candle(
-                &self.news_kind,
-                self.number_candles_to_wait.try_into().unwrap(),
-            )
+            .news_candle(&self.news_kind, (entry_candle + 1) as u32)
             .unwrap()
             .open
-            .unwrap()
     }
 
     fn get_entry_ts(

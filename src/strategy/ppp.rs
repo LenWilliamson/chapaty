@@ -87,7 +87,7 @@ impl Ppp {
                 1.0,
             )
         };
-        let entry_price = self.get_entry_price(pre_trade_values);
+        let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
 
         match self.stop_loss.kind {
@@ -113,7 +113,7 @@ impl Ppp {
                 -1.0,
             )
         };
-        let entry_price = self.get_entry_price(pre_trade_values);
+        let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let lst_trade_price = pre_trade_values.last_trade_price();
         let offset = request.market.try_offset_in_tick(self.take_profit.offset);
 
@@ -157,7 +157,7 @@ impl FromStr for PppBuilder {
 impl Strategy for Ppp {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
         Trade {
-            entry_price: self.get_entry_price(&request.pre_trade_values),
+            entry_price: self.get_entry_price(&request.pre_trade_values).unwrap(),
             stop_loss: self.get_sl_price(request),
             take_profit: self.get_tp_price(request),
             trade_kind: self.get_trade_kind(&request.pre_trade_values),
@@ -182,11 +182,11 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64 {
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
         match self.entry {
-            TradingIndicatorKind::Poc(ph) => pre_trade_values.poc(ph),
-            TradingIndicatorKind::ValueAreaHigh(ph) => pre_trade_values.value_area_high(ph),
-            TradingIndicatorKind::ValueAreaLow(ph) => pre_trade_values.value_area_low(ph),
+            TradingIndicatorKind::Poc(ph) => Some(pre_trade_values.poc(ph)),
+            TradingIndicatorKind::ValueAreaHigh(ph) => Some(pre_trade_values.value_area_high(ph)),
+            TradingIndicatorKind::ValueAreaLow(ph) => Some(pre_trade_values.value_area_low(ph)),
         }
     }
 
@@ -203,7 +203,7 @@ impl Strategy for Ppp {
         pre_trade_values: &RequiredPreTradeValuesWithData,
     ) -> TradeDirectionKind {
         let last_trade_price = pre_trade_values.last_trade_price();
-        let entry_price = self.get_entry_price(pre_trade_values);
+        let entry_price = self.get_entry_price(pre_trade_values).unwrap();
 
         if last_trade_price < entry_price {
             TradeDirectionKind::Short

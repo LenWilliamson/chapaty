@@ -123,10 +123,14 @@ impl PnLReportDataRowCalculator {
             // therefore we don't need to compute anything
             None
         } else {
-            calculator_builder
-                .with_entry_price(self.strategy.get_entry_price(&pre_trade_values))
-                .with_entry_ts(entry_ts)
-                .build_and_compute()
+            self.strategy
+                .get_entry_price(&pre_trade_values)
+                .and_then(|entry_price| {
+                    calculator_builder
+                        .with_entry_price(entry_price)
+                        .with_entry_ts(entry_ts)
+                        .build_and_compute()
+                })
         }
     }
 
@@ -140,7 +144,6 @@ impl PnLReportDataRowCalculator {
 fn should_skip_computation(entry_ts: &Option<i64>, compute_entry_ts_if_none: bool) -> bool {
     entry_ts.is_none() && !compute_entry_ts_if_none
 }
-
 
 pub struct PnLReportDataRowCalculatorBuilder {
     strategy: Option<Arc<dyn Strategy>>,

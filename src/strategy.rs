@@ -49,7 +49,7 @@ pub struct RequriedPreTradeValues {
 pub trait Strategy {
     fn get_trade(&self, trade_request_object: &TradeRequestObject) -> Trade;
     fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues;
-    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> f64;
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64>;
     
     /// Returns the entry timestamp and a flag indicating whether
     /// the entry timestamp should be computed if `None` is returned.

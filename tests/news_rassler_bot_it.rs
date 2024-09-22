@@ -20,7 +20,7 @@ async fn news_rassler_bot_strategy_1_it() {
     news_rassler_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for ppp_bot_strategy_1_it().");
+    println!("Time elapsed is: {duration:?} for news_rassler_bot_strategy_1_it().");
 }
 
 #[ignore]
@@ -32,7 +32,7 @@ async fn news_rassler_bot_strategy_2_it() {
     news_rassler_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for ppp_bot_strategy_2_it().");
+    println!("Time elapsed is: {duration:?} for news_rassler_bot_strategy_2_it().");
 }
 
 async fn news_rassler_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: &str) {

@@ -3,7 +3,7 @@ pub mod test_configurations;
 use chapaty::{
     config::{self},
     data_provider::cme::Cme,
-    strategy::{news_counter::NewsCounterBuilder, Strategy, TakeProfit},
+    strategy::{news_rassler_with_confirmation::NewsRasslerWithConfirmationBuilder, StopLoss, Strategy},
      MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind,
     TimeFrameKind,
 };
@@ -13,29 +13,29 @@ use std::{sync::Arc, time::Instant};
 
 #[ignore]
 #[tokio::test]
-async fn news_counter_bot_strategy_1_it() {
+async fn news_rassler_with_confirmation_bot_strategy_1_it() {
     let start = Instant::now();
     let expected_result = "";
 
-    news_counter_bot_it(setup_strategy(0.9), &expected_result).await;
+    news_rassler_with_confirmation_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for news_counter_bot_strategy_1_it().");
+    println!("Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_1_it().");
 }
 
 #[ignore]
 #[tokio::test]
-async fn news_counter_bot_strategy_2_it() {
+async fn news_rassler_with_confirmation_bot_strategy_2_it() {
     let start = Instant::now();
     let expected_result = "";
 
-    news_counter_bot_it(setup_strategy(0.9), &expected_result).await;
+    news_rassler_with_confirmation_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for news_counter_bot_strategy_2_it().");
+    println!("Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_2_it().");
 }
 
-async fn news_counter_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: &str) {
+async fn news_rassler_with_confirmation_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: &str) {
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
@@ -46,8 +46,8 @@ async fn news_counter_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected
         strategy,
         data_provider: Arc::new(Cme),
         market: MarketKind::EurUsdFuture,
-        year: 2020,
-        market_simulation_data: MarketSimulationDataKind::Ohlc1m,
+        year: 2021,
+        market_simulation_data: MarketSimulationDataKind::Ohlc5m,
         time_interval: None,
         time_frame: TimeFrameKind::Daily,
     };
@@ -59,15 +59,15 @@ async fn news_counter_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected
 }
 
 fn setup_strategy(offset: f64) -> Arc<dyn Strategy + Send + Sync> {
-    let news_builder = NewsCounterBuilder::new();
-    let tp = TakeProfit {
-        kind: TakeProfitKind::PriceUponTradeEntry,
-        offset
+    let news_builder = NewsRasslerWithConfirmationBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset,
     };
 
     let strategy = news_builder
-        .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
-        .with_take_profit(tp)
+        .with_stop_loss(sl)
+        .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
         .with_news_kind(NewsKind::UsaNFP)
         .with_number_candles_to_wait(5)
         .with_loss_to_win_ratio(2.0)
