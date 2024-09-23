@@ -1,9 +1,22 @@
 pub mod test_configurations;
 
 use chapaty::{
-    config::{self}, data_provider::cme::Cme, strategy::{news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder, StopLoss, Strategy, TakeProfit}, BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind
+    config::{self},
+    data_provider::cme::Cme,
+    strategy::{
+        news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder,
+        news_rassler_with_confirmation::NewsRasslerWithConfirmationBuilder, StopLoss, Strategy,
+        TakeProfit,
+    },
+    BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
+    TakeProfitKind, TimeFrameKind,
 };
-use std::{collections::HashMap, sync::{Arc, Mutex}, time::Instant};
+
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 /// Example integration test for configuring and running a backtest using the `chapaty` API.
 ///
@@ -17,7 +30,8 @@ use std::{collections::HashMap, sync::{Arc, Mutex}, time::Instant};
 async fn backtest() {
     let start = Instant::now();
 
-    let strategy = setup_strategy();
+    let strategy = setup_news_rassler_with_confirmation_strategy();
+    // let strategy = setup_news_counter_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
     let years = (2006..=2024).collect();
@@ -31,7 +45,7 @@ async fn backtest() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
+    let market_simulation_data = MarketSimulationDataKind::Ohlc5m;
     // let time_interval = strategy_configurations::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
@@ -61,10 +75,12 @@ async fn backtest() {
     assert_eq!(0, 0);
 }
 
-async fn backtest_with_session_cache(session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>) {
+async fn backtest_with_session_cache(
+    session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+) {
     let start = Instant::now();
 
-    let strategy = setup_strategy();
+    let strategy = setup_news_counter_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
     let years = (2006..=2024).collect();
@@ -108,16 +124,34 @@ async fn backtest_with_session_cache(session_cache: Arc<Mutex<HashMap<MarketKind
     assert_eq!(0, 0);
 }
 
-fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
+fn setup_news_counter_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let news_builder = NewsCounterBuilder::new();
     let tp = TakeProfit {
         kind: TakeProfitKind::PriceUponTradeEntry,
-        offset: 1.4,
+        offset: 1.45,
     };
 
     let strategy = news_builder
         .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
         .with_take_profit(tp)
+        .with_news_kind(NewsKind::UsaCPI)
+        .with_number_candles_to_wait(11)
+        .with_loss_to_win_ratio(1.05)
+        .build();
+
+    Arc::new(strategy)
+}
+
+fn setup_news_rassler_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let news_builder = NewsRasslerBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset: 0.3,
+    };
+
+    let strategy = news_builder
+        .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
+        .with_stop_loss(sl)
         .with_news_kind(NewsKind::UsaCPI)
         .with_number_candles_to_wait(3)
         .with_loss_to_win_ratio(1.0)
@@ -126,9 +160,31 @@ fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
     Arc::new(strategy)
 }
 
+fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let news_builder = NewsRasslerWithConfirmationBuilder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset: 1.3,
+    };
+
+    let strategy = news_builder
+        .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
+        .with_stop_loss(sl)
+        .with_news_kind(NewsKind::UsaCPI)
+        .with_number_candles_to_wait(11)
+        .with_loss_to_win_ratio(2.9)
+        .build();
+
+    Arc::new(strategy)
+}
+
 /*
-Counter NFP: number_candles_to_wait = 8, loss_to_win_ratio = 2.8, offset = 1.25, total_profit = 12125 das Maximum über 2006-2020 was wir hätten erzielen können
-Counter CPI: number_candles_to_wait = 11, loss_to_win_ratio = 1.05, offset = 1.45, total_profit = 8593.75 das Maximum über 2006-2020 was wir hätten erzielen können
-Rassler NFP: number_candles_to_wait = 3, loss_to_win_ratio = 0.65, offset = 0.55, total_profit = 9012.5
-Rassler CPI: number_candles_to_wait = 10, loss_to_win_ratio = 0.6, offset = 0.5, total_profit = 5093.75
+Counter                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 8, loss_to_win_ratio = 2.8, offset = 1.25, total_profit = 12125
+Counter                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 1.05, offset = 1.45, total_profit = 8593.75
+
+Rassler                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 3, loss_to_win_ratio = 0.65, offset = 0.55, total_profit = 9012.5
+Rassler                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 0.6, offset = 0.5, total_profit = 5093.75
+
+Rassler Confirmation    NFP 5m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 1, offset = 1.3, total_profit = 9800, treffer_quote = 0.5982905982905983
+Rassler Confirmation    CPI 5m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 2.9, offset = 1.3, total_profit = 13093.75, treffer_quote = 0.589041095890411
 */

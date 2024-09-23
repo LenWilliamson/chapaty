@@ -190,6 +190,17 @@ impl FromStr for NewsRasslerWithConfirmationBuilder {
 
 impl Strategy for NewsRasslerWithConfirmation {
     fn get_trade(&self, request: &TradeRequestObject) -> Trade {
+        let entry_price = self.get_entry_price(&request.pre_trade_values);
+        if entry_price.is_none() {
+            return Trade {
+                entry_price: 0.0,
+                stop_loss: None,
+                take_profit: None,
+                trade_kind: TradeDirectionKind::None,
+                is_valid: false,
+            };
+        }
+
         let take_profit = self.get_tp_price(request);
 
         let stop_loss = take_profit.map(|_| self.get_sl_price(request)).flatten();
@@ -199,7 +210,7 @@ impl Strategy for NewsRasslerWithConfirmation {
         let entry_price = self
             .get_entry_ts(&request.pre_trade_values)
             .0
-            .map_or(0.0, |_| self.get_entry_price(&request.pre_trade_values).unwrap());
+            .map_or(0.0, |_| entry_price.unwrap());
 
         Trade {
             entry_price,
@@ -225,7 +236,10 @@ impl Strategy for NewsRasslerWithConfirmation {
     }
 
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
-        let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
+        let news_candle = match pre_trade_values.news_candle(&self.news_kind, 0) {
+            Some(x) => x,
+            None => return None,
+        };
 
         let mut trade_kind = TradeDirectionKind::None;
         let mut entry_candle = 0;
@@ -264,12 +278,41 @@ impl Strategy for NewsRasslerWithConfirmation {
         &self,
         pre_trade_values: &RequiredPreTradeValuesWithData,
     ) -> (Option<i64>, bool) {
+        let news_candle = match pre_trade_values.news_candle(&self.news_kind, 0) {
+            Some(x) => x,
+            None => return (None, false),
+        };
+
+        let mut trade_kind = TradeDirectionKind::None;
+        let mut entry_candle = 0;
+        for t in 1..=self.number_candles_to_wait {
+            let candle = pre_trade_values
+                .news_candle(&self.news_kind, t as u32)
+                .unwrap();
+            if news_candle.high.le(&candle.high) && news_candle.low.ge(&candle.low) {
+                // News candle is inside the next candle
+                return (None, false);
+            }
+
+            if news_candle.high < candle.close {
+                trade_kind = TradeDirectionKind::Long;
+                entry_candle = t;
+                break;
+            }
+
+            if news_candle.low > candle.close {
+                trade_kind = TradeDirectionKind::Short;
+                entry_candle = t;
+                break;
+            }
+        }
+        if entry_candle >= self.number_candles_to_wait || trade_kind == TradeDirectionKind::None {
+            return (None, false);
+        }
+
         (
             pre_trade_values
-                .news_candle(
-                    &self.news_kind,
-                    self.number_candles_to_wait.try_into().unwrap(),
-                )
+                .news_candle(&self.news_kind, (entry_candle + 1) as u32)
                 .and_then(|ohlc_candle| ohlc_candle.open_ts),
             false,
         )
