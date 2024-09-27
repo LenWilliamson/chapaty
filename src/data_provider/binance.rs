@@ -11,7 +11,7 @@ impl FromStr for Binance {
         match s {
             "Binance" | "binance" => Ok(Binance),
             _ => Err(Self::Err::ParseDataProducerError(
-                "Data Producer Does not Exists".to_string(),
+                "Data Producer Does not Exists".to_string().into(),
             )),
         }
     }
@@ -52,42 +52,34 @@ fn schema(data: &HdbSourceDirKind) -> Schema {
 fn ohlcv_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(
-                &DataProviderColumnKind::OpenTime.to_string(),
+            Field::new(DataProviderColumnKind::OpenTime.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::High.to_string(), DataType::Float64),
-            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::Float64),
-            Field::new(
-                &DataProviderColumnKind::Close.to_string(),
+            Field::new(DataProviderColumnKind::Open.to_string().into(), DataType::Float64),
+            Field::new(DataProviderColumnKind::High.to_string().into(), DataType::Float64),
+            Field::new(DataProviderColumnKind::Low.to_string().into(), DataType::Float64),
+            Field::new(DataProviderColumnKind::Close.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::Volume.to_string(),
+            Field::new(DataProviderColumnKind::Volume.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::CloseTime.to_string(),
+            Field::new(DataProviderColumnKind::CloseTime.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::QuoteAssetVol.to_string(),
+            Field::new(DataProviderColumnKind::QuoteAssetVol.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::NumberOfTrades.to_string(),
+            Field::new(DataProviderColumnKind::NumberOfTrades.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::TakerBuyBaseAssetVol.to_string(),
+            Field::new(DataProviderColumnKind::TakerBuyBaseAssetVol.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::TakerBuyQuoteAssetVol.to_string(),
+            Field::new(DataProviderColumnKind::TakerBuyQuoteAssetVol.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(&DataProviderColumnKind::Ignore.to_string(), DataType::Int64),
+            Field::new(DataProviderColumnKind::Ignore.to_string().into(), DataType::Int64),
         ]
         .into_iter(),
     )
@@ -96,36 +88,28 @@ fn ohlcv_schema() -> Schema {
 fn aggtrades_schema() -> Schema {
     Schema::from_iter(
         vec![
-            Field::new(
-                &DataProviderColumnKind::AggTradeId.to_string(),
+            Field::new(DataProviderColumnKind::AggTradeId.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::Price.to_string(),
+            Field::new(DataProviderColumnKind::Price.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::Quantity.to_string(),
+            Field::new(DataProviderColumnKind::Quantity.to_string().into(),
                 DataType::Float64,
             ),
-            Field::new(
-                &DataProviderColumnKind::FirstTradeId.to_string(),
+            Field::new(DataProviderColumnKind::FirstTradeId.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::LastTradeId.to_string(),
+            Field::new(DataProviderColumnKind::LastTradeId.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::Timestamp.to_string(),
+            Field::new(DataProviderColumnKind::Timestamp.to_string().into(),
                 DataType::Int64,
             ),
-            Field::new(
-                &DataProviderColumnKind::BuyerEqualsMaker.to_string(),
+            Field::new(DataProviderColumnKind::BuyerEqualsMaker.to_string().into(),
                 DataType::Boolean,
             ),
-            Field::new(
-                &DataProviderColumnKind::BestTradePriceMatch.to_string(),
+            Field::new(DataProviderColumnKind::BestTradePriceMatch.to_string().into(),
                 DataType::Boolean,
             ),
         ]

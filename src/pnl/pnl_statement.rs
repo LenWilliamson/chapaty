@@ -44,7 +44,7 @@ impl PnLStatement {
             .drop(vec![PnLReportColumnKind::Uid.to_string()])
             .collect()
             .unwrap()
-            .with_row_index(&PnLReportColumnKind::Uid.to_string(), Some(1))
+            .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
             .unwrap()
     }
 
@@ -78,7 +78,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
+                        .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
                         .unwrap(),
                 )
             })
@@ -115,7 +115,7 @@ impl PnLStatement {
                         .map(|df| df.lazy())
                         .collect::<Vec<LazyFrame>>()
                         .concatenate_to_data_frame()
-                        .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
+                        .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
                         .unwrap(),
                 )
             })

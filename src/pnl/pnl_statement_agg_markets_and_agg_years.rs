@@ -34,7 +34,7 @@ impl From<PnLStatementAggMarkets> for PnLStatementAggMarketsAggYears {
             years: value.years.clone(),
             pnl: value
                 .agg_year()
-                .with_row_index(&PnLReportColumnKind::Uid.to_string(), Some(1))
+                .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
                 .unwrap(),
         }
     }
@@ -49,7 +49,7 @@ impl PnLStatementAggMarketsAggYears {
             .with_strategy(self.strategy_name.clone())
             .build()
             .as_trade_breakdown_df()
-            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
             .unwrap()
     }
 
@@ -61,7 +61,7 @@ impl PnLStatementAggMarketsAggYears {
             .with_strategy(self.strategy_name.clone())
             .build()
             .as_performance_report_df()
-            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
             .unwrap()
     }
 

@@ -39,14 +39,14 @@ pub trait MyLazyFrameOperations {
 impl MyLazyFrameOperations for LazyFrame {
     fn add_cw_col(self, ts_col: &str) -> Self {
         self.with_column(
-            col(&ts_col)
+            col(ts_col)
                 .apply(|x| Ok(Some(get_cw_from_ts(&x))), GetOutput::default())
                 .alias("cw"),
         )
     }
     fn add_weekday_col(self, ts_col: &str) -> Self {
         self.with_column(
-            col(&ts_col)
+            col(ts_col)
                 .apply(|x| Ok(Some(get_weekday_from_ts(&x))), GetOutput::default())
                 .alias("weekday"),
         )
@@ -59,7 +59,7 @@ impl MyLazyFrameOperations for LazyFrame {
         time_frame: TimeFrameKind,
     ) -> Self {
         self.with_column(
-            col(&ts_col)
+            col(ts_col)
                 .apply(
                     move |x| Ok(Some(time_interval.in_time_interval(&x, &time_frame))),
                     GetOutput::default(),

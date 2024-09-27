@@ -78,13 +78,13 @@ pub fn transform_cme_df(df_as_bytes: Vec<u8>, kperiod: i64) -> DataFrame {
     let schema = Schema::from_iter(
         vec![
             Field::new(
-                &DataProviderColumnKind::OpenTime.to_string(),
+                DataProviderColumnKind::OpenTime.to_string().into(),
                 DataType::String,
             ),
-            Field::new(&DataProviderColumnKind::Open.to_string(), DataType::String),
-            Field::new(&DataProviderColumnKind::High.to_string(), DataType::String),
-            Field::new(&DataProviderColumnKind::Low.to_string(), DataType::String),
-            Field::new(&DataProviderColumnKind::Close.to_string(), DataType::String),
+            Field::new(DataProviderColumnKind::Open.to_string().into(), DataType::String),
+            Field::new(DataProviderColumnKind::High.to_string().into(), DataType::String),
+            Field::new(DataProviderColumnKind::Low.to_string().into(), DataType::String),
+            Field::new(DataProviderColumnKind::Close.to_string().into(), DataType::String),
         ]
         .into_iter(),
     );
@@ -193,13 +193,13 @@ mod tests {
         let schema = Schema::from_iter(
             vec![
                 Field::new(
-                    &DataProviderColumnKind::CloseTime.to_string(),
+                    DataProviderColumnKind::CloseTime.to_string().into(),
                     DataType::String,
                 ),
-                Field::new(&DataProviderColumnKind::Open.to_string(), DataType::String),
-                Field::new(&DataProviderColumnKind::High.to_string(), DataType::String),
-                Field::new(&DataProviderColumnKind::Low.to_string(), DataType::String),
-                Field::new(&DataProviderColumnKind::Close.to_string(), DataType::String),
+                Field::new(DataProviderColumnKind::Open.to_string().into(), DataType::String),
+                Field::new(DataProviderColumnKind::High.to_string().into(), DataType::String),
+                Field::new(DataProviderColumnKind::Low.to_string().into(), DataType::String),
+                Field::new(DataProviderColumnKind::Close.to_string().into(), DataType::String),
             ]
             .into_iter(),
         );

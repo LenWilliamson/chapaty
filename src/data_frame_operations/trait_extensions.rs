@@ -14,7 +14,7 @@ impl MyDataFrameOperations for DataFrame {
     }
     
     fn df_with_row_count(&self, name: &str, offset: Option<u32>) -> DataFrame {
-        self.with_row_index(name, offset).unwrap()
+        self.with_row_index(name.into(), offset).unwrap()
     }
     
 }

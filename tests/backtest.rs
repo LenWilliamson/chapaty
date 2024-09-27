@@ -45,7 +45,7 @@ async fn backtest() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc5m;
+    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
     // let time_interval = strategy_configurations::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
@@ -181,9 +181,13 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
 /*
 Counter                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 8, loss_to_win_ratio = 2.8, offset = 1.25, total_profit = 12125
 Counter                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 1.05, offset = 1.45, total_profit = 8593.75
+Counter                 NFP 5m-Chart 2006 - 20020: 
+Counter                 CPI 5m-Chart 2006 - 20020: 
 
 Rassler                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 3, loss_to_win_ratio = 0.65, offset = 0.55, total_profit = 9012.5
 Rassler                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 0.6, offset = 0.5, total_profit = 5093.75
+Rassler                 NFP 5m-Chart 2006 - 20020: 
+Rassler                 CPI 5m-Chart 2006 - 20020: 
 
 Rassler Confirmation    NFP 5m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 1, offset = 1.3, total_profit = 9800, treffer_quote = 0.5982905982905983
 Rassler Confirmation    CPI 5m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 2.9, offset = 1.3, total_profit = 13093.75, treffer_quote = 0.589041095890411

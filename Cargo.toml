@@ -13,7 +13,7 @@ futures = "0.3.30"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
 google-cloud-storage = "0.20.0"
 mockall = "0.13.0"
-polars = {version = "0.42.0", features = ["lazy", "partition_by", "serde", "cum_agg"]}
+polars = {version = "0.43.1", features = ["lazy", "partition_by", "serde", "cum_agg"]}
 rayon = "1.10.0"
 regex = "1.10.5"
 reqwest = "0.12.5" 

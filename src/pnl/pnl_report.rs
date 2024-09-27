@@ -256,9 +256,9 @@ impl FromIterator<PnLReportDataRow> for DataFrame {
             .sort_by_date()
             .collect()
             .unwrap()
-            .with_row_index(&PnLReportColumnKind::Id.to_string(), Some(1))
+            .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
             .unwrap()
-            .with_row_index(&PnLReportColumnKind::Uid.to_string(), Some(1))
+            .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
             .unwrap()
     }
 }
