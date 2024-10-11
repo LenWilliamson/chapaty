@@ -9,6 +9,7 @@ pub struct NewsRasslerWithConfirmation {
     stop_loss: StopLoss,
     take_profit_kind: TakeProfitKind,
     number_candles_to_wait: i32,
+    earliest_candle_to_enter: i32,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: f64,
@@ -19,6 +20,7 @@ pub struct NewsRasslerWithConfirmationBuilder {
     stop_loss: Option<StopLoss>,
     take_profit_kind: Option<TakeProfitKind>,
     number_candles_to_wait: Option<i32>,
+    earliest_candle_to_enter: Option<i32>,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: Option<f64>,
@@ -31,6 +33,7 @@ impl NewsRasslerWithConfirmationBuilder {
             stop_loss: None,
             take_profit_kind: None,
             number_candles_to_wait: None,
+            earliest_candle_to_enter: None,
             loss_to_win_ratio: None,
         }
     }
@@ -62,6 +65,13 @@ impl NewsRasslerWithConfirmationBuilder {
             ..self
         }
     }
+    
+    pub fn with_earliest_candle_to_enter(self, n: i32) -> Self {
+        Self {
+            earliest_candle_to_enter: Some(n),
+            ..self
+        }
+    }
 
     /// The number of loser trades it takes to counterbalance a winner
     pub fn with_loss_to_win_ratio(self, loss_to_win_ratio: f64) -> Self {
@@ -80,6 +90,7 @@ impl NewsRasslerWithConfirmationBuilder {
             stop_loss: self.stop_loss.unwrap(),
             take_profit_kind: self.take_profit_kind.unwrap(),
             number_candles_to_wait: self.number_candles_to_wait.unwrap(),
+            earliest_candle_to_enter: self.earliest_candle_to_enter.unwrap(),
             loss_to_win_ratio: self.loss_to_win_ratio.unwrap(),
         }
     }
@@ -242,8 +253,8 @@ impl Strategy for NewsRasslerWithConfirmation {
         };
 
         let mut trade_kind = TradeDirectionKind::None;
-        let mut entry_candle = 0;
-        for t in 1..=self.number_candles_to_wait {
+        let mut entry_candle = self.earliest_candle_to_enter.max(1);
+        for t in self.earliest_candle_to_enter.max(1)..=self.number_candles_to_wait {
             let candle = pre_trade_values
                 .news_candle(&self.news_kind, t as u32)
                 .unwrap();

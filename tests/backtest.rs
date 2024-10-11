@@ -45,7 +45,7 @@ async fn backtest() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc1m;
+    let market_simulation_data = MarketSimulationDataKind::Ohlc5m;
     // let time_interval = strategy_configurations::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
@@ -128,15 +128,15 @@ fn setup_news_counter_strategy() -> Arc<dyn Strategy + Send + Sync> {
     let news_builder = NewsCounterBuilder::new();
     let tp = TakeProfit {
         kind: TakeProfitKind::PriceUponTradeEntry,
-        offset: 1.45,
+        offset: 1.25,
     };
 
     let strategy = news_builder
         .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
         .with_take_profit(tp)
-        .with_news_kind(NewsKind::UsaCPI)
-        .with_number_candles_to_wait(11)
-        .with_loss_to_win_ratio(1.05)
+        .with_news_kind(NewsKind::UsaNFP)
+        .with_number_candles_to_wait(8)
+        .with_loss_to_win_ratio(2.8)
         .build();
 
     Arc::new(strategy)
@@ -172,6 +172,7 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
         .with_stop_loss(sl)
         .with_news_kind(NewsKind::UsaCPI)
         .with_number_candles_to_wait(11)
+        .with_earliest_candle_to_enter(1)
         .with_loss_to_win_ratio(2.9)
         .build();
 
@@ -189,6 +190,10 @@ Rassler                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 10, 
 Rassler                 NFP 5m-Chart 2006 - 20020: 
 Rassler                 CPI 5m-Chart 2006 - 20020: 
 
+Rassler Confirmation    NFP 5m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 0.7, offset = 1.15, total_profit = 9837.5, treffer_quote = 0.6923076923076923
+Rassler Confirmation    CPI 5m-Chart 2006 - 20020: enter after 2 candles | number_candles_to_wait = 15, loss_to_win_ratio = 3, offset = 1.45, total_profit = 8506.25, treffer_quote = 0.5394736842105263
+
+ALT - weiß nicht woher die Werte kommen:
 Rassler Confirmation    NFP 5m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 1, offset = 1.3, total_profit = 9800, treffer_quote = 0.5982905982905983
 Rassler Confirmation    CPI 5m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 2.9, offset = 1.3, total_profit = 13093.75, treffer_quote = 0.589041095890411
 */
