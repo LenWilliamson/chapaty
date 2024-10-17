@@ -1,9 +1,12 @@
-use polars::prelude::DataFrame;
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 
 pub trait MyDataFrameOperations {
     fn is_not_an_empty_frame(&self) -> bool;
     fn df_with_row_count(&self, name: &str, offset: Option<u32>) -> DataFrame;
+}
 
+pub trait IntoLazyVec {
+    fn lazy(self) -> Vec<LazyFrame>;
 }
 
 impl MyDataFrameOperations for DataFrame {
@@ -17,4 +20,10 @@ impl MyDataFrameOperations for DataFrame {
         self.with_row_index(name.into(), offset).unwrap()
     }
     
+}
+
+impl IntoLazyVec for Vec<DataFrame> {
+    fn lazy(self) -> Vec<LazyFrame> {
+        self.into_iter().map(|df| df.lazy()).collect()
+    }
 }

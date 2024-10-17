@@ -1,25 +1,32 @@
-use super::pnl_report_data_row_calculator::TradeAndPreTradeValuesWithData;
-use crate::{bot::trade::Trade, lazy_frame_operations::trait_extensions::MyLazyFrameOperations};
+use crate::{
+    converter::timeformat::timestamp_in_milli_to_string,
+    dfa::states::{Close, Trade},
+    enums::trade_and_pre_trade::TradeCloseKind,
+    lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
+};
 use polars::prelude::LazyFrame;
 use std::convert::identity;
 
+use super::pre_trade_values_calculator::RequiredPreTradeValuesWithData;
+
 pub struct TradePnLCalculator {
     entry_ts: i64,
-    trade: Trade,
+    trade: Trade<Close>,
     market_sim_data_since_entry: LazyFrame,
-    trade_and_pre_trade_values: TradeAndPreTradeValuesWithData,
+    trade_and_pre_trade_values: RequiredPreTradeValuesWithData,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TradePnL {
     pub trade_entry_ts: i64,
     pub stop_loss: Option<PnL>,
     pub take_profit: Option<PnL>,
     pub timeout: Option<PnL>,
+    pub pivot: Option<PnL>,
+    pub trade_kind: TradeCloseKind,
 }
 
 impl TradePnL {
-
     pub fn exit_price(&self) -> f64 {
         if self.is_trade_timeout() {
             self.timeout.clone().unwrap().price
@@ -34,6 +41,24 @@ impl TradePnL {
         } else {
             self.handle_regular_profit()
         }
+    }
+
+    pub fn get_entry_ts(&self) -> String {
+        timestamp_in_milli_to_string(self.trade_entry_ts)
+    }
+
+    pub fn get_take_profit_ts(&self) -> String {
+        self.take_profit.map_or_else(
+            || "Timeout".to_string(),
+            |pnl| timestamp_in_milli_to_string(pnl.ts.unwrap()),
+        )
+    }
+
+    pub fn get_stop_loss_ts(&self) -> String {
+        self.stop_loss.map_or_else(
+            || "Timeout".to_string(),
+            |pnl| timestamp_in_milli_to_string(pnl.ts.unwrap()),
+        )
     }
 
     fn handle_regular_trade_exit(&self) -> f64 {
@@ -64,7 +89,7 @@ impl TradePnL {
 
         is_stop_loss_timeout && is_take_profit_timeout
     }
-    
+
     fn is_regular_trade_loser(&self) -> bool {
         let sl_ts = get_entry_ts(&self.stop_loss);
         let tp_ts = get_entry_ts(&self.take_profit);
@@ -88,7 +113,7 @@ fn no_entry_timestamp() -> i64 {
     i64::MAX
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PnL {
     pub price: f64,
     pub ts: Option<i64>,
@@ -107,19 +132,36 @@ impl PnL {
 
 impl TradePnLCalculator {
     pub fn compute(&self) -> TradePnL {
+        // match self.trade.close_event {
+        //     TradeCloseKind::Pivot => {},
+        //     TradeCloseKind::Timeout => {},
+        //     TradeCloseKind::TakeProfit => {},
+        //     TradeCloseKind::StopLoss => {},
+        // }
         let stop_loss = self.try_handle_exit(self.trade.stop_loss);
         let take_profit = self.try_handle_exit(self.trade.take_profit);
-        let mut timeout = None;
-        if self.trade.is_valid
-            && is_limit_order_open(stop_loss.clone().unwrap(), take_profit.clone().unwrap())
-        {
-            timeout = Some(self.handle_timeout())
-        }
+        let timeout = if let Some(TradeCloseKind::Timeout) = self.trade.close_event {
+            Some(self.handle_timeout())
+        } else {
+            None
+        };
+        let pivot = if let Some(TradeCloseKind::Pivot) = self.trade.close_event {
+            self.try_handle_exit(self.trade.current_price)
+        } else {
+            None
+        };
+        // if self.trade.is_valid
+        //     && is_limit_order_open(stop_loss.clone().unwrap(), take_profit.clone().unwrap())
+        // {
+        //     timeout = Some(self.handle_timeout())
+        // }
         TradePnL {
             trade_entry_ts: self.entry_ts,
             stop_loss: stop_loss.and_then(PnL::or_none),
             take_profit: take_profit.and_then(PnL::or_none),
             timeout,
+            pivot,
+            trade_kind: self.trade.close_event.unwrap(),
         }
     }
 
@@ -128,7 +170,9 @@ impl TradePnLCalculator {
     }
     fn handle_exit(&self, exit_px: f64) -> PnL {
         let ts = self.trade_exit_ts(exit_px);
-        let profit = ts.and_then(|_| Some(self.trade.profit(exit_px)));
+        let profit = ts
+            .and_then(|_| Some(self.trade.compute_profit(exit_px)))
+            .unwrap();
 
         PnL {
             price: exit_px,
@@ -138,13 +182,10 @@ impl TradePnLCalculator {
     }
 
     fn handle_timeout(&self) -> PnL {
-        let exit_px = self.trade_and_pre_trade_values.trade.as_ref().unwrap();
-        let last_trade_price = exit_px.last_trade_price();
-
         PnL {
-            price: last_trade_price,
+            price: self.trade.current_price.unwrap(),
             ts: Some(0),
-            profit: Some(self.trade.profit(last_trade_price)),
+            profit: self.trade.current_profit,
         }
     }
 
@@ -168,9 +209,9 @@ fn is_order_open(timestamp: Option<i64>) -> bool {
 
 pub struct TradePnLCalculatorBuilder {
     entry_ts: Option<i64>,
-    trade: Option<Trade>,
+    trade: Option<Trade<Close>>,
     market_sim_data_since_entry: Option<LazyFrame>,
-    trade_and_pre_trade_values: Option<TradeAndPreTradeValuesWithData>,
+    trade_and_pre_trade_values: Option<RequiredPreTradeValuesWithData>,
 }
 
 impl TradePnLCalculatorBuilder {
@@ -197,7 +238,7 @@ impl TradePnLCalculatorBuilder {
         }
     }
 
-    pub fn with_trade(self, trade: Trade) -> Self {
+    pub fn with_trade(self, trade: Trade<Close>) -> Self {
         Self {
             trade: Some(trade),
             ..self
@@ -206,7 +247,7 @@ impl TradePnLCalculatorBuilder {
 
     pub fn with_trade_and_pre_trade_values(
         self,
-        trade_and_pre_trade_values: TradeAndPreTradeValuesWithData,
+        trade_and_pre_trade_values: RequiredPreTradeValuesWithData,
     ) -> Self {
         Self {
             trade_and_pre_trade_values: Some(trade_and_pre_trade_values),
@@ -319,20 +360,16 @@ mod test {
      */
     use super::*;
     use crate::{
-        bot::trade::Trade,
-        calculator::{
-            pre_trade_values_calculator::RequiredPreTradeValuesWithData,
-            trade_values_calculator::TradeValuesWithData,
-        },
+        calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
         cloud_api::api_for_unit_tests::download_df,
         enums::{
             indicator::{PriceHistogramKind, TradingIndicatorKind},
-            my_any_value::MyAnyValueKind,
-            trade_and_pre_trade::{PreTradeDataKind, TradeDataKind, TradeDirectionKind},
-        }, types::ohlc::OhlcCandle,
+            trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
+        },
+        types::ohlc::OhlcCandle,
     };
     use polars::prelude::IntoLazy;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, marker::PhantomData};
 
     fn set_up_pre_trade_indicator_values_ppp_long() -> HashMap<TradingIndicatorKind, f64> {
         HashMap::from([(
@@ -343,42 +380,52 @@ mod test {
 
     fn set_up_pre_trade_market_values_ppp_long() -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, Some(OhlcCandle::new().with_close(39_424.14))),
-            (PreTradeDataKind::LowestTradePrice, Some(OhlcCandle::new().with_low(36_220.54))),
-            (PreTradeDataKind::HighestTradePrice, Some(OhlcCandle::new().with_high(39_843.0))),
+            (
+                PreTradeDataKind::LastTradePrice,
+                Some(OhlcCandle::new().with_close(39_424.14)),
+            ),
+            (
+                PreTradeDataKind::LowestTradePrice,
+                Some(OhlcCandle::new().with_low(36_220.54)),
+            ),
+            (
+                PreTradeDataKind::HighestTradePrice,
+                Some(OhlcCandle::new().with_high(39_843.0)),
+            ),
         ])
     }
 
-    fn set_up_trade_data_map_ppp_long(entry_ts: i64) -> TradeValuesWithData {
-        let trade = HashMap::from([
-            (
-                TradeDataKind::EntryTimestamp,
-                MyAnyValueKind::Int64(entry_ts),
-            ),
-            (
-                TradeDataKind::LastTradePrice,
-                MyAnyValueKind::Float64(43_160.0),
-            ),
-            (
-                TradeDataKind::LowestTradePriceSinceEntry,
-                MyAnyValueKind::Float64(37_451.56),
-            ),
-            (
-                TradeDataKind::HighestTradePriceSinceEntry,
-                MyAnyValueKind::Float64(44_225.84),
-            ),
-            (
-                TradeDataKind::LowestTradePriceSinceEntryTimestamp,
-                MyAnyValueKind::Int64(1646028000000),
-            ),
-            (
-                TradeDataKind::HighestTradePriceSinceEntryTimestamp,
-                MyAnyValueKind::Int64(1646085600000),
-            ),
-        ]);
+    // TODO Werte in fn set_up_trade_ppp_long(entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade<Close> { Trade::<Close> übertragen
+    // fn set_up_trade_data_map_ppp_long(entry_ts: i64) -> TradeValuesWithData {
+    //     let trade = HashMap::from([
+    //         (
+    //             TradeDataKind::EntryTimestamp,
+    //             MyAnyValueKind::Int64(entry_ts),
+    //         ),
+    //         (
+    //             TradeDataKind::LastTradePrice,
+    //             MyAnyValueKind::Float64(43_160.0),
+    //         ),
+    //         (
+    //             TradeDataKind::LowestTradePriceSinceEntry,
+    //             MyAnyValueKind::Float64(37_451.56),
+    //         ),
+    //         (
+    //             TradeDataKind::HighestTradePriceSinceEntry,
+    //             MyAnyValueKind::Float64(44_225.84),
+    //         ),
+    //         (
+    //             TradeDataKind::LowestTradePriceSinceEntryTimestamp,
+    //             MyAnyValueKind::Int64(1646028000000),
+    //         ),
+    //         (
+    //             TradeDataKind::HighestTradePriceSinceEntryTimestamp,
+    //             MyAnyValueKind::Int64(1646085600000),
+    //         ),
+    //     ]);
 
-        TradeValuesWithData { trade }
-    }
+    //     TradeValuesWithData { trade }
+    // }
 
     fn set_up_pre_trade_values_ppp_long() -> RequiredPreTradeValuesWithData {
         RequiredPreTradeValuesWithData {
@@ -387,21 +434,24 @@ mod test {
         }
     }
 
-    fn set_up_trade_ppp_long(entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade {
-        Trade {
-            entry_price,
+    fn set_up_trade_ppp_long(entry_ts: i64, entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade<Close> {
+        Trade::<Close> {
+            entry_ts: Some(entry_ts),
+            entry_price: Some(entry_price),
+            current_ts: None,
+            current_price: None,
+            trade_direction_kind: Some(TradeDirectionKind::Long),
+            current_profit: Some(0.0),
             stop_loss: Some(stop_loss),
             take_profit: Some(take_profit),
-            trade_kind: TradeDirectionKind::Long,
-            is_valid: true
+            close_event: None,
+            strategy: None,
+            _state: PhantomData,
         }
     }
 
-    fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> TradeAndPreTradeValuesWithData {
-        TradeAndPreTradeValuesWithData {
-            trade: Some(set_up_trade_data_map_ppp_long(entry_ts)),
-            pre_trade: set_up_pre_trade_values_ppp_long(),
-        }
+    fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> RequiredPreTradeValuesWithData {
+        set_up_pre_trade_values_ppp_long()
     }
 
     fn set_up_trade_pnl_calculator_ppp_long(
@@ -413,7 +463,7 @@ mod test {
     ) -> TradePnLCalculator {
         TradePnLCalculator {
             entry_ts,
-            trade: set_up_trade_ppp_long(entry_price, stop_loss, take_profit),
+            trade: set_up_trade_ppp_long(entry_ts, entry_price, stop_loss, take_profit),
             market_sim_data_since_entry,
             trade_and_pre_trade_values: set_up_trade_and_pre_trade_values_ppp_long(entry_ts),
         }
@@ -435,6 +485,8 @@ mod test {
             stop_loss,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::TakeProfit,
         }
     }
 
@@ -454,6 +506,8 @@ mod test {
             stop_loss,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::StopLoss,
         }
     }
 
@@ -474,6 +528,8 @@ mod test {
             stop_loss,
             take_profit: None,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::StopLoss,
         }
     }
 
@@ -488,6 +544,8 @@ mod test {
             stop_loss: None,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::TakeProfit,
         }
     }
 
@@ -502,6 +560,8 @@ mod test {
             stop_loss: None,
             take_profit: None,
             timeout,
+            pivot: None,
+            trade_kind: TradeCloseKind::Timeout,
         }
     }
 
@@ -628,42 +688,51 @@ mod test {
 
     fn set_up_pre_trade_market_values_ppp_short() -> HashMap<PreTradeDataKind, Option<OhlcCandle>> {
         HashMap::from([
-            (PreTradeDataKind::LastTradePrice, Some(OhlcCandle::new().with_close(39_004.73))),
-            (PreTradeDataKind::LowestTradePrice, Some(OhlcCandle::new().with_low(38_550.0))),
-            (PreTradeDataKind::HighestTradePrice, Some(OhlcCandle::new().with_high(44_101.12))),
+            (
+                PreTradeDataKind::LastTradePrice,
+                Some(OhlcCandle::new().with_close(39_004.73)),
+            ),
+            (
+                PreTradeDataKind::LowestTradePrice,
+                Some(OhlcCandle::new().with_low(38_550.0)),
+            ),
+            (
+                PreTradeDataKind::HighestTradePrice,
+                Some(OhlcCandle::new().with_high(44_101.12)),
+            ),
         ])
     }
 
-    fn set_up_trade_data_map_ppp_short(entry_ts: i64) -> TradeValuesWithData {
-        let trade = HashMap::from([
-            (
-                TradeDataKind::EntryTimestamp,
-                MyAnyValueKind::Int64(entry_ts),
-            ),
-            (
-                TradeDataKind::LastTradePrice,
-                MyAnyValueKind::Float64(39_385.01),
-            ),
-            (
-                TradeDataKind::LowestTradePriceSinceEntry,
-                MyAnyValueKind::Float64(38_848.48),
-            ),
-            (
-                TradeDataKind::HighestTradePriceSinceEntry,
-                MyAnyValueKind::Float64(42_594.06),
-            ),
-            (
-                TradeDataKind::LowestTradePriceSinceEntryTimestamp,
-                MyAnyValueKind::Int64(1646888400000),
-            ),
-            (
-                TradeDataKind::HighestTradePriceSinceEntryTimestamp,
-                MyAnyValueKind::Int64(1646838000000),
-            ),
-        ]);
+    // fn set_up_trade_data_map_ppp_short(entry_ts: i64) -> TradeValuesWithData {
+    //     let trade = HashMap::from([
+    //         (
+    //             TradeDataKind::EntryTimestamp,
+    //             MyAnyValueKind::Int64(entry_ts),
+    //         ),
+    //         (
+    //             TradeDataKind::LastTradePrice,
+    //             MyAnyValueKind::Float64(39_385.01),
+    //         ),
+    //         (
+    //             TradeDataKind::LowestTradePriceSinceEntry,
+    //             MyAnyValueKind::Float64(38_848.48),
+    //         ),
+    //         (
+    //             TradeDataKind::HighestTradePriceSinceEntry,
+    //             MyAnyValueKind::Float64(42_594.06),
+    //         ),
+    //         (
+    //             TradeDataKind::LowestTradePriceSinceEntryTimestamp,
+    //             MyAnyValueKind::Int64(1646888400000),
+    //         ),
+    //         (
+    //             TradeDataKind::HighestTradePriceSinceEntryTimestamp,
+    //             MyAnyValueKind::Int64(1646838000000),
+    //         ),
+    //     ]);
 
-        TradeValuesWithData { trade }
-    }
+    //     TradeValuesWithData { trade }
+    // }
 
     fn set_up_pre_trade_values_ppp_short() -> RequiredPreTradeValuesWithData {
         RequiredPreTradeValuesWithData {
@@ -672,23 +741,26 @@ mod test {
         }
     }
 
-    fn set_up_trade_ppp_short(entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade {
-        Trade {
-            entry_price,
+    fn set_up_trade_ppp_short(entry_ts: i64, entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade<Close> {
+        Trade::<Close> {
+            entry_ts: Some(entry_ts),
+            entry_price: Some(entry_price),
+            current_ts: None,
+            current_price: None,
+            trade_direction_kind: Some(TradeDirectionKind::Short),
+            current_profit: Some(0.0),
             stop_loss: Some(stop_loss),
             take_profit: Some(take_profit),
-            trade_kind: TradeDirectionKind::Short,
-            is_valid: true,
+            close_event: None,
+            strategy: None,
+            _state: PhantomData,
         }
     }
 
     fn set_up_trade_and_pre_trade_values_ppp_short(
         entry_ts: i64,
-    ) -> TradeAndPreTradeValuesWithData {
-        TradeAndPreTradeValuesWithData {
-            trade: Some(set_up_trade_data_map_ppp_short(entry_ts)),
-            pre_trade: set_up_pre_trade_values_ppp_short(),
-        }
+    ) -> RequiredPreTradeValuesWithData {
+        set_up_pre_trade_values_ppp_short()
     }
 
     fn set_up_trade_pnl_calculator_ppp_short(
@@ -700,7 +772,7 @@ mod test {
     ) -> TradePnLCalculator {
         TradePnLCalculator {
             entry_ts,
-            trade: set_up_trade_ppp_short(entry_price, stop_loss, take_profit),
+            trade: set_up_trade_ppp_short(entry_ts, entry_price, stop_loss, take_profit),
             market_sim_data_since_entry,
             trade_and_pre_trade_values: set_up_trade_and_pre_trade_values_ppp_short(entry_ts),
         }
@@ -722,6 +794,8 @@ mod test {
             stop_loss,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::TakeProfit,
         }
     }
 
@@ -741,6 +815,8 @@ mod test {
             stop_loss,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::StopLoss,
         }
     }
 
@@ -761,6 +837,8 @@ mod test {
             stop_loss,
             take_profit: None,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::StopLoss,
         }
     }
 
@@ -775,6 +853,8 @@ mod test {
             stop_loss: None,
             take_profit,
             timeout: None,
+            pivot: None,
+            trade_kind: TradeCloseKind::TakeProfit,
         }
     }
 
@@ -789,6 +869,8 @@ mod test {
             stop_loss: None,
             take_profit: None,
             timeout,
+            pivot: None,
+            trade_kind: TradeCloseKind::Timeout,
         }
     }
 

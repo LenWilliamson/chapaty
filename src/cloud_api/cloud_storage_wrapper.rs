@@ -77,33 +77,33 @@ impl CloudStorageClient {
         df_map
     }
 
-    fn upload_df_map(
-        &self,
-        df_map: chapaty::types::DataFrameMap,
-    ) -> JoinHandle<chapaty::types::DataFrameMap> {
-        let bot = self.bot.clone();
-        let market = self.market;
-        let year = self.year;
-        let _self = Arc::new(self.clone());
-        tokio::spawn(async move {
-            let path_finder = PathFinderBuilder::new()
-                .with_data_provider(bot.get_data_provider().get_name())
-                .with_strategy_name(bot.get_strategy().get_name())
-                .with_market(market)
-                .with_year(year)
-                .with_time_interval(*bot.get_time_interval_optional_ref())
-                .with_time_frame(bot.get_time_frame_ref().to_string())
-                .build();
+    // fn upload_df_map(
+    //     &self,
+    //     df_map: chapaty::types::DataFrameMap,
+    // ) -> JoinHandle<chapaty::types::DataFrameMap> {
+    //     let bot = self.bot.clone();
+    //     let market = self.market;
+    //     let year = self.year;
+    //     let _self = Arc::new(self.clone());
+    //     tokio::spawn(async move {
+    //         let path_finder = PathFinderBuilder::new()
+    //             .with_data_provider(bot.get_data_provider().get_name())
+    //             .with_strategy_name(bot.get_strategies().get_name())
+    //             .with_market(market)
+    //             .with_year(year)
+    //             .with_time_interval(*bot.get_time_interval_optional_ref())
+    //             .with_time_frame(bot.get_time_frame_ref().to_string())
+    //             .build();
 
-            let file_name = _self.get_file_name_resolver().get_filename();
-            let abs_file_path = path_finder.get_absolute_file_path(file_name);
+    //         let file_name = _self.get_file_name_resolver().get_filename();
+    //         let abs_file_path = path_finder.get_absolute_file_path(file_name);
 
-            _self
-                .cache_df_map_with_file_name(&df_map, abs_file_path)
-                .await;
-            df_map
-        })
-    }
+    //         _self
+    //             .cache_df_map_with_file_name(&df_map, abs_file_path)
+    //             .await;
+    //         df_map
+    //     })
+    // }
 
     fn get_file_name_resolver(&self) -> FileNameResolver {
         let file_name_resolver = FileNameResolver::new(self.simulation_data);

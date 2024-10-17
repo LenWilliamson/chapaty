@@ -1,18 +1,19 @@
-use strum::IntoEnumIterator;
-
 use super::*;
-use crate::enums::{indicator::PriceHistogramKind, news::NewsKind};
+use crate::enums::indicator::PriceHistogramKind;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Ppp {
     stop_loss: StopLoss,
     take_profit: TakeProfit,
     entry: TradingIndicatorKind,
+    market_simulation_data_kind: MarketSimulationDataKind,
 }
 
 pub struct PppBuilder {
     stop_loss: Option<StopLoss>,
     take_profit: Option<TakeProfit>,
     entry: Option<TradingIndicatorKind>,
+    market_simulation_data_kind: Option<MarketSimulationDataKind>,
 }
 
 impl PppBuilder {
@@ -21,6 +22,7 @@ impl PppBuilder {
             stop_loss: None,
             take_profit: None,
             entry: None,
+            market_simulation_data_kind: None,
         }
     }
 
@@ -45,17 +47,28 @@ impl PppBuilder {
         }
     }
 
+    pub fn with_market_simulation_data_kind(
+        self,
+        market_simulation_data_kind: MarketSimulationDataKind,
+    ) -> Self {
+        Self {
+            market_simulation_data_kind: Some(market_simulation_data_kind),
+            ..self
+        }
+    }
+
     pub fn build(self) -> Ppp {
         Ppp {
             stop_loss: self.stop_loss.unwrap(),
             take_profit: self.take_profit.unwrap(),
             entry: self.entry.unwrap(),
+            market_simulation_data_kind: self.market_simulation_data_kind.unwrap(),
         }
     }
 }
 
 impl Ppp {
-    fn get_sl_price(&self, request: &TradeRequestObject) -> Option<f64> {
+    fn get_sl_price(&self, request: &SimulationEvent) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
@@ -63,7 +76,7 @@ impl Ppp {
         }
     }
 
-    fn get_tp_price(&self, request: &TradeRequestObject) -> Option<f64> {
+    fn get_tp_price(&self, request: &SimulationEvent) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_tp_long(request)),
             TradeDirectionKind::Short => Some(self.get_tp_short(request)),
@@ -71,7 +84,7 @@ impl Ppp {
         }
     }
 
-    fn compute_sl_price(&self, request: &TradeRequestObject, is_long: bool) -> f64 {
+    fn compute_sl_price(&self, request: &SimulationEvent, is_long: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let (value_area, trade_price, sign) = if is_long {
@@ -88,7 +101,9 @@ impl Ppp {
             )
         };
         let entry_price = self.get_entry_price(pre_trade_values).unwrap();
-        let offset = request.market.try_offset_in_tick(self.stop_loss.offset);
+        let offset = request
+            .market_kind
+            .try_offset_in_tick(self.stop_loss.offset);
 
         match self.stop_loss.kind {
             StopLossKind::PriceUponTradeEntry => entry_price + sign * offset,
@@ -97,7 +112,7 @@ impl Ppp {
         }
     }
 
-    fn compute_tp_price(&self, request: &TradeRequestObject, is_long: bool) -> f64 {
+    fn compute_tp_price(&self, request: &SimulationEvent, is_long: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let (value_area, trade_price, sign) = if is_long {
@@ -115,7 +130,9 @@ impl Ppp {
         };
         let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let lst_trade_price = pre_trade_values.last_trade_price();
-        let offset = request.market.try_offset_in_tick(self.take_profit.offset);
+        let offset = request
+            .market_kind
+            .try_offset_in_tick(self.take_profit.offset);
 
         match self.take_profit.kind {
             TakeProfitKind::PrevClose => lst_trade_price + sign * offset,
@@ -123,75 +140,6 @@ impl Ppp {
             TakeProfitKind::PrevHighOrLow => trade_price + sign * offset,
             TakeProfitKind::ValueAreaHighOrLow => value_area + sign * offset,
         }
-    }
-
-    fn get_sl_price_long(&self, request: &TradeRequestObject) -> f64 {
-        self.compute_sl_price(request, true)
-    }
-
-    fn get_sl_price_short(&self, request: &TradeRequestObject) -> f64 {
-        self.compute_sl_price(request, false)
-    }
-
-    fn get_tp_long(&self, request: &TradeRequestObject) -> f64 {
-        self.compute_tp_price(request, true)
-    }
-
-    fn get_tp_short(&self, request: &TradeRequestObject) -> f64 {
-        self.compute_tp_price(request, false)
-    }
-}
-
-impl FromStr for PppBuilder {
-    type Err = ChapatyErrorKind;
-    fn from_str(s: &str) -> Result<Self, ChapatyErrorKind> {
-        match s {
-            "PPP" | "Ppp" | "ppp" => Ok(PppBuilder::new()),
-            _ => Err(Self::Err::ParseBotError(format!(
-                "This strategy <{s}> does not exist"
-            ))),
-        }
-    }
-}
-
-impl Strategy for Ppp {
-    fn get_trade(&self, request: &TradeRequestObject) -> Trade {
-        Trade {
-            entry_price: self.get_entry_price(&request.pre_trade_values).unwrap(),
-            stop_loss: self.get_sl_price(request),
-            take_profit: self.get_tp_price(request),
-            trade_kind: self.get_trade_kind(&request.pre_trade_values),
-            is_valid: true,
-        }
-    }
-
-    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
-        let market_values = vec![
-            PreTradeDataKind::LastTradePrice,
-            PreTradeDataKind::LowestTradePrice,
-            PreTradeDataKind::HighestTradePrice,
-        ];
-        let trading_indicators = vec![
-            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
-            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
-            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
-        ];
-        RequriedPreTradeValues {
-            market_values,
-            trading_indicators,
-        }
-    }
-
-    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
-        match self.entry {
-            TradingIndicatorKind::Poc(ph) => Some(pre_trade_values.poc(ph)),
-            TradingIndicatorKind::ValueAreaHigh(ph) => Some(pre_trade_values.value_area_high(ph)),
-            TradingIndicatorKind::ValueAreaLow(ph) => Some(pre_trade_values.value_area_low(ph)),
-        }
-    }
-
-    fn get_entry_ts(&self, _pre_trade_values: &RequiredPreTradeValuesWithData) -> (Option<i64>, bool) {
-        (None, true)
     }
 
     /// This function determines the `TradeKind` based on the entry price and last traded price.
@@ -214,8 +162,45 @@ impl Strategy for Ppp {
         }
     }
 
-    fn get_name(&self) -> String {
-        "ppp".to_string()
+    fn get_sl_price_long(&self, request: &SimulationEvent) -> f64 {
+        self.compute_sl_price(request, true)
+    }
+
+    fn get_sl_price_short(&self, request: &SimulationEvent) -> f64 {
+        self.compute_sl_price(request, false)
+    }
+
+    fn get_tp_long(&self, request: &SimulationEvent) -> f64 {
+        self.compute_tp_price(request, true)
+    }
+
+    fn get_tp_short(&self, request: &SimulationEvent) -> f64 {
+        self.compute_tp_price(request, false)
+    }
+
+    // fn get_trade(&self, request: &SimulationEvent) -> Trade {
+    //     Trade {
+    //         entry_price: self.get_entry_price(&request.pre_trade_values).unwrap(),
+    //         stop_loss: self.get_sl_price(request),
+    //         take_profit: self.get_tp_price(request),
+    //         trade_kind: self.get_trade_kind(&request.pre_trade_values),
+    //         is_valid: true,
+    //     }
+    // }
+
+    fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
+        match self.entry {
+            TradingIndicatorKind::Poc(ph) => Some(pre_trade_values.poc(ph)),
+            TradingIndicatorKind::ValueAreaHigh(ph) => Some(pre_trade_values.value_area_high(ph)),
+            TradingIndicatorKind::ValueAreaLow(ph) => Some(pre_trade_values.value_area_low(ph)),
+        }
+    }
+
+    fn get_entry_ts(
+        &self,
+        _pre_trade_values: &RequiredPreTradeValuesWithData,
+    ) -> (Option<i64>, bool) {
+        (None, true)
     }
 
     fn is_pre_trade_day_equal_to_trade_day(&self) -> bool {
@@ -225,12 +210,63 @@ impl Strategy for Ppp {
     fn is_only_trading_on_news(&self) -> bool {
         false
     }
+}
 
-    fn get_news(&self) -> HashSet<NaiveDate> {
-        NewsKind::iter().fold(HashSet::new(), |mut acc, news_kind| {
-            acc.extend(news_kind.get_news_dates());
-            acc
-        })
+impl FromStr for PppBuilder {
+    type Err = ChapatyErrorKind;
+    fn from_str(s: &str) -> Result<Self, ChapatyErrorKind> {
+        match s {
+            "PPP" | "Ppp" | "ppp" => Ok(PppBuilder::new()),
+            _ => Err(Self::Err::ParseBotError(format!(
+                "This strategy <{s}> does not exist"
+            ))),
+        }
+    }
+}
+
+impl Strategy for Ppp {
+    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
+        let market_values = vec![
+            PreTradeDataKind::LastTradePrice,
+            PreTradeDataKind::LowestTradePrice,
+            PreTradeDataKind::HighestTradePrice,
+        ];
+        let trading_indicators = vec![
+            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
+        ];
+        RequriedPreTradeValues {
+            market_values,
+            trading_indicators,
+        }
+    }
+
+    fn get_market_simulation_data_kind(&self) -> MarketSimulationDataKind {
+        self.market_simulation_data_kind
+    }
+
+    fn check_activation_event(
+        &self,
+        simulation_event: &SimulationEvent,
+    ) -> Option<ActivationEvent> {
+        None
+    }
+
+    fn check_cancelation_event(&self, simulation_event: &SimulationEvent) -> Option<CloseEvent> {
+        None
+    }
+
+    fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
+        None
+    }
+
+    fn get_strategy_kind(&self) -> StrategyKind {
+        StrategyKind::Ppp
+    }
+
+    fn get_name(&self) -> String {
+        "ppp".to_string()
     }
 }
 

@@ -128,10 +128,10 @@ async fn backtest_parametrized() {
 
         let strategy =
             setup_strategy_parametrized(*offset, *number_candles_to_wait, *loss_to_win_ratio);
-        let bot = BotBuilder::new(strategy, data_provider.clone())
+        let bot = BotBuilder::new(vec![strategy], data_provider.clone())
             .with_years(years.clone())
             .with_markets(markets.clone())
-            .with_market_simulation_data(market_simulation_data)
+            // .with_market_simulation_data(market_simulation_data)
             .with_time_frame(time_frame)
             .with_google_cloud_storage_client(client.clone())
             .with_google_cloud_bucket(bucket.clone())

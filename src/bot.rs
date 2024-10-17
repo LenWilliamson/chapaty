@@ -4,7 +4,6 @@ pub mod indicator_data_pair;
 pub mod pre_trade_data;
 pub mod time_frame_snapshot;
 pub mod time_interval;
-pub mod trade;
 pub mod trading_session;
 pub mod transformer;
 use self::{
@@ -15,11 +14,9 @@ use crate::{
     backtest_result::{BacktestResult, MarketAndYearBacktestResult},
     config::GoogleCloudBucket,
     data_provider::DataProvider,
+    decision_policy::DecisionPolicy,
     enums::{
-        bot::TimeFrameKind,
-        data::{HdbSourceDirKind, MarketSimulationDataKind},
-        error::ChapatyErrorKind,
-        markets::MarketKind,
+        bot::TimeFrameKind, data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind,
     },
     pnl::{
         pnl_report::{PnLReport, PnLReports},
@@ -35,36 +32,39 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/*
+- Create the possiblity to compute Vec<Agent> and at the end collect the result, which is a merged PnL
+*/
 #[derive(Clone)]
 pub struct Bot {
     client: Option<Client>,
     name: String,
     bucket: GoogleCloudBucket,
-    strategy: Arc<dyn Strategy + Send + Sync>,
+    strategies: Vec<Arc<dyn Strategy + Send + Sync>>,
     data_provider: Arc<dyn DataProvider + Send + Sync>,
     markets: Vec<MarketKind>,
     years: Vec<u32>,
-    market_simulation_data: MarketSimulationDataKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
     session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
+    decision_policy: Arc<dyn DecisionPolicy + Send + Sync>,
 }
 pub struct BotBuilder {
     client: Option<Client>,
     name: String,
     bucket: GoogleCloudBucket,
-    strategy: Arc<dyn Strategy + Send + Sync>,
+    strategies: Vec<Arc<dyn Strategy + Send + Sync>>,
     data_provider: Arc<dyn DataProvider + Send + Sync>,
     markets: Vec<MarketKind>,
     years: Vec<u32>,
-    market_simulation_data: MarketSimulationDataKind,
     time_interval: Option<TimeInterval>,
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
     session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
+    decision_policy: Option<Arc<dyn DecisionPolicy + Send + Sync>>,
 }
 
 #[automock]
@@ -121,8 +121,8 @@ impl Bot {
         self.data_provider.clone()
     }
 
-    pub fn get_strategy(&self) -> Arc<dyn Strategy + Send + Sync> {
-        self.strategy.clone()
+    pub fn get_strategies(&self) -> Vec<Arc<dyn Strategy + Send + Sync>> {
+        self.strategies.clone()
     }
 
     pub fn get_time_frame_ref(&self) -> &TimeFrameKind {
@@ -162,7 +162,7 @@ impl Bot {
 
         (
             PnLStatement {
-                strategy_name: self.strategy.get_name(),
+                strategy_name: self.name.clone(),
                 markets: self.markets.clone(),
                 pnl_data,
             },
@@ -179,8 +179,8 @@ impl Bot {
             .with_bot(self.get_shared_pointer())
             .with_indicator_data_pair(self.determine_indicator_data_pair())
             .with_cache_computations(self.cache_computations)
-            .with_market(market)
-            .with_market_sim_data_kind(self.market_simulation_data);
+            .with_market(market);
+        // .with_market_sim_data_kind(self.market_simulation_data);
 
         let tasks: Vec<_> = self
             .years
@@ -188,7 +188,8 @@ impl Bot {
             .into_iter()
             .map(|year| {
                 let builder = trading_session_builder.clone();
-                let strategy = self.strategy.get_name();
+                // TODO rename
+                let strategy = "TODO_RENAME_self.strategy.get_name();".to_string();
                 let cache_computations = self.cache_computations;
                 let session_cache = Arc::clone(&session_cache);
                 let some_session_cache = self.session_cache.clone();
@@ -226,19 +227,24 @@ impl Bot {
     }
 
     fn determine_indicator_data_pair(&self) -> Arc<HashSet<IndicatorDataPair>> {
-        let map = self
-            .strategy
-            .get_required_pre_trade_values()
-            .trading_indicators
-            .iter()
-            .fold(HashSet::new(), |mut acc, trading_indicator| {
-                let indicator_data_pair = IndicatorDataPair::new(
-                    *trading_indicator,
-                    HdbSourceDirKind::from(*trading_indicator),
-                );
-                acc.insert(indicator_data_pair);
-                acc
-            });
+        let mut map = HashSet::new();
+
+        for strategy in &self.strategies {
+            map.extend(
+                strategy
+                    .get_required_pre_trade_values()
+                    .trading_indicators
+                    .iter()
+                    .fold(HashSet::new(), |mut acc, trading_indicator| {
+                        let indicator_data_pair = IndicatorDataPair::new(
+                            *trading_indicator,
+                            HdbSourceDirKind::from(*trading_indicator),
+                        );
+                        acc.insert(indicator_data_pair);
+                        acc
+                    }),
+            );
+        }
 
         Arc::new(map)
     }
@@ -246,7 +252,7 @@ impl Bot {
 
 impl BotBuilder {
     pub fn new(
-        strategy: Arc<dyn Strategy + Send + Sync>,
+        strategies: Vec<Arc<dyn Strategy + Send + Sync>>,
         data_provider: Arc<dyn DataProvider + Send + Sync>,
     ) -> Self {
         Self {
@@ -256,16 +262,16 @@ impl BotBuilder {
                 historical_market_data_bucket_name: "".to_string(),
                 cached_bot_data_bucket_name: "".to_string(),
             },
-            strategy,
+            strategies,
             data_provider,
             markets: vec![],
             years: vec![],
-            market_simulation_data: MarketSimulationDataKind::Ohlc1m,
             time_interval: None,
             time_frame: TimeFrameKind::Daily,
             save_result_as_csv: false,
             cache_computations: false,
             session_cache: None,
+            decision_policy: None,
         }
     }
 
@@ -281,12 +287,9 @@ impl BotBuilder {
         Self { markets, ..self }
     }
 
-    pub fn with_market_simulation_data(
-        self,
-        market_simulation_data: MarketSimulationDataKind,
-    ) -> Self {
+    pub fn with_decision_policy(self, decision_policy: Arc<dyn DecisionPolicy + Send + Sync>) -> Self {
         Self {
-            market_simulation_data,
+            decision_policy: Some(decision_policy),
             ..self
         }
     }
@@ -346,16 +349,16 @@ impl BotBuilder {
             client: self.client,
             name: self.name,
             bucket: self.bucket,
-            strategy: self.strategy,
+            strategies: self.strategies,
             data_provider: self.data_provider,
             markets: self.markets,
             years: self.years,
-            market_simulation_data: self.market_simulation_data,
             time_interval: self.time_interval,
             time_frame: self.time_frame,
             save_result_as_csv: self.save_result_as_csv,
             cache_computations: self.cache_computations,
             session_cache: self.session_cache,
+            decision_policy: self.decision_policy.unwrap(),
         })
     }
 }
@@ -394,7 +397,7 @@ mod test {
                 trading_indicators,
             });
 
-        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
             .with_google_cloud_storage_client(cloud_storage_client)
             .build()
             .unwrap();

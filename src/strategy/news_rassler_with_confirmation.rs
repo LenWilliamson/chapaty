@@ -4,12 +4,14 @@ use crate::{enums::news::NewsKind, types::ohlc::OhlcCandle};
 
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
 pub struct NewsRasslerWithConfirmation {
     news_kind: NewsKind,
     stop_loss: StopLoss,
     take_profit_kind: TakeProfitKind,
     number_candles_to_wait: i32,
     earliest_candle_to_enter: i32,
+    market_simulation_data_kind: MarketSimulationDataKind,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: f64,
@@ -21,6 +23,7 @@ pub struct NewsRasslerWithConfirmationBuilder {
     take_profit_kind: Option<TakeProfitKind>,
     number_candles_to_wait: Option<i32>,
     earliest_candle_to_enter: Option<i32>,
+    market_simulation_data_kind: Option<MarketSimulationDataKind>,
 
     /// The number of loser trades it takes to counterbalance a winner
     loss_to_win_ratio: Option<f64>,
@@ -35,6 +38,17 @@ impl NewsRasslerWithConfirmationBuilder {
             number_candles_to_wait: None,
             earliest_candle_to_enter: None,
             loss_to_win_ratio: None,
+            market_simulation_data_kind: None,
+        }
+    }
+
+    pub fn with_market_simulation_data_kind(
+        self,
+        market_simulation_data_kind: MarketSimulationDataKind,
+    ) -> Self {
+        Self {
+            market_simulation_data_kind: Some(market_simulation_data_kind),
+            ..self
         }
     }
 
@@ -65,7 +79,7 @@ impl NewsRasslerWithConfirmationBuilder {
             ..self
         }
     }
-    
+
     pub fn with_earliest_candle_to_enter(self, n: i32) -> Self {
         Self {
             earliest_candle_to_enter: Some(n),
@@ -92,6 +106,7 @@ impl NewsRasslerWithConfirmationBuilder {
             number_candles_to_wait: self.number_candles_to_wait.unwrap(),
             earliest_candle_to_enter: self.earliest_candle_to_enter.unwrap(),
             loss_to_win_ratio: self.loss_to_win_ratio.unwrap(),
+            market_simulation_data_kind: self.market_simulation_data_kind.unwrap(),
         }
     }
 }
@@ -119,7 +134,7 @@ impl NewsRasslerWithConfirmation {
         self.compute_offset(news_candle, self.stop_loss.offset)
     }
 
-    fn get_sl_price(&self, request: &TradeRequestObject) -> Option<f64> {
+    fn get_sl_price(&self, request: &SimulationEvent) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
@@ -127,7 +142,7 @@ impl NewsRasslerWithConfirmation {
         }
     }
 
-    fn get_tp_price(&self, request: &TradeRequestObject) -> Option<f64> {
+    fn get_tp_price(&self, request: &SimulationEvent) -> Option<f64> {
         let pre_trade_values = &request.pre_trade_values;
         let trade_direction = self.get_trade_kind(pre_trade_values);
         match trade_direction {
@@ -137,7 +152,7 @@ impl NewsRasslerWithConfirmation {
         }
     }
 
-    fn compute_sl_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
+    fn compute_sl_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let open = news_candle.open.unwrap();
@@ -152,16 +167,16 @@ impl NewsRasslerWithConfirmation {
     }
 
     /// Function to compute the stop loss price for long trades
-    fn get_sl_price_long(&self, request: &TradeRequestObject) -> f64 {
+    fn get_sl_price_long(&self, request: &SimulationEvent) -> f64 {
         self.compute_sl_price(request, true)
     }
 
     /// Function to compute the stop loss price for short trades
-    fn get_sl_price_short(&self, request: &TradeRequestObject) -> f64 {
+    fn get_sl_price_short(&self, request: &SimulationEvent) -> f64 {
         self.compute_sl_price(request, false)
     }
 
-    fn compute_tp_price(&self, request: &TradeRequestObject, is_long_trade: bool) -> f64 {
+    fn compute_tp_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
@@ -177,74 +192,46 @@ impl NewsRasslerWithConfirmation {
     }
 
     /// Function to compute the take profit for long trades
-    fn get_tp_price_long(&self, request: &TradeRequestObject) -> f64 {
+    fn get_tp_price_long(&self, request: &SimulationEvent) -> f64 {
         self.compute_tp_price(request, true)
     }
 
     /// Function to compute the take profit for short trades
-    fn get_tp_price_short(&self, request: &TradeRequestObject) -> f64 {
+    fn get_tp_price_short(&self, request: &SimulationEvent) -> f64 {
         self.compute_tp_price(request, false)
     }
-}
 
-impl FromStr for NewsRasslerWithConfirmationBuilder {
-    type Err = ChapatyErrorKind;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "NEWS" | "News" | "news" => Ok(NewsRasslerWithConfirmationBuilder::new()),
-            _ => Err(Self::Err::ParseBotError(format!(
-                "This strategy <{s}> does not exists"
-            ))),
-        }
-    }
-}
+    // fn get_trade(&self, request: &SimulationEvent) -> Trade {
+    //     let entry_price = self.get_entry_price(&request.pre_trade_values);
+    //     if entry_price.is_none() {
+    //         return Trade {
+    //             entry_price: 0.0,
+    //             stop_loss: None,
+    //             take_profit: None,
+    //             trade_kind: TradeDirectionKind::None,
+    //             is_valid: false,
+    //         };
+    //     }
 
-impl Strategy for NewsRasslerWithConfirmation {
-    fn get_trade(&self, request: &TradeRequestObject) -> Trade {
-        let entry_price = self.get_entry_price(&request.pre_trade_values);
-        if entry_price.is_none() {
-            return Trade {
-                entry_price: 0.0,
-                stop_loss: None,
-                take_profit: None,
-                trade_kind: TradeDirectionKind::None,
-                is_valid: false,
-            };
-        }
+    //     let take_profit = self.get_tp_price(request);
 
-        let take_profit = self.get_tp_price(request);
+    //     let stop_loss = take_profit.map(|_| self.get_sl_price(request)).flatten();
 
-        let stop_loss = take_profit.map(|_| self.get_sl_price(request)).flatten();
+    //     let is_valid_trade = take_profit.and(stop_loss).is_some();
 
-        let is_valid_trade = take_profit.and(stop_loss).is_some();
+    //     let entry_price = self
+    //         .get_entry_ts(&request.pre_trade_values)
+    //         .0
+    //         .map_or(0.0, |_| entry_price.unwrap());
 
-        let entry_price = self
-            .get_entry_ts(&request.pre_trade_values)
-            .0
-            .map_or(0.0, |_| entry_price.unwrap());
-
-        Trade {
-            entry_price,
-            stop_loss,
-            take_profit,
-            trade_kind: self.get_trade_kind(&request.pre_trade_values),
-            is_valid: is_valid_trade,
-        }
-    }
-
-    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
-        let market_values =
-            (0..=self.number_candles_to_wait)
-                .into_iter()
-                .fold(Vec::new(), |mut acc, n| {
-                    acc.push(PreTradeDataKind::News(self.news_kind, n as u32));
-                    acc
-                });
-        RequriedPreTradeValues {
-            market_values,
-            trading_indicators: Vec::new(),
-        }
-    }
+    //     Trade {
+    //         entry_price,
+    //         stop_loss,
+    //         take_profit,
+    //         trade_kind: self.get_trade_kind(&request.pre_trade_values),
+    //         is_valid: is_valid_trade,
+    //     }
+    // }
 
     fn get_entry_price(&self, pre_trade_values: &RequiredPreTradeValuesWithData) -> Option<f64> {
         let news_candle = match pre_trade_values.news_candle(&self.news_kind, 0) {
@@ -341,19 +328,67 @@ impl Strategy for NewsRasslerWithConfirmation {
         }
     }
 
-    fn get_name(&self) -> String {
-        self.news_kind.to_string()
-    }
-
+    
     fn is_pre_trade_day_equal_to_trade_day(&self) -> bool {
         true
     }
-
+    
     fn is_only_trading_on_news(&self) -> bool {
         true
     }
+}
 
-    fn get_news(&self) -> HashSet<NaiveDate> {
-        self.news_kind.get_news_dates()
+impl FromStr for NewsRasslerWithConfirmationBuilder {
+    type Err = ChapatyErrorKind;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "NEWS" | "News" | "news" => Ok(NewsRasslerWithConfirmationBuilder::new()),
+            _ => Err(Self::Err::ParseBotError(format!(
+                "This strategy <{s}> does not exists"
+            ))),
+        }
+    }
+}
+
+impl Strategy for NewsRasslerWithConfirmation {
+    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
+        let market_values =
+            (0..=self.number_candles_to_wait)
+                .into_iter()
+                .fold(Vec::new(), |mut acc, n| {
+                    acc.push(PreTradeDataKind::News(self.news_kind, n as u32));
+                    acc
+                });
+        RequriedPreTradeValues {
+            market_values,
+            trading_indicators: Vec::new(),
+        }
+    }
+    
+    fn get_market_simulation_data_kind(&self) -> MarketSimulationDataKind {
+        self.market_simulation_data_kind
+    }
+
+    fn check_activation_event(&self, simulation_event: &SimulationEvent) -> Option<ActivationEvent> {
+        None
+    }
+
+    fn check_cancelation_event(&self, simulation_event: &SimulationEvent) -> Option<CloseEvent> {
+        None
+    }
+    
+    fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
+        Some(self.news_kind.get_news_dates())
+    }
+
+    fn get_strategy_kind(&self) -> StrategyKind {
+        StrategyKind::NewsRasslerWithConfirmation
+    }
+    
+    fn get_name(&self) -> String {
+        format!(
+            "NewsRasslerWithConfirmation::{}",
+            self.news_kind.to_string()
+        )
     }
 }

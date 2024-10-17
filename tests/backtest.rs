@@ -53,10 +53,10 @@ async fn backtest() {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let bot = BotBuilder::new(strategy, data_provider)
+    let bot = BotBuilder::new(vec![strategy], data_provider)
         .with_years(years)
         .with_markets(markets)
-        .with_market_simulation_data(market_simulation_data)
+        // .with_market_simulation_data(market_simulation_data)
         // .with_time_interval(time_interval)
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
@@ -102,10 +102,10 @@ async fn backtest_with_session_cache(
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let bot = BotBuilder::new(strategy, data_provider)
+    let bot = BotBuilder::new(vec![strategy], data_provider)
         .with_years(years)
         .with_markets(markets)
-        .with_market_simulation_data(market_simulation_data)
+        // .with_market_simulation_data(market_simulation_data)
         // .with_time_interval(time_interval)
         .with_time_frame(time_frame)
         // .with_google_cloud_storage_client(client)
@@ -180,6 +180,16 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
 }
 
 /*
+
+1. In strategy make return Vec<Trade> for get_trade and rename to get_trades
+2. Allow Bot to have different time frames for different evaluations of a strategy
+3. Make strategy "optimizable" to try different waiting periods etc:
+    - Aktuell optimieren counter und rassler separat und die kombinierte Strategie bekommt das Optimum der beiden
+    - Probiere die Strategie so zu implementieren, dass wir die nochmal optimieren können, indem man gegeben der neuen Strategie entscheidet wann der optimale
+      Entry für den Counter und Rassler ist.
+    - KI use Case, wie kansnt du eine NN integreiren? Passiert das in der Strategie, passiert es separat?
+
+
 Counter                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 8, loss_to_win_ratio = 2.8, offset = 1.25, total_profit = 12125
 Counter                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 1.05, offset = 1.45, total_profit = 8593.75
 Counter                 NFP 5m-Chart 2006 - 20020: 

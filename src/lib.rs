@@ -7,6 +7,8 @@ pub mod config;
 pub mod converter;
 mod data_frame_operations;
 pub mod data_provider;
+pub mod decision_policy;
+mod dfa;
 mod enums;
 pub mod equity_curve;
 mod lazy_frame_operations;

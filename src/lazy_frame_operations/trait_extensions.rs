@@ -264,6 +264,7 @@ mod tests {
             low: Some(1.06065),
             close: Some(1.0607),
             close_ts: Some(1669941899999),
+            is_end_of_day: Some(false),
         };
 
         assert_eq!(res, expect)

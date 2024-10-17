@@ -66,7 +66,7 @@ impl TradingSession {
             .map(|(cw, wd)| build_time_frame_snapshot(cw, Some(wd), None, None))
             .filter(|snapshot| self.is_backtest_on_news(snapshot))
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
-            .map(|batch| self.compute_pnl_data_row(batch))
+            .flat_map(|batch| self.compute_pnl_data_row(batch).into_par_iter())
             .collect();
 
         pnl_report_data_rows.into_iter().collect()
@@ -84,11 +84,19 @@ impl TradingSession {
         let year = i32::try_from(self.year).unwrap();
         let week = u32::try_from(snapshot.get_calendar_week_as_int()).unwrap();
         let snapshot_date = NaiveDate::from_isoywd_opt(year, week, snapshot.get_weekday());
-        let strategy = &self.bot.strategy;
-        let is_snapshot_on_news =
-            snapshot_date.map_or(false, |date| strategy.get_news().contains(&date));
+        let is_snapshot_on_news = snapshot_date.map_or(false, |date| {
+            self.bot.strategies.iter().any(|s| {
+                s.filter_on_economic_news_event()
+                    .map_or(false, |v| v.contains(&date))
+            })
+        });
 
-        if strategy.is_only_trading_on_news() {
+        if self
+            .bot
+            .strategies
+            .iter()
+            .any(|s| s.filter_on_economic_news_event().is_some())
+        {
             is_snapshot_on_news
         } else {
             !is_snapshot_on_news
@@ -115,25 +123,23 @@ impl TradingSession {
         snapshot: &TimeFrameSnapshot,
     ) -> Result<PreTradeData, ChapatyErrorKind> {
         let builder = PreTradeDataBuilder::new();
-        if self.bot.strategy.is_pre_trade_day_equal_to_trade_day() {
+        // TODO Fix, as we might not need to ask if pre_trade equals trade day due to new setup
+        // if self.bot.strategies.iter().any(|s| s.is_pre_trade_day_equal_to_trade_day()) {
+        //     Ok(builder.with_market_sim_data(self.get_market_sim_data_data(snapshot)?).with_indicators(self.get_trading_indicator(snapshot)?).build())
+        // } else {}
+
+        if is_on_monday(snapshot) {
+            let last_friday = snapshot.last_friday();
             Ok(builder
-                .with_market_sim_data(self.get_market_sim_data_data(snapshot)?)
-                .with_indicators(self.get_trading_indicator(snapshot)?)
+                .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
+                .with_indicators(self.get_trading_indicator(&last_friday)?)
                 .build())
         } else {
-            if is_on_monday(snapshot) {
-                let last_friday = snapshot.last_friday();
-                Ok(builder
-                    .with_market_sim_data(self.get_market_sim_data_data(&last_friday)?)
-                    .with_indicators(self.get_trading_indicator(&last_friday)?)
-                    .build())
-            } else {
-                let yesterday = snapshot.shift_back_by_n_weekdays(1);
-                Ok(builder
-                    .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
-                    .with_indicators(self.get_trading_indicator(&yesterday)?)
-                    .build())
-            }
+            let yesterday = snapshot.shift_back_by_n_weekdays(1);
+            Ok(builder
+                .with_market_sim_data(self.get_market_sim_data_data(&yesterday)?)
+                .with_indicators(self.get_trading_indicator(&yesterday)?)
+                .build())
         }
     }
 
@@ -171,10 +177,11 @@ impl TradingSession {
             .collect()
     }
 
-    fn compute_pnl_data_row(&self, batch: BacktestingBatchData) -> PnLReportDataRow {
+    fn compute_pnl_data_row(&self, batch: BacktestingBatchData) -> Vec<PnLReportDataRow> {
         PnLReportDataRowCalculatorBuilder::new()
             .with_market_sim_data(batch.market_sim_data)
-            .with_strategy(self.bot.strategy.clone())
+            .with_strategy(self.bot.strategies.clone())
+            .with_decision_policy(self.bot.decision_policy.clone())
             .with_pre_trade_data(batch.pre_trade_data)
             .with_year(self.year)
             .with_market(self.market)
@@ -291,9 +298,10 @@ impl TradingSessionBuilder {
             Some(session_cache) => {
                 // Lock the Mutex to get access to the HashMap
                 let cache = session_cache.lock().unwrap();
-        
+
                 // Access the nested HashMap for the specific market and year
-                cache.get(&self.market.unwrap())
+                cache
+                    .get(&self.market.unwrap())
                     .and_then(|year_map| year_map.get(&self.year.unwrap()))
                     .unwrap()
                     .clone() // Clone the ExecutionData if it exists
@@ -301,9 +309,9 @@ impl TradingSessionBuilder {
             None => {
                 // If there's no session_cache, populate the trading session data
                 self.populate_trading_session_data().await
-            },
+            }
         };
-        
+
         TradingSession {
             bot: self.bot.unwrap(),
             indicator_data_pair: self.indicator_data_pair.unwrap(),
@@ -322,7 +330,7 @@ impl TradingSessionBuilder {
 
         let path_finder = PathFinderBuilder::new()
             .with_data_provider(bot.data_provider.get_name())
-            .with_strategy_name(bot.strategy.get_name())
+            .with_strategy_name("bot.strategy.get_name()".to_string()) // TODO no caching as originally thought
             .with_market(market)
             .with_year(year)
             .with_time_interval(bot.time_interval)
@@ -332,6 +340,7 @@ impl TradingSessionBuilder {
         let trading_indicators_df_map = self.get_trading_indicators_df_map(&path_finder).await;
         let market_simulation_df_map = self.get_market_simulation_df_map(&path_finder).await;
 
+        // TODO market_sim_data -> compute rsi, sma, etc. and store it as a vec<MarketXYZ> where MarketXYZ is a struct containing ohlc data, and other real time indicators
         ExecutionData {
             market_sim_data: market_simulation_df_map,
             trading_indicators: trading_indicators_df_map,
@@ -369,7 +378,13 @@ impl TradingSessionBuilder {
         indicator_data_pair: IndicatorDataPair,
     ) -> JoinHandle<(TradingIndicatorKind, HashMap<TimeFrameSnapshot, DataFrame>)> {
         let bot = self.bot.clone().unwrap();
-        let file_name = FileNameResolver::new(bot.market_simulation_data.into())
+        // TODO Fix -> need different simulation data for different strategies
+        let sim_data = bot
+            .strategies
+            .get(0)
+            .unwrap()
+            .get_market_simulation_data_kind();
+        let file_name = FileNameResolver::new(sim_data.into())
             .with_indicator_data_pair(indicator_data_pair.clone())
             .get_filename();
 
@@ -395,7 +410,13 @@ impl TradingSessionBuilder {
     ) -> chapaty::types::DataFrameMap {
         let bot = self.bot.clone().unwrap();
 
-        let market_sim_data = bot.market_simulation_data.into();
+        // TODO Fix -> need different simulation data for different strategies
+        let sim_data = bot
+            .strategies
+            .get(0)
+            .unwrap()
+            .get_market_simulation_data_kind();
+        let market_sim_data = sim_data.into();
         let file_name_resolver = FileNameResolver::new(market_sim_data);
 
         let file_name = file_name_resolver.get_filename();
@@ -412,8 +433,14 @@ impl TradingSessionBuilder {
 
     fn initalize_cloud_storage_client_builder(&self) -> CloudStorageClientBuilder {
         let bot = self.bot.clone().unwrap();
+        // TODO Fix -> need different simulation data for different strategies
+        let sim_data = bot
+            .strategies
+            .get(0)
+            .unwrap()
+            .get_market_simulation_data_kind();
         CloudStorageClientBuilder::new(bot.clone())
-            .with_simulation_data(bot.market_simulation_data.into())
+            .with_simulation_data(sim_data.into())
             .with_market(self.market.unwrap())
             .with_year(self.year.unwrap())
             .with_cache_computations(self.cache_computations)
@@ -461,11 +488,11 @@ mod test {
         };
 
         // Test Initialization
-        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
             .with_google_cloud_storage_client(cloud_storage_client)
             .with_google_cloud_bucket(bucket)
             .with_time_interval(time_interval)
-            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
 
@@ -666,12 +693,12 @@ mod test {
         };
 
         // Test Initialization
-        let bot = BotBuilder::new(Arc::new(mock_strategy), data_provider)
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
             .with_google_cloud_storage_client(cloud_storage_client)
             .with_google_cloud_bucket(bucket)
             .with_time_interval(time_interval)
             .with_time_frame(TimeFrameKind::Weekly)
-            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
 
@@ -730,12 +757,12 @@ mod test {
     async fn test_is_backtest_on_news() {
         // Test Setup
         let mut mock_strategy = MockStrategy::new();
+        // mock_strategy
+        //     .expect_is_only_trading_on_news()
+        //     .return_const(true);
         mock_strategy
-            .expect_is_only_trading_on_news()
-            .return_const(true);
-        mock_strategy
-            .expect_get_news()
-            .return_const(NewsKind::UsaNFP.get_news_dates());
+            .expect_filter_on_economic_news_event()
+            .return_const(Some(NewsKind::UsaNFP.get_news_dates()));
         let data_provider = MockDataProvider::new();
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -744,11 +771,11 @@ mod test {
         };
 
         // Test Initialization with news trading
-        let bot = BotBuilder::new(Arc::new(mock_strategy), Arc::new(data_provider))
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
             .with_google_cloud_storage_client(cloud_storage_client.clone())
             .with_google_cloud_bucket(bucket.clone())
             .with_time_frame(TimeFrameKind::Weekly)
-            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
 
@@ -783,19 +810,19 @@ mod test {
 
         // Test Initialization no news trading
         let mut mock_strategy = MockStrategy::new();
+        // mock_strategy
+        //     .expect_is_only_trading_on_news()
+        //     .return_const(false);
         mock_strategy
-            .expect_is_only_trading_on_news()
-            .return_const(false);
-        mock_strategy
-            .expect_get_news()
-            .return_const(NewsKind::UsaNFP.get_news_dates());
+            .expect_filter_on_economic_news_event()
+            .return_const(None);
         let data_provider = MockDataProvider::new();
 
-        let bot = BotBuilder::new(Arc::new(mock_strategy), Arc::new(data_provider))
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
             .with_google_cloud_storage_client(cloud_storage_client)
             .with_google_cloud_bucket(bucket)
             .with_time_frame(TimeFrameKind::Weekly)
-            .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
 

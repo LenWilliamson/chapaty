@@ -21,10 +21,10 @@ pub struct BotConfig {
 
 impl From<BotConfig> for BotBuilder {
     fn from(value: BotConfig) -> Self {
-        let builder = BotBuilder::new(value.strategy, value.data_provider)
+        let builder = BotBuilder::new(vec![value.strategy], value.data_provider)
             .with_years(vec![value.year])
             .with_markets(vec![value.market])
-            .with_market_simulation_data(value.market_simulation_data)
+            // .with_market_simulation_data(value.market_simulation_data)
             .with_time_frame(value.time_frame)
             .with_google_cloud_storage_client(value.client)
             .with_google_cloud_bucket(value.bucket)

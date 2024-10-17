@@ -1,4 +1,4 @@
-use super::pnl_report_data_row_calculator::PnLReportDataRowCalculator;
+use super::pnl_report_data_row_calculator::{PnLReportDataRowCalculator, PnLReportDataRowCalculatorBuilder};
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
     converter::any_value::AnyValueConverter,
@@ -278,13 +278,13 @@ pub struct PreTradeValuesCalculatorBuilder {
     required_pre_trade_values: Option<RequriedPreTradeValues>,
 }
 
-impl From<&PnLReportDataRowCalculator> for PreTradeValuesCalculatorBuilder {
-    fn from(value: &PnLReportDataRowCalculator) -> Self {
+impl From<&PnLReportDataRowCalculatorBuilder> for PreTradeValuesCalculatorBuilder {
+    fn from(value: &PnLReportDataRowCalculatorBuilder) -> Self {
         Self {
-            year: Some(value.year),
-            snapshot: Some(value.time_frame_snapshot),
-            pre_trade_data: Some(value.pre_trade_data.clone()),
-            market_sim_data_kind: Some(value.market_sim_data_kind),
+            year: value.year,
+            snapshot: value.time_frame_snapshot,
+            pre_trade_data: value.pre_trade_data.clone(),
+            market_sim_data_kind: value.market_sim_data_kind,
             required_pre_trade_values: None,
         }
     }
@@ -587,6 +587,7 @@ mod test {
             low: Some(1.06135),
             close: Some(1.0614),
             close_ts: Some(1669987859999),
+            is_end_of_day: Some(false),
         };
 
         assert_eq!(
@@ -601,6 +602,7 @@ mod test {
             low: Some(1.0613),
             close: Some(1.0614),
             close_ts: Some(1669987919999),
+            is_end_of_day: Some(false),
         };
 
         assert_eq!(
@@ -615,6 +617,7 @@ mod test {
             low: Some(1.06125),
             close: Some(1.06135),
             close_ts: Some(1669987979999),
+            is_end_of_day: Some(false),
         };
 
         assert_eq!(

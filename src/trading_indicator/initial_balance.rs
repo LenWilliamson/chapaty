@@ -4,7 +4,6 @@ use polars::{
 };
 
 use crate::{
-    calculator::trade_values_calculator::TradeValuesCalculator,
     converter::any_value::AnyValueConverter, DataProviderColumnKind, MarketSimulationDataKind,
 };
 
@@ -17,15 +16,6 @@ pub struct InitialBalance {
 pub struct InitialBalanceCalculator {
     pub df: DataFrame,
     pub market_simulation_data_kind: MarketSimulationDataKind,
-}
-
-impl From<&TradeValuesCalculator> for InitialBalanceCalculator {
-    fn from(value: &TradeValuesCalculator) -> Self {
-        Self {
-            df: value.market_sim_data.clone(),
-            market_simulation_data_kind: value.market_sim_data_kind,
-        }
-    }
 }
 
 impl InitialBalanceCalculator {

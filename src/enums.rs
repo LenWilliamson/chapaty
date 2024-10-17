@@ -6,5 +6,6 @@ pub mod indicator;
 pub mod markets;
 pub mod my_any_value;
 pub mod news;
+pub mod strategy;
 pub mod trade_and_pre_trade;
 pub mod value_area;

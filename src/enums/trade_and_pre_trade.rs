@@ -19,6 +19,7 @@ pub enum PreTradeDataKind {
     LowestTradePrice,
     HighestTradePrice,
 
+    /// TODO Remove
     /// The news to trade, where
     /// * `NewsKind` - determines which news
     /// * `u32` - sets the number of `N` candles to wait
@@ -32,4 +33,12 @@ pub enum TradeDirectionKind {
 
     #[strum(serialize = "Not Clear")]
     None,
+}
+
+#[derive(Debug, Copy, Clone, Display, PartialEq)]
+pub enum TradeCloseKind {
+    StopLoss,
+    TakeProfit,
+    Timeout,
+    Pivot,
 }
