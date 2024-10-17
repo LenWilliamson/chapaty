@@ -8,17 +8,17 @@ license = "Apache-2.0"
 
 [dependencies]
 chrono = "0.4.38"
-chrono-tz = "0.9.0"
-futures = "0.3.30"
+chrono-tz = "0.10.0"
+futures = "0.3.31"
 google-cloud-default = {version = "0.4.0", features = ["storage"] }
-google-cloud-storage = "0.20.0"
+google-cloud-storage = "0.22.1"
 mockall = "0.13.0"
 polars = {version = "0.43.1", features = ["lazy", "partition_by", "serde", "cum_agg"]}
 rayon = "1.10.0"
-regex = "1.10.5"
-reqwest = "0.12.5" 
-serde = "1.0.204"
-serde_json = "1.0.120"
+regex = "1.11.0"
+reqwest = "0.12.8" 
+serde = "1.0.210"
+serde_json = "1.0.129"
 strum = "0.26.3"
 strum_macros = "0.26.4"
-tokio = { version = "1.39.2", features = ["full"] }
+tokio = { version = "1.40.0", features = ["full"] }
