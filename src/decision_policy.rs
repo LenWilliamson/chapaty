@@ -1,4 +1,4 @@
-pub mod rassler_with_confirmation;
+pub mod choose_first_policy;
 
 use crate::{dfa::states::ActivationEvent, enums::strategy::StrategyKind};
 

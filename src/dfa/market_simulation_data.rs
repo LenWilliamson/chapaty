@@ -6,43 +6,45 @@ use crate::{
     DataProviderColumnKind, MarketKind, MarketSimulationDataKind,
 };
 
+#[derive(Clone)]
 pub struct SimulationData {
-    pub market: Vec<Market>,
+    // pub market: Vec<Market>,
     pub pre_trade_values: RequiredPreTradeValuesWithData,
     pub market_kind: MarketKind,
     pub market_sim_data_kind: MarketSimulationDataKind,
 }
-pub struct SimulationEvent<'a> {
-    pub market_event: Vec<&'a Market>,
-    pub initial_balance: Option<&'a InitialBalance>,
-    pub pre_trade_values: &'a RequiredPreTradeValuesWithData,
-    pub market_kind: MarketKind,
-    pub market_sim_data_kind: MarketSimulationDataKind,
-}
+// pub struct SimulationEvent<'a> {
+//     pub market_event: Vec<&'a Market>,
+//     pub initial_balance: Option<&'a InitialBalance>,
+//     pub pre_trade_values: &'a RequiredPreTradeValuesWithData,
+//     pub market_kind: MarketKind,
+//     pub market_sim_data_kind: MarketSimulationDataKind,
+// }
 
-impl<'a> SimulationEvent<'a> {
-    pub fn new(market_event: Vec<&'a Market>, sim_data: &'a SimulationData) -> Self {
-        SimulationEvent {
-            market_event,
-            initial_balance: None,
-            pre_trade_values: &sim_data.pre_trade_values,
-            market_kind: sim_data.market_kind,
-            market_sim_data_kind: sim_data.market_sim_data_kind,
-        }
-    }
+// impl<'a> SimulationEvent<'a> {
+//     pub fn new(market_event: Vec<&'a Market>, sim_data: &'a SimulationData) -> Self {
+//         SimulationEvent {
+//             market_event,
+//             initial_balance: None,
+//             pre_trade_values: &sim_data.pre_trade_values,
+//             market_kind: sim_data.market_kind,
+//             market_sim_data_kind: sim_data.market_sim_data_kind,
+//         }
+//     }
 
-    pub fn update_on_market_event(&mut self, market_event: &'a Market) {
-        self.market_event.push(market_event);
-    }
-}
+//     pub fn update_on_market_event(&mut self, market_event: &'a Market) {
+//         self.market_event.push(market_event);
+//     }
+// }
 
 // TODO more values, extend with possible tick and ohlcv values or sma50, rsi14, etc?
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Market {
     pub ohlc: OhlcCandle,
 }
 
 pub struct SimulationDataBuilder {
-    pub market: Option<DataFrame>,
+    // pub market: Option<DataFrame>,
     pub pre_trade_values: Option<RequiredPreTradeValuesWithData>,
     pub market_kind: Option<MarketKind>,
     pub market_sim_data_kind: Option<MarketSimulationDataKind>,
@@ -51,19 +53,19 @@ pub struct SimulationDataBuilder {
 impl SimulationDataBuilder {
     pub fn new() -> Self {
         Self {
-            market: None,
+            // market: None,
             pre_trade_values: None,
             market_kind: None,
             market_sim_data_kind: None,
         }
     }
 
-    pub fn with_ohlc_candle(self, market: DataFrame) -> Self {
-        Self {
-            market: Some(market),
-            ..self
-        }
-    }
+    // pub fn with_ohlc_candle(self, market: DataFrame) -> Self {
+    //     Self {
+    //         market: Some(market),
+    //         ..self
+    //     }
+    // }
 
     pub fn with_pre_trade_values_with_data(self, data: RequiredPreTradeValuesWithData) -> Self {
         Self {
@@ -88,7 +90,7 @@ impl SimulationDataBuilder {
 
     pub fn build(self) -> Result<SimulationData, PolarsError> {
         Ok(SimulationData {
-            market: MarketDataFrame(self.market.unwrap()).try_into()?,
+            // market: MarketDataFrame(self.market.unwrap()).try_into()?,
             pre_trade_values: self.pre_trade_values.unwrap(),
             market_kind: self.market_kind.unwrap(),
             market_sim_data_kind: self.market_sim_data_kind.unwrap(),
@@ -96,7 +98,7 @@ impl SimulationDataBuilder {
     }
 }
 
-pub struct MarketDataFrame(DataFrame);
+pub struct MarketDataFrame(pub DataFrame);
 
 impl TryFrom<MarketDataFrame> for Vec<Market> {
     type Error = PolarsError;

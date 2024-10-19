@@ -32,7 +32,7 @@ pub struct Close;
 /// **Note:** The trait bound for `Accepting` is not yet enforced in the current implementation.
 /// Ensure that trades passed to functions or structures requiring accepting states implement this trait.
 /// This will be implemented in a future update.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Trade<'a, State> {
     pub entry_ts: Option<i64>,
     pub entry_price: Option<f64>,

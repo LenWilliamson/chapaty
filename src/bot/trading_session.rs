@@ -457,8 +457,9 @@ mod test {
         cloud_api::api_for_unit_tests::{download_df, download_df_map},
         config,
         data_provider::{binance::Binance, MockDataProvider},
+        decision_policy::choose_first_policy::ChooseFirstPolicy,
         enums::indicator::PriceHistogramKind,
-        strategy::RequriedPreTradeValues,
+        strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder, MarketSimulationDataKind, NewsKind, TimeInterval,
     };
     use std::sync::Arc;
@@ -466,395 +467,399 @@ mod test {
     #[tokio::test]
     async fn test_populate_daily_trading_session_data() {
         // Test Setup
-        // let mut mock_strategy = MockStrategy::new();
-        // let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
-        // let required_pre_trade_values = RequriedPreTradeValues {
-        //     market_values: Vec::new(),
-        //     trading_indicators,
-        // };
-        // mock_strategy
-        //     .expect_get_required_pre_trade_values()
-        //     .return_const(required_pre_trade_values.clone());
-        // mock_strategy.expect_get_name().return_const("ppp");
-        // let data_provider = Arc::new(Binance);
-        // let cloud_storage_client = config::get_google_cloud_storage_client().await;
-        // let bucket = config::GoogleCloudBucket {
-        //     historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
-        //     cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
-        // };
-        // let time_interval = TimeInterval {
-        //     start_day: chrono::Weekday::Mon,
-        //     start_h: 1,
-        //     end_day: chrono::Weekday::Fri,
-        //     end_h: 23,
-        // };
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators,
+        };
+        mock_strategy
+            .expect_get_required_pre_trade_values()
+            .return_const(required_pre_trade_values.clone());
+        mock_strategy.expect_get_name().return_const("ppp");
+        mock_strategy
+            .expect_get_market_simulation_data_kind()
+            .return_const(MarketSimulationDataKind::Ohlc1m);
+        let data_provider = Arc::new(Binance);
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
+        let time_interval = TimeInterval {
+            start_day: chrono::Weekday::Mon,
+            start_h: 1,
+            end_day: chrono::Weekday::Fri,
+            end_h: 23,
+        };
 
-        // // Test Initialization
-        // let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
-        //     .with_google_cloud_storage_client(cloud_storage_client)
-        //     .with_google_cloud_bucket(bucket)
-        //     .with_time_interval(time_interval)
-        //     // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
-        //     .build()
-        //     .unwrap();
+        // Test Initialization
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_interval(time_interval)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
+            .build()
+            .unwrap();
 
-        // let session = TradingSessionBuilder::new()
-        //     .with_bot(Arc::new(bot.clone()))
-        //     .with_indicator_data_pair(bot.determine_indicator_data_pair())
-        //     .with_market(MarketKind::BtcUsdt)
-        //     .with_year(2022);
+        let session = TradingSessionBuilder::new()
+            .with_bot(Arc::new(bot.clone()))
+            .with_indicator_data_pair(bot.determine_indicator_data_pair())
+            .with_market(MarketKind::BtcUsdt)
+            .with_year(2022);
 
-        // // Test Evaluation
-        // let execution_data = session.populate_trading_session_data().await;
-        // let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_ohlcv-1h_dataframes";
+        // Test Evaluation
+        let execution_data = session.populate_trading_session_data().await;
+        let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_ohlcv-1h_dataframes";
 
-        // // Test Evaluation "market_sim_data"
-        // let market_sim_data = execution_data.market_sim_data;
-        // let mut cw = 8;
-        // let mut wd = 1;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        // Test Evaluation "market_sim_data"
+        let market_sim_data = execution_data.market_sim_data;
+        let mut cw = 8;
+        let mut wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-        // cw = 8;
-        // wd = 1;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 8;
-        // wd = 2;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 8;
-        // wd = 3;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 8;
-        // wd = 4;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 8;
-        // wd = 5;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 9;
-        // wd = 1;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 9;
-        // wd = 2;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 9;
-        // wd = 3;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 9;
-        // wd = 4;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 9;
-        // wd = 5;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 10;
-        // wd = 1;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 10;
-        // wd = 2;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 10;
-        // wd = 3;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 10;
-        // wd = 4;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
-        // cw = 10;
-        // wd = 5;
-        // let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}_{wd}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 8;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 1;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 2;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 3;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 4;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        wd = 5;
+        let snapshot = build_time_frame_snapshot(cw, Some(wd), None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}_{wd}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-        // // Test Evaluation "trading_indicators"
-        // let trading_indicators = execution_data.trading_indicators;
-        // let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_vol-aggTrades.json";
-        // let target = download_df_map(path.to_string()).await;
-        // assert_eq!(
-        //     &target,
-        //     trading_indicators
-        //         .get(&required_pre_trade_values.trading_indicators[0])
-        //         .unwrap()
-        // );
+        // Test Evaluation "trading_indicators"
+        let trading_indicators = execution_data.trading_indicators;
+        let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1d/target_vol-aggTrades.json";
+        let target = download_df_map(path.to_string()).await;
+        assert_eq!(
+            &target,
+            trading_indicators
+                .get(&required_pre_trade_values.trading_indicators[0])
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_populate_weekly_trading_session_data() {
         // Test Setup
-        // let mut mock_strategy = MockStrategy::new();
-        // let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
-        // let required_pre_trade_values = RequriedPreTradeValues {
-        //     market_values: Vec::new(),
-        //     trading_indicators,
-        // };
-        // mock_strategy
-        //     .expect_get_required_pre_trade_values()
-        //     .return_const(required_pre_trade_values.clone());
-        // mock_strategy.expect_get_name().return_const("ppp");
-        // let data_provider = Arc::new(Binance);
-        // let cloud_storage_client = config::get_google_cloud_storage_client().await;
-        // let bucket = config::GoogleCloudBucket {
-        //     historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
-        //     cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
-        // };
-        // let time_interval = TimeInterval {
-        //     start_day: chrono::Weekday::Mon,
-        //     start_h: 1,
-        //     end_day: chrono::Weekday::Fri,
-        //     end_h: 23,
-        // };
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicators = vec![TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades)];
+        let required_pre_trade_values = RequriedPreTradeValues {
+            market_values: Vec::new(),
+            trading_indicators,
+        };
+        mock_strategy
+            .expect_get_required_pre_trade_values()
+            .return_const(required_pre_trade_values.clone());
+        mock_strategy.expect_get_name().return_const("ppp");
+        let data_provider = Arc::new(Binance);
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
+        let time_interval = TimeInterval {
+            start_day: chrono::Weekday::Mon,
+            start_h: 1,
+            end_day: chrono::Weekday::Fri,
+            end_h: 23,
+        };
 
-        // // Test Initialization
-        // let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
-        //     .with_google_cloud_storage_client(cloud_storage_client)
-        //     .with_google_cloud_bucket(bucket)
-        //     .with_time_interval(time_interval)
-        //     .with_time_frame(TimeFrameKind::Weekly)
-        //     // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
-        //     .build()
-        //     .unwrap();
+        // Test Initialization
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_interval(time_interval)
+            .with_time_frame(TimeFrameKind::Weekly)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
 
-        // let session = TradingSessionBuilder::new()
-        //     .with_bot(Arc::new(bot.clone()))
-        //     .with_indicator_data_pair(bot.determine_indicator_data_pair())
-        //     .with_market(MarketKind::BtcUsdt)
-        //     .with_year(2022);
+        let session = TradingSessionBuilder::new()
+            .with_bot(Arc::new(bot.clone()))
+            .with_indicator_data_pair(bot.determine_indicator_data_pair())
+            .with_market(MarketKind::BtcUsdt)
+            .with_year(2022);
 
-        // // Test Evaluation
-        // let execution_data = session.populate_trading_session_data().await;
-        // let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_ohlcv-1h_dataframes";
+        // Test Evaluation
+        let execution_data = session.populate_trading_session_data().await;
+        let base_path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_ohlcv-1h_dataframes";
 
-        // // Test Evaluation "market_sim_data"
-        // let market_sim_data = execution_data.market_sim_data;
-        // let mut cw = 8;
-        // let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        // Test Evaluation "market_sim_data"
+        let market_sim_data = execution_data.market_sim_data;
+        let mut cw = 8;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-        // cw = 9;
-        // let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 9;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-        // cw = 10;
-        // let snapshot = build_time_frame_snapshot(cw, None, None, None);
-        // let target = download_df(
-        //     "chapaty-ai-test".to_string(),
-        //     format!("{base_path}/{cw}.csv"),
-        // )
-        // .await;
-        // assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
+        cw = 10;
+        let snapshot = build_time_frame_snapshot(cw, None, None, None);
+        let target = download_df(
+            "chapaty-ai-test".to_string(),
+            format!("{base_path}/{cw}.csv"),
+        )
+        .await;
+        assert_eq!(&target, market_sim_data.get(&snapshot).unwrap());
 
-        // // Test Evaluation "trading_indicators"
-        // let trading_indicators = execution_data.trading_indicators;
-        // let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_vol-aggTrades.json";
-        // let target = download_df_map(path.to_string()).await;
-        // assert_eq!(
-        //     &target,
-        //     trading_indicators
-        //         .get(&required_pre_trade_values.trading_indicators[0])
-        //         .unwrap()
-        // );
+        // Test Evaluation "trading_indicators"
+        let trading_indicators = execution_data.trading_indicators;
+        let path = "ppp/btcusdt/2022/Mon1h0m-Fri23h0m/1w/target_vol-aggTrades.json";
+        let target = download_df_map(path.to_string()).await;
+        assert_eq!(
+            &target,
+            trading_indicators
+                .get(&required_pre_trade_values.trading_indicators[0])
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_is_backtest_on_news() {
-        // // Test Setup
-        // let mut mock_strategy = MockStrategy::new();
-        // // mock_strategy
-        // //     .expect_is_only_trading_on_news()
-        // //     .return_const(true);
+        // Test Setup
+        let mut mock_strategy = MockStrategy::new();
         // mock_strategy
-        //     .expect_filter_on_economic_news_event()
-        //     .return_const(Some(NewsKind::UsaNFP.get_news_dates()));
-        // let data_provider = MockDataProvider::new();
-        // let cloud_storage_client = config::get_google_cloud_storage_client().await;
-        // let bucket = config::GoogleCloudBucket {
-        //     historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
-        //     cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
-        // };
+        //     .expect_is_only_trading_on_news()
+        //     .return_const(true);
+        mock_strategy
+            .expect_filter_on_economic_news_event()
+            .return_const(Some(NewsKind::UsaNFP.get_news_dates()));
+        let data_provider = MockDataProvider::new();
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let bucket = config::GoogleCloudBucket {
+            historical_market_data_bucket_name: "chapaty-ai-hdb-test".to_string(),
+            cached_bot_data_bucket_name: "chapaty-ai-test".to_string(),
+        };
 
-        // // Test Initialization with news trading
-        // let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
-        //     .with_google_cloud_storage_client(cloud_storage_client.clone())
-        //     .with_google_cloud_bucket(bucket.clone())
-        //     .with_time_frame(TimeFrameKind::Weekly)
-        //     // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
-        //     .build()
-        //     .unwrap();
+        // Test Initialization with news trading
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
+            .with_google_cloud_storage_client(cloud_storage_client.clone())
+            .with_google_cloud_bucket(bucket.clone())
+            .with_time_frame(TimeFrameKind::Weekly)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
 
-        // let session = TradingSession {
-        //     bot: Arc::new(bot),
-        //     indicator_data_pair: Arc::new(HashSet::new()),
-        //     market: MarketKind::EurUsdFuture,
-        //     year: 2022,
-        //     data: ExecutionData::default(),
-        //     market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
-        //     cache_computations: false,
-        // };
+        let session = TradingSession {
+            bot: Arc::new(bot),
+            indicator_data_pair: Arc::new(HashSet::new()),
+            market: MarketKind::EurUsdFuture,
+            year: 2022,
+            data: ExecutionData::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            cache_computations: false,
+        };
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
-        // assert!(session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
+        assert!(session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
-        // assert!(session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
+        assert!(session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
-        // assert!(!session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
-        // assert!(!session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(14);
-        // assert!(!session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
-        // assert!(!session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
-        // assert!(!session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
-        // assert!(!session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
-        // assert!(!session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
+        let snapshot = TimeFrameSnapshotBuilder::new(14);
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
+        assert!(!session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
 
-        // // Test Initialization no news trading
-        // let mut mock_strategy = MockStrategy::new();
-        // // mock_strategy
-        // //     .expect_is_only_trading_on_news()
-        // //     .return_const(false);
+        // Test Initialization no news trading
+        let mut mock_strategy = MockStrategy::new();
         // mock_strategy
-        //     .expect_filter_on_economic_news_event()
-        //     .return_const(None);
-        // let data_provider = MockDataProvider::new();
+        //     .expect_is_only_trading_on_news()
+        //     .return_const(false);
+        mock_strategy
+            .expect_filter_on_economic_news_event()
+            .return_const(None);
+        let data_provider = MockDataProvider::new();
 
-        // let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
-        //     .with_google_cloud_storage_client(cloud_storage_client)
-        //     .with_google_cloud_bucket(bucket)
-        //     .with_time_frame(TimeFrameKind::Weekly)
-        //     // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
-        //     .build()
-        //     .unwrap();
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], Arc::new(data_provider))
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_google_cloud_bucket(bucket)
+            .with_time_frame(TimeFrameKind::Weekly)
+            // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
+            .build()
+            .unwrap();
 
-        // let session = TradingSession {
-        //     bot: Arc::new(bot),
-        //     indicator_data_pair: Arc::new(HashSet::new()),
-        //     market: MarketKind::EurUsdFuture,
-        //     year: 2022,
-        //     data: ExecutionData::default(),
-        //     market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
-        //     cache_computations: false,
-        // };
+        let session = TradingSession {
+            bot: Arc::new(bot),
+            indicator_data_pair: Arc::new(HashSet::new()),
+            market: MarketKind::EurUsdFuture,
+            year: 2022,
+            data: ExecutionData::default(),
+            market_sim_data_kind: MarketSimulationDataKind::Ohlc1m,
+            cache_computations: false,
+        };
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
-        // assert!(!session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(5).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
-        // assert!(!session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(5).build();
+        assert!(!session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
-        // assert!(session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(13).with_weekday(4).build();
+        assert!(session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
-        // assert!(session.is_backtest_on_news(&snapshot));
+        let snapshot = TimeFrameSnapshotBuilder::new(18).with_weekday(4).build();
+        assert!(session.is_backtest_on_news(&snapshot));
 
-        // let snapshot = TimeFrameSnapshotBuilder::new(14);
-        // assert!(session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
-        // assert!(session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
-        // assert!(session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
-        // assert!(session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
-        // assert!(session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
+        let snapshot = TimeFrameSnapshotBuilder::new(14);
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(1).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(2).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(3).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(4).build()));
+        assert!(session.is_backtest_on_news(&snapshot.with_weekday(5).build()));
     }
 }

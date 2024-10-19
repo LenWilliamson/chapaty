@@ -1,5 +1,8 @@
 use super::*;
-use crate::{bot::pre_trade_data, enums::{indicator::PriceHistogramKind, trade_and_pre_trade::TradeCloseKind}};
+use crate::{
+    bot::pre_trade_data,
+    enums::{indicator::PriceHistogramKind, trade_and_pre_trade::TradeCloseKind},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ppp {
@@ -68,7 +71,7 @@ impl PppBuilder {
 }
 
 impl Ppp {
-    fn get_sl_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_sl_price(&self, request: &SimulationData) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
@@ -76,7 +79,7 @@ impl Ppp {
         }
     }
 
-    fn get_tp_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_tp_price(&self, request: &SimulationData) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_tp_long(request)),
             TradeDirectionKind::Short => Some(self.get_tp_short(request)),
@@ -84,7 +87,7 @@ impl Ppp {
         }
     }
 
-    fn compute_sl_price(&self, request: &SimulationEvent, is_long: bool) -> f64 {
+    fn compute_sl_price(&self, request: &SimulationData, is_long: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let (value_area, trade_price, sign) = if is_long {
@@ -112,7 +115,7 @@ impl Ppp {
         }
     }
 
-    fn compute_tp_price(&self, request: &SimulationEvent, is_long: bool) -> f64 {
+    fn compute_tp_price(&self, request: &SimulationData, is_long: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let ph = PriceHistogramKind::Tpo1m;
         let (value_area, trade_price, sign) = if is_long {
@@ -162,23 +165,23 @@ impl Ppp {
         }
     }
 
-    fn get_sl_price_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_long(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, true)
     }
 
-    fn get_sl_price_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_short(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, false)
     }
 
-    fn get_tp_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_long(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, true)
     }
 
-    fn get_tp_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_short(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, false)
     }
 
-    // fn get_trade(&self, request: &SimulationEvent) -> Trade {
+    // fn get_trade(&self, request: &SimulationData) -> Trade {
     //     Trade {
     //         entry_price: self.get_entry_price(&request.pre_trade_values).unwrap(),
     //         stop_loss: self.get_sl_price(request),
@@ -246,90 +249,71 @@ impl Strategy for Ppp {
         self.market_simulation_data_kind
     }
 
-    fn check_activation_event(
-        &self,
-        simulation_event: &SimulationEvent,
-    ) -> Option<ActivationEvent> {
-        let ots = simulation_event.market_event.last().unwrap().ohlc.open_ts.unwrap();
-        let low = simulation_event.market_event.last().unwrap().ohlc.low.unwrap();
-        let high = simulation_event.market_event.last().unwrap().ohlc.high.unwrap();
-        let pre_trade_values = simulation_event.pre_trade_values;
+    fn check_activation_event<'a>(
+        &'a self,
+        market_trajectory: &Box<Vec<Market>>,
+        sim_data: &Box<SimulationData>,
+    ) -> Option<ActivationEvent<'a>> {
+        let ots = market_trajectory.last().unwrap().ohlc.open_ts.unwrap();
+        let low = market_trajectory.last().unwrap().ohlc.low.unwrap();
+        let high = market_trajectory.last().unwrap().ohlc.high.unwrap();
+        let pre_trade_values = &sim_data.pre_trade_values;
         match self.entry {
             TradingIndicatorKind::Poc(ph) => {
                 let entry_price = pre_trade_values.poc(ph);
                 if low <= entry_price && entry_price <= high {
                     Some(ActivationEvent {
                         entry_ts: ots,
-                        entry_price: simulation_event
-                            .market_event
-                            .last()
-                            .unwrap()
-                            .ohlc
-                            .open
-                            .unwrap(),
-                        stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                        take_profit: self.get_tp_price(simulation_event).unwrap(),
+                        entry_price: market_trajectory.last().unwrap().ohlc.open.unwrap(),
+                        stop_loss: self.get_sl_price(sim_data).unwrap(),
+                        take_profit: self.get_tp_price(sim_data).unwrap(),
                         trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
                         strategy: self,
                     })
                 } else {
                     None
                 }
-            
-            },
+            }
             TradingIndicatorKind::ValueAreaHigh(ph) => {
                 let entry_price = pre_trade_values.value_area_high(ph);
                 if low <= entry_price && entry_price <= high {
                     Some(ActivationEvent {
                         entry_ts: ots,
-                        entry_price: simulation_event
-                            .market_event
-                            .last()
-                            .unwrap()
-                            .ohlc
-                            .open
-                            .unwrap(),
-                        stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                        take_profit: self.get_tp_price(simulation_event).unwrap(),
+                        entry_price: market_trajectory.last().unwrap().ohlc.open.unwrap(),
+                        stop_loss: self.get_sl_price(sim_data).unwrap(),
+                        take_profit: self.get_tp_price(sim_data).unwrap(),
                         trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
                         strategy: self,
                     })
                 } else {
                     None
                 }
-            
-            },
+            }
             TradingIndicatorKind::ValueAreaLow(ph) => {
                 let entry_price = pre_trade_values.value_area_low(ph);
                 if low <= entry_price && entry_price <= high {
                     Some(ActivationEvent {
                         entry_ts: ots,
-                        entry_price: simulation_event
-                            .market_event
-                            .last()
-                            .unwrap()
-                            .ohlc
-                            .open
-                            .unwrap(),
-                        stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                        take_profit: self.get_tp_price(simulation_event).unwrap(),
+                        entry_price: market_trajectory.last().unwrap().ohlc.open.unwrap(),
+                        stop_loss: self.get_sl_price(sim_data).unwrap(),
+                        take_profit: self.get_tp_price(sim_data).unwrap(),
                         trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
                         strategy: self,
                     })
                 } else {
                     None
                 }
-            
-            },
+            }
         }
     }
 
     fn check_cancelation_event(
         &self,
-        simulation_event: &SimulationEvent,
+        market_trajectory: &Box<Vec<Market>>,
+        _sim_data: &Box<SimulationData>,
         trade: &Trade<Active>,
     ) -> Option<CloseEvent> {
-        let ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        let ohlc = &market_trajectory.last().unwrap().ohlc;
         if ohlc.low <= trade.stop_loss && trade.stop_loss <= ohlc.high {
             Some(CloseEvent {
                 exit_ts: ohlc.close_ts.unwrap(),

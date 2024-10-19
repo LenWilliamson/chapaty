@@ -9,7 +9,7 @@ use crate::{
     compose,
     decision_policy::DecisionPolicy,
     dfa::{
-        market_simulation_data::{SimulationData, SimulationDataBuilder, SimulationEvent},
+        market_simulation_data::{Market, MarketDataFrame, SimulationData, SimulationDataBuilder},
         states::{Active, Close, CloseEvent, Trade, TradeResult},
     },
     enums::trade_and_pre_trade::TradeCloseKind,
@@ -37,20 +37,24 @@ pub struct PnLReportDataRowCalculator {
     pub market_sim_df: DataFrame,
     pub year: u32,
     pub time_frame_snapshot: TimeFrameSnapshot,
+    pub market: Vec<Market>,
 }
 
 impl PnLReportDataRowCalculator {
-    pub fn compute(&self) -> Vec<LazyFrame> {
+    pub fn compute(self) -> Vec<LazyFrame> {
         let mut pnl_report_data_rows = Vec::new();
-        if self.sim_data.market.is_empty() {
+        if self.market.is_empty() {
             return pnl_report_data_rows;
         }
 
         let mut trade = Trade::new();
-        let mut sim_event = SimulationEvent::new(vec![&self.sim_data.market[0]], &self.sim_data);
-        for market_event in self.sim_data.market.iter() {
-            sim_event.update_on_market_event(market_event);
-            trade.update_on_market_event(market_event);
+        // let mut sim_event = SimulationEvent::new(vec![&self.market[0]], &self.sim_data);
+        let mut market_trajectory = Box::new(Vec::new());
+        let sim_data_box = Box::new(self.sim_data.clone());
+        for market_event in self.market.iter() {
+            // sim_event.update_on_market_event(market_event);
+            trade.update_on_market_event(&market_event);
+            market_trajectory.push(*market_event);
 
             // TODOs
             // 1. Verfeinern / Refactor mit Hilfe meines Automaten Diagrams in Notability
@@ -69,7 +73,9 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
-                        .map(|strategy| strategy.check_activation_event(&sim_event))
+                        .map(|strategy| {
+                            strategy.check_activation_event(&market_trajectory, &sim_data_box)
+                        })
                         .filter(Option::is_some)
                         .map(Option::unwrap)
                         .collect();
@@ -96,7 +102,9 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
-                        .map(|strategy| strategy.check_activation_event(&sim_event))
+                        .map(|strategy| {
+                            strategy.check_activation_event(&market_trajectory, &sim_data_box)
+                        })
                         .filter(Option::is_some)
                         .map(Option::unwrap)
                         .filter(|event| {
@@ -110,20 +118,24 @@ impl PnLReportDataRowCalculator {
                         .strategy
                         .as_ref()
                         .unwrap()
-                        .check_cancelation_event(&sim_event, &active_trade)
+                        .check_cancelation_event(&market_trajectory, &sim_data_box, &active_trade)
                         .is_some()
                     {
                         let close_event = active_trade
                             .strategy
                             .as_ref()
                             .unwrap()
-                            .check_cancelation_event(&sim_event, &active_trade)
+                            .check_cancelation_event(
+                                &market_trajectory,
+                                &sim_data_box,
+                                &active_trade,
+                            )
                             .unwrap();
                         let mut composed = compose!(
                             {|active_trade: Trade<Active>| active_trade.close_event(&close_event)}
                             {|trade_result: TradeResult| {
                                 if let TradeResult::Close(mut closed_trade) = trade_result {
-                                    closed_trade.curate_precision(&sim_event.market_kind);
+                                    closed_trade.curate_precision(&self.sim_data.market_kind);
                                     self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                 } else {
                                     panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -157,7 +169,7 @@ impl PnLReportDataRowCalculator {
                                 {|active_trade: Trade<Active>| active_trade.pivot_event(&activation_event.unwrap())}
                                     {|trade_result: TradeResult| {
                                     if let TradeResult::Close(mut closed_trade) = trade_result {
-                                        closed_trade.curate_precision(&sim_event.market_kind);
+                                        closed_trade.curate_precision(&self.sim_data.market_kind);
                                         self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                     } else {
                                         panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -180,10 +192,16 @@ impl PnLReportDataRowCalculator {
                 _ => panic!("Closed trade is not an accepting state, only idle and active"),
             };
 
-            trade = if market_event.ohlc.is_end_of_day.unwrap() {
+            trade = if market_trajectory
+                .last()
+                .unwrap()
+                .ohlc
+                .is_end_of_day
+                .unwrap()
+            {
                 let timeout = CloseEvent {
-                    exit_ts: self.sim_data.market.last().unwrap().ohlc.close_ts.unwrap(),
-                    exit_price: self.sim_data.market.last().unwrap().ohlc.close.unwrap(),
+                    exit_ts: market_trajectory.last().unwrap().ohlc.close_ts.unwrap(),
+                    exit_price: market_trajectory.last().unwrap().ohlc.close.unwrap(),
                     close_event_kind: TradeCloseKind::Timeout,
                 };
                 match trade {
@@ -192,7 +210,7 @@ impl PnLReportDataRowCalculator {
                             {|active_trade: Trade<Active>| active_trade.close_event(&timeout)}
                             {|trade_result: TradeResult| {
                                 if let TradeResult::Close(mut closed_trade) = trade_result {
-                                    closed_trade.curate_precision(&sim_event.market_kind);
+                                    closed_trade.curate_precision(&self.sim_data.market_kind);
                                     self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                 } else {
                                     panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -407,7 +425,7 @@ impl PnLReportDataRowCalculatorBuilder {
         let pre_trade_values_with_data = self.compute_pre_trade_values();
         let market_sim_df = self.market_sim_data.unwrap();
         let sim_data = SimulationDataBuilder::new()
-            .with_ohlc_candle(market_sim_df.clone())
+            // .with_ohlc_candle(market_sim_df.clone())
             .with_pre_trade_values_with_data(pre_trade_values_with_data)
             .with_market_kind(self.market.unwrap())
             .with_market_sim_data_kind(self.market_sim_data_kind.unwrap())
@@ -417,6 +435,7 @@ impl PnLReportDataRowCalculatorBuilder {
             strategies: self.strategy.unwrap(),
             decision_policy: self.decision_policy.unwrap(),
             sim_data,
+            market: MarketDataFrame(market_sim_df.clone()).try_into().unwrap(),
             market_sim_df,
             year: self.year.unwrap(),
             time_frame_snapshot: self.time_frame_snapshot.unwrap(),

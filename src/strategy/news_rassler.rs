@@ -2,7 +2,9 @@ use chrono::TimeDelta;
 use polars::datatypes::AnyValue;
 
 use crate::{
-    converter::timeformat::timestamp_in_milli_to_naive_date_time_tuple, enums::{news::NewsKind, trade_and_pre_trade::TradeCloseKind}, types::ohlc::OhlcCandle
+    converter::timeformat::timestamp_in_milli_to_naive_date_time_tuple,
+    enums::{news::NewsKind, trade_and_pre_trade::TradeCloseKind},
+    types::ohlc::OhlcCandle,
 };
 
 use super::*;
@@ -126,7 +128,7 @@ impl NewsRassler {
         self.compute_offset(news_candle, self.stop_loss.offset)
     }
 
-    fn get_sl_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_sl_price(&self, request: &SimulationData) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
@@ -134,7 +136,7 @@ impl NewsRassler {
         }
     }
 
-    fn get_tp_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_tp_price(&self, request: &SimulationData) -> Option<f64> {
         let pre_trade_values = &request.pre_trade_values;
         let trade_direction = self.get_trade_kind(pre_trade_values);
         match trade_direction {
@@ -144,7 +146,7 @@ impl NewsRassler {
         }
     }
 
-    fn compute_sl_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
+    fn compute_sl_price(&self, request: &SimulationData, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let open = news_candle.open.unwrap();
@@ -159,16 +161,16 @@ impl NewsRassler {
     }
 
     /// Function to compute the stop loss price for long trades
-    fn get_sl_price_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_long(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, true)
     }
 
     /// Function to compute the stop loss price for short trades
-    fn get_sl_price_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_short(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, false)
     }
 
-    fn compute_tp_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
+    fn compute_tp_price(&self, request: &SimulationData, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
@@ -184,16 +186,16 @@ impl NewsRassler {
     }
 
     /// Function to compute the take profit for long trades
-    fn get_tp_price_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_price_long(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, true)
     }
 
     /// Function to compute the take profit for short trades
-    fn get_tp_price_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_price_short(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, false)
     }
 
-    // fn get_trade(&self, request: &SimulationEvent) -> Trade {
+    // fn get_trade(&self, request: &SimulationData) -> Trade {
     //     let take_profit = self.get_tp_price(request);
 
     //     let stop_loss = take_profit.map(|_| self.get_sl_price(request)).flatten();
@@ -285,17 +287,12 @@ impl Strategy for NewsRassler {
         self.market_simulation_data_kind
     }
 
-    fn check_activation_event(
-        &self,
-        simulation_event: &SimulationEvent,
-    ) -> Option<ActivationEvent> {
-        let ots = simulation_event
-            .market_event
-            .last()
-            .unwrap()
-            .ohlc
-            .open_ts
-            .unwrap();
+    fn check_activation_event<'a>(
+        &'a self,
+        market_trajectory: &Box<Vec<Market>>,
+        sim_data: &Box<SimulationData>,
+    ) -> Option<ActivationEvent<'a>> {
+        let ots = market_trajectory.last().unwrap().ohlc.open_ts.unwrap();
         let (date, time) = timestamp_in_milli_to_naive_date_time_tuple(ots);
         let entry_time = self
             .news_kind
@@ -304,33 +301,28 @@ impl Strategy for NewsRassler {
                 TimeDelta::try_minutes(self.number_candles_to_wait as i64).unwrap(),
             )
             .0;
-        
-            if self.news_kind.get_news_dates().contains(&date) && time == entry_time {
-                Some(ActivationEvent {
-                    entry_ts: ots,
-                    entry_price: simulation_event
-                        .market_event
-                        .last()
-                        .unwrap()
-                        .ohlc
-                        .open
-                        .unwrap(),
-                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                    take_profit: self.get_tp_price(simulation_event).unwrap(),
-                    trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
-                    strategy: self,
-                })
-            } else {
-                None
-            }
+
+        if self.news_kind.get_news_dates().contains(&date) && time == entry_time {
+            Some(ActivationEvent {
+                entry_ts: ots,
+                entry_price: market_trajectory.last().unwrap().ohlc.open.unwrap(),
+                stop_loss: self.get_sl_price(sim_data).unwrap(),
+                take_profit: self.get_tp_price(sim_data).unwrap(),
+                trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
+                strategy: self,
+            })
+        } else {
+            None
+        }
     }
 
     fn check_cancelation_event(
         &self,
-        simulation_event: &SimulationEvent,
+        market_trajectory: &Box<Vec<Market>>,
+        _sim_data: &Box<SimulationData>,
         trade: &Trade<Active>,
     ) -> Option<CloseEvent> {
-        let ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        let ohlc = &market_trajectory.last().unwrap().ohlc;
         if ohlc.low <= trade.stop_loss && trade.stop_loss <= ohlc.high {
             Some(CloseEvent {
                 exit_ts: ohlc.close_ts.unwrap(),

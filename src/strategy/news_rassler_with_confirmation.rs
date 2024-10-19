@@ -138,7 +138,7 @@ impl NewsRasslerWithConfirmation {
         self.compute_offset(news_candle, self.stop_loss.offset)
     }
 
-    fn get_sl_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_sl_price(&self, request: &SimulationData) -> Option<f64> {
         match self.get_trade_kind(&request.pre_trade_values) {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(request)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(request)),
@@ -146,7 +146,7 @@ impl NewsRasslerWithConfirmation {
         }
     }
 
-    fn get_tp_price(&self, request: &SimulationEvent) -> Option<f64> {
+    fn get_tp_price(&self, request: &SimulationData) -> Option<f64> {
         let pre_trade_values = &request.pre_trade_values;
         let trade_direction = self.get_trade_kind(pre_trade_values);
         match trade_direction {
@@ -156,7 +156,7 @@ impl NewsRasslerWithConfirmation {
         }
     }
 
-    fn compute_sl_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
+    fn compute_sl_price(&self, request: &SimulationData, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let news_candle = pre_trade_values.news_candle(&self.news_kind, 0).unwrap();
         let open = news_candle.open.unwrap();
@@ -171,16 +171,16 @@ impl NewsRasslerWithConfirmation {
     }
 
     /// Function to compute the stop loss price for long trades
-    fn get_sl_price_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_long(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, true)
     }
 
     /// Function to compute the stop loss price for short trades
-    fn get_sl_price_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_sl_price_short(&self, request: &SimulationData) -> f64 {
         self.compute_sl_price(request, false)
     }
 
-    fn compute_tp_price(&self, request: &SimulationEvent, is_long_trade: bool) -> f64 {
+    fn compute_tp_price(&self, request: &SimulationData, is_long_trade: bool) -> f64 {
         let pre_trade_values = &request.pre_trade_values;
         let entry_price = self.get_entry_price(pre_trade_values).unwrap();
         let offset = (self.compute_sl_price(request, is_long_trade) - entry_price).abs()
@@ -196,16 +196,16 @@ impl NewsRasslerWithConfirmation {
     }
 
     /// Function to compute the take profit for long trades
-    fn get_tp_price_long(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_price_long(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, true)
     }
 
     /// Function to compute the take profit for short trades
-    fn get_tp_price_short(&self, request: &SimulationEvent) -> f64 {
+    fn get_tp_price_short(&self, request: &SimulationData) -> f64 {
         self.compute_tp_price(request, false)
     }
 
-    // fn get_trade(&self, request: &SimulationEvent) -> Trade {
+    // fn get_trade(&self, request: &SimulationData) -> Trade {
     //     let entry_price = self.get_entry_price(&request.pre_trade_values);
     //     if entry_price.is_none() {
     //         return Trade {
@@ -364,11 +364,12 @@ impl Strategy for NewsRasslerWithConfirmation {
         self.market_simulation_data_kind
     }
 
-    fn check_activation_event(
-        &self,
-        simulation_event: &SimulationEvent,
-    ) -> Option<ActivationEvent> {
-        let last_ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+    fn check_activation_event<'a>(
+        &'a self,
+        market_trajectory: &Box<Vec<Market>>,
+        sim_data: &Box<SimulationData>,
+    ) -> Option<ActivationEvent<'a>> {
+        let last_ohlc = &market_trajectory.last().unwrap().ohlc;
         let ots = last_ohlc.open_ts.unwrap();
         let (date, time) = timestamp_in_milli_to_naive_date_time_tuple(ots);
         let news_time = self.news_kind.utc_time_daylight_saving_adjusted(&date);
@@ -378,29 +379,29 @@ impl Strategy for NewsRasslerWithConfirmation {
             && 1 <= delta
             && delta <= self.number_candles_to_wait as i64
         {
-            let n = simulation_event.market_event.len();
-            let news_candle = &simulation_event.market_event.get(n - delta as usize).unwrap().ohlc;
+            let n = market_trajectory.len();
+            let news_candle = &market_trajectory.get(n - delta as usize).unwrap().ohlc;
             if news_candle.high.le(&last_ohlc.high) && news_candle.low.ge(&last_ohlc.low) {
                 // News candle is inside the next candle
                 return None;
             }
 
-            let second_last_ohlc = &simulation_event.market_event.get(n - 2).unwrap().ohlc;
+            let second_last_ohlc = &market_trajectory.get(n - 2).unwrap().ohlc;
             if news_candle.high < second_last_ohlc.close {
                 Some(ActivationEvent {
                     entry_ts: ots,
                     entry_price: last_ohlc.open.unwrap(),
-                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                    take_profit: self.get_tp_price(simulation_event).unwrap(),
+                    stop_loss: self.get_sl_price(sim_data).unwrap(),
+                    take_profit: self.get_tp_price(sim_data).unwrap(),
                     trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
                     strategy: self,
                 })
-            }else if news_candle.low > second_last_ohlc.close {
+            } else if news_candle.low > second_last_ohlc.close {
                 Some(ActivationEvent {
                     entry_ts: ots,
                     entry_price: last_ohlc.open.unwrap(),
-                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
-                    take_profit: self.get_tp_price(simulation_event).unwrap(),
+                    stop_loss: self.get_sl_price(sim_data).unwrap(),
+                    take_profit: self.get_tp_price(sim_data).unwrap(),
                     trade_direction_kind: TradeDirectionKind::Short, // self.get_trade_kind(pre_trade_values),
                     strategy: self,
                 })
@@ -414,10 +415,11 @@ impl Strategy for NewsRasslerWithConfirmation {
 
     fn check_cancelation_event(
         &self,
-        simulation_event: &SimulationEvent,
+        market_trajectory: &Box<Vec<Market>>,
+        _sim_data: &Box<SimulationData>,
         trade: &Trade<Active>,
     ) -> Option<CloseEvent> {
-        let ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        let ohlc = &market_trajectory.last().unwrap().ohlc;
         if ohlc.low <= trade.stop_loss && trade.stop_loss <= ohlc.high {
             Some(CloseEvent {
                 exit_ts: ohlc.close_ts.unwrap(),

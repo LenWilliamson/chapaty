@@ -6,7 +6,7 @@ pub mod ppp;
 use crate::{
     calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
     dfa::{
-        market_simulation_data::SimulationEvent,
+        market_simulation_data::{Market, SimulationData},
         states::{ActivationEvent, Active, CloseEvent, Trade},
     },
     enums::{
@@ -59,9 +59,7 @@ impl FromIterator<RequriedPreTradeValues> for RequriedPreTradeValues {
 /// Represents a trading strategy that can be used in a market simulation environment.
 /// The strategy defines the logic for trade activation, cancellation, and various
 /// required preconditions and metadata for simulation.
-/// TODO
-/// # automock not possible
-// #[automock]
+#[automock]
 pub trait Strategy: Debug {
     /// Computes the necessary pre-trade values over a defined time horizon.
     ///
@@ -107,11 +105,11 @@ pub trait Strategy: Debug {
     ///
     /// This function is called continuously as market events (e.g., price candles)
     /// are passed to the strategy.
-    // #[mockall::concretize]
     fn check_activation_event<'a>(
-        &self,
-        simulation_event: &'a SimulationEvent<'a>,
-    ) -> Option<ActivationEvent>;
+        &'a self,
+        market_trajectory: &Box<Vec<Market>>,
+        sim_data: &Box<SimulationData>,
+    ) -> Option<ActivationEvent<'a>>;
 
     /// # TODO Think about passing the `Trade<State>` as well?
     /// Checks for a trade cancellation or closure event based on the provided simulation event.
@@ -126,8 +124,9 @@ pub trait Strategy: Debug {
     /// continuously as market events are passed to the strategy.
     fn check_cancelation_event<'a>(
         &self,
-        simulation_event: &'a SimulationEvent<'a>,
-        trade: &Trade<Active>,
+        market_trajectory: &Box<Vec<Market>>,
+        sim_data: &Box<SimulationData>,
+        trade: &Trade<'a, Active>,
     ) -> Option<CloseEvent>;
 
     /// Filters trading based on specific economic news event dates.

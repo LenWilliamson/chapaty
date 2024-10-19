@@ -372,63 +372,65 @@ mod test {
         bot::IndicatorDataPair,
         config,
         data_provider::cme::Cme,
+        decision_policy::choose_first_policy::ChooseFirstPolicy,
         enums::{
             data::HdbSourceDirKind,
             indicator::{PriceHistogramKind, TradingIndicatorKind},
         },
-        strategy::RequriedPreTradeValues,
+        strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder,
     };
     use std::{collections::HashSet, sync::Arc};
 
     #[tokio::test]
     async fn test_determine_indicator_data_pair() {
-        // let data_provider = Arc::new(Cme);
-        // let cloud_storage_client = config::get_google_cloud_storage_client().await;
-        // let mut mock_strategy = MockStrategy::new();
-        // let trading_indicators = vec![
-        //     TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
-        //     TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
-        //     TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
-        //     TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
-        //     TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
-        // ];
-        // mock_strategy
-        //     .expect_get_required_pre_trade_values()
-        //     .return_const(RequriedPreTradeValues {
-        //         market_values: Vec::new(),
-        //         trading_indicators,
-        //     });
+        let data_provider = Arc::new(Cme);
+        let cloud_storage_client = config::get_google_cloud_storage_client().await;
+        let mut mock_strategy = MockStrategy::new();
+        let trading_indicators = vec![
+            TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
+            TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+            TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
+            TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
+            TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
+        ];
+        mock_strategy
+            .expect_get_required_pre_trade_values()
+            .return_const(RequriedPreTradeValues {
+                market_values: Vec::new(),
+                trading_indicators,
+            });
 
-        // let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
-        //     .with_google_cloud_storage_client(cloud_storage_client)
-        //     .build()
-        //     .unwrap();
+        let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
+            .with_google_cloud_storage_client(cloud_storage_client)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
+            .build()
+            .unwrap();
 
-        // let required_data = bot.determine_indicator_data_pair();
-        // let expected = HashSet::from([
-        //     IndicatorDataPair::new(
-        //         TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
-        //         HdbSourceDirKind::AggTrades,
-        //     ),
-        //     IndicatorDataPair::new(
-        //         TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
-        //         HdbSourceDirKind::Tick,
-        //     ),
-        //     IndicatorDataPair::new(
-        //         TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
-        //         HdbSourceDirKind::Ohlc1m,
-        //     ),
-        //     IndicatorDataPair::new(
-        //         TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
-        //         HdbSourceDirKind::Tick,
-        //     ),
-        //     IndicatorDataPair::new(
-        //         TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
-        //         HdbSourceDirKind::AggTrades,
-        //     ),
-        // ]);
+        let required_data = bot.determine_indicator_data_pair();
+        let expected = HashSet::from([
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),
+                HdbSourceDirKind::AggTrades,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::VolTick),
+                HdbSourceDirKind::Tick,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m),
+                HdbSourceDirKind::Ohlc1m,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::VolTick),
+                HdbSourceDirKind::Tick,
+            ),
+            IndicatorDataPair::new(
+                TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::VolAggTrades),
+                HdbSourceDirKind::AggTrades,
+            ),
+        ]);
 
-        // assert_eq!(*required_data, expected);
+        assert_eq!(*required_data, expected);
     }
 }
