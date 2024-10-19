@@ -21,12 +21,12 @@ use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub struct PnLReportDataRow {
+pub struct PnLReportDataRow<'a> {
     pub market: MarketKind,
     pub year: u32,
     pub strategy_name: String,
     pub time_frame_snapshot: TimeFrameSnapshot,
-    pub trade: Trade<Close>,
+    pub trade: &'a Trade<'a, Close>,
     pub trade_pnl: Option<TradePnL>,
 }
 
@@ -40,14 +40,14 @@ pub struct PnLReportDataRowCalculator {
 }
 
 impl PnLReportDataRowCalculator {
-    pub fn compute(&self) -> Vec<PnLReportDataRow> {
+    pub fn compute(&self) -> Vec<LazyFrame> {
         let mut pnl_report_data_rows = Vec::new();
         if self.sim_data.market.is_empty() {
             return pnl_report_data_rows;
         }
 
         let mut trade = Trade::new();
-        let mut sim_event = SimulationEvent::new(&self.sim_data.market[0], &self.sim_data);
+        let mut sim_event = SimulationEvent::new(vec![&self.sim_data.market[0]], &self.sim_data);
         for market_event in self.sim_data.market.iter() {
             sim_event.update_on_market_event(market_event);
             trade.update_on_market_event(market_event);
@@ -110,14 +110,14 @@ impl PnLReportDataRowCalculator {
                         .strategy
                         .as_ref()
                         .unwrap()
-                        .check_cancelation_event(&sim_event)
+                        .check_cancelation_event(&sim_event, &active_trade)
                         .is_some()
                     {
                         let close_event = active_trade
                             .strategy
                             .as_ref()
                             .unwrap()
-                            .check_cancelation_event(&sim_event)
+                            .check_cancelation_event(&sim_event, &active_trade)
                             .unwrap();
                         let mut composed = compose!(
                             {|active_trade: Trade<Active>| active_trade.close_event(&close_event)}
@@ -233,11 +233,11 @@ impl PnLReportDataRowCalculator {
     //     }
     // }
 
-    fn add_pnl_report_data_row(
+    fn add_pnl_report_data_row<'a>(
         &self,
-        pnl_report_data_rows: &mut Vec<PnLReportDataRow>,
-        closed_trade: Trade<Close>,
-    ) -> Trade<Close> {
+        pnl_report_data_rows: &mut Vec<LazyFrame>,
+        closed_trade: Trade<'a, Close>,
+    ) -> Trade<'a, Close> {
         let entry_ts = closed_trade.entry_ts.as_ref().unwrap();
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(*entry_ts)
@@ -246,15 +246,16 @@ impl PnLReportDataRowCalculator {
             .with_trade_and_pre_trade_values(self.sim_data.pre_trade_values.clone())
             .build_and_compute();
 
-        pnl_report_data_rows.push(PnLReportDataRow {
+        let pnl_report_data_row = PnLReportDataRow {
             market: self.sim_data.market_kind,
             year: self.year,
             strategy_name: closed_trade.strategy.as_ref().unwrap().get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
             // TODO pass reference here
-            trade: closed_trade.clone(),
+            trade: &closed_trade,
             trade_pnl: Some(trade_pnl),
-        });
+        };
+        pnl_report_data_rows.push(pnl_report_data_row.into());
         closed_trade
     }
 
@@ -422,7 +423,7 @@ impl PnLReportDataRowCalculatorBuilder {
         }
     }
 
-    pub fn build_and_compute(self) -> Vec<PnLReportDataRow> {
+    pub fn build_and_compute(self) -> Vec<LazyFrame> {
         self.build().compute()
     }
 }

@@ -15,16 +15,16 @@ use test_configurations::{
 };
 
 /// Integration test for handling missing OHLC data in backtesting.
-/// 
+///
 /// This test is directly related to [Design Decision 2: Handling Missing Data Points in OHLC Data].
 /// During backtesting, missing OHLC data points led to `None` values in `RequiredPreTradeValuesWithData`,
 /// causing panics during the runtime. This update introduces a fallback mechanism in the `news_candle` function,
-/// which searches for the most recent valid data when the expected data is missing, ensuring continuity 
+/// which searches for the most recent valid data when the expected data is missing, ensuring continuity
 /// and preventing crashes.
-/// 
+///
 /// ### Test Data
-/// 
-/// The test uses historical market data for the `6E JUN24` contract, provided via the 
+///
+/// The test uses historical market data for the `6E JUN24` contract, provided via the
 /// NinjaTrader CME Marketdata Level 1.
 #[tokio::test]
 async fn handling_missing_data_points_in_ohlc_data_it() {

@@ -11,7 +11,7 @@ use super::pre_trade_values_calculator::RequiredPreTradeValuesWithData;
 
 pub struct TradePnLCalculator<'a> {
     entry_ts: i64,
-    trade: &'a Trade<Close>,
+    trade: &'a Trade<'a, Close>,
     market_sim_data_since_entry: LazyFrame,
     trade_and_pre_trade_values: RequiredPreTradeValuesWithData,
 }
@@ -209,7 +209,7 @@ fn is_order_open(timestamp: Option<i64>) -> bool {
 
 pub struct TradePnLCalculatorBuilder<'a> {
     entry_ts: Option<i64>,
-    trade: Option<&'a Trade<Close>>,
+    trade: Option<&'a Trade<'a, Close>>,
     market_sim_data_since_entry: Option<LazyFrame>,
     trade_and_pre_trade_values: Option<RequiredPreTradeValuesWithData>,
 }
@@ -439,7 +439,7 @@ mod test {
         entry_price: f64,
         stop_loss: f64,
         take_profit: f64,
-    ) -> Trade<Close> {
+    ) -> Trade<'static, Close> {
         Trade::<Close> {
             entry_ts: Some(entry_ts),
             entry_price: Some(entry_price),
@@ -455,11 +455,11 @@ mod test {
         }
     }
 
-    fn set_up_trade_pnl_calculator_ppp_long(
+    fn set_up_trade_pnl_calculator_ppp_long<'a>(
         entry_ts: i64,
         market_sim_data_since_entry: LazyFrame,
-        trade: &Trade<Close>,
-    ) -> TradePnLCalculator {
+        trade: &'a Trade<'a, Close>,
+    ) -> TradePnLCalculator<'a> {
         TradePnLCalculator {
             entry_ts,
             trade,
@@ -740,7 +740,7 @@ mod test {
         entry_price: f64,
         stop_loss: f64,
         take_profit: f64,
-    ) -> Trade<Close> {
+    ) -> Trade<'static, Close> {
         Trade::<Close> {
             entry_ts: Some(entry_ts),
             entry_price: Some(entry_price),
@@ -756,11 +756,12 @@ mod test {
         }
     }
 
-    fn set_up_trade_pnl_calculator_ppp_short(
+    // TODO play around with lifetime params because `trade: &'a Trade<Close>` is valid too, or `-> TradePnLCalculator`
+    fn set_up_trade_pnl_calculator_ppp_short<'a>(
         entry_ts: i64,
         market_sim_data_since_entry: LazyFrame,
-        trade: &Trade<Close>,
-    ) -> TradePnLCalculator {
+        trade: &'a Trade<'a, Close>,
+    ) -> TradePnLCalculator<'a> {
         TradePnLCalculator {
             entry_ts,
             trade,

@@ -10,9 +10,7 @@ use crate::{
         pnl_statement_agg_years::PnLStatementAggYears,
     },
     trade_breakdown_report::{
-        TradeBreakDownReportAggMarkets,
-        TradeBreakDownReportsAggYears,
-        TradeBreakdownReports,
+        TradeBreakDownReportAggMarkets, TradeBreakDownReportsAggYears, TradeBreakdownReports,
     },
 };
 

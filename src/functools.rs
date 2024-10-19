@@ -14,20 +14,22 @@ macro_rules! compose {
 pub struct ComposeableFn<F, A, B>(F, PhantomData<*mut A>, PhantomData<*mut B>);
 
 impl<F, A, B> ComposeableFn<F, A, B>
-    where F: FnMut(A) -> B
+where
+    F: FnMut(A) -> B,
 {
     pub fn new(f: F) -> Self {
         Self(f, Default::default(), Default::default())
     }
-    
-    pub fn compose<C>(self, mut next: impl FnMut(B) -> C)
-        -> ComposeableFn<impl FnMut(A) -> C, A, C>
-    {
+
+    pub fn compose<C>(
+        self,
+        mut next: impl FnMut(B) -> C,
+    ) -> ComposeableFn<impl FnMut(A) -> C, A, C> {
         let mut prior = self.0;
-        
+
         ComposeableFn::new(move |v| next(prior(v)))
     }
-    
+
     pub fn into_inner(self) -> F {
         self.0
     }

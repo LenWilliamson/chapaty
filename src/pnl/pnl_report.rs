@@ -7,8 +7,8 @@ use crate::{
     PnLReportColumnKind,
 };
 use chrono::NaiveDate;
-use polars::df;
 use polars::prelude::{DataFrame, IntoLazy};
+use polars::{df, prelude::LazyFrame};
 use std::{collections::HashMap, convert::identity};
 
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ impl PnLReports {
     }
 }
 
-impl PnLReportDataRow {
+impl<'a> PnLReportDataRow<'a> {
     fn report_with_trade(&self) -> DataFrame {
         let tick_factor = self.get_tick_factor();
         let tick_to_dollar = self.get_tick_to_dollar_conversion_factor();
@@ -200,35 +200,35 @@ fn compute_crv(win: f64, loss: f64) -> f64 {
     }
 }
 
-impl From<&PnLReportDataRow> for DataFrame {
-    fn from(value: &PnLReportDataRow) -> Self {
+impl<'a> From<PnLReportDataRow<'a>> for LazyFrame {
+    fn from(value: PnLReportDataRow) -> Self {
         // match (&value.trade_pnl, value.trade.is_valid) {
         //     (None, _) | (_, false) => value.report_without_trade(),
         //     _ => value.report_with_trade(),
         // }
-        value.report_with_trade()
+        value.report_with_trade().lazy()
     }
 }
 
-impl FromIterator<PnLReportDataRow> for DataFrame {
-    fn from_iter<T: IntoIterator<Item = PnLReportDataRow>>(iter: T) -> Self {
-        iter.into_iter()
-            .fold(Vec::new(), |mut ldfs, pnl_report_data_row| {
-                let df: DataFrame = (&pnl_report_data_row).into();
-                ldfs.push(df.lazy());
-                ldfs
-            })
-            .concatenate_to_lazy_frame()
-            // TODO sort by entry timestamp
-            .sort_by_date()
-            .collect()
-            .unwrap()
-            .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
-            .unwrap()
-            .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
-            .unwrap()
-    }
-}
+// impl<'a> FromIterator<PnLReportDataRow<'a>> for DataFrame {
+//     fn from_iter<T: IntoIterator<Item = PnLReportDataRow<'a>>>(iter: T) -> Self {
+//         iter.into_iter()
+//             .fold(Vec::new(), |mut ldfs, pnl_report_data_row| {
+//                 let df: DataFrame = (&pnl_report_data_row).into();
+//                 ldfs.push(df.lazy());
+//                 ldfs
+//             })
+//             .concatenate_to_lazy_frame()
+//             // TODO sort by entry timestamp
+//             .sort_by_date()
+//             .collect()
+//             .unwrap()
+//             .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
+//             .unwrap()
+//             .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
+//             .unwrap()
+//     }
+// }
 
 pub struct PnLReport {
     pub market: MarketKind,

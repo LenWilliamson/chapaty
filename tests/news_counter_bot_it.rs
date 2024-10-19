@@ -4,12 +4,14 @@ use chapaty::{
     config::{self},
     data_provider::cme::Cme,
     strategy::{news_counter::NewsCounterBuilder, Strategy, TakeProfit},
-     MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind,
-    TimeFrameKind,
+    MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind,
 };
-use test_configurations::{bot_config::BotConfig, get_expected_result, test_runner::{self, TestRunner}};
 use std::{sync::Arc, time::Instant};
-
+use test_configurations::{
+    bot_config::BotConfig,
+    get_expected_result,
+    test_runner::{self, TestRunner},
+};
 
 #[ignore]
 #[tokio::test]
@@ -62,7 +64,7 @@ fn setup_strategy(offset: f64) -> Arc<dyn Strategy + Send + Sync> {
     let news_builder = NewsCounterBuilder::new();
     let tp = TakeProfit {
         kind: TakeProfitKind::PriceUponTradeEntry,
-        offset
+        offset,
     };
 
     let strategy = news_builder

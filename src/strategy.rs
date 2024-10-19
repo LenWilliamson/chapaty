@@ -7,7 +7,7 @@ use crate::{
     calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
     dfa::{
         market_simulation_data::SimulationEvent,
-        states::{ActivationEvent, CloseEvent},
+        states::{ActivationEvent, Active, CloseEvent, Trade},
     },
     enums::{
         bot::{StopLossKind, TakeProfitKind},
@@ -59,7 +59,9 @@ impl FromIterator<RequriedPreTradeValues> for RequriedPreTradeValues {
 /// Represents a trading strategy that can be used in a market simulation environment.
 /// The strategy defines the logic for trade activation, cancellation, and various
 /// required preconditions and metadata for simulation.
-#[automock]
+/// TODO
+/// # automock not possible
+// #[automock]
 pub trait Strategy: Debug {
     /// Computes the necessary pre-trade values over a defined time horizon.
     ///
@@ -105,11 +107,11 @@ pub trait Strategy: Debug {
     ///
     /// This function is called continuously as market events (e.g., price candles)
     /// are passed to the strategy.
+    // #[mockall::concretize]
     fn check_activation_event<'a>(
         &self,
         simulation_event: &'a SimulationEvent<'a>,
     ) -> Option<ActivationEvent>;
-
 
     /// # TODO Think about passing the `Trade<State>` as well?
     /// Checks for a trade cancellation or closure event based on the provided simulation event.
@@ -125,8 +127,9 @@ pub trait Strategy: Debug {
     fn check_cancelation_event<'a>(
         &self,
         simulation_event: &'a SimulationEvent<'a>,
+        trade: &Trade<Active>,
     ) -> Option<CloseEvent>;
-    
+
     /// Filters trading based on specific economic news event dates.
     ///
     /// This function allows the strategy to define whether it should execute trades only
@@ -136,12 +139,12 @@ pub trait Strategy: Debug {
     /// does not depend on such events, it returns `None`, the strategy will not execute during major
     /// economic news events (e.g., FED Interest Rate releases), and backtesting will proceed
     /// without considering these dates.
-    /// 
+    ///
     /// This allows for backtesting strategies under specific economic news events, helping
     /// evaluate how strategies behave under significant market-moving conditions like
     /// Non-Farm Payrolls (NFP) or other major economic announcements.
     fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>>;
-    
+
     /// # TODO join with get_name ???
     fn get_strategy_kind(&self) -> StrategyKind;
     /// # TODO join with get_strategy_kind ???

@@ -1,12 +1,10 @@
 use crate::trading_indicator::initial_balance::InitialBalance;
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MyAnyValueKind {
     Int64(i64),
     Float64(f64),
-    InitialBalance(InitialBalance)
+    InitialBalance(InitialBalance),
 }
 
 impl MyAnyValueKind {

@@ -4,12 +4,14 @@ use chapaty::{
     config::{self},
     data_provider::cme::Cme,
     strategy::{news_rassler::NewsRasslerBuilder, StopLoss, Strategy},
-     MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind,
-    TimeFrameKind,
+    MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind,
 };
-use test_configurations::{bot_config::BotConfig, get_expected_result, test_runner::{self, TestRunner}};
 use std::{sync::Arc, time::Instant};
-
+use test_configurations::{
+    bot_config::BotConfig,
+    get_expected_result,
+    test_runner::{self, TestRunner},
+};
 
 #[ignore]
 #[tokio::test]

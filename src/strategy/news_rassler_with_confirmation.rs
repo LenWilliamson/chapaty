@@ -1,6 +1,10 @@
 use polars::datatypes::AnyValue;
 
-use crate::{enums::news::NewsKind, types::ohlc::OhlcCandle};
+use crate::{
+    converter::timeformat::timestamp_in_milli_to_naive_date_time_tuple,
+    enums::{news::NewsKind, trade_and_pre_trade::TradeCloseKind},
+    types::ohlc::OhlcCandle,
+};
 
 use super::*;
 
@@ -272,49 +276,49 @@ impl NewsRasslerWithConfirmation {
             .open
     }
 
-    fn get_entry_ts(
-        &self,
-        pre_trade_values: &RequiredPreTradeValuesWithData,
-    ) -> (Option<i64>, bool) {
-        let news_candle = match pre_trade_values.news_candle(&self.news_kind, 0) {
-            Some(x) => x,
-            None => return (None, false),
-        };
+    // fn get_entry_ts(
+    //     &self,
+    //     pre_trade_values: &RequiredPreTradeValuesWithData,
+    // ) -> (Option<i64>, bool) {
+    //     let news_candle = match pre_trade_values.news_candle(&self.news_kind, 0) {
+    //         Some(x) => x,
+    //         None => return (None, false),
+    //     };
 
-        let mut trade_kind = TradeDirectionKind::None;
-        let mut entry_candle = 0;
-        for t in 1..=self.number_candles_to_wait {
-            let candle = pre_trade_values
-                .news_candle(&self.news_kind, t as u32)
-                .unwrap();
-            if news_candle.high.le(&candle.high) && news_candle.low.ge(&candle.low) {
-                // News candle is inside the next candle
-                return (None, false);
-            }
+    //     let mut trade_kind = TradeDirectionKind::None;
+    //     let mut entry_candle = 0;
+    //     for t in 1..=self.number_candles_to_wait {
+    //         let candle = pre_trade_values
+    //             .news_candle(&self.news_kind, t as u32)
+    //             .unwrap();
+    //         if news_candle.high.le(&candle.high) && news_candle.low.ge(&candle.low) {
+    //             // News candle is inside the next candle
+    //             return (None, false);
+    //         }
 
-            if news_candle.high < candle.close {
-                trade_kind = TradeDirectionKind::Long;
-                entry_candle = t;
-                break;
-            }
+    //         if news_candle.high < candle.close {
+    //             trade_kind = TradeDirectionKind::Long;
+    //             entry_candle = t;
+    //             break;
+    //         }
 
-            if news_candle.low > candle.close {
-                trade_kind = TradeDirectionKind::Short;
-                entry_candle = t;
-                break;
-            }
-        }
-        if entry_candle >= self.number_candles_to_wait || trade_kind == TradeDirectionKind::None {
-            return (None, false);
-        }
+    //         if news_candle.low > candle.close {
+    //             trade_kind = TradeDirectionKind::Short;
+    //             entry_candle = t;
+    //             break;
+    //         }
+    //     }
+    //     if entry_candle >= self.number_candles_to_wait || trade_kind == TradeDirectionKind::None {
+    //         return (None, false);
+    //     }
 
-        (
-            pre_trade_values
-                .news_candle(&self.news_kind, (entry_candle + 1) as u32)
-                .and_then(|ohlc_candle| ohlc_candle.open_ts),
-            false,
-        )
-    }
+    //     (
+    //         pre_trade_values
+    //             .news_candle(&self.news_kind, (entry_candle + 1) as u32)
+    //             .and_then(|ohlc_candle| ohlc_candle.open_ts),
+    //         false,
+    //     )
+    // }
 
     fn get_trade_kind(
         &self,
@@ -326,15 +330,6 @@ impl NewsRasslerWithConfirmation {
         } else {
             TradeDirectionKind::None
         }
-    }
-
-    
-    fn is_pre_trade_day_equal_to_trade_day(&self) -> bool {
-        true
-    }
-    
-    fn is_only_trading_on_news(&self) -> bool {
-        true
     }
 }
 
@@ -364,19 +359,82 @@ impl Strategy for NewsRasslerWithConfirmation {
             trading_indicators: Vec::new(),
         }
     }
-    
+
     fn get_market_simulation_data_kind(&self) -> MarketSimulationDataKind {
         self.market_simulation_data_kind
     }
 
-    fn check_activation_event(&self, simulation_event: &SimulationEvent) -> Option<ActivationEvent> {
-        None
+    fn check_activation_event(
+        &self,
+        simulation_event: &SimulationEvent,
+    ) -> Option<ActivationEvent> {
+        let last_ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        let ots = last_ohlc.open_ts.unwrap();
+        let (date, time) = timestamp_in_milli_to_naive_date_time_tuple(ots);
+        let news_time = self.news_kind.utc_time_daylight_saving_adjusted(&date);
+        let delta = time.signed_duration_since(news_time).num_minutes();
+
+        if self.news_kind.get_news_dates().contains(&date)
+            && 1 <= delta
+            && delta <= self.number_candles_to_wait as i64
+        {
+            let n = simulation_event.market_event.len();
+            let news_candle = &simulation_event.market_event.get(n - delta as usize).unwrap().ohlc;
+            if news_candle.high.le(&last_ohlc.high) && news_candle.low.ge(&last_ohlc.low) {
+                // News candle is inside the next candle
+                return None;
+            }
+
+            let second_last_ohlc = &simulation_event.market_event.get(n - 2).unwrap().ohlc;
+            if news_candle.high < second_last_ohlc.close {
+                Some(ActivationEvent {
+                    entry_ts: ots,
+                    entry_price: last_ohlc.open.unwrap(),
+                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
+                    take_profit: self.get_tp_price(simulation_event).unwrap(),
+                    trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
+                    strategy: self,
+                })
+            }else if news_candle.low > second_last_ohlc.close {
+                Some(ActivationEvent {
+                    entry_ts: ots,
+                    entry_price: last_ohlc.open.unwrap(),
+                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
+                    take_profit: self.get_tp_price(simulation_event).unwrap(),
+                    trade_direction_kind: TradeDirectionKind::Short, // self.get_trade_kind(pre_trade_values),
+                    strategy: self,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
-    fn check_cancelation_event(&self, simulation_event: &SimulationEvent) -> Option<CloseEvent> {
-        None
+    fn check_cancelation_event(
+        &self,
+        simulation_event: &SimulationEvent,
+        trade: &Trade<Active>,
+    ) -> Option<CloseEvent> {
+        let ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        if ohlc.low <= trade.stop_loss && trade.stop_loss <= ohlc.high {
+            Some(CloseEvent {
+                exit_ts: ohlc.close_ts.unwrap(),
+                exit_price: trade.current_price.unwrap(),
+                close_event_kind: TradeCloseKind::StopLoss,
+            })
+        } else if ohlc.low <= trade.take_profit && trade.take_profit <= ohlc.high {
+            Some(CloseEvent {
+                exit_ts: ohlc.close_ts.unwrap(),
+                exit_price: trade.current_price.unwrap(),
+                close_event_kind: TradeCloseKind::TakeProfit,
+            })
+        } else {
+            None
+        }
     }
-    
+
     fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
         Some(self.news_kind.get_news_dates())
     }
@@ -384,7 +442,7 @@ impl Strategy for NewsRasslerWithConfirmation {
     fn get_strategy_kind(&self) -> StrategyKind {
         StrategyKind::NewsRasslerWithConfirmation
     }
-    
+
     fn get_name(&self) -> String {
         format!(
             "NewsRasslerWithConfirmation::{}",

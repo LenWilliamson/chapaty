@@ -57,7 +57,7 @@ impl PriceHistogram {
         let va_with_updated_parts = va.update_value_area_parts();
         let tpo_delta = va_with_updated_parts
             .determine_tpo_delta(&va)
-            .map_or( total_tpo_count, identity);
+            .map_or(total_tpo_count, identity);
         let new_va = va.update_value_area_part(&va_with_updated_parts);
 
         self.compute_value_area(total_tpo_count - tpo_delta, new_va)
@@ -233,11 +233,11 @@ impl ValueArea {
         let low_update = self
             .low
             .update(&self.price_histogram)
-            .map_or( self.low.with_tail_is_reached(), identity);
+            .map_or(self.low.with_tail_is_reached(), identity);
         let high_update = self
             .high
             .update(&self.price_histogram)
-            .map_or( self.high.with_tail_is_reached(), identity);
+            .map_or(self.high.with_tail_is_reached(), identity);
 
         Self {
             low: low_update,

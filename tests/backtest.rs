@@ -192,13 +192,13 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
 
 Counter                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 8, loss_to_win_ratio = 2.8, offset = 1.25, total_profit = 12125
 Counter                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 11, loss_to_win_ratio = 1.05, offset = 1.45, total_profit = 8593.75
-Counter                 NFP 5m-Chart 2006 - 20020: 
-Counter                 CPI 5m-Chart 2006 - 20020: 
+Counter                 NFP 5m-Chart 2006 - 20020:
+Counter                 CPI 5m-Chart 2006 - 20020:
 
 Rassler                 NFP 1m-Chart 2006 - 20020: number_candles_to_wait = 3, loss_to_win_ratio = 0.65, offset = 0.55, total_profit = 9012.5
 Rassler                 CPI 1m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 0.6, offset = 0.5, total_profit = 5093.75
-Rassler                 NFP 5m-Chart 2006 - 20020: 
-Rassler                 CPI 5m-Chart 2006 - 20020: 
+Rassler                 NFP 5m-Chart 2006 - 20020:
+Rassler                 CPI 5m-Chart 2006 - 20020:
 
 Rassler Confirmation    NFP 5m-Chart 2006 - 20020: number_candles_to_wait = 10, loss_to_win_ratio = 0.7, offset = 1.15, total_profit = 9837.5, treffer_quote = 0.6923076923076923
 Rassler Confirmation    CPI 5m-Chart 2006 - 20020: enter after 2 candles | number_candles_to_wait = 15, loss_to_win_ratio = 3, offset = 1.45, total_profit = 8506.25, treffer_quote = 0.5394736842105263

@@ -15,15 +15,15 @@ use test_configurations::{
 };
 
 /// Integration test for verifying the precision curation logic in `chapaty`.
-/// 
+///
 /// This test is directly related to [Design Decision 1: Curating Data]
 /// in the project documentation. It validates the correctness of the rounding mechanism applied
 /// to the symbols we can trade, ensuring that floating-point precision is
 /// handled according to the tick sizes specified in the market contract specifications.
-/// 
+///
 /// ### Test Data
-/// 
-/// The test uses historical market data for the `6E JUN24` contract, provided via the 
+///
+/// The test uses historical market data for the `6E JUN24` contract, provided via the
 /// NinjaTrader CME Marketdata Level 1.
 #[tokio::test]
 async fn curating_data_it() {

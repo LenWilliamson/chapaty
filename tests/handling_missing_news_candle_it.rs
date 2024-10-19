@@ -29,7 +29,7 @@ use test_configurations::{
 ///     // Additional trait definitions...
 /// }
 /// ```
-/// 
+///
 /// Additionally, the type of the `market_values` field in `RequiredPreTradeValuesWithData`
 /// was modified to enhance robustness. The new fallback mechanisms ensure that missing news
 /// candles are gracefully skipped, allowing the backtesting process to continue smoothly
@@ -37,7 +37,7 @@ use test_configurations::{
 ///
 /// ### Test Data
 ///
-/// The test uses historical market data for the 6E JUN24 contract, provided via the 
+/// The test uses historical market data for the 6E JUN24 contract, provided via the
 /// NinjaTrader CME Marketdata Level 1.
 #[tokio::test]
 async fn handling_missing_news_candle_it() {

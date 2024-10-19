@@ -3,13 +3,17 @@ pub mod test_configurations;
 use chapaty::{
     config::{self},
     data_provider::cme::Cme,
-    strategy::{news_rassler_with_confirmation::NewsRasslerWithConfirmationBuilder, StopLoss, Strategy},
-     MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind,
-    TimeFrameKind,
+    strategy::{
+        news_rassler_with_confirmation::NewsRasslerWithConfirmationBuilder, StopLoss, Strategy,
+    },
+    MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind,
 };
-use test_configurations::{bot_config::BotConfig, get_expected_result, test_runner::{self, TestRunner}};
 use std::{sync::Arc, time::Instant};
-
+use test_configurations::{
+    bot_config::BotConfig,
+    get_expected_result,
+    test_runner::{self, TestRunner},
+};
 
 #[ignore]
 #[tokio::test]
@@ -20,7 +24,9 @@ async fn news_rassler_with_confirmation_bot_strategy_1_it() {
     news_rassler_with_confirmation_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_1_it().");
+    println!(
+        "Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_1_it()."
+    );
 }
 
 #[ignore]
@@ -32,10 +38,15 @@ async fn news_rassler_with_confirmation_bot_strategy_2_it() {
     news_rassler_with_confirmation_bot_it(setup_strategy(0.3), &expected_result).await;
 
     let duration = start.elapsed();
-    println!("Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_2_it().");
+    println!(
+        "Time elapsed is: {duration:?} for news_rassler_with_confirmation_bot_strategy_2_it()."
+    );
 }
 
-async fn news_rassler_with_confirmation_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: &str) {
+async fn news_rassler_with_confirmation_bot_it(
+    strategy: Arc<dyn Strategy + Send + Sync>,
+    expected_result: &str,
+) {
     let bucket = config::GoogleCloudBucket {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),

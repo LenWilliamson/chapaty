@@ -178,6 +178,7 @@ impl MyLazyFrameVecOperations for Vec<LazyFrame> {
     fn concatenate_to_data_frame(self) -> DataFrame {
         LazyCsvReader::new(PathBuf::from(""))
             .with_rechunk(true)
+            // TODO consider using vstack ???
             .concat_impl(self)
             .unwrap()
             .collect()

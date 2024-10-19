@@ -7,7 +7,7 @@ use crate::{
     converter::pnl_to_report::{as_equity_curve, PnLToReportRequestBuilder},
     data_frame_operations::io_operations::save_df_as_csv,
     equity_curve::EquityCurvesAggMarkets,
-    lazy_frame_operations::trait_extensions::{MyLazyFrameVecOperations, MyLazyFrameOperations},
+    lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     performance_report::PerformanceReportAggMarkets,
     trade_breakdown_report::TradeBreakDownReportAggMarkets,
     MarketKind, PnLReportColumnKind,

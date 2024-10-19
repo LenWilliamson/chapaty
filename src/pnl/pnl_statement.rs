@@ -4,7 +4,8 @@ use crate::{
     equity_curve::{EquityCurves, EquityCurvesReport},
     lazy_frame_operations::trait_extensions::{MyLazyFrameOperations, MyLazyFrameVecOperations},
     performance_report::PerformanceReports,
-    trade_breakdown_report::TradeBreakdownReports, PnLReportColumnKind,
+    trade_breakdown_report::TradeBreakdownReports,
+    PnLReportColumnKind,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use serde::{Deserialize, Serialize};

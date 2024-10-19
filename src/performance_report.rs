@@ -20,7 +20,6 @@ impl PerformanceReportAggMarkets {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PerformanceReportsAggYears {
     pub markets: Vec<MarketKind>,

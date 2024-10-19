@@ -1,4 +1,6 @@
-use super::pnl_report_data_row_calculator::{PnLReportDataRowCalculator, PnLReportDataRowCalculatorBuilder};
+use super::pnl_report_data_row_calculator::{
+    PnLReportDataRowCalculator, PnLReportDataRowCalculatorBuilder,
+};
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
     converter::any_value::AnyValueConverter,

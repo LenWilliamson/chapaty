@@ -4,6 +4,7 @@ use super::{
 use crate::{
     chapaty,
     converter::any_value::AnyValueConverter,
+    data_frame_operations::trait_extensions::MyDataFrameOperations,
     enums::{
         bot::TimeFrameKind,
         data::HdbSourceDirKind,
@@ -14,7 +15,7 @@ use crate::{
     price_histogram::{
         agg_trades_volume::AggTradesVolume, tick_volume::volume_profile_by_tick_data,
         tpo::TpoBuilder,
-    }, data_frame_operations::trait_extensions::MyDataFrameOperations,
+    },
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
 use std::{collections::HashMap, sync::Arc};
@@ -131,9 +132,7 @@ impl Transformer {
     }
 
     fn get_tpo(&self, df_map: chapaty::types::DataFrameMap) -> chapaty::types::DataFrameMap {
-        let tpo = TpoBuilder::new()
-            .with_market(self.market)
-            .build();
+        let tpo = TpoBuilder::new().with_market(self.market).build();
 
         tpo.from_df_map(df_map)
     }

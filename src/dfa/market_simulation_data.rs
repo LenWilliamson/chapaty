@@ -13,7 +13,7 @@ pub struct SimulationData {
     pub market_sim_data_kind: MarketSimulationDataKind,
 }
 pub struct SimulationEvent<'a> {
-    pub market_event: &'a Market,
+    pub market_event: Vec<&'a Market>,
     pub initial_balance: Option<&'a InitialBalance>,
     pub pre_trade_values: &'a RequiredPreTradeValuesWithData,
     pub market_kind: MarketKind,
@@ -21,7 +21,7 @@ pub struct SimulationEvent<'a> {
 }
 
 impl<'a> SimulationEvent<'a> {
-    pub fn new(market_event: &'a Market, sim_data: &'a SimulationData) -> Self {
+    pub fn new(market_event: Vec<&'a Market>, sim_data: &'a SimulationData) -> Self {
         SimulationEvent {
             market_event,
             initial_balance: None,
@@ -32,7 +32,7 @@ impl<'a> SimulationEvent<'a> {
     }
 
     pub fn update_on_market_event(&mut self, market_event: &'a Market) {
-        self.market_event = market_event;
+        self.market_event.push(market_event);
     }
 }
 

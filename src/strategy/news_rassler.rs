@@ -1,6 +1,9 @@
+use chrono::TimeDelta;
 use polars::datatypes::AnyValue;
 
-use crate::{enums::news::NewsKind, types::ohlc::OhlcCandle};
+use crate::{
+    converter::timeformat::timestamp_in_milli_to_naive_date_time_tuple, enums::{news::NewsKind, trade_and_pre_trade::TradeCloseKind}, types::ohlc::OhlcCandle
+};
 
 use super::*;
 
@@ -223,20 +226,20 @@ impl NewsRassler {
             .open
     }
 
-    fn get_entry_ts(
-        &self,
-        pre_trade_values: &RequiredPreTradeValuesWithData,
-    ) -> (Option<i64>, bool) {
-        (
-            pre_trade_values
-                .news_candle(
-                    &self.news_kind,
-                    self.number_candles_to_wait.try_into().unwrap(),
-                )
-                .and_then(|ohlc_candle| ohlc_candle.open_ts),
-            false,
-        )
-    }
+    // fn get_entry_ts(
+    //     &self,
+    //     pre_trade_values: &RequiredPreTradeValuesWithData,
+    // ) -> (Option<i64>, bool) {
+    //     (
+    //         pre_trade_values
+    //             .news_candle(
+    //                 &self.news_kind,
+    //                 self.number_candles_to_wait.try_into().unwrap(),
+    //             )
+    //             .and_then(|ohlc_candle| ohlc_candle.open_ts),
+    //         false,
+    //     )
+    // }
 
     fn get_trade_kind(
         &self,
@@ -248,15 +251,6 @@ impl NewsRassler {
         } else {
             TradeDirectionKind::None
         }
-    }
-
-    
-    fn is_pre_trade_day_equal_to_trade_day(&self) -> bool {
-        true
-    }
-    
-    fn is_only_trading_on_news(&self) -> bool {
-        true
     }
 }
 
@@ -291,18 +285,73 @@ impl Strategy for NewsRassler {
         self.market_simulation_data_kind
     }
 
-    fn check_activation_event(&self, simulation_event: &SimulationEvent) -> Option<ActivationEvent> {
-        None
+    fn check_activation_event(
+        &self,
+        simulation_event: &SimulationEvent,
+    ) -> Option<ActivationEvent> {
+        let ots = simulation_event
+            .market_event
+            .last()
+            .unwrap()
+            .ohlc
+            .open_ts
+            .unwrap();
+        let (date, time) = timestamp_in_milli_to_naive_date_time_tuple(ots);
+        let entry_time = self
+            .news_kind
+            .utc_time_daylight_saving_adjusted(&date)
+            .overflowing_add_signed(
+                TimeDelta::try_minutes(self.number_candles_to_wait as i64).unwrap(),
+            )
+            .0;
+        
+            if self.news_kind.get_news_dates().contains(&date) && time == entry_time {
+                Some(ActivationEvent {
+                    entry_ts: ots,
+                    entry_price: simulation_event
+                        .market_event
+                        .last()
+                        .unwrap()
+                        .ohlc
+                        .open
+                        .unwrap(),
+                    stop_loss: self.get_sl_price(simulation_event).unwrap(),
+                    take_profit: self.get_tp_price(simulation_event).unwrap(),
+                    trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
+                    strategy: self,
+                })
+            } else {
+                None
+            }
     }
 
-    fn check_cancelation_event(&self, simulation_event: &SimulationEvent) -> Option<CloseEvent> {
-        None
+    fn check_cancelation_event(
+        &self,
+        simulation_event: &SimulationEvent,
+        trade: &Trade<Active>,
+    ) -> Option<CloseEvent> {
+        let ohlc = &simulation_event.market_event.last().unwrap().ohlc;
+        if ohlc.low <= trade.stop_loss && trade.stop_loss <= ohlc.high {
+            Some(CloseEvent {
+                exit_ts: ohlc.close_ts.unwrap(),
+                exit_price: trade.current_price.unwrap(),
+                close_event_kind: TradeCloseKind::StopLoss,
+            })
+        } else if ohlc.low <= trade.take_profit && trade.take_profit <= ohlc.high {
+            Some(CloseEvent {
+                exit_ts: ohlc.close_ts.unwrap(),
+                exit_price: trade.current_price.unwrap(),
+                close_event_kind: TradeCloseKind::TakeProfit,
+            })
+        } else {
+            None
+        }
     }
-    
+
     fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
         Some(self.news_kind.get_news_dates())
     }
-    
+
     fn get_strategy_kind(&self) -> StrategyKind {
         StrategyKind::NewsRassler
     }

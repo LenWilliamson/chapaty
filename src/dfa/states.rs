@@ -1,6 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::{enums::trade_and_pre_trade::{TradeCloseKind, TradeDirectionKind}, strategy::Strategy, MarketKind};
+use crate::{
+    enums::trade_and_pre_trade::{TradeCloseKind, TradeDirectionKind},
+    strategy::Strategy,
+    MarketKind,
+};
 
 use super::market_simulation_data::Market;
 
@@ -12,24 +16,24 @@ pub struct Close;
 
 /// Represents a trade in a discrete finite automaton (DFA) that simulates the behavior of a trading strategy during market data simulation.
 ///
-/// This structure encapsulates the state of a trade and its associated parameters. The trade can be in one of three states: 
-/// `Idle`, `Active`, or `Close`. Only `Idle` and `Active` states are considered accepting states during the simulation. 
+/// This structure encapsulates the state of a trade and its associated parameters. The trade can be in one of three states:
+/// `Idle`, `Active`, or `Close`. Only `Idle` and `Active` states are considered accepting states during the simulation.
 /// At the end of the simulation process, all active trades will transition to the `Close` state and ultimately to the accepting `Idle` state.
 ///
 /// The following trait will be implemented to indicate accepting states:
-/// 
+///
 /// ```rust
 /// pub trait Accepting {}
 /// impl Accepting for Idle {}
 /// impl Accepting for Active {}
 /// ```
-/// 
+///
 /// TODO
-/// **Note:** The trait bound for `Accepting` is not yet enforced in the current implementation. 
-/// Ensure that trades passed to functions or structures requiring accepting states implement this trait. 
+/// **Note:** The trait bound for `Accepting` is not yet enforced in the current implementation.
+/// Ensure that trades passed to functions or structures requiring accepting states implement this trait.
 /// This will be implemented in a future update.
 #[derive(Debug, Clone)]
-pub struct Trade<State> {
+pub struct Trade<'a, State> {
     pub entry_ts: Option<i64>,
     pub entry_price: Option<f64>,
     pub current_ts: Option<i64>,
@@ -39,17 +43,17 @@ pub struct Trade<State> {
     pub stop_loss: Option<f64>,
     pub take_profit: Option<f64>,
     pub close_event: Option<TradeCloseKind>,
-    pub strategy: Option<Arc<dyn Strategy + Send + Sync>>,
+    pub strategy: Option<&'a (dyn Strategy + Send + Sync)>,
     pub _state: PhantomData<State>,
 }
 
-pub enum TradeResult {
-    Idle(Trade<Idle>),
-    Active(Trade<Active>),
-    Close(Trade<Close>),
+pub enum TradeResult<'a> {
+    Idle(Trade<'a, Idle>),
+    Active(Trade<'a, Active>),
+    Close(Trade<'a, Close>),
 }
 
-impl TradeResult {
+impl<'a> TradeResult<'a> {
     pub fn update_on_market_event(&mut self, market_event: &Market) {
         match self {
             TradeResult::Idle(trade) => trade.update_on_market_event(market_event),
@@ -59,13 +63,13 @@ impl TradeResult {
     }
 }
 
-pub struct ActivationEvent {
-    entry_ts: i64,
-    entry_price: f64,
-    stop_loss: f64,
-    take_profit: f64,
-    trade_direction_kind: TradeDirectionKind,
-    pub strategy: Arc<dyn Strategy + Send + Sync>,
+pub struct ActivationEvent<'a> {
+    pub entry_ts: i64,
+    pub entry_price: f64,
+    pub stop_loss: f64,
+    pub take_profit: f64,
+    pub trade_direction_kind: TradeDirectionKind,
+    pub strategy: &'a (dyn Strategy + Send + Sync),
 }
 
 pub struct CloseEvent {
@@ -74,8 +78,8 @@ pub struct CloseEvent {
     pub close_event_kind: TradeCloseKind,
 }
 
-impl Trade<Idle> {
-    pub fn new() -> TradeResult {
+impl<'a> Trade<'a, Idle> {
+    pub fn new() -> TradeResult<'a> {
         let idle_trade = Self {
             entry_ts: None,
             entry_price: None,
@@ -92,7 +96,7 @@ impl Trade<Idle> {
         TradeResult::Idle(idle_trade)
     }
 
-    pub fn activation_event(self, activation_event: &ActivationEvent) -> TradeResult {
+    pub fn activation_event(self, activation_event: &ActivationEvent<'a>) -> TradeResult<'a> {
         let mut active_trade = Trade::<Active> {
             entry_ts: Some(activation_event.entry_ts),
             entry_price: Some(activation_event.entry_price),
@@ -103,7 +107,7 @@ impl Trade<Idle> {
             stop_loss: Some(activation_event.stop_loss),
             take_profit: Some(activation_event.take_profit),
             close_event: None,
-            strategy: Some(activation_event.strategy.clone()),
+            strategy: Some(activation_event.strategy),
             _state: PhantomData,
         };
         active_trade.update_profit();
@@ -111,8 +115,8 @@ impl Trade<Idle> {
     }
 }
 
-impl Trade<Active> {
-    fn close_trade(self, close_event: &CloseEvent) -> TradeResult {
+impl<'a> Trade<'a, Active> {
+    fn close_trade(self, close_event: &CloseEvent) -> TradeResult<'a> {
         let close_trade = Trade::<Close> {
             entry_ts: self.entry_ts,
             entry_price: self.entry_price,
@@ -129,15 +133,15 @@ impl Trade<Active> {
         TradeResult::Close(close_trade)
     }
 
-    pub fn close_event(self, close_event: &CloseEvent) -> TradeResult {
+    pub fn close_event(self, close_event: &CloseEvent) -> TradeResult<'a> {
         self.close_trade(close_event)
     }
 
-    pub fn timeout_event(self, close_event: &CloseEvent) -> TradeResult {
+    pub fn timeout_event(self, close_event: &CloseEvent) -> TradeResult<'a> {
         self.close_trade(close_event)
     }
 
-    pub fn pivot_event(self, pivot_event: &ActivationEvent) -> TradeResult {
+    pub fn pivot_event(self, pivot_event: &ActivationEvent) -> TradeResult<'a> {
         self.close_trade(&CloseEvent {
             exit_ts: pivot_event.entry_ts,
             exit_price: pivot_event.entry_price,
@@ -146,20 +150,20 @@ impl Trade<Active> {
     }
 }
 
-impl Trade<Close> {
-    pub fn pivot_event(self, pivot_event: &ActivationEvent) -> TradeResult {
+impl<'a> Trade<'a, Close> {
+    pub fn pivot_event(self, pivot_event: &ActivationEvent<'a>) -> TradeResult<'a> {
         match self.reset() {
             TradeResult::Idle(idle_trade) => idle_trade.activation_event(pivot_event),
             _ => panic!("Expected Trade<Close> to be reset to Trade<Idle>."),
         }
     }
 
-    pub fn reset(self) -> TradeResult {
+    pub fn reset(self) -> TradeResult<'a> {
         Trade::<Idle>::new()
     }
 }
 
-impl<State> Trade<State> {
+impl<'a, State> Trade<'a, State> {
     pub fn compute_profit(&self, price: f64) -> Option<f64> {
         let entry_px = self.entry_price?;
         let direction = self.trade_direction_kind?;
@@ -202,7 +206,7 @@ impl<State> Trade<State> {
         self.stop_loss = self
             .stop_loss
             .and_then(|px| Some(market.round_float_to_correct_decimal_place(px)));
-        
+
         self.take_profit = self
             .take_profit
             .and_then(|px| Some(market.round_float_to_correct_decimal_place(px)));
