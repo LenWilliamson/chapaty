@@ -9,9 +9,9 @@ use std::convert::identity;
 
 use super::pre_trade_values_calculator::RequiredPreTradeValuesWithData;
 
-pub struct TradePnLCalculator {
+pub struct TradePnLCalculator<'a> {
     entry_ts: i64,
-    trade: Trade<Close>,
+    trade: &'a Trade<Close>,
     market_sim_data_since_entry: LazyFrame,
     trade_and_pre_trade_values: RequiredPreTradeValuesWithData,
 }
@@ -130,7 +130,7 @@ impl PnL {
     }
 }
 
-impl TradePnLCalculator {
+impl<'a> TradePnLCalculator<'a> {
     pub fn compute(&self) -> TradePnL {
         // match self.trade.close_event {
         //     TradeCloseKind::Pivot => {},
@@ -207,14 +207,14 @@ fn is_order_open(timestamp: Option<i64>) -> bool {
     timestamp.is_none()
 }
 
-pub struct TradePnLCalculatorBuilder {
+pub struct TradePnLCalculatorBuilder<'a> {
     entry_ts: Option<i64>,
-    trade: Option<Trade<Close>>,
+    trade: Option<&'a Trade<Close>>,
     market_sim_data_since_entry: Option<LazyFrame>,
     trade_and_pre_trade_values: Option<RequiredPreTradeValuesWithData>,
 }
 
-impl TradePnLCalculatorBuilder {
+impl<'a> TradePnLCalculatorBuilder<'a> {
     pub fn new() -> Self {
         Self {
             entry_ts: None,
@@ -238,7 +238,7 @@ impl TradePnLCalculatorBuilder {
         }
     }
 
-    pub fn with_trade(self, trade: Trade<Close>) -> Self {
+    pub fn with_trade(self, trade: &'a Trade<Close>) -> Self {
         Self {
             trade: Some(trade),
             ..self
@@ -255,10 +255,10 @@ impl TradePnLCalculatorBuilder {
         }
     }
 
-    pub fn build(self) -> TradePnLCalculator {
+    pub fn build(self) -> TradePnLCalculator<'a> {
         TradePnLCalculator {
             entry_ts: self.entry_ts.clone().unwrap(),
-            trade: self.trade.clone().unwrap(),
+            trade: self.trade.unwrap(),
             market_sim_data_since_entry: self.market_sim_data_since_entry.clone().unwrap(),
             trade_and_pre_trade_values: self.trade_and_pre_trade_values.clone().unwrap(),
         }
@@ -434,7 +434,12 @@ mod test {
         }
     }
 
-    fn set_up_trade_ppp_long(entry_ts: i64, entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade<Close> {
+    fn set_up_trade_ppp_long(
+        entry_ts: i64,
+        entry_price: f64,
+        stop_loss: f64,
+        take_profit: f64,
+    ) -> Trade<Close> {
         Trade::<Close> {
             entry_ts: Some(entry_ts),
             entry_price: Some(entry_price),
@@ -450,22 +455,16 @@ mod test {
         }
     }
 
-    fn set_up_trade_and_pre_trade_values_ppp_long(entry_ts: i64) -> RequiredPreTradeValuesWithData {
-        set_up_pre_trade_values_ppp_long()
-    }
-
     fn set_up_trade_pnl_calculator_ppp_long(
         entry_ts: i64,
-        entry_price: f64,
-        stop_loss: f64,
-        take_profit: f64,
         market_sim_data_since_entry: LazyFrame,
+        trade: &Trade<Close>,
     ) -> TradePnLCalculator {
         TradePnLCalculator {
             entry_ts,
-            trade: set_up_trade_ppp_long(entry_ts, entry_price, stop_loss, take_profit),
+            trade,
             market_sim_data_since_entry,
-            trade_and_pre_trade_values: set_up_trade_and_pre_trade_values_ppp_long(entry_ts),
+            trade_and_pre_trade_values: set_up_pre_trade_values_ppp_long(),
         }
     }
 
@@ -599,25 +598,23 @@ mod test {
         let market_sim_data_since_entry =
             df_long.clone().lazy().drop_rows_before_entry_ts(entry_ts);
 
+        let trade = set_up_trade_ppp_long(entry_ts, poc, price_upon_entry, prev_close);
+
         let calculator = set_up_trade_pnl_calculator_ppp_long(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_long_case_1a(entry_ts);
         assert_eq!(target, calculator.compute());
 
         let price_upon_entry = poc - 648.44; // triggered
         let prev_close = 39_424.14 - 100.0; // triggered
-
+        let trade = set_up_trade_ppp_long(entry_ts, poc, price_upon_entry, prev_close);
         let calculator = set_up_trade_pnl_calculator_ppp_long(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_long_case_1b(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -626,13 +623,12 @@ mod test {
         // BEGIN: Case 2
         let prev_low = 36_220.54 + 1_231.02; // triggered
         let prev_close = 39_424.14 + 10_000.0; // Timeout
+        let trade = set_up_trade_ppp_long(entry_ts, poc, prev_low, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_long(
             entry_ts,
-            poc,
-            prev_low,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_long_case_2(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -642,12 +638,11 @@ mod test {
         let price_upon_entry = poc - 648.45; // not triggered => Timeout
         let prev_close = 39_424.14 - 100.0; // triggered
 
+        let trade = set_up_trade_ppp_long(entry_ts, poc, price_upon_entry, prev_close);
         let calculator = set_up_trade_pnl_calculator_ppp_long(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_long_case_3(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -656,13 +651,12 @@ mod test {
         // BEGIN: Case 4
         let prev_low = 36_220.54; // not triggered => Timeout
         let prev_close = 39_424.14 + 10_000.0; // Timeout
+        let trade = set_up_trade_ppp_long(entry_ts, poc, prev_low, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_long(
             entry_ts,
-            poc,
-            prev_low,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_long_case_4(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -741,7 +735,12 @@ mod test {
         }
     }
 
-    fn set_up_trade_ppp_short(entry_ts: i64, entry_price: f64, stop_loss: f64, take_profit: f64) -> Trade<Close> {
+    fn set_up_trade_ppp_short(
+        entry_ts: i64,
+        entry_price: f64,
+        stop_loss: f64,
+        take_profit: f64,
+    ) -> Trade<Close> {
         Trade::<Close> {
             entry_ts: Some(entry_ts),
             entry_price: Some(entry_price),
@@ -757,24 +756,16 @@ mod test {
         }
     }
 
-    fn set_up_trade_and_pre_trade_values_ppp_short(
-        entry_ts: i64,
-    ) -> RequiredPreTradeValuesWithData {
-        set_up_pre_trade_values_ppp_short()
-    }
-
     fn set_up_trade_pnl_calculator_ppp_short(
         entry_ts: i64,
-        entry_price: f64,
-        stop_loss: f64,
-        take_profit: f64,
         market_sim_data_since_entry: LazyFrame,
+        trade: &Trade<Close>,
     ) -> TradePnLCalculator {
         TradePnLCalculator {
             entry_ts,
-            trade: set_up_trade_ppp_short(entry_ts, entry_price, stop_loss, take_profit),
+            trade,
             market_sim_data_since_entry,
-            trade_and_pre_trade_values: set_up_trade_and_pre_trade_values_ppp_short(entry_ts),
+            trade_and_pre_trade_values: set_up_pre_trade_values_ppp_short(),
         }
     }
 
@@ -907,26 +898,24 @@ mod test {
         let prev_close = 39_004.73; // triggered
         let market_sim_data_since_entry =
             df_long.clone().lazy().drop_rows_before_entry_ts(entry_ts);
+        let trade = set_up_trade_ppp_short(entry_ts, poc, price_upon_entry, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_short(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_short_case_1a(entry_ts);
         assert_eq!(target, calculator.compute());
 
         let price_upon_entry = poc + 494.06; // triggered
         let prev_close = 39_004.73 + 100.0; // triggered
+        let trade = set_up_trade_ppp_short(entry_ts, poc, price_upon_entry, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_short(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_short_case_1b(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -936,13 +925,12 @@ mod test {
         // Floating point error: 44_101.12 - 1_507.06 = 42594.060000000005 > 42594.06
         let prev_high = 44_101.12 - 1_507.060000000005; // triggered
         let prev_close = 39_424.14 - 10_000.0; // Timeout
+        let trade = set_up_trade_ppp_short(entry_ts, poc, prev_high, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_short(
             entry_ts,
-            poc,
-            prev_high,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_short_case_2(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -951,13 +939,12 @@ mod test {
         // BEGIN: Case 3
         let prev_high = 44_101.12 + 500.0; // not triggered => Timeout
         let prev_close = 39_004.73 + 100.0; // triggered
+        let trade = set_up_trade_ppp_short(entry_ts, poc, prev_high, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_short(
             entry_ts,
-            poc,
-            prev_high,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_short_case_3(entry_ts);
         assert_eq!(target, calculator.compute());
@@ -966,13 +953,12 @@ mod test {
         // BEGIN: Case 4
         let price_upon_entry = poc + 494.07; // not triggered => Timeout
         let prev_close = 39_004.7 - 156.26; // not triggered => Timeout
+        let trade = set_up_trade_ppp_short(entry_ts, poc, price_upon_entry, prev_close);
 
         let calculator = set_up_trade_pnl_calculator_ppp_short(
             entry_ts,
-            poc,
-            price_upon_entry,
-            prev_close,
             market_sim_data_since_entry.clone(),
+            &trade,
         );
         let target = set_up_target_trade_pnl_ppp_short_case_4(entry_ts);
         assert_eq!(target, calculator.compute());

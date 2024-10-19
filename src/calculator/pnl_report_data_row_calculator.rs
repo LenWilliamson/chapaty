@@ -6,10 +6,11 @@ use super::{
 };
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
+    compose,
     decision_policy::DecisionPolicy,
     dfa::{
         market_simulation_data::{SimulationData, SimulationDataBuilder, SimulationEvent},
-        states::{Close, CloseEvent, Trade, TradeResult},
+        states::{Active, Close, CloseEvent, Trade, TradeResult},
     },
     enums::trade_and_pre_trade::TradeCloseKind,
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
@@ -91,8 +92,21 @@ impl PnLReportDataRowCalculator {
                     }
                 }
                 TradeResult::Active(active_trade) => {
+                    // Check for activation events other than current strategy running trade
+                    let activation_events: Vec<_> = self
+                        .strategies
+                        .iter()
+                        .map(|strategy| strategy.check_activation_event(&sim_event))
+                        .filter(Option::is_some)
+                        .map(Option::unwrap)
+                        .filter(|event| {
+                            event.strategy.get_strategy_kind()
+                                != active_trade.strategy.as_ref().unwrap().get_strategy_kind()
+                        })
+                        .collect();
+
                     // check exit condition for strategy who activated the trade
-                    if active_trade
+                    let trade_result = if active_trade
                         .strategy
                         .as_ref()
                         .unwrap()
@@ -105,33 +119,24 @@ impl PnLReportDataRowCalculator {
                             .unwrap()
                             .check_cancelation_event(&sim_event)
                             .unwrap();
-                        active_trade.close_event(&close_event)
+                        let mut composed = compose!(
+                            {|active_trade: Trade<Active>| active_trade.close_event(&close_event)}
+                            {|trade_result: TradeResult| {
+                                if let TradeResult::Close(mut closed_trade) = trade_result {
+                                    closed_trade.curate_precision(&sim_event.market_kind);
+                                    self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
+                                } else {
+                                    panic!("Closed a trade but got not TradeResult::Close(...)")
+                                }
+                            }}
+                            {|closed_trade: Trade<Close>| closed_trade.reset()}
+                        );
+                        // active_trade.close_event(&close_event)
+                        composed(active_trade) // -> returns TradeResultIdle after closing trade
                     } else {
                         TradeResult::Active(active_trade)
-                    }
-                }
+                    };
 
-                _ => panic!("Why panic actually?"),
-            };
-
-            trade = match trade {
-                TradeResult::Close(closed_trade) => {
-                    pnl_report_data_rows.push(self.handle_trade(closed_trade.clone()));
-                    closed_trade.reset()
-                }
-                TradeResult::Active(active_trade) => {
-                    // get all entry signals for all stratagies but the current active one
-                    let activation_events: Vec<_> = self
-                        .strategies
-                        .iter()
-                        .map(|strategy| strategy.check_activation_event(&sim_event))
-                        .filter(Option::is_some)
-                        .map(Option::unwrap)
-                        .filter(|event| {
-                            event.strategy.get_strategy_kind()
-                                != active_trade.strategy.as_ref().unwrap().get_strategy_kind()
-                        })
-                        .collect();
                     let activation_event =
                         match self.decision_policy.choose_strategy(&activation_events) {
                             Some(strategy) => {
@@ -145,23 +150,34 @@ impl PnLReportDataRowCalculator {
                             }
                             None => None, // no activation event
                         };
-
-                    match activation_event {
-                        Some(event) => {
-                            trade = active_trade.pivot_event(event);
-                            match trade {
-                                    TradeResult::Close(closed_trade) => {
-                                        pnl_report_data_rows.push(self.handle_trade(closed_trade.clone()));
-                                        closed_trade.pivot_event(event)
+                    if activation_event.is_some() {
+                        match trade_result {
+                            TradeResult::Active(active_trade) => {
+                                let mut compose = compose!(
+                                {|active_trade: Trade<Active>| active_trade.pivot_event(&activation_event.unwrap())}
+                                    {|trade_result: TradeResult| {
+                                    if let TradeResult::Close(mut closed_trade) = trade_result {
+                                        closed_trade.curate_precision(&sim_event.market_kind);
+                                        self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
+                                    } else {
+                                        panic!("Closed a trade but got not TradeResult::Close(...)")
                                     }
-                                    _ => panic!("Pivoted a trade and received a TradeResult diffrent from TradeResult::Close(Trade<Close>)"),
-                                }
+                                }}
+                                {|closed_trade: Trade<Close>| closed_trade.pivot_event(&activation_event.unwrap())}
+                                    );
+                                compose(active_trade)
+                            }
+                            TradeResult::Idle(idle_trade) => {
+                                idle_trade.activation_event(activation_event.unwrap())
+                            }
+                            TradeResult::Close(_) => panic!("Invalid, why?"),
                         }
-
-                        None => TradeResult::Active(active_trade), // trade stays as it has been
+                    } else {
+                        trade_result
                     }
                 }
-                TradeResult::Idle(idle_trade) => TradeResult::Idle(idle_trade),
+
+                _ => panic!("Closed trade is not an accepting state, only idle and active"),
             };
 
             trade = if market_event.ohlc.is_end_of_day.unwrap() {
@@ -172,40 +188,74 @@ impl PnLReportDataRowCalculator {
                 };
                 match trade {
                     TradeResult::Active(trade) => {
-                        let trade_result = trade.close_event(&timeout);
-                        if let TradeResult::Close(ct) = &trade_result {
-                            pnl_report_data_rows.push(self.handle_trade(ct.clone()));
-                        }
-                        trade_result
+                        let mut composed = compose!(
+                            {|active_trade: Trade<Active>| active_trade.close_event(&timeout)}
+                            {|trade_result: TradeResult| {
+                                if let TradeResult::Close(mut closed_trade) = trade_result {
+                                    closed_trade.curate_precision(&sim_event.market_kind);
+                                    self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
+                                } else {
+                                    panic!("Closed a trade but got not TradeResult::Close(...)")
+                                }
+                            }}
+                            {|closed_trade: Trade<Close>| closed_trade.reset()}
+                        );
+                        // active_trade.close_event(&close_event)
+                        composed(trade) // -> returns TradeResultIdle after closing trade
                     }
                     _ => trade,
                 }
             } else {
                 trade
-            }
+            };
         }
 
         pnl_report_data_rows
     }
 
-    fn handle_trade(&self, mut closed_trade: Trade<Close>) -> PnLReportDataRow {
-        let entry_ts = closed_trade.entry_ts.unwrap();
-        closed_trade.curate_precision(&self.sim_data.market_kind);
+    // fn handle_trade(&self, mut closed_trade: Trade<Close>) -> PnLReportDataRow {
+    //     let entry_ts = closed_trade.entry_ts.unwrap();
+    //     closed_trade.curate_precision(&self.sim_data.market_kind);
+    //     let trade_pnl = TradePnLCalculatorBuilder::new()
+    //         .with_entry_ts(entry_ts)
+    //         .with_trade(&closed_trade)
+    //         .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(entry_ts))
+    //         .with_trade_and_pre_trade_values(self.sim_data.pre_trade_values.clone())
+    //         .build_and_compute();
+
+    //     PnLReportDataRow {
+    //         market: self.sim_data.market_kind,
+    //         year: self.year,
+    //         strategy_name: closed_trade.strategy.as_ref().unwrap().get_name(),
+    //         time_frame_snapshot: self.time_frame_snapshot,
+    //         trade: closed_trade,
+    //         trade_pnl: Some(trade_pnl),
+    //     }
+    // }
+
+    fn add_pnl_report_data_row(
+        &self,
+        pnl_report_data_rows: &mut Vec<PnLReportDataRow>,
+        closed_trade: Trade<Close>,
+    ) -> Trade<Close> {
+        let entry_ts = closed_trade.entry_ts.as_ref().unwrap();
         let trade_pnl = TradePnLCalculatorBuilder::new()
-            .with_entry_ts(entry_ts)
-            .with_trade(closed_trade.clone())
-            .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(entry_ts))
+            .with_entry_ts(*entry_ts)
+            .with_trade(&closed_trade)
+            .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(*entry_ts))
             .with_trade_and_pre_trade_values(self.sim_data.pre_trade_values.clone())
             .build_and_compute();
 
-        PnLReportDataRow {
+        pnl_report_data_rows.push(PnLReportDataRow {
             market: self.sim_data.market_kind,
             year: self.year,
             strategy_name: closed_trade.strategy.as_ref().unwrap().get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
-            trade: closed_trade,
+            // TODO pass reference here
+            trade: closed_trade.clone(),
             trade_pnl: Some(trade_pnl),
-        }
+        });
+        closed_trade
     }
 
     fn market_sim_data_since_entry_ts(&self, entry_ts: i64) -> LazyFrame {

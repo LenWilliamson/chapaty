@@ -11,6 +11,7 @@ pub mod decision_policy;
 mod dfa;
 mod enums;
 pub mod equity_curve;
+pub mod functools;
 mod lazy_frame_operations;
 pub mod performance_report;
 pub mod pnl;

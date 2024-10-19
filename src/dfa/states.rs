@@ -10,12 +10,24 @@ pub struct Active;
 #[derive(Debug, Clone)]
 pub struct Close;
 
-/*
-Add a Pending State: You might want to consider adding a Pending state for trades that are waiting for confirmation,
-before transitioning to Active. This could provide more flexibility if you're using strategies that require additional checks,
-or conditions before entering a trade.
-*/
-
+/// Represents a trade in a discrete finite automaton (DFA) that simulates the behavior of a trading strategy during market data simulation.
+///
+/// This structure encapsulates the state of a trade and its associated parameters. The trade can be in one of three states: 
+/// `Idle`, `Active`, or `Close`. Only `Idle` and `Active` states are considered accepting states during the simulation. 
+/// At the end of the simulation process, all active trades will transition to the `Close` state and ultimately to the accepting `Idle` state.
+///
+/// The following trait will be implemented to indicate accepting states:
+/// 
+/// ```rust
+/// pub trait Accepting {}
+/// impl Accepting for Idle {}
+/// impl Accepting for Active {}
+/// ```
+/// 
+/// TODO
+/// **Note:** The trait bound for `Accepting` is not yet enforced in the current implementation. 
+/// Ensure that trades passed to functions or structures requiring accepting states implement this trait. 
+/// This will be implemented in a future update.
 #[derive(Debug, Clone)]
 pub struct Trade<State> {
     pub entry_ts: Option<i64>,

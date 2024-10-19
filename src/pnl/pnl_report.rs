@@ -200,8 +200,8 @@ fn compute_crv(win: f64, loss: f64) -> f64 {
     }
 }
 
-impl From<PnLReportDataRow> for DataFrame {
-    fn from(value: PnLReportDataRow) -> Self {
+impl From<&PnLReportDataRow> for DataFrame {
+    fn from(value: &PnLReportDataRow) -> Self {
         // match (&value.trade_pnl, value.trade.is_valid) {
         //     (None, _) | (_, false) => value.report_without_trade(),
         //     _ => value.report_with_trade(),
@@ -214,7 +214,7 @@ impl FromIterator<PnLReportDataRow> for DataFrame {
     fn from_iter<T: IntoIterator<Item = PnLReportDataRow>>(iter: T) -> Self {
         iter.into_iter()
             .fold(Vec::new(), |mut ldfs, pnl_report_data_row| {
-                let df: DataFrame = pnl_report_data_row.into();
+                let df: DataFrame = (&pnl_report_data_row).into();
                 ldfs.push(df.lazy());
                 ldfs
             })
