@@ -16,7 +16,7 @@ use crate::{
         strategy::StrategyKind,
         trade_and_pre_trade::{PreTradeDataKind, TradeDirectionKind},
     },
-    MarketSimulationDataKind,
+    MarketSimulationDataKind, NewsKind,
 };
 use chrono::NaiveDate;
 use mockall::automock;
@@ -111,7 +111,6 @@ pub trait Strategy: Debug {
         sim_data: &Box<SimulationData>,
     ) -> Option<ActivationEvent<'a>>;
 
-    /// # TODO Think about passing the `Trade<State>` as well?
     /// Checks for a trade cancellation or closure event based on the provided simulation event.
     ///
     /// This function is responsible for evaluating whether an active trade should be closed,
@@ -134,7 +133,7 @@ pub trait Strategy: Debug {
     /// This function allows the strategy to define whether it should execute trades only
     /// on certain economic news event dates. If the strategy is designed to trade around
     /// specific economic events (such as Non-Farm Payrolls or interest rate decisions),
-    /// it returns `Some(HashSet<NaiveDate>)` with the dates of those events. If the strategy
+    /// it returns `Some(HashSet<Vec<NewsKind>>)` with the dates of those events. If the strategy
     /// does not depend on such events, it returns `None`, the strategy will not execute during major
     /// economic news events (e.g., FED Interest Rate releases), and backtesting will proceed
     /// without considering these dates.
@@ -142,7 +141,7 @@ pub trait Strategy: Debug {
     /// This allows for backtesting strategies under specific economic news events, helping
     /// evaluate how strategies behave under significant market-moving conditions like
     /// Non-Farm Payrolls (NFP) or other major economic announcements.
-    fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>>;
+    fn filter_on_economic_news_event(&self) -> Option<Vec<NewsKind>>;
 
     /// # TODO join with get_name ???
     fn get_strategy_kind(&self) -> StrategyKind;

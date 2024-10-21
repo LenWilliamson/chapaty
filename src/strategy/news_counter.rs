@@ -351,8 +351,8 @@ impl Strategy for NewsCounter {
         }
     }
 
-    fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
-        Some(self.news_kind.get_news_dates())
+    fn filter_on_economic_news_event(&self) -> Option<Vec<NewsKind>> {
+        Some(vec![self.news_kind])
     }
 
     fn get_strategy_kind(&self) -> StrategyKind {

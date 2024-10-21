@@ -331,7 +331,7 @@ impl Strategy for Ppp {
         }
     }
 
-    fn filter_on_economic_news_event(&self) -> Option<HashSet<NaiveDate>> {
+    fn filter_on_economic_news_event(&self) -> Option<Vec<NewsKind>> {
         None
     }
 

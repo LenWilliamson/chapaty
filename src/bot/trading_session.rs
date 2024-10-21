@@ -21,15 +21,17 @@ use crate::{
         markets::MarketKind,
     },
     lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
-    MarketSimulationDataKind,
+    MarketSimulationDataKind, NewsKind,
 };
 use chrono::NaiveDate;
 use polars::prelude::{DataFrame, LazyFrame};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::{HashMap, HashSet},
+    convert::identity,
     sync::{Arc, Mutex},
 };
+use strum::IntoEnumIterator;
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]
@@ -74,8 +76,11 @@ impl TradingSession {
         pnl_report_data_rows.concatenate_to_data_frame()
     }
 
+    /// TODO Make it not too restrictive, you may want to trade EURUSD FX on Australien CPI ???
+    ///
     /// Determines if the time frame snapshot should be dropped. A strategy is evaluated
-    /// on a set of news dates, or on the complement of that set of news dates.
+    /// on a set of news dates, or on all dates that do not fall into any major economic
+    /// news event.
     ///
     /// # Returns
     /// - `true`
@@ -86,12 +91,23 @@ impl TradingSession {
         let year = i32::try_from(self.year).unwrap();
         let week = u32::try_from(snapshot.get_calendar_week_as_int()).unwrap();
         let snapshot_date = NaiveDate::from_isoywd_opt(year, week, snapshot.get_weekday());
-        let is_snapshot_on_news = snapshot_date.map_or(false, |date| {
-            self.bot.strategies.iter().any(|s| {
-                s.filter_on_economic_news_event()
-                    .map_or(false, |v| v.contains(&date))
-            })
-        });
+        let bot_news_dates =
+            self.bot
+                .strategies
+                .iter()
+                .fold(HashSet::new(), |mut acc, strategy| {
+                    let dates = strategy.filter_on_economic_news_event().map_or(
+                        HashSet::new(),
+                        |news_vec| {
+                            news_vec.iter().fold(HashSet::new(), |mut acc, news_kind| {
+                                acc.extend(news_kind.get_news_dates());
+                                acc
+                            })
+                        },
+                    );
+                    acc.extend(dates);
+                    acc
+                });
 
         if self
             .bot
@@ -99,9 +115,16 @@ impl TradingSession {
             .iter()
             .any(|s| s.filter_on_economic_news_event().is_some())
         {
+            let is_snapshot_on_news =
+                snapshot_date.map_or(false, |date| bot_news_dates.contains(&date));
             is_snapshot_on_news
         } else {
-            !is_snapshot_on_news
+            let all_news = NewsKind::iter().fold(HashSet::new(), |mut acc, news_kind| {
+                acc.extend(news_kind.get_news_dates());
+                acc
+            });
+
+            !snapshot_date.map_or(false, |date| all_news.contains(&date))
         }
     }
 
@@ -705,6 +728,7 @@ mod test {
             .with_google_cloud_bucket(bucket)
             .with_time_interval(time_interval)
             .with_time_frame(TimeFrameKind::Weekly)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
             // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
@@ -769,7 +793,7 @@ mod test {
         //     .return_const(true);
         mock_strategy
             .expect_filter_on_economic_news_event()
-            .return_const(Some(NewsKind::UsaNFP.get_news_dates()));
+            .return_const(Some(vec![NewsKind::UsaNFP]));
         let data_provider = MockDataProvider::new();
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -782,6 +806,7 @@ mod test {
             .with_google_cloud_storage_client(cloud_storage_client.clone())
             .with_google_cloud_bucket(bucket.clone())
             .with_time_frame(TimeFrameKind::Weekly)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
             // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
@@ -829,6 +854,7 @@ mod test {
             .with_google_cloud_storage_client(cloud_storage_client)
             .with_google_cloud_bucket(bucket)
             .with_time_frame(TimeFrameKind::Weekly)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
             // .with_market_simulation_data(MarketSimulationDataKind::Ohlcv1h)
             .build()
             .unwrap();
