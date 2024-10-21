@@ -531,7 +531,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_get_news_candle() {
+    async fn test_get_news_candle() {
         let df = download_df(
             "chapaty-ai-hdb-test".to_string(),
             "cme/ohlc/unittest/6e-1h-nfp-testdata.csv".to_string(),
@@ -589,7 +589,6 @@ mod test {
             low: Some(1.06135),
             close: Some(1.0614),
             close_ts: Some(1669987859999),
-            is_end_of_day: Some(false),
         };
 
         assert_eq!(
@@ -604,7 +603,6 @@ mod test {
             low: Some(1.0613),
             close: Some(1.0614),
             close_ts: Some(1669987919999),
-            is_end_of_day: Some(false),
         };
 
         assert_eq!(
@@ -619,7 +617,6 @@ mod test {
             low: Some(1.06125),
             close: Some(1.06135),
             close_ts: Some(1669987979999),
-            is_end_of_day: Some(false),
         };
 
         assert_eq!(

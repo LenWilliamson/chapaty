@@ -41,6 +41,7 @@ pub struct SimulationData {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Market {
     pub ohlc: OhlcCandle,
+    pub is_end_of_day: bool,
 }
 
 pub struct SimulationDataBuilder {
@@ -140,8 +141,8 @@ impl TryFrom<MarketDataFrame> for Vec<Market> {
                     low: low.get(i),
                     close: close.get(i),
                     close_ts: cts.get(i),
-                    is_end_of_day: Some(i == value.0.height() - 1),
                 },
+                is_end_of_day: i == value.0.height() - 1,
             };
 
             market_sim_data.push(data);

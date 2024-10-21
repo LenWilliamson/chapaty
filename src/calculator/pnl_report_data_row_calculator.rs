@@ -192,13 +192,7 @@ impl PnLReportDataRowCalculator {
                 _ => panic!("Closed trade is not an accepting state, only idle and active"),
             };
 
-            trade = if market_trajectory
-                .last()
-                .unwrap()
-                .ohlc
-                .is_end_of_day
-                .unwrap()
-            {
+            trade = if market_trajectory.last().unwrap().is_end_of_day {
                 let timeout = CloseEvent {
                     exit_ts: market_trajectory.last().unwrap().ohlc.close_ts.unwrap(),
                     exit_price: market_trajectory.last().unwrap().ohlc.close.unwrap(),

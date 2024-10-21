@@ -6,7 +6,6 @@ pub struct OhlcCandle {
     pub low: Option<f64>,
     pub close: Option<f64>,
     pub close_ts: Option<i64>,
-    pub is_end_of_day: Option<bool>,
 }
 
 impl OhlcCandle {
@@ -18,7 +17,6 @@ impl OhlcCandle {
             low: None,
             close: None,
             close_ts: None,
-            is_end_of_day: None,
         }
     }
 
