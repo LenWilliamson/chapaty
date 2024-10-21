@@ -377,6 +377,7 @@ mod tests {
         let strategy = PppBuilder::new()
             .with_stop_loss(sl)
             .with_take_profit(tp)
+            .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc15m)
             .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
             .build();
         let poc = 100.0;
