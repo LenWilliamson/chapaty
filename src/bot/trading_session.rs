@@ -355,7 +355,8 @@ impl TradingSessionBuilder {
 
         let path_finder = PathFinderBuilder::new()
             .with_data_provider(bot.data_provider.get_name())
-            .with_strategy_name("bot.strategy.get_name()".to_string()) // TODO no caching as originally thought
+            // .with_strategy_name("bot.strategy.get_name()".to_string()) // TODO no caching as originally thought
+            .with_strategy_name("ppp".to_string()) // TODO no caching as originally thought, this is only for the current unittest in this file
             .with_market(market)
             .with_year(year)
             .with_time_interval(bot.time_interval)
@@ -502,7 +503,7 @@ mod test {
         mock_strategy.expect_get_name().return_const("ppp");
         mock_strategy
             .expect_get_market_simulation_data_kind()
-            .return_const(MarketSimulationDataKind::Ohlc1m);
+            .return_const(MarketSimulationDataKind::Ohlcv1h);
         let data_provider = Arc::new(Binance);
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
@@ -709,6 +710,9 @@ mod test {
             .expect_get_required_pre_trade_values()
             .return_const(required_pre_trade_values.clone());
         mock_strategy.expect_get_name().return_const("ppp");
+        mock_strategy
+            .expect_get_market_simulation_data_kind()
+            .return_const(MarketSimulationDataKind::Ohlcv1h);
         let data_provider = Arc::new(Binance);
         let cloud_storage_client = config::get_google_cloud_storage_client().await;
         let bucket = config::GoogleCloudBucket {
