@@ -73,11 +73,9 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
-                        .map(|strategy| {
+                        .filter_map(|strategy| {
                             strategy.check_activation_event(&market_trajectory, &sim_data_box)
                         })
-                        .filter(Option::is_some)
-                        .map(Option::unwrap)
                         .collect();
                     if activation_events.is_empty() {
                         TradeResult::Idle(idle_trade)
@@ -102,11 +100,9 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
-                        .map(|strategy| {
+                        .filter_map(|strategy| {
                             strategy.check_activation_event(&market_trajectory, &sim_data_box)
                         })
-                        .filter(Option::is_some)
-                        .map(Option::unwrap)
                         .filter(|event| {
                             event.strategy.get_strategy_kind()
                                 != active_trade.strategy.as_ref().unwrap().get_strategy_kind()
@@ -189,7 +185,7 @@ impl PnLReportDataRowCalculator {
                     }
                 }
 
-                _ => panic!("Closed trade is not an accepting state, only idle and active"),
+                _ => panic!("Closed trade is not an accepting state, only idle and active are accepting states"),
             };
 
             trade = if market_trajectory.last().unwrap().is_end_of_day {
@@ -408,7 +404,7 @@ impl PnLReportDataRowCalculatorBuilder {
             .as_ref()
             .unwrap()
             .iter()
-            .map(|s| s.get_required_pre_trade_values())
+            .filter_map(|s| s.get_required_pre_trade_values())
             .collect();
         calculator_builder
             .with_required_pre_trade_values(required_pre_trade_values)

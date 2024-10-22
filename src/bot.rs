@@ -17,6 +17,7 @@ use crate::{
     decision_policy::DecisionPolicy,
     enums::{
         bot::TimeFrameKind, data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind,
+        strategy,
     },
     pnl::{
         pnl_report::{PnLReport, PnLReports},
@@ -179,8 +180,14 @@ impl Bot {
             .with_bot(self.get_shared_pointer())
             .with_indicator_data_pair(self.determine_indicator_data_pair())
             .with_cache_computations(self.cache_computations)
-            .with_market(market);
-        // .with_market_sim_data_kind(self.market_simulation_data);
+            .with_market(market)
+            // TODO fix, as diffrent strategies need different market sim data
+            .with_market_sim_data_kind(
+                self.strategies
+                    .get(0)
+                    .unwrap()
+                    .get_market_simulation_data_kind(),
+            );
 
         let tasks: Vec<_> = self
             .years
@@ -230,20 +237,19 @@ impl Bot {
         let mut map = HashSet::new();
 
         for strategy in &self.strategies {
-            map.extend(
-                strategy
-                    .get_required_pre_trade_values()
-                    .trading_indicators
-                    .iter()
-                    .fold(HashSet::new(), |mut acc, trading_indicator| {
+            if let Some(required) = strategy.get_required_pre_trade_values() {
+                map.extend(required.trading_indicators.iter().fold(
+                    HashSet::new(),
+                    |mut acc, trading_indicator| {
                         let indicator_data_pair = IndicatorDataPair::new(
                             *trading_indicator,
                             HdbSourceDirKind::from(*trading_indicator),
                         );
                         acc.insert(indicator_data_pair);
                         acc
-                    }),
-            );
+                    },
+                ));
+            }
         }
 
         Arc::new(map)

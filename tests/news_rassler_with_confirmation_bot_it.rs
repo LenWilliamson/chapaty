@@ -58,7 +58,6 @@ async fn news_rassler_with_confirmation_bot_it(
         data_provider: Arc::new(Cme),
         market: MarketKind::EurUsdFuture,
         year: 2021,
-        market_simulation_data: MarketSimulationDataKind::Ohlc5m,
         time_interval: None,
         time_frame: TimeFrameKind::Daily,
     };
@@ -80,6 +79,7 @@ fn setup_strategy(offset: f64) -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss(sl)
         .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
         .with_news_kind(NewsKind::UsaNFP)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc5m)
         .with_number_candles_to_wait(5)
         .with_loss_to_win_ratio(2.0)
         .build();

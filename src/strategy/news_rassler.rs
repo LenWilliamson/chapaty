@@ -269,18 +269,8 @@ impl FromStr for NewsRasslerBuilder {
 }
 
 impl Strategy for NewsRassler {
-    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
-        let market_values =
-            (0..=self.number_candles_to_wait)
-                .into_iter()
-                .fold(Vec::new(), |mut acc, n| {
-                    acc.push(PreTradeDataKind::News(self.news_kind, n as u32));
-                    acc
-                });
-        RequriedPreTradeValues {
-            market_values,
-            trading_indicators: Vec::new(),
-        }
+    fn get_required_pre_trade_values(&self) -> Option<RequriedPreTradeValues> {
+        None
     }
 
     fn get_market_simulation_data_kind(&self) -> MarketSimulationDataKind {

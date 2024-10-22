@@ -39,7 +39,6 @@ async fn curating_data_it() {
         data_provider: Arc::new(Cme),
         market: MarketKind::EurUsdFuture,
         year: 2024,
-        market_simulation_data: MarketSimulationDataKind::Ohlc1m,
         time_interval: None,
         time_frame: TimeFrameKind::Daily,
     };
@@ -65,6 +64,7 @@ fn setup_strategy() -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
         .with_take_profit(tp)
         .with_news_kind(NewsKind::UsaNFP)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc1m)
         .with_number_candles_to_wait(5)
         .with_loss_to_win_ratio(2.0)
         .build();

@@ -21,7 +21,7 @@ use crate::{
         markets::MarketKind,
     },
     lazy_frame_operations::trait_extensions::MyLazyFrameVecOperations,
-    MarketSimulationDataKind, NewsKind,
+    MarketSimulationDataKind, NewsKind, PnLReportColumnKind,
 };
 use chrono::NaiveDate;
 use polars::prelude::{DataFrame, LazyFrame};
@@ -73,7 +73,12 @@ impl TradingSession {
             .filter_map(|snapshot| self.get_daily_backtesting_batch_data(snapshot).ok())
             .flat_map(|batch| self.compute_pnl_data_row(batch).into_par_iter())
             .collect();
-        pnl_report_data_rows.concatenate_to_data_frame()
+        pnl_report_data_rows
+            .concatenate_to_data_frame()
+            .with_row_index(PnLReportColumnKind::Id.to_string().into(), Some(1))
+            .unwrap()
+            .with_row_index(PnLReportColumnKind::Uid.to_string().into(), Some(1))
+            .unwrap()
     }
 
     /// TODO Make it not too restrictive, you may want to trade EURUSD FX on Australien CPI ???

@@ -7,6 +7,8 @@ impl DecisionPolicy for ChooseFirstPolicy {
         &self,
         activation_events: &Vec<crate::dfa::states::ActivationEvent>,
     ) -> Option<crate::enums::strategy::StrategyKind> {
-        None
+        activation_events
+            .get(0)
+            .and_then(|event| Some(event.strategy.get_strategy_kind()))
     }
 }

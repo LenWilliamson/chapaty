@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use chapaty::{
-    config::GoogleCloudBucket, data_provider::DataProvider, strategy::Strategy, BotBuilder,
-    MarketKind, MarketSimulationDataKind, TimeFrameKind, TimeInterval,
+    config::GoogleCloudBucket, data_provider::DataProvider, decision_policy::choose_first_policy::ChooseFirstPolicy, strategy::Strategy, BotBuilder, MarketKind, MarketSimulationDataKind, TimeFrameKind, TimeInterval
 };
 use google_cloud_storage::client::Client;
 
@@ -14,7 +13,6 @@ pub struct BotConfig {
     pub data_provider: Arc<dyn DataProvider + Send + Sync>,
     pub market: MarketKind,
     pub year: u32,
-    pub market_simulation_data: MarketSimulationDataKind,
     pub time_interval: Option<TimeInterval>,
     pub time_frame: TimeFrameKind,
 }
@@ -25,6 +23,7 @@ impl From<BotConfig> for BotBuilder {
             .with_years(vec![value.year])
             .with_markets(vec![value.market])
             // .with_market_simulation_data(value.market_simulation_data)
+            .with_decision_policy(Arc::new(ChooseFirstPolicy))
             .with_time_frame(value.time_frame)
             .with_google_cloud_storage_client(value.client)
             .with_google_cloud_bucket(value.bucket)

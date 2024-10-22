@@ -49,7 +49,6 @@ async fn ppp_bot_it(strategy: Arc<dyn Strategy + Send + Sync>, expected_result: 
         data_provider: Arc::new(Cme),
         market: MarketKind::EurUsdFuture,
         year: 2022,
-        market_simulation_data: MarketSimulationDataKind::Ohlc1m,
         time_interval: Some(setup_time_interval()),
         time_frame: TimeFrameKind::Daily,
     };
@@ -94,6 +93,7 @@ pub fn setup_strategy_2() -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss(sl)
         .with_take_profit(tp)
         .with_entry(TradingIndicatorKind::Poc(PriceHistogramKind::Tpo1m))
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc1m)
         .build();
     Arc::new(strategy)
 }

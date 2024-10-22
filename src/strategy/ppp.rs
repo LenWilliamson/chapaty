@@ -228,7 +228,7 @@ impl FromStr for PppBuilder {
 }
 
 impl Strategy for Ppp {
-    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues {
+    fn get_required_pre_trade_values(&self) -> Option<RequriedPreTradeValues> {
         let market_values = vec![
             PreTradeDataKind::LastTradePrice,
             PreTradeDataKind::LowestTradePrice,
@@ -239,10 +239,10 @@ impl Strategy for Ppp {
             TradingIndicatorKind::ValueAreaHigh(PriceHistogramKind::Tpo1m),
             TradingIndicatorKind::ValueAreaLow(PriceHistogramKind::Tpo1m),
         ];
-        RequriedPreTradeValues {
+        Some(RequriedPreTradeValues {
             market_values,
             trading_indicators,
-        }
+        })
     }
 
     fn get_market_simulation_data_kind(&self) -> MarketSimulationDataKind {

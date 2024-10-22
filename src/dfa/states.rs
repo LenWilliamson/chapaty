@@ -221,7 +221,7 @@ impl<'a, State> Trade<'a, State> {
     }
 
     pub fn compute_risk_reward_ratio(&self, tick_factor: f64) -> Option<f64> {
-        let win = self.expected_loss_in_tick(tick_factor)?;
+        let win = self.expected_win_in_tick(tick_factor)?;
         let loss = self.expected_loss_in_tick(tick_factor)?;
         if loss != 0.0 {
             Some((win / loss).abs())

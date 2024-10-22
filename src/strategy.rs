@@ -71,7 +71,7 @@ pub trait Strategy: Debug {
     ///
     /// The returned `RequiredPreTradeValues` contains any historical market information
     /// or other indicators the strategy depends on to make trading decisions.
-    fn get_required_pre_trade_values(&self) -> RequriedPreTradeValues;
+    fn get_required_pre_trade_values(&self) -> Option<RequriedPreTradeValues>;
 
     /// Specifies the type of market simulation data required by the strategy.
     ///
