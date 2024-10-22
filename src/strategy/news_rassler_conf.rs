@@ -9,7 +9,7 @@ use crate::{
 use super::*;
 
 #[derive(Debug, Clone, Copy)]
-pub struct NewsRasslerWithConfirmation {
+pub struct NewsRasslerConf {
     news_kind: NewsKind,
     stop_loss: StopLoss,
     take_profit_kind: TakeProfitKind,
@@ -21,7 +21,7 @@ pub struct NewsRasslerWithConfirmation {
     loss_to_win_ratio: f64,
 }
 
-pub struct NewsRasslerWithConfirmationBuilder {
+pub struct NewsRasslerConfBuilder {
     news_kind: Option<NewsKind>,
     stop_loss: Option<StopLoss>,
     take_profit_kind: Option<TakeProfitKind>,
@@ -33,7 +33,7 @@ pub struct NewsRasslerWithConfirmationBuilder {
     loss_to_win_ratio: Option<f64>,
 }
 
-impl NewsRasslerWithConfirmationBuilder {
+impl NewsRasslerConfBuilder {
     pub fn new() -> Self {
         Self {
             news_kind: None,
@@ -102,8 +102,8 @@ impl NewsRasslerWithConfirmationBuilder {
         }
     }
 
-    pub fn build(self) -> NewsRasslerWithConfirmation {
-        NewsRasslerWithConfirmation {
+    pub fn build(self) -> NewsRasslerConf {
+        NewsRasslerConf {
             news_kind: self.news_kind.unwrap(),
             stop_loss: self.stop_loss.unwrap(),
             take_profit_kind: self.take_profit_kind.unwrap(),
@@ -126,7 +126,7 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
-impl NewsRasslerWithConfirmation {
+impl NewsRasslerConf {
     fn compute_offset(&self, news_candle: &OhlcCandle, multiplier: f64) -> f64 {
         let open_px = news_candle.open.unwrap();
         let close_px = news_candle.close.unwrap();
@@ -333,11 +333,11 @@ impl NewsRasslerWithConfirmation {
     }
 }
 
-impl FromStr for NewsRasslerWithConfirmationBuilder {
+impl FromStr for NewsRasslerConfBuilder {
     type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "NEWS" | "News" | "news" => Ok(NewsRasslerWithConfirmationBuilder::new()),
+            "NEWS" | "News" | "news" => Ok(NewsRasslerConfBuilder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
                 "This strategy <{s}> does not exists"
             ))),
@@ -345,7 +345,7 @@ impl FromStr for NewsRasslerWithConfirmationBuilder {
     }
 }
 
-impl Strategy for NewsRasslerWithConfirmation {
+impl Strategy for NewsRasslerConf {
     fn get_required_pre_trade_values(&self) -> Option<RequriedPreTradeValues> {
         None
     }

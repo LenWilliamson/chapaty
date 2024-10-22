@@ -5,7 +5,7 @@ use chapaty::{
     data_provider::cme::Cme,
     strategy::{
         news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder,
-        news_rassler_with_confirmation::NewsRasslerWithConfirmationBuilder, StopLoss, Strategy,
+        news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy,
         TakeProfit,
     },
     BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
@@ -161,7 +161,7 @@ fn setup_news_rassler_strategy() -> Arc<dyn Strategy + Send + Sync> {
 }
 
 fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + Sync> {
-    let news_builder = NewsRasslerWithConfirmationBuilder::new();
+    let news_builder = NewsRasslerConfBuilder::new();
     let sl = StopLoss {
         kind: StopLossKind::PriceUponTradeEntry,
         offset: 1.3,
