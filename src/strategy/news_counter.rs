@@ -309,6 +309,11 @@ impl Strategy for NewsCounter {
                 // No news candle in data
                 return None;
             }
+
+            if TradeDirectionKind::None == self.get_trade_kind(&news_candle) {
+                // Doji Candle, skip
+                return None;
+            }
             let take_profit = self.get_tp_price(&news_candle).unwrap();
             let entry_price = ohlc.open.unwrap();
             let trade_direction_kind = self.get_trade_kind(&news_candle);

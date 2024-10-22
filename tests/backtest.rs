@@ -35,9 +35,9 @@ async fn backtest() {
     let start = Instant::now();
 
     // let strategy = setup_news_rassler_with_confirmation2_strategy();
-    let strategy = setup_news_rassler_with_confirmation_strategy();
+    // let strategy = setup_news_rassler_with_confirmation_strategy();
     // let strategy = setup_news_rassler_strategy();
-    // let strategy = setup_news_counter_strategy();
+    let strategy = setup_news_counter_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
     let years = (2006..=2024).collect();
