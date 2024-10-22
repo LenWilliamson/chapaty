@@ -3,9 +3,7 @@ pub mod test_configurations;
 use chapaty::{
     config::{self},
     data_provider::cme::Cme,
-    strategy::{
-        news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy,
-    },
+    strategy::{news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy},
     MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind,
 };
 use std::{sync::Arc, time::Instant};

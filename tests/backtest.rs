@@ -1,10 +1,18 @@
 pub mod test_configurations;
 
 use chapaty::{
-    config::{self}, data_provider::cme::Cme, decision_policy::{choose_first_policy::ChooseFirstPolicy, news_rassler_conf_priority_policy::NewsRasslerConfPriorityPolicy}, strategy::{
+    config::{self},
+    data_provider::cme::Cme,
+    decision_policy::{
+        choose_first_policy::ChooseFirstPolicy,
+        news_rassler_conf_priority_policy::NewsRasslerConfPriorityPolicy,
+    },
+    strategy::{
         news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder,
         news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy, TakeProfit,
-    }, BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind
+    },
+    BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
+    TakeProfitKind, TimeFrameKind,
 };
 
 use std::{

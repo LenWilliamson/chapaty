@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use chapaty::{
-    config::GoogleCloudBucket, data_provider::DataProvider, decision_policy::choose_first_policy::ChooseFirstPolicy, strategy::Strategy, BotBuilder, MarketKind, MarketSimulationDataKind, TimeFrameKind, TimeInterval
+    config::GoogleCloudBucket, data_provider::DataProvider,
+    decision_policy::choose_first_policy::ChooseFirstPolicy, strategy::Strategy, BotBuilder,
+    MarketKind, MarketSimulationDataKind, TimeFrameKind, TimeInterval,
 };
 use google_cloud_storage::client::Client;
 

@@ -360,7 +360,8 @@ impl Strategy for NewsRasslerConf {
         let ots = latest_ohlc.open_ts.unwrap();
         let (date, time) = timestamp_in_milli_to_naive_date_time_tuple(ots);
         let news_time = self.news_kind.utc_time_daylight_saving_adjusted(&date);
-        let delta = time.signed_duration_since(news_time).num_minutes() / self.market_simulation_data_kind.duration_in_minutes();
+        let delta = time.signed_duration_since(news_time).num_minutes()
+            / self.market_simulation_data_kind.duration_in_minutes();
 
         if self.news_kind.get_news_dates().contains(&date)
             && 1 <= delta
@@ -375,7 +376,7 @@ impl Strategy for NewsRasslerConf {
 
             if TradeDirectionKind::None == self.get_trade_kind(news_candle) {
                 // Doji Candle, skip
-                return None
+                return None;
             }
 
             let second_last_ohlc = &market_trajectory.get(n - 2).unwrap().ohlc;

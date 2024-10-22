@@ -141,7 +141,12 @@ impl NewsCounter {
         self.compute_offset(news_candle, self.take_profit.offset)
     }
 
-    fn get_sl_price(&self, ohlc: &OhlcCandle, tp_price: f64, trade_direction: &TradeDirectionKind) -> Option<f64> {
+    fn get_sl_price(
+        &self,
+        ohlc: &OhlcCandle,
+        tp_price: f64,
+        trade_direction: &TradeDirectionKind,
+    ) -> Option<f64> {
         match trade_direction {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(ohlc, tp_price)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(ohlc, tp_price)),
@@ -171,8 +176,7 @@ impl NewsCounter {
 
     fn compute_sl_price(&self, ohlc: &OhlcCandle, is_long_trade: bool, tp_price: f64) -> f64 {
         let entry_price = ohlc.open.unwrap();
-        let offset = (tp_price - entry_price).abs()
-            * (1.0 / self.loss_to_win_ratio);
+        let offset = (tp_price - entry_price).abs() * (1.0 / self.loss_to_win_ratio);
         let sign = if is_long_trade { -1.0 } else { 1.0 };
 
         match self.stop_loss_kind {
@@ -299,10 +303,11 @@ impl Strategy for NewsCounter {
                 .get(market_trajectory.len() - self.number_candles_to_wait as usize - 1)
                 .unwrap()
                 .ohlc;
-            let (_, news_time) = timestamp_in_milli_to_naive_date_time_tuple(news_candle.open_ts.unwrap());
+            let (_, news_time) =
+                timestamp_in_milli_to_naive_date_time_tuple(news_candle.open_ts.unwrap());
             if news_time != self.news_kind.utc_time_daylight_saving_adjusted(&date) {
                 // No news candle in data
-                return None
+                return None;
             }
             let take_profit = self.get_tp_price(&news_candle).unwrap();
             let entry_price = ohlc.open.unwrap();
@@ -310,7 +315,9 @@ impl Strategy for NewsCounter {
             if self.is_no_entry(entry_price, take_profit, &trade_direction_kind) {
                 return None;
             }
-            let stop_loss = self.get_sl_price(&ohlc, take_profit, &trade_direction_kind).unwrap();
+            let stop_loss = self
+                .get_sl_price(&ohlc, take_profit, &trade_direction_kind)
+                .unwrap();
             Some(ActivationEvent {
                 entry_ts: ots,
                 entry_price,
