@@ -23,9 +23,9 @@ pub struct Close;
 /// The following trait will be implemented to indicate accepting states:
 ///
 /// ```rust
-/// pub trait Accepting {}
-/// impl Accepting for Idle {}
-/// impl Accepting for Active {}
+/// // pub trait Accepting {}
+/// // impl Accepting for Idle {}
+/// // impl Accepting for Active {}
 /// ```
 ///
 /// TODO
