@@ -141,8 +141,8 @@ impl NewsCounter {
         self.compute_offset(news_candle, self.take_profit.offset)
     }
 
-    fn get_sl_price(&self, ohlc: &OhlcCandle, tp_price: f64) -> Option<f64> {
-        match self.get_trade_kind(ohlc) {
+    fn get_sl_price(&self, ohlc: &OhlcCandle, tp_price: f64, trade_direction: &TradeDirectionKind) -> Option<f64> {
+        match trade_direction {
             TradeDirectionKind::Long => Some(self.get_sl_price_long(ohlc, tp_price)),
             TradeDirectionKind::Short => Some(self.get_sl_price_short(ohlc, tp_price)),
             TradeDirectionKind::None => None,
@@ -299,14 +299,20 @@ impl Strategy for NewsCounter {
                 .get(market_trajectory.len() - self.number_candles_to_wait as usize - 1)
                 .unwrap()
                 .ohlc;
+            let (_, news_time) = timestamp_in_milli_to_naive_date_time_tuple(news_candle.open_ts.unwrap());
+            if news_time != self.news_kind.utc_time_daylight_saving_adjusted(&date) {
+                // No news candle in data
+                return None
+            }
             let take_profit = self.get_tp_price(&news_candle).unwrap();
-            let stop_loss = self.get_sl_price(&ohlc, take_profit).unwrap();
+            let trade_direction_kind = self.get_trade_kind(&news_candle);
+            let stop_loss = self.get_sl_price(&ohlc, take_profit, &trade_direction_kind).unwrap();
             Some(ActivationEvent {
                 entry_ts: ots,
                 entry_price: ohlc.open.unwrap(),
                 stop_loss,
                 take_profit,
-                trade_direction_kind: self.get_trade_kind(&ohlc),
+                trade_direction_kind,
                 strategy: self,
             })
         } else {
