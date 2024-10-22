@@ -70,6 +70,7 @@ impl PnLReportDataRowCalculator {
             */
             trade = match trade {
                 TradeResult::Idle(idle_trade) => {
+                    // TODO simplify, the decision policy takes care about choosing the strategy, remove: else if activation_events.len() == 1
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()

@@ -149,3 +149,18 @@ impl HdbSourceDirKind {
         }
     }
 }
+
+impl MarketSimulationDataKind {
+    pub fn duration_in_minutes(&self) -> i64 {
+        match self {
+            MarketSimulationDataKind::Ohlc1m => 1,
+            MarketSimulationDataKind::Ohlc5m => 5,
+            MarketSimulationDataKind::Ohlc15m => 15,
+            MarketSimulationDataKind::Ohlc30m => 30,
+            MarketSimulationDataKind::Ohlc1h => 60,
+            MarketSimulationDataKind::Ohlcv1m => 1,
+            MarketSimulationDataKind::Ohlcv30m => 30,
+            MarketSimulationDataKind::Ohlcv1h => 60,
+        }
+    }
+}

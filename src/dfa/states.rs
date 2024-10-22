@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use crate::{
     enums::trade_and_pre_trade::{TradeCloseKind, TradeDirectionKind},

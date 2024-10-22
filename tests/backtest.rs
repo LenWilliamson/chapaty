@@ -1,15 +1,10 @@
 pub mod test_configurations;
 
 use chapaty::{
-    config::{self},
-    data_provider::cme::Cme,
-    strategy::{
+    config::{self}, data_provider::cme::Cme, decision_policy::{choose_first_policy::ChooseFirstPolicy, news_rassler_conf_priority_policy::NewsRasslerConfPriorityPolicy}, strategy::{
         news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder,
-        news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy,
-        TakeProfit,
-    },
-    BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
-    TakeProfitKind, TimeFrameKind,
+        news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy, TakeProfit,
+    }, BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind, TakeProfitKind, TimeFrameKind
 };
 
 use std::{
@@ -30,7 +25,8 @@ use std::{
 async fn backtest() {
     let start = Instant::now();
 
-    let strategy = setup_news_rassler_with_confirmation_strategy();
+    // let strategy = setup_news_rassler_with_confirmation_strategy();
+    let strategy = setup_news_rassler_strategy();
     // let strategy = setup_news_counter_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
@@ -45,7 +41,7 @@ async fn backtest() {
         // MarketKind::NzdUsdFuture,
         // MarketKind::BtcUsdFuture,
     ];
-    let market_simulation_data = MarketSimulationDataKind::Ohlc5m;
+
     // let time_interval = strategy_configurations::setup_time_interval();
     let time_frame = TimeFrameKind::Daily;
     let client = config::get_google_cloud_storage_client().await;
@@ -61,6 +57,8 @@ async fn backtest() {
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
+        .with_decision_policy(Arc::new(ChooseFirstPolicy))
+        // .with_decision_policy(Arc::new(NewsRasslerConfPriorityPolicy))
         .with_save_result_as_csv(true)
         .with_cache_computations(true)
         .build()
@@ -110,6 +108,8 @@ async fn backtest_with_session_cache(
         .with_time_frame(time_frame)
         // .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
+        .with_decision_policy(Arc::new(ChooseFirstPolicy))
+        // .with_decision_policy(Arc::new(NewsRasslerConfPriorityPolicy))
         .with_save_result_as_csv(true)
         .with_session_cache_computations(session_cache)
         .with_cache_computations(false)
@@ -135,6 +135,7 @@ fn setup_news_counter_strategy() -> Arc<dyn Strategy + Send + Sync> {
         .with_stop_loss_kind(StopLossKind::PriceUponTradeEntry)
         .with_take_profit(tp)
         .with_news_kind(NewsKind::UsaNFP)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc1m)
         .with_number_candles_to_wait(8)
         .with_loss_to_win_ratio(2.8)
         .build();
@@ -153,6 +154,7 @@ fn setup_news_rassler_strategy() -> Arc<dyn Strategy + Send + Sync> {
         .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
         .with_stop_loss(sl)
         .with_news_kind(NewsKind::UsaCPI)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc5m)
         .with_number_candles_to_wait(3)
         .with_loss_to_win_ratio(1.0)
         .build();
@@ -171,6 +173,7 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
         .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
         .with_stop_loss(sl)
         .with_news_kind(NewsKind::UsaCPI)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc5m)
         .with_number_candles_to_wait(11)
         .with_earliest_candle_to_enter(1)
         .with_loss_to_win_ratio(2.9)

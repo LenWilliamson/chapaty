@@ -1,4 +1,5 @@
 pub mod choose_first_policy;
+pub mod news_rassler_conf_priority_policy;
 
 use crate::{dfa::states::ActivationEvent, enums::strategy::StrategyKind};
 
