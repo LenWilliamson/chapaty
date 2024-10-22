@@ -305,11 +305,15 @@ impl Strategy for NewsCounter {
                 return None
             }
             let take_profit = self.get_tp_price(&news_candle).unwrap();
+            let entry_price = ohlc.open.unwrap();
             let trade_direction_kind = self.get_trade_kind(&news_candle);
+            if self.is_no_entry(entry_price, take_profit, &trade_direction_kind) {
+                return None;
+            }
             let stop_loss = self.get_sl_price(&ohlc, take_profit, &trade_direction_kind).unwrap();
             Some(ActivationEvent {
                 entry_ts: ots,
-                entry_price: ohlc.open.unwrap(),
+                entry_price,
                 stop_loss,
                 take_profit,
                 trade_direction_kind,
