@@ -63,6 +63,7 @@ impl<'a> TradeResult<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ActivationEvent<'a> {
     pub entry_ts: i64,
     pub entry_price: f64,

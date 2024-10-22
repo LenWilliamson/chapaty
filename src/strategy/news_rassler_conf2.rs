@@ -10,7 +10,7 @@ use crate::{
 use super::*;
 
 #[derive(Debug, Clone, Copy)]
-pub struct NewsRasslerConf {
+pub struct NewsRasslerConf2 {
     news_kind: NewsKind,
     stop_loss: StopLoss,
     take_profit_kind: TakeProfitKind,
@@ -22,7 +22,7 @@ pub struct NewsRasslerConf {
     loss_to_win_ratio: f64,
 }
 
-pub struct NewsRasslerConfBuilder {
+pub struct NewsRasslerConf2Builder {
     news_kind: Option<NewsKind>,
     stop_loss: Option<StopLoss>,
     take_profit_kind: Option<TakeProfitKind>,
@@ -34,7 +34,7 @@ pub struct NewsRasslerConfBuilder {
     loss_to_win_ratio: Option<f64>,
 }
 
-impl NewsRasslerConfBuilder {
+impl NewsRasslerConf2Builder {
     pub fn new() -> Self {
         Self {
             news_kind: None,
@@ -103,8 +103,8 @@ impl NewsRasslerConfBuilder {
         }
     }
 
-    pub fn build(self) -> NewsRasslerConf {
-        NewsRasslerConf {
+    pub fn build(self) -> NewsRasslerConf2 {
+        NewsRasslerConf2 {
             news_kind: self.news_kind.unwrap(),
             stop_loss: self.stop_loss.unwrap(),
             take_profit_kind: self.take_profit_kind.unwrap(),
@@ -127,7 +127,7 @@ fn news_candle_trade_direction(news_candle: &OhlcCandle) -> TradeDirectionKind {
     }
 }
 
-impl NewsRasslerConf {
+impl NewsRasslerConf2 {
     fn compute_offset(&self, news_candle: &OhlcCandle, multiplier: f64) -> f64 {
         let open_px = news_candle.open.unwrap();
         let close_px = news_candle.close.unwrap();
@@ -368,18 +368,30 @@ impl NewsRasslerConf {
             }
 
             let second_last_ohlc = &market_trajectory.get(n - 2).unwrap().ohlc;
-            if news_candle.high < second_last_ohlc.close || news_candle.low > second_last_ohlc.close
-            {
+            if news_candle.high < second_last_ohlc.close {
                 let stop_loss = self.get_sl_price(&news_candle).unwrap();
                 let take_profit = self
-                    .get_tp_price(&latest_ohlc, stop_loss, &trade_direction_kind)
+                    .get_tp_price(&latest_ohlc, stop_loss, &TradeDirectionKind::Long)
                     .unwrap();
                 signals.push(ActivationEvent {
                     entry_ts: ots,
                     entry_price: latest_ohlc.open.unwrap(),
                     stop_loss,
                     take_profit,
-                    trade_direction_kind, // self.get_trade_kind(pre_trade_values),
+                    trade_direction_kind: TradeDirectionKind::Long, // self.get_trade_kind(pre_trade_values),
+                    strategy: self,
+                });
+            } else if news_candle.low > second_last_ohlc.close {
+                let stop_loss = self.get_sl_price(&news_candle).unwrap();
+                let take_profit = self
+                    .get_tp_price(&latest_ohlc, stop_loss, &TradeDirectionKind::Short)
+                    .unwrap();
+                signals.push(ActivationEvent {
+                    entry_ts: ots,
+                    entry_price: latest_ohlc.open.unwrap(),
+                    stop_loss,
+                    take_profit,
+                    trade_direction_kind: TradeDirectionKind::Short, // self.get_trade_kind(pre_trade_values),
                     strategy: self,
                 });
             } else {
@@ -389,11 +401,11 @@ impl NewsRasslerConf {
     }
 }
 
-impl FromStr for NewsRasslerConfBuilder {
+impl FromStr for NewsRasslerConf2Builder {
     type Err = ChapatyErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "NEWS" | "News" | "news" => Ok(NewsRasslerConfBuilder::new()),
+            "NEWS" | "News" | "news" => Ok(NewsRasslerConf2Builder::new()),
             _ => Err(Self::Err::ParseBotError(format!(
                 "This strategy <{s}> does not exists"
             ))),
@@ -401,7 +413,7 @@ impl FromStr for NewsRasslerConfBuilder {
     }
 }
 
-impl Strategy for NewsRasslerConf {
+impl Strategy for NewsRasslerConf2 {
     fn get_required_pre_trade_values(&self) -> Option<RequriedPreTradeValues> {
         None
     }

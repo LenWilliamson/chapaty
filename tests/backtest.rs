@@ -9,7 +9,8 @@ use chapaty::{
     },
     strategy::{
         news_counter::NewsCounterBuilder, news_rassler::NewsRasslerBuilder,
-        news_rassler_conf::NewsRasslerConfBuilder, StopLoss, Strategy, TakeProfit,
+        news_rassler_conf::NewsRasslerConfBuilder, news_rassler_conf2::NewsRasslerConf2Builder,
+        StopLoss, Strategy, TakeProfit,
     },
     BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
     TakeProfitKind, TimeFrameKind,
@@ -33,8 +34,9 @@ use std::{
 async fn backtest() {
     let start = Instant::now();
 
-    // let strategy = setup_news_rassler_with_confirmation_strategy();
-    let strategy = setup_news_rassler_strategy();
+    // let strategy = setup_news_rassler_with_confirmation2_strategy();
+    let strategy = setup_news_rassler_with_confirmation_strategy();
+    // let strategy = setup_news_rassler_strategy();
     // let strategy = setup_news_counter_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
@@ -174,17 +176,37 @@ fn setup_news_rassler_with_confirmation_strategy() -> Arc<dyn Strategy + Send + 
     let news_builder = NewsRasslerConfBuilder::new();
     let sl = StopLoss {
         kind: StopLossKind::PriceUponTradeEntry,
-        offset: 1.3,
+        offset: 1.15,
     };
 
     let strategy = news_builder
         .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
         .with_stop_loss(sl)
-        .with_news_kind(NewsKind::UsaCPI)
+        .with_news_kind(NewsKind::UsaNFP)
         .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc5m)
-        .with_number_candles_to_wait(11)
+        .with_number_candles_to_wait(10)
         .with_earliest_candle_to_enter(1)
-        .with_loss_to_win_ratio(2.9)
+        .with_loss_to_win_ratio(0.7)
+        .build();
+
+    Arc::new(strategy)
+}
+
+fn setup_news_rassler_with_confirmation2_strategy() -> Arc<dyn Strategy + Send + Sync> {
+    let news_builder = NewsRasslerConf2Builder::new();
+    let sl = StopLoss {
+        kind: StopLossKind::PriceUponTradeEntry,
+        offset: 1.15,
+    };
+
+    let strategy = news_builder
+        .with_take_profit_kind(TakeProfitKind::PriceUponTradeEntry)
+        .with_stop_loss(sl)
+        .with_news_kind(NewsKind::UsaNFP)
+        .with_market_simulation_data_kind(MarketSimulationDataKind::Ohlc5m)
+        .with_number_candles_to_wait(10)
+        .with_earliest_candle_to_enter(1)
+        .with_loss_to_win_ratio(0.7)
         .build();
 
     Arc::new(strategy)

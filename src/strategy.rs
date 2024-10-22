@@ -1,6 +1,7 @@
 pub mod news_counter;
 pub mod news_rassler;
 pub mod news_rassler_conf;
+pub mod news_rassler_conf2;
 pub mod ppp;
 
 use crate::{
