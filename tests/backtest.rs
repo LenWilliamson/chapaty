@@ -59,7 +59,7 @@ async fn backtest() {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let bot = BotBuilder::new(vec![strategy1], data_provider)
+    let bot = BotBuilder::new(vec![strategy1, strategy2], data_provider)
         .with_years(years)
         .with_markets(markets)
         // .with_market_simulation_data(market_simulation_data)

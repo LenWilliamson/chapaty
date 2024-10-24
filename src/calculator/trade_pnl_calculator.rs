@@ -28,7 +28,9 @@ pub struct TradePnL {
 
 impl TradePnL {
     pub fn exit_price(&self) -> f64 {
-        if self.is_trade_timeout() {
+        if self.pivot.is_some() {
+            self.pivot.as_ref().unwrap().price
+        } else if self.is_trade_timeout() {
             self.timeout.clone().unwrap().price
         } else {
             self.handle_regular_trade_exit()
@@ -36,7 +38,9 @@ impl TradePnL {
     }
 
     pub fn profit(&self) -> f64 {
-        if self.is_trade_timeout() {
+        if self.pivot.is_some() {
+            self.pivot.as_ref().unwrap().profit.unwrap()
+        } else if self.is_trade_timeout() {
             self.timeout.clone().unwrap().profit.unwrap()
         } else {
             self.handle_regular_profit()
