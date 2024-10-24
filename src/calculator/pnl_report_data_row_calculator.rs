@@ -95,9 +95,7 @@ impl PnLReportDataRowCalculator {
                     }
                 }
 
-                if trade.active_strategy() == Some(strategy_kind) {
-                    // Update iwth min_delta outside this loop
-                }
+                // TODO Update iwth min_delta outside this loop, because now it could be that we are at minute 43 but we update with the minute 45 market event
                 trade.update_on_market_event(&market_event);
             }
 
@@ -114,6 +112,8 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
+                        // only check if there is a new candle t % market_kind.duration_in_minutes() as usize == 0
+                        .filter(|strategy| is_single_strategy_mode || t % strategy.get_market_simulation_data_kind().duration_in_minutes() as usize == 0)
                         .filter_map(|strategy| {
                             let strategy_kind = strategy.get_strategy_kind();
                             strategy.check_activation_event(market_trajectory_map.get(&strategy_kind).unwrap(), sim_data_box_map.get(&strategy_kind).unwrap())
@@ -142,6 +142,8 @@ impl PnLReportDataRowCalculator {
                     let activation_events: Vec<_> = self
                         .strategies
                         .iter()
+                        // only check if there is a new candle t % market_kind.duration_in_minutes() as usize == 0
+                        .filter(|strategy| is_single_strategy_mode || t % strategy.get_market_simulation_data_kind().duration_in_minutes() as usize == 0)
                         .filter_map(|strategy| {
                             let strategy_kind = strategy.get_strategy_kind();
                             strategy.check_activation_event(market_trajectory_map.get(&strategy_kind).unwrap(), sim_data_box_map.get(&strategy_kind).unwrap())
