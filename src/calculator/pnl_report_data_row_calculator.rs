@@ -55,6 +55,7 @@ impl PnLReportDataRowCalculator {
             .map(|(_, market_vec)| market_vec.len())
             .max()
             .unwrap();
+        let is_single_strategy_mode = self.strategies.len() == 1;
 
         for strategy in self.strategies.iter() {
             let strategy_kind = strategy.get_strategy_kind();
@@ -73,20 +74,31 @@ impl PnLReportDataRowCalculator {
             for strategy in self.strategies.iter() {
                 let strategy_kind = strategy.get_strategy_kind();
                 let market_kind = strategy.get_market_simulation_data_kind();
+                let index = if is_single_strategy_mode {
+                    t
+                } else {
+                    t / market_kind.duration_in_minutes() as usize
+                };
                 let market_event = self
                     .market
                     .get(&strategy_kind)
                     .unwrap()
-                    .get(t / market_kind.duration_in_minutes() as usize)
+                    .get(index)
                     .unwrap();
-                market_trajectory_map
-                    .get_mut(&strategy_kind)
-                    .unwrap()
-                    .push(*market_event);
+                if is_single_strategy_mode || t % market_kind.duration_in_minutes() as usize == 0 {
+                    market_trajectory_map
+                        .get_mut(&strategy_kind)
+                        .unwrap()
+                        .push(*market_event);
+                    if trade.active_strategy() == Some(strategy_kind) {
+                        trade.update_on_market_event(&market_event);
+                    }
+                }
 
                 if trade.active_strategy() == Some(strategy_kind) {
-                    trade.update_on_market_event(&market_event);
+                    // Update iwth min_delta outside this loop
                 }
+                trade.update_on_market_event(&market_event);
             }
 
             // TODOs

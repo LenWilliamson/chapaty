@@ -35,9 +35,9 @@ async fn backtest() {
     let start = Instant::now();
 
     // let strategy = setup_news_rassler_with_confirmation2_strategy();
-    // let strategy = setup_news_rassler_with_confirmation_strategy();
     // let strategy = setup_news_rassler_strategy();
-    let strategy = setup_news_counter_strategy();
+    let strategy1 = setup_news_counter_strategy();
+    let strategy2 = setup_news_rassler_with_confirmation_strategy();
     let data_provider = Arc::new(Cme);
     // let years = vec![2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
     let years = (2006..=2024).collect();
@@ -59,7 +59,7 @@ async fn backtest() {
         historical_market_data_bucket_name: "chapaty-ai-hdb-int".to_string(),
         cached_bot_data_bucket_name: "chapaty-ai-int".to_string(),
     };
-    let bot = BotBuilder::new(vec![strategy], data_provider)
+    let bot = BotBuilder::new(vec![strategy1], data_provider)
         .with_years(years)
         .with_markets(markets)
         // .with_market_simulation_data(market_simulation_data)
@@ -67,7 +67,7 @@ async fn backtest() {
         .with_time_frame(time_frame)
         .with_google_cloud_storage_client(client)
         .with_google_cloud_bucket(bucket)
-        .with_decision_policy(Arc::new(ChooseFirstPolicy))
+        .with_decision_policy(Arc::new(NewsRasslerConfPriorityPolicy))
         // .with_decision_policy(Arc::new(NewsRasslerConfPriorityPolicy))
         .with_save_result_as_csv(true)
         .with_cache_computations(true)
