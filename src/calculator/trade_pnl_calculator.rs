@@ -142,6 +142,7 @@ impl<'a> TradePnLCalculator<'a> {
         //     TradeCloseKind::TakeProfit => {},
         //     TradeCloseKind::StopLoss => {},
         // }
+        // TODO optimize as all information are within the trade object
         let stop_loss = self.try_handle_exit(self.trade.stop_loss);
         let take_profit = self.try_handle_exit(self.trade.take_profit);
         let timeout = if let Some(TradeCloseKind::Timeout) = self.trade.close_event {
