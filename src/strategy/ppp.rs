@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    bot::pre_trade_data,
-    enums::{indicator::PriceHistogramKind, trade_and_pre_trade::TradeCloseKind},
-};
+use crate::enums::{indicator::PriceHistogramKind, trade_and_pre_trade::TradeCloseKind};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ppp {

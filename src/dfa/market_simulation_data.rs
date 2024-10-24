@@ -2,8 +2,7 @@ use polars::{error::PolarsError, frame::DataFrame};
 
 use crate::{
     calculator::pre_trade_values_calculator::RequiredPreTradeValuesWithData,
-    trading_indicator::initial_balance::InitialBalance, types::ohlc::OhlcCandle,
-    DataProviderColumnKind, MarketKind, MarketSimulationDataKind,
+    types::ohlc::OhlcCandle, DataProviderColumnKind, MarketKind, MarketSimulationDataKind,
 };
 
 #[derive(Clone)]

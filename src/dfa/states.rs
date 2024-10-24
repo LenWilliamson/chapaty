@@ -1,7 +1,10 @@
 use std::marker::PhantomData;
 
 use crate::{
-    enums::trade_and_pre_trade::{TradeCloseKind, TradeDirectionKind},
+    enums::{
+        strategy::StrategyKind,
+        trade_and_pre_trade::{TradeCloseKind, TradeDirectionKind},
+    },
     strategy::Strategy,
     MarketKind,
 };
@@ -59,6 +62,14 @@ impl<'a> TradeResult<'a> {
             TradeResult::Idle(trade) => trade.update_on_market_event(market_event),
             TradeResult::Active(trade) => trade.update_on_market_event(market_event),
             TradeResult::Close(trade) => trade.update_on_market_event(market_event),
+        }
+    }
+
+    pub fn active_strategy(&self) -> Option<StrategyKind> {
+        match self {
+            TradeResult::Idle(_) => None,
+            TradeResult::Active(trade) => Some(trade.strategy.unwrap().get_strategy_kind()),
+            TradeResult::Close(trade) => Some(trade.strategy.unwrap().get_strategy_kind()),
         }
     }
 }

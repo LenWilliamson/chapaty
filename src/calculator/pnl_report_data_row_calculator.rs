@@ -5,20 +5,20 @@ use super::{
     trade_pnl_calculator::{TradePnL, TradePnLCalculatorBuilder},
 };
 use crate::{
-    bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
+    bot::{backtesting_batch_data::BacktestingBatchData, time_frame_snapshot::TimeFrameSnapshot},
     compose,
     decision_policy::DecisionPolicy,
     dfa::{
         market_simulation_data::{Market, MarketDataFrame, SimulationData, SimulationDataBuilder},
         states::{Active, Close, CloseEvent, Trade, TradeResult},
     },
-    enums::trade_and_pre_trade::TradeCloseKind,
+    enums::{strategy::StrategyKind, trade_and_pre_trade::TradeCloseKind},
     lazy_frame_operations::trait_extensions::MyLazyFrameOperations,
     strategy::Strategy,
     MarketKind, MarketSimulationDataKind,
 };
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct PnLReportDataRow<'a> {
@@ -33,11 +33,11 @@ pub struct PnLReportDataRow<'a> {
 pub struct PnLReportDataRowCalculator {
     pub strategies: Vec<Arc<dyn Strategy + Send + Sync>>,
     pub decision_policy: Arc<dyn DecisionPolicy + Send + Sync>,
-    pub sim_data: SimulationData,
-    pub market_sim_df: DataFrame,
+    pub sim_data: HashMap<StrategyKind, SimulationData>,
+    pub market_sim_df: HashMap<StrategyKind, DataFrame>,
     pub year: u32,
     pub time_frame_snapshot: TimeFrameSnapshot,
-    pub market: Vec<Market>,
+    pub market: HashMap<StrategyKind, Vec<Market>>,
 }
 
 impl PnLReportDataRowCalculator {
@@ -47,14 +47,47 @@ impl PnLReportDataRowCalculator {
             return pnl_report_data_rows;
         }
 
+        let mut market_trajectory_map = HashMap::new();
+        let mut sim_data_box_map = HashMap::new();
+        let max_data_points = self
+            .market
+            .iter()
+            .map(|(_, market_vec)| market_vec.len())
+            .max()
+            .unwrap();
+
+        for strategy in self.strategies.iter() {
+            let strategy_kind = strategy.get_strategy_kind();
+            market_trajectory_map.insert(strategy_kind, Box::new(Vec::new()));
+            sim_data_box_map.insert(
+                strategy_kind,
+                Box::new(self.sim_data.get(&strategy_kind).unwrap().clone()),
+            );
+        }
+
         let mut trade = Trade::new();
-        // let mut sim_event = SimulationEvent::new(vec![&self.market[0]], &self.sim_data);
-        let mut market_trajectory = Box::new(Vec::new());
-        let sim_data_box = Box::new(self.sim_data.clone());
-        for market_event in self.market.iter() {
+        // let mut market_trajectory = Box::new(Vec::new());
+        // let sim_data_box = Box::new(self.sim_data.clone());
+        for t in 0..max_data_points {
             // sim_event.update_on_market_event(market_event);
-            trade.update_on_market_event(&market_event);
-            market_trajectory.push(*market_event);
+            for strategy in self.strategies.iter() {
+                let strategy_kind = strategy.get_strategy_kind();
+                let market_kind = strategy.get_market_simulation_data_kind();
+                let market_event = self
+                    .market
+                    .get(&strategy_kind)
+                    .unwrap()
+                    .get(t / market_kind.duration_in_minutes() as usize)
+                    .unwrap();
+                market_trajectory_map
+                    .get_mut(&strategy_kind)
+                    .unwrap()
+                    .push(*market_event);
+
+                if trade.active_strategy() == Some(strategy_kind) {
+                    trade.update_on_market_event(&market_event);
+                }
+            }
 
             // TODOs
             // 1. Verfeinern / Refactor mit Hilfe meines Automaten Diagrams in Notability
@@ -62,12 +95,7 @@ impl PnLReportDataRowCalculator {
             // sim_event.initial_balance.get_or_insert_with(|| {
             //     InitialBalanceCalculator::try_compute().unwrap_or_else(|| return None)
             // });
-            /*
 
-            DONE: 2. PnLDataRow Element richtig berechnen
-            DONE: 3. Strategiesn anpassen
-            4. Decision Policy implementieren: Wenn nur eine Strategie, und für Rassler mit Conf und Counter
-            */
             trade = match trade {
                 TradeResult::Idle(idle_trade) => {
                     // TODO simplify, the decision policy takes care about choosing the strategy, remove: else if activation_events.len() == 1
@@ -75,7 +103,8 @@ impl PnLReportDataRowCalculator {
                         .strategies
                         .iter()
                         .filter_map(|strategy| {
-                            strategy.check_activation_event(&market_trajectory, &sim_data_box)
+                            let strategy_kind = strategy.get_strategy_kind();
+                            strategy.check_activation_event(market_trajectory_map.get(&strategy_kind).unwrap(), sim_data_box_map.get(&strategy_kind).unwrap())
                         })
                         .collect();
                     if activation_events.is_empty() {
@@ -102,7 +131,8 @@ impl PnLReportDataRowCalculator {
                         .strategies
                         .iter()
                         .filter_map(|strategy| {
-                            strategy.check_activation_event(&market_trajectory, &sim_data_box)
+                            let strategy_kind = strategy.get_strategy_kind();
+                            strategy.check_activation_event(market_trajectory_map.get(&strategy_kind).unwrap(), sim_data_box_map.get(&strategy_kind).unwrap())
                         })
                         .filter(|event| {
                             event.strategy.get_strategy_kind()
@@ -111,28 +141,25 @@ impl PnLReportDataRowCalculator {
                         .collect();
 
                     // check exit condition for strategy who activated the trade
+                    let active_strategy_kind = active_trade.strategy.as_ref().unwrap().get_strategy_kind();
                     let trade_result = if active_trade
                         .strategy
                         .as_ref()
                         .unwrap()
-                        .check_cancelation_event(&market_trajectory, &sim_data_box, &active_trade)
+                        .check_cancelation_event(market_trajectory_map.get(&active_strategy_kind).unwrap(), sim_data_box_map.get(&active_strategy_kind).unwrap(), &active_trade)
                         .is_some()
                     {
                         let close_event = active_trade
                             .strategy
                             .as_ref()
                             .unwrap()
-                            .check_cancelation_event(
-                                &market_trajectory,
-                                &sim_data_box,
-                                &active_trade,
-                            )
+                            .check_cancelation_event(market_trajectory_map.get(&active_strategy_kind).unwrap(), sim_data_box_map.get(&active_strategy_kind).unwrap(), &active_trade)
                             .unwrap();
                         let mut composed = compose!(
                             {|active_trade: Trade<Active>| active_trade.close_event(&close_event)}
                             {|trade_result: TradeResult| {
                                 if let TradeResult::Close(mut closed_trade) = trade_result {
-                                    closed_trade.curate_precision(&self.sim_data.market_kind);
+                                    closed_trade.curate_precision(&self.sim_data.get(&active_strategy_kind).unwrap().market_kind);
                                     self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                 } else {
                                     panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -166,7 +193,7 @@ impl PnLReportDataRowCalculator {
                                 {|active_trade: Trade<Active>| active_trade.pivot_event(&activation_event.unwrap())}
                                     {|trade_result: TradeResult| {
                                     if let TradeResult::Close(mut closed_trade) = trade_result {
-                                        closed_trade.curate_precision(&self.sim_data.market_kind);
+                                        closed_trade.curate_precision(&self.sim_data.get(&active_strategy_kind).unwrap().market_kind);
                                         self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                     } else {
                                         panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -189,10 +216,27 @@ impl PnLReportDataRowCalculator {
                 _ => panic!("Closed trade is not an accepting state, only idle and active are accepting states"),
             };
 
-            trade = if market_trajectory.last().unwrap().is_end_of_day {
+            trade = if t == max_data_points - 1 {
+                // End of day
+                // choose any strategy because the close time is equal for all strategies
+                let strategy_kind = self.strategies.get(0).unwrap().get_strategy_kind();
                 let timeout = CloseEvent {
-                    exit_ts: market_trajectory.last().unwrap().ohlc.close_ts.unwrap(),
-                    exit_price: market_trajectory.last().unwrap().ohlc.close.unwrap(),
+                    exit_ts: market_trajectory_map
+                        .get(&strategy_kind)
+                        .unwrap()
+                        .last()
+                        .unwrap()
+                        .ohlc
+                        .close_ts
+                        .unwrap(),
+                    exit_price: market_trajectory_map
+                        .get(&strategy_kind)
+                        .unwrap()
+                        .last()
+                        .unwrap()
+                        .ohlc
+                        .close
+                        .unwrap(),
                     close_event_kind: TradeCloseKind::Timeout,
                 };
                 match trade {
@@ -201,7 +245,8 @@ impl PnLReportDataRowCalculator {
                             {|active_trade: Trade<Active>| active_trade.close_event(&timeout)}
                             {|trade_result: TradeResult| {
                                 if let TradeResult::Close(mut closed_trade) = trade_result {
-                                    closed_trade.curate_precision(&self.sim_data.market_kind);
+                                    let close_strategy_kind = closed_trade.strategy.unwrap().get_strategy_kind();
+                                    closed_trade.curate_precision(&self.sim_data.get(&close_strategy_kind).unwrap().market_kind);
                                     self.add_pnl_report_data_row(&mut pnl_report_data_rows, closed_trade)
                                 } else {
                                     panic!("Closed a trade but got not TradeResult::Close(...)")
@@ -248,15 +293,24 @@ impl PnLReportDataRowCalculator {
         closed_trade: Trade<'a, Close>,
     ) -> Trade<'a, Close> {
         let entry_ts = closed_trade.entry_ts.as_ref().unwrap();
+        let close_strategy_kind = closed_trade.strategy.unwrap().get_strategy_kind();
         let trade_pnl = TradePnLCalculatorBuilder::new()
             .with_entry_ts(*entry_ts)
             .with_trade(&closed_trade)
-            .with_market_sim_data_since_entry(self.market_sim_data_since_entry_ts(*entry_ts))
-            .with_trade_and_pre_trade_values(self.sim_data.pre_trade_values.clone())
+            .with_market_sim_data_since_entry(
+                self.market_sim_data_since_entry_ts(*entry_ts, &close_strategy_kind),
+            )
+            .with_trade_and_pre_trade_values(
+                self.sim_data
+                    .get(&close_strategy_kind)
+                    .unwrap()
+                    .pre_trade_values
+                    .clone(),
+            )
             .build_and_compute();
 
         let pnl_report_data_row = PnLReportDataRow {
-            market: self.sim_data.market_kind,
+            market: self.sim_data.get(&close_strategy_kind).unwrap().market_kind,
             year: self.year,
             strategy_name: closed_trade.strategy.as_ref().unwrap().get_name(),
             time_frame_snapshot: self.time_frame_snapshot,
@@ -268,8 +322,14 @@ impl PnLReportDataRowCalculator {
         closed_trade
     }
 
-    fn market_sim_data_since_entry_ts(&self, entry_ts: i64) -> LazyFrame {
+    fn market_sim_data_since_entry_ts(
+        &self,
+        entry_ts: i64,
+        close_strategy_kind: &StrategyKind,
+    ) -> LazyFrame {
         self.market_sim_df
+            .get(close_strategy_kind)
+            .unwrap()
             .clone()
             .lazy()
             .drop_rows_before_entry_ts(entry_ts)
@@ -317,12 +377,10 @@ impl PnLReportDataRowCalculator {
 pub struct PnLReportDataRowCalculatorBuilder {
     strategy: Option<Vec<Arc<dyn Strategy + Send + Sync>>>,
     decision_policy: Option<Arc<dyn DecisionPolicy + Send + Sync>>,
-    market_sim_data: Option<DataFrame>,
-    pub pre_trade_data: Option<PreTradeData>,
     market: Option<MarketKind>,
     pub year: Option<u32>,
-    pub time_frame_snapshot: Option<TimeFrameSnapshot>,
-    pub market_sim_data_kind: Option<MarketSimulationDataKind>,
+    pub market_sim_data_kind: Option<HashMap<StrategyKind, MarketSimulationDataKind>>,
+    pub backtesting_batch_data: Option<HashMap<StrategyKind, BacktestingBatchData>>,
 }
 
 impl PnLReportDataRowCalculatorBuilder {
@@ -330,12 +388,10 @@ impl PnLReportDataRowCalculatorBuilder {
         Self {
             strategy: None,
             decision_policy: None,
-            market_sim_data: None,
-            pre_trade_data: None,
             market: None,
             year: None,
-            time_frame_snapshot: None,
             market_sim_data_kind: None,
+            backtesting_batch_data: None,
         }
     }
 
@@ -356,20 +412,6 @@ impl PnLReportDataRowCalculatorBuilder {
         }
     }
 
-    pub fn with_market_sim_data(self, market_sim_data: DataFrame) -> Self {
-        Self {
-            market_sim_data: Some(market_sim_data),
-            ..self
-        }
-    }
-
-    pub fn with_pre_trade_data(self, pre_trade_data: PreTradeData) -> Self {
-        Self {
-            pre_trade_data: Some(pre_trade_data),
-            ..self
-        }
-    }
-
     pub fn with_market(self, market: MarketKind) -> Self {
         Self {
             market: Some(market),
@@ -384,22 +426,30 @@ impl PnLReportDataRowCalculatorBuilder {
         }
     }
 
-    pub fn with_time_frame_snapshot(self, snapshot: TimeFrameSnapshot) -> Self {
-        Self {
-            time_frame_snapshot: Some(snapshot),
-            ..self
-        }
-    }
-
-    pub fn with_market_sim_data_kind(self, market_sim_data_kind: MarketSimulationDataKind) -> Self {
+    pub fn with_market_sim_data_kind(
+        self,
+        market_sim_data_kind: HashMap<StrategyKind, MarketSimulationDataKind>,
+    ) -> Self {
         Self {
             market_sim_data_kind: Some(market_sim_data_kind),
             ..self
         }
     }
 
-    fn compute_pre_trade_values(&self) -> RequiredPreTradeValuesWithData {
-        let calculator_builder: PreTradeValuesCalculatorBuilder = self.into();
+    pub fn with_backtesting_batch_data(
+        self,
+        batch: HashMap<StrategyKind, BacktestingBatchData>,
+    ) -> Self {
+        Self {
+            backtesting_batch_data: Some(batch),
+            ..self
+        }
+    }
+
+    fn compute_pre_trade_values(
+        &self,
+        strategy_kind: &StrategyKind,
+    ) -> RequiredPreTradeValuesWithData {
         let required_pre_trade_values = self
             .strategy
             .as_ref()
@@ -407,29 +457,84 @@ impl PnLReportDataRowCalculatorBuilder {
             .iter()
             .filter_map(|s| s.get_required_pre_trade_values())
             .collect();
-        calculator_builder
+        PreTradeValuesCalculatorBuilder::new()
+            .with_year(self.year.unwrap())
+            .with_snapshot(
+                self.backtesting_batch_data
+                    .as_ref()
+                    .unwrap()
+                    .get(strategy_kind)
+                    .unwrap()
+                    .time_frame_snapshot,
+            )
+            .with_pre_trade_data(
+                self.backtesting_batch_data
+                    .as_ref()
+                    .unwrap()
+                    .get(strategy_kind)
+                    .unwrap()
+                    .pre_trade_data
+                    .clone(),
+            )
+            .with_market_sim_data_kind(
+                *self
+                    .market_sim_data_kind
+                    .as_ref()
+                    .unwrap()
+                    .get(strategy_kind)
+                    .unwrap(),
+            )
             .with_required_pre_trade_values(required_pre_trade_values)
             .build_and_compute()
     }
 
     pub fn build(self) -> PnLReportDataRowCalculator {
-        let pre_trade_values_with_data = self.compute_pre_trade_values();
-        let market_sim_df = self.market_sim_data.unwrap();
-        let sim_data = SimulationDataBuilder::new()
-            // .with_ohlc_candle(market_sim_df.clone())
-            .with_pre_trade_values_with_data(pre_trade_values_with_data)
-            .with_market_kind(self.market.unwrap())
-            .with_market_sim_data_kind(self.market_sim_data_kind.unwrap())
-            .build()
-            .unwrap();
+        let batch = self.backtesting_batch_data.as_ref().unwrap();
+        let strategies = self.strategy.as_ref().unwrap();
+        // Time Frame Snapshot must always be the same for all strategies
+        let time_frame_snapshot = batch
+            .get(&strategies[0].get_strategy_kind())
+            .unwrap()
+            .time_frame_snapshot;
+
+        let mut market_map = HashMap::new();
+        let mut market_sim_df_map = HashMap::new();
+        let mut sim_data_map = HashMap::new();
+
+        for strategy in strategies.iter() {
+            let strategy_kind = strategy.get_strategy_kind();
+
+            let pre_trade_values_with_data = self.compute_pre_trade_values(&strategy_kind);
+            let market_sim_df = batch.get(&strategy_kind).unwrap().market_sim_data.clone();
+            let sim_data = SimulationDataBuilder::new()
+                // .with_ohlc_candle(market_sim_df.clone())
+                .with_pre_trade_values_with_data(pre_trade_values_with_data)
+                .with_market_kind(self.market.unwrap())
+                .with_market_sim_data_kind(
+                    *self
+                        .market_sim_data_kind
+                        .as_ref()
+                        .unwrap()
+                        .get(&strategy_kind)
+                        .unwrap(),
+                )
+                .build()
+                .unwrap();
+            let market_vec: Vec<_> = MarketDataFrame(market_sim_df.clone()).try_into().unwrap();
+
+            market_map.insert(strategy_kind, market_vec);
+            market_sim_df_map.insert(strategy_kind, market_sim_df);
+            sim_data_map.insert(strategy_kind, sim_data);
+        }
+
         PnLReportDataRowCalculator {
-            strategies: self.strategy.unwrap(),
+            strategies: strategies.clone(),
             decision_policy: self.decision_policy.unwrap(),
-            sim_data,
-            market: MarketDataFrame(market_sim_df.clone()).try_into().unwrap(),
-            market_sim_df,
+            sim_data: sim_data_map,
+            market: market_map,
+            market_sim_df: market_sim_df_map,
             year: self.year.unwrap(),
-            time_frame_snapshot: self.time_frame_snapshot.unwrap(),
+            time_frame_snapshot,
         }
     }
 

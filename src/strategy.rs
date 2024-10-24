@@ -19,9 +19,8 @@ use crate::{
     },
     MarketSimulationDataKind, NewsKind,
 };
-use chrono::NaiveDate;
 use mockall::automock;
-use std::{collections::HashSet, fmt::Debug, str::FromStr};
+use std::{fmt::Debug, str::FromStr};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StopLoss {

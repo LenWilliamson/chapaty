@@ -1,7 +1,4 @@
-use super::{
-    file_name_resolver::FileNameResolver, file_path_with_fallback::FilePathWithFallback,
-    path_finder::PathFinderBuilder,
-};
+use super::{file_name_resolver::FileNameResolver, file_path_with_fallback::FilePathWithFallback};
 use crate::{
     bot::{indicator_data_pair::IndicatorDataPair, transformer::TransformerBuilder, Bot},
     chapaty,
@@ -25,7 +22,6 @@ use google_cloud_storage::{
 use polars::prelude::DataFrame;
 use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct CloudStorageClient {

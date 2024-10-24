@@ -13,7 +13,7 @@ use chapaty::{
         StopLoss, Strategy, TakeProfit,
     },
     BotBuilder, ExecutionData, MarketKind, MarketSimulationDataKind, NewsKind, StopLossKind,
-    TakeProfitKind, TimeFrameKind,
+    StrategyKind, TakeProfitKind, TimeFrameKind,
 };
 
 use std::{
@@ -84,7 +84,9 @@ async fn backtest() {
 }
 
 async fn backtest_with_session_cache(
-    session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+    session_cache: Arc<
+        Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>,
+    >,
 ) {
     let start = Instant::now();
 

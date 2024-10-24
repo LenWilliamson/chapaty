@@ -1,4 +1,4 @@
-mod backtesting_batch_data;
+pub mod backtesting_batch_data;
 pub mod execution_data;
 pub mod indicator_data_pair;
 pub mod pre_trade_data;
@@ -17,13 +17,14 @@ use crate::{
     decision_policy::DecisionPolicy,
     enums::{
         bot::TimeFrameKind, data::HdbSourceDirKind, error::ChapatyErrorKind, markets::MarketKind,
-        strategy,
+        strategy::StrategyKind,
     },
     pnl::{
         pnl_report::{PnLReport, PnLReports},
         pnl_statement::PnLStatement,
     },
     strategy::Strategy,
+    MarketSimulationDataKind,
 };
 use execution_data::ExecutionData;
 use google_cloud_storage::client::Client;
@@ -49,7 +50,8 @@ pub struct Bot {
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
-    session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
+    session_cache:
+        Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>>>,
     decision_policy: Arc<dyn DecisionPolicy + Send + Sync>,
 }
 pub struct BotBuilder {
@@ -64,7 +66,8 @@ pub struct BotBuilder {
     time_frame: TimeFrameKind,
     save_result_as_csv: bool,
     cache_computations: bool,
-    session_cache: Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>>,
+    session_cache:
+        Option<Arc<Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>>>,
     decision_policy: Option<Arc<dyn DecisionPolicy + Send + Sync>>,
 }
 
@@ -74,7 +77,7 @@ impl Bot {
         &self,
     ) -> (
         BacktestResult,
-        Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+        Arc<Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>>,
     ) {
         let (pnl_statement, session_cache) = self.compute_pnl_statement().await;
 
@@ -138,7 +141,7 @@ impl Bot {
         &self,
     ) -> (
         PnLStatement,
-        Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+        Arc<Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>>,
     ) {
         let session_cache = Arc::new(Mutex::new(HashMap::new()));
         let tasks: Vec<_> = self
@@ -174,7 +177,9 @@ impl Bot {
     async fn compute_pnl_reports(
         &self,
         market: MarketKind,
-        session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+        session_cache: Arc<
+            Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>,
+        >,
     ) -> PnLReports {
         let trading_session_builder = TradingSessionBuilder::new()
             .with_bot(self.get_shared_pointer())
@@ -182,12 +187,7 @@ impl Bot {
             .with_cache_computations(self.cache_computations)
             .with_market(market)
             // TODO fix, as diffrent strategies need different market sim data
-            .with_market_sim_data_kind(
-                self.strategies
-                    .get(0)
-                    .unwrap()
-                    .get_market_simulation_data_kind(),
-            );
+            .with_market_sim_data_kind(self.get_market_sim_data_kind());
 
         let tasks: Vec<_> = self
             .years
@@ -233,12 +233,26 @@ impl Bot {
             .collect()
     }
 
-    fn determine_indicator_data_pair(&self) -> Arc<HashSet<IndicatorDataPair>> {
-        let mut map = HashSet::new();
+    fn get_market_sim_data_kind(&self) -> HashMap<StrategyKind, MarketSimulationDataKind> {
+        self.strategies
+            .iter()
+            .fold(HashMap::new(), |mut acc, strategy| {
+                acc.insert(
+                    strategy.get_strategy_kind(),
+                    strategy.get_market_simulation_data_kind(),
+                );
+                acc
+            })
+    }
+
+    fn determine_indicator_data_pair(
+        &self,
+    ) -> Arc<HashMap<StrategyKind, HashSet<IndicatorDataPair>>> {
+        let mut map = HashMap::new();
 
         for strategy in &self.strategies {
             if let Some(required) = strategy.get_required_pre_trade_values() {
-                map.extend(required.trading_indicators.iter().fold(
+                let set = required.trading_indicators.iter().fold(
                     HashSet::new(),
                     |mut acc, trading_indicator| {
                         let indicator_data_pair = IndicatorDataPair::new(
@@ -248,7 +262,8 @@ impl Bot {
                         acc.insert(indicator_data_pair);
                         acc
                     },
-                ));
+                );
+                map.insert(strategy.get_strategy_kind(), set);
             }
         }
 
@@ -337,7 +352,9 @@ impl BotBuilder {
 
     pub fn with_session_cache_computations(
         self,
-        session_cache: Arc<Mutex<HashMap<MarketKind, HashMap<u32, ExecutionData>>>>,
+        session_cache: Arc<
+            Mutex<HashMap<MarketKind, HashMap<u32, HashMap<StrategyKind, ExecutionData>>>>,
+        >,
     ) -> Self {
         Self {
             session_cache: Some(session_cache),
@@ -382,6 +399,7 @@ mod test {
         enums::{
             data::HdbSourceDirKind,
             indicator::{PriceHistogramKind, TradingIndicatorKind},
+            strategy::StrategyKind,
         },
         strategy::{MockStrategy, RequriedPreTradeValues},
         BotBuilder,
@@ -406,6 +424,10 @@ mod test {
                 market_values: Vec::new(),
                 trading_indicators,
             });
+        let strategy_kind = StrategyKind::Ppp;
+        mock_strategy
+            .expect_get_strategy_kind()
+            .return_const(strategy_kind);
 
         let bot = BotBuilder::new(vec![Arc::new(mock_strategy)], data_provider)
             .with_google_cloud_storage_client(cloud_storage_client)
@@ -414,6 +436,7 @@ mod test {
             .unwrap();
 
         let required_data = bot.determine_indicator_data_pair();
+        let required_data = required_data.get(&strategy_kind).unwrap();
         let expected = HashSet::from([
             IndicatorDataPair::new(
                 TradingIndicatorKind::Poc(PriceHistogramKind::VolAggTrades),

@@ -1,6 +1,3 @@
-use super::pnl_report_data_row_calculator::{
-    PnLReportDataRowCalculator, PnLReportDataRowCalculatorBuilder,
-};
 use crate::{
     bot::{pre_trade_data::PreTradeData, time_frame_snapshot::TimeFrameSnapshot},
     converter::any_value::AnyValueConverter,
@@ -280,19 +277,45 @@ pub struct PreTradeValuesCalculatorBuilder {
     required_pre_trade_values: Option<RequriedPreTradeValues>,
 }
 
-impl From<&PnLReportDataRowCalculatorBuilder> for PreTradeValuesCalculatorBuilder {
-    fn from(value: &PnLReportDataRowCalculatorBuilder) -> Self {
+impl PreTradeValuesCalculatorBuilder {
+    pub fn new() -> Self {
         Self {
-            year: value.year,
-            snapshot: value.time_frame_snapshot,
-            pre_trade_data: value.pre_trade_data.clone(),
-            market_sim_data_kind: value.market_sim_data_kind,
+            year: None,
+            snapshot: None,
+            pre_trade_data: None,
+            market_sim_data_kind: None,
             required_pre_trade_values: None,
         }
     }
-}
 
-impl PreTradeValuesCalculatorBuilder {
+    pub fn with_year(self, year: u32) -> Self {
+        Self {
+            year: Some(year),
+            ..self
+        }
+    }
+
+    pub fn with_snapshot(self, snapshot: TimeFrameSnapshot) -> Self {
+        Self {
+            snapshot: Some(snapshot),
+            ..self
+        }
+    }
+
+    pub fn with_pre_trade_data(self, pre_trade_data: PreTradeData) -> Self {
+        Self {
+            pre_trade_data: Some(pre_trade_data),
+            ..self
+        }
+    }
+
+    pub fn with_market_sim_data_kind(self, market_sim_data_kind: MarketSimulationDataKind) -> Self {
+        Self {
+            market_sim_data_kind: Some(market_sim_data_kind),
+            ..self
+        }
+    }
+
     pub fn with_required_pre_trade_values(
         self,
         required_pre_trade_values: RequriedPreTradeValues,
