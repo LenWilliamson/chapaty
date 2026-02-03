@@ -356,7 +356,7 @@ mod tests {
             // R^2 typically in [-∞, 1], but let's check it's at least computed
             // For a sanity check, we expect something in [-10, 1] range
             assert!(
-                val >= -10.0 && val <= 1.0,
+                (-10.0..=1.0).contains(&val),
                 "{} has unreasonable value: {}. Expected [-10, 1]",
                 col,
                 val

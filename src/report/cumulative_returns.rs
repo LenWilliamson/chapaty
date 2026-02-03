@@ -530,7 +530,7 @@ mod tests {
         // Fixture returns: -1000, -500, 0, +2000, +500, +1000
         // Initial value: 10000 (default)
         // Cumulative: 9000, 8500, 8500, 10500, 11000, 12000
-        let expected = vec![9000.0, 8500.0, 8500.0, 10500.0, 11000.0, 12000.0];
+        let expected = [9000.0, 8500.0, 8500.0, 10500.0, 11000.0, 12000.0];
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = cum_returns.get(i).expect("Missing value at index");
@@ -560,7 +560,7 @@ mod tests {
 
         // Peaks should be monotonically non-decreasing
         // Expected: 9000, 9000, 9000, 10500, 11000, 12000
-        let expected = vec![9000.0, 9000.0, 9000.0, 10500.0, 11000.0, 12000.0];
+        let expected = [9000.0, 9000.0, 9000.0, 10500.0, 11000.0, 12000.0];
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = peaks.get(i).expect("Missing value");
@@ -590,7 +590,7 @@ mod tests {
 
         // Drawdown = Peak - Current
         // Expected: 0, 500, 500, 0, 0, 0
-        let expected = vec![0.0, 500.0, 500.0, 0.0, 0.0, 0.0];
+        let expected = [0.0, 500.0, 500.0, 0.0, 0.0, 0.0];
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = drawdowns.get(i).expect("Missing value");

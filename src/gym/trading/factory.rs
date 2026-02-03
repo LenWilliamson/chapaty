@@ -1690,7 +1690,7 @@ mod test {
 
             // 2. Compute (Simulating internal build step)
             let result_lf = compute_indicator(input_lf, case.indicator)
-                .expect(&format!("Failed to compute {}", case.name));
+                .unwrap_or_else(|_| panic!("Failed to compute {}", case.name));
 
             // 3. Assert
             let result_df = result_lf.collect().unwrap();

@@ -1075,7 +1075,7 @@ mod tests {
         for (input, root, month, year) in cases {
             let parsed: Symbol = input
                 .parse()
-                .expect(&format!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
             let expected = Symbol::Future(FutureContract { root, month, year });
             assert_eq!(parsed, expected, "Mismatch for '{}'", input);
         }
@@ -1096,7 +1096,7 @@ mod tests {
         for (input, expected_root) in cases {
             let parsed: Symbol = input
                 .parse()
-                .expect(&format!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
             match parsed {
                 Symbol::Future(contract) => assert_eq!(contract.root, expected_root),
                 _ => panic!("Expected Future variant for '{}'", input),

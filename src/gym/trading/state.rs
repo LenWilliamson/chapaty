@@ -1539,7 +1539,7 @@ mod tests {
 
         // PRE-CHECK: Establish the Baseline
         // We must prove it starts at 1.0 to prove it was 'restored' to 1.0
-        let original = states.live.get(&m_id).unwrap().get(0).unwrap();
+        let original = states.live.get(&m_id).unwrap().first().unwrap();
         assert_eq!(
             original.quantity().0,
             1.0,
@@ -1560,7 +1560,7 @@ mod tests {
         check_invariants(&states);
 
         // Verify the vector state was NOT updated (Rollback successful)
-        let current = states.live.get(&m_id).unwrap().get(0).unwrap();
+        let current = states.live.get(&m_id).unwrap().first().unwrap();
 
         // It should NOT be the mutated value
         assert_ne!(
@@ -1646,7 +1646,7 @@ mod tests {
         // CHECK: Returns explicit Error, does not Panic
         assert!(result.is_err());
         match result.unwrap_err() {
-            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => assert!(true),
+            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {}  // Expected
             e => panic!("Expected IndexOutOfBounds, got {:?}", e),
         }
         check_invariants(&states);

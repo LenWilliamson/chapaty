@@ -16,11 +16,11 @@ async fn main() -> Result<()> {
     let ohlcv_id = ohlcv_cfg.to_id()?;
     let fast_sma_id = SmaId {
         parent: ohlcv_id,
-        length: SmaWindow(fast_window as u16),
+        length: SmaWindow(fast_window),
     };
     let slow_sma_id = SmaId {
         parent: ohlcv_id,
-        length: SmaWindow(slow_window as u16),
+        length: SmaWindow(slow_window),
     };
 
     let mut env = environment(ohlcv_cfg).await?;
