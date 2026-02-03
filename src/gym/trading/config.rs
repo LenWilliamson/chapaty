@@ -132,7 +132,7 @@ pub enum ExecutionBias {
 /// Configuration blueprint for building a trading environment.
 ///
 /// Specifies market data streams, technical indicators, economic events,
-/// and simulation parameters needed to construct an [`Environment`].
+/// and simulation parameters needed to construct an Environment.
 ///
 /// # Core Components
 ///
