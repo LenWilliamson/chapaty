@@ -16,6 +16,20 @@ keywords = [
     "gym",
     "backtesting",
 ]
+categories = [
+    "algorithms",
+    "finance",
+    "mathematics",
+    "science",
+    "simulation",
+]
+exclude = [
+    "tests/*",
+    ".github",
+    ".vscode",
+    ".gitignore",
+    "Cargo.lock"
+]
 
 [dependencies]
 async-channel = "2.5"

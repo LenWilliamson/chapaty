@@ -2,9 +2,6 @@
 /target
 **/target/
 
-# Rust package manager
-/Cargo.lock
-
 # IDE and editor files
 *.DS_Store
 *.swp
