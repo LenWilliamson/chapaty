@@ -1646,7 +1646,7 @@ mod tests {
         // CHECK: Returns explicit Error, does not Panic
         assert!(result.is_err());
         match result.unwrap_err() {
-            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {}  // Expected
+            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {} // Expected
             e => panic!("Expected IndexOutOfBounds, got {:?}", e),
         }
         check_invariants(&states);
