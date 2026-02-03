@@ -1,0 +1,102 @@
+name: Chapaty CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # JOB 1: Compliance & Security (Fast, no compilation needed)
+  check-compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Secret Leak Prevention
+      - name: Security - Check for Leaked Secrets
+        run: |
+          # --error-unmatch exits with 0 if file IS found (bad), 1 if NOT found (good)
+          if git ls-files --error-unmatch .cargo/config.toml > /dev/null 2>&1; then
+            echo "::error::CRITICAL: .cargo/config.toml is being tracked by git! Remove it immediately.";
+            exit 1;
+          fi
+          echo "No secrets found in git index."
+
+      # 2. Formatting Check (Fails if code isn't cargo fmt'd)
+      - name: Style - Check Formatting
+        run: cargo fmt -- --check
+
+      # 3. Architecture Guardrails
+      - name: Architecture - Disallow internal prelude imports
+        run: |
+          if grep -r "use crate::prelude::" src/; then
+            echo "::error::Library code must not import from crate::prelude. Use direct imports to avoid circular deps.";
+            exit 1;
+          fi
+
+  # JOB 2: Build, Test, & Verify (Slower, runs only if compliance passes)
+  build-and-verify:
+    needs: check-compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Smart Caching: This is the secret sauce for fast Rust CI
+      - uses: Swatinem/rust-cache@v2
+
+      # 1. Install cargo-audit
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      # 2. Security Audit (Checks Cargo.lock for CVEs)
+      - name: Security Audit
+        run: cargo audit
+
+      # 3. Clippy (Linter)
+      # We verify code quality strictly HERE, not globally.
+      # --all-targets checks tests and examples too.
+      - name: Lint with Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # 4. Build (Ensures everything compiles)
+      - name: Build Workspace
+        run: cargo build --verbose
+
+      # 5. Unit Tests (Includes Doctests)
+      # Note: Since you use generated protos committed to git, 
+      # this verifies the "User Experience" (building without protoc).
+      - name: Run Tests
+        run: cargo test --verbose
+
+      # 6. Build Documentation
+      - name: Verify Documentation Build
+        run: cargo doc --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings" # Fail if docs have broken links
+
+      # 7. Run Fast Examples
+      - name: Verify Examples Run
+        shell: bash
+        run: |
+          echo "Compiling examples..."
+          # Build all examples first (parallel compilation)
+          cargo build --examples --verbose
+
+          echo "Running examples..."
+          for file in examples/*.rs; do
+            filename=$(basename -- "$file")
+            name="${filename%.*}"
+
+            if [[ "$name" == *"_grid"* ]]; then
+              echo "Skipping grid search example: $name"
+              continue
+            fi
+
+            echo "Running example: $name"
+            # It is already compiled, so this just runs the binary
+            cargo run --example "$name"
+          done
