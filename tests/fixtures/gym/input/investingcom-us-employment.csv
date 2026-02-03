@@ -1,0 +1,4 @@
+data_source,category,event_timestamp,news_type,news_type_confidence,news_type_source,periodicity,news_name,country_code,currency_code,importance,actual,forecast,previous
+investingcom,employment,2025-10-01T12:15:00.000000+0000,,,,,ADP Nonfarm Employment Change  (Sep),US,USD,3,-32000.0,52000.0,-3000.0
+investingcom,employment,2025-10-01T14:00:00.000000+0000,,,,,ISM Manufacturing Employment  (Sep),US,USD,2,45.3,44.3,43.8
+investingcom,employment,2025-10-03T14:00:00.000000+0000,,,,,ISM Non-Manufacturing Employment  (Sep),US,USD,2,47.2,46.6,46.5

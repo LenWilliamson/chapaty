@@ -1,0 +1,32 @@
+# Rust build artifacts
+/target
+**/target/
+
+# Rust package manager
+/Cargo.lock
+
+# IDE and editor files
+*.DS_Store
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.idea/
+.vscode/
+*.iml
+
+# Byproducts
+*.csv
+*.parquet
+*.postcard
+
+# Keep expected result CSVs in tests
+!tests/fixtures/**/*.csv
+
+# Misc
+*.log
+*.tmp
+*.bak
+
+# Cargo local config with secrets
+/.cargo/config.toml

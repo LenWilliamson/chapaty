@@ -1,0 +1,5 @@
+# Copy this file to .cargo/config.toml and fill in your values
+# .cargo/config.toml is gitignored to prevent committing secrets
+
+[env]
+CHAPATY_API_KEY = "your-secret-key"

@@ -1,0 +1,3 @@
+data_source,category,event_timestamp,news_type,news_type_confidence,news_type_source,periodicity,news_name,country_code,currency_code,importance,actual,forecast,previous
+investingcom,inflation,2025-10-17T09:00:00.000000+0000,cpi,100.0,manual,yoy,CPI (YoY)  (Sep),EZ,EUR,3,2.2,2.2,2.0
+investingcom,inflation,2025-10-31T10:00:00.000000+0000,cpi,100.0,manual,yoy,CPI (YoY)  (Oct),EZ,EUR,3,2.1,2.1,2.2
