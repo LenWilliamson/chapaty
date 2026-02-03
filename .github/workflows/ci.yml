@@ -2,9 +2,9 @@ name: Chapaty CI
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: ["main", "develop"]
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: ["main", "develop"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -67,7 +67,7 @@ jobs:
         run: cargo build --verbose
 
       # 5. Unit Tests (Includes Doctests)
-      # Note: Since you use generated protos committed to git, 
+      # Note: Since you use generated protos committed to git,
       # this verifies the "User Experience" (building without protoc).
       - name: Run Tests
         run: cargo test --verbose
