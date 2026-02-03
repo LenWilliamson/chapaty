@@ -445,7 +445,7 @@ fn short_trade_count_expr(trade_type_col: JournalCol) -> Expr {
 /// Create an expression that computes the maximum length of consecutive `true` values
 /// in a boolean predicate expression, often used to identify streaks in a column.
 ///
-/// Reference: https://stackoverflow.com/a/75405310
+/// Reference: <https://stackoverflow.com/a/75405310>
 fn max_consecutive_streak_expr(predicate: Expr) -> Expr {
     let rle = predicate.clone().rle_id();
     let streak_len = len().over([rle]);

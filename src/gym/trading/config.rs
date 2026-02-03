@@ -117,42 +117,6 @@ impl From<EnvPreset> for EnvConfig {
 /// - `Pessimistic`: Favors conservative assumptions (e.g., assumes stop-loss hit or no profit).
 ///
 /// This is particularly relevant in environments where candles can contain multiple trigger prices.
-///
-/// The tables below illustrates possible outcomes depending on which price levels were reached within a single step:
-///
-/// _Note:_
-/// - If the state before is `Pending` and stop-loss or take-profit is hit, **it has no effect unless the trade becomes active first**.
-/// - If the state is already `Active` and the entry is "hit" again, it's equivalent to assuming the entry was not hit, because we are already in the trade.
-///
-/// # ExecutionBias::Optimistic
-///
-/// | Entry Hit| Stop Loss Hit| Take Profit Hit| State Before      | State After (Optimistic)  | ExitReason (Optimistic) | Optimistic Outcome Explanation                                   |
-/// |----------|--------------|----------------|-------------------|---------------------------|-------------------------|------------------------------------------------------------------|
-/// | F        | F            | F              | Active / Pending  | Active / Pending          | None                    | Trade remains active or pending; no trigger was hit.             |
-/// | F        | F            | T              | Active            | Closed                    | TakeProfit              | Trade closed; take-profit was hit and profit realized.           |
-/// | F        | T            | F              | Active            | Closed                    | StopLoss                | Trade closed; stop-loss was hit and loss realized.               |
-/// | F        | T            | T              | Active            | Closed                    | TakeProfit              | Trade closed with profit, assuming TP hit first.                 |
-/// | T        | F            | F              | Pending           | Active                    | None                    | Trade was activated but not exited.                              |
-/// | T        | F            | T              | Pending           | Closed                    | TakeProfit              | Trade activated; then TP hit, profit realized, and trade closed. |
-/// | T        | T            | F              | Pending           | Active                    | None                    | SL hit before entry; trade is actived with no realized loss.     |
-/// | T        | T            | T              | Pending           | Closed                    | TakeProfit              | Trade activated; then TP hit, profit realized, and trade closed. |
-///
-/// # ExecutionBias::Pessimistic
-///
-/// | Entry Hit| Stop Loss Hit| Take Profit Hit| State Before      | State After (Pessimistic)  | ExitReason (Pessimistic |  Pessimistic Outcome Explanation                                 |
-/// |----------|--------------|----------------|-------------------|----------------------------|-------------------------|------------------------------------------------------------------|
-/// | F        | F            | F              | Active / Pending  | Active / Pending           | None                    | Trade remains active or pending; no trigger was hit.             |
-/// | F        | F            | T              | Active            | Closed                     | TakeProfit              | Trade closed; take-profit was hit and profit realized.           |
-/// | F        | T            | F              | Active            | Closed                     | StopLoss                | Trade closed; stop-loss was hit and loss realized.               |
-/// | F        | T            | T              | Active            | Closed                     | StopLoss                | Trade closed with loss, assuming SL hit first.                   |
-/// | T        | F            | F              | Pending           | Active                     | None                    | Trade was activated but not exited.                              |
-/// | T        | F            | T              | Pending           | Active                     | None                    | TP hit before entry; trade is actived with no realized profit.   |
-/// | T        | T            | F              | Pending           | Closed                     | StopLoss                | Trade activated; then SL hit, loss realized, and trade closed.   |
-/// | T        | T            | T              | Pending           | Closed                     | StopLoss                | Trade activated; then SL hit, loss realized, and trade closed.   |
-///
-/// This strategy is used when deriving [`ExitReason`]s during ambiguous market steps.
-///
-/// [`ExitReason`]: crate::gym::trading::types::ExitReason
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum ExecutionBias {
     /// Choose the most favorable outcome for the agent in ambiguous cases.
