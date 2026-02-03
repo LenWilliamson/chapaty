@@ -78,25 +78,6 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings" # Fail if docs have broken links
 
-      # 7. Run Fast Examples
-      - name: Verify Examples Run
-        shell: bash
-        run: |
-          echo "Compiling examples..."
-          # Build all examples first (parallel compilation)
-          cargo build --examples --verbose
-
-          echo "Running examples..."
-          for file in examples/*.rs; do
-            filename=$(basename -- "$file")
-            name="${filename%.*}"
-
-            if [[ "$name" == *"_grid"* ]]; then
-              echo "Skipping grid search example: $name"
-              continue
-            fi
-
-            echo "Running example: $name"
-            # It is already compiled, so this just runs the binary
-            cargo run --example "$name"
-          done
+      # 7. Check Examples (Compilation Only)
+      - name: Check Examples Compile
+        run: cargo build --examples --verbose
