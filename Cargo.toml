@@ -9,9 +9,7 @@ readme = "README.md"
 homepage = "https://www.chapaty.com"
 repository = "https://github.com/LenWilliamson/chapaty"
 keywords = [
-    "python",
-    "rust",
-    "reinforcement-learning",
+    "rl",
     "finance",
     "gym",
     "backtesting",
