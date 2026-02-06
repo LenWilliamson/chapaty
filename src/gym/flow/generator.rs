@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent::AgentIdentifier,
     data::{
-        domain::{Currency, SpotPair, Symbol},
+        domain::{Currency, Symbol},
         event::Trade,
     },
     gym::flow::{
@@ -143,11 +143,11 @@ impl RfqGenerator {
 
         // 5. Client Segmentation (Deterministic Identity)
         // We pick one of the 1000 simulated clients.
-        let client_id_seed = rng.gen_range(0..1000); 
-        
+        let client_id_seed = rng.gen_range(0..1000);
+
         // The Tier is an intrinsic property of the ID.
         let client_tier = Self::determine_tier_from_id(client_id_seed);
-        
+
         // Generate a stable name (e.g., "Client_0042")
         let client_name = format!("Client_{:04}", client_id_seed);
         let client_id = AgentIdentifier::Named(Arc::new(client_name));
@@ -185,10 +185,10 @@ impl RfqGenerator {
         Some(Rfq {
             rfq_id: RfqId(local_seed),
             revision_id: 0,
-            
+
             // BUGFIX HERE: Use the generated unique ID, not the tier grouping!
-            client_id, 
-            
+            client_id,
+
             client_tier,
             symbol,
             side,
@@ -201,13 +201,12 @@ impl RfqGenerator {
         })
     }
 
-
     /// Helper: Deterministically maps a numeric seed to a client tier.
     /// This ensures consistent behavior: Client ID X is ALWAYS Tier Y.
     fn determine_tier_from_id(client_id_seed: u64) -> ClientTier {
         // Simulate a universe of 1000 distinct institutional clients.
         let slot = client_id_seed % 1000;
-        
+
         match slot {
             0..=99 => ClientTier::Tier1,    // 10% Hedge Funds (IDs 0-99)
             100..=499 => ClientTier::Tier2, // 40% Asset Managers (IDs 100-499)

@@ -6,7 +6,7 @@ use tracing::{debug, info, trace, warn};
 
 use crate::{
     agent::AgentIdentifier,
-    data::{episode::Episode, view::MarketView, domain::Symbol},
+    data::{domain::Symbol, episode::Episode, view::MarketView},
     error::{ChapatyResult, EnvError},
     gym::{
         EnvStatus, InvalidActionPenalty, Reward, StepOutcome,
@@ -19,11 +19,11 @@ use crate::{
             generator::RfqGenerator,
             ledger::Ledger,
             observation::Observation,
-            scheduler::{Scheduler, SchedulerOutcome, ScheduledEvent, RfqEvent},
-            state::{States, Open},
+            scheduler::{RfqEvent, ScheduledEvent, Scheduler, SchedulerOutcome},
+            state::{Open, States},
         },
     },
-    sim::{data::SimulationData, cursor_group::CursorGroup},
+    sim::{cursor_group::CursorGroup, data::SimulationData},
 };
 
 use std::collections::HashMap;
@@ -46,10 +46,10 @@ pub struct Environment {
 
     /// Simulates client behavior (acceptance/rejection of quotes).
     fill_simulator: FillSimulator,
-    
+
     /// Generates synthetic RFQs based on market activity.
     rfq_generator: RfqGenerator,
-    
+
     /// The Priority Queue (Min-Heap) for future events.
     /// Uses `Reverse` wrapper to ensure the smallest timestamp pops first.
     event_queue: BinaryHeap<Reverse<ScheduledEvent>>,
@@ -70,7 +70,7 @@ pub struct Environment {
     /// Stores immutable profiles (KYC, Risk Limits) for all known clients.
     /// Used to prevent "Split Brain" by ensuring consistent client identity across trades.
     counterpart_master: HashMap<AgentIdentifier, ClientProfile>,
-    
+
     /// Snapshot for resetting.
     initial_ep: Episode,
 
@@ -85,17 +85,25 @@ impl Env for Environment {
 
         match self.env_status {
             EpisodeDone => {
-                // Try to advance to the next episode in the sequence
-                // Note: Scheduler manages the cursor internally
-                if let Some(next_ep) = self.scheduler.advance_to_next_episode(&self.sim_data, self.ep)? {
+                // Versuche zur nächsten Episode in der Sequenz zu springen (Chronologisches Training)
+                if let Some(next_ep) = self
+                    .scheduler
+                    .advance_to_next_episode(&self.sim_data, self.ep)?
+                {
                     self.ep = next_ep;
-                    info!(episode_id = %self.ep.id().0, "Episode Starting (Next Sequence)");
+                    info!(
+                        episode_id = %self.ep.id().0,
+                        start_time = %self.ep.start(),
+                        "Episode Starting (Next Sequence)"
+                    );
                 } else {
+                    // Ende der Daten erreicht -> Full Reset
                     self.restart();
                     info!("End of Data Reached. Performing Full Environment Reset.");
                 }
             }
             Ready | Done | Running => {
+                // Manueller Reset oder Start -> Full Reset
                 self.restart();
                 info!("Environment Reset Initiated.");
             }
@@ -103,22 +111,30 @@ impl Env for Environment {
 
         self.env_status = EnvStatus::Running;
 
-        // Reset Transient State
+        // 1. Transient State löschen (Laufzeit-Daten)
         self.ledger.clear();
         self.event_queue.clear();
-        
-        // Note: We DO NOT clear counterpart_master if we want to simulate long-term relationships (Memory).
-        // If we want pure episodic RL independence, we should clear it.
-        // For this implementation, we keep it to simulate a "Trading Day/Month".
-        
+
+        // 2. WICHTIG: Entscheidung über CRM-Gedächtnis
+        // Option A (Standard RL): Löschen, damit jede Episode fair und identisch startet.
+        self.counterpart_master.clear();
+
+        // Option B (Lifetime Learning): Behalten.
+        // self.counterpart_master.retain(|_, _| true); // Ggf. Limits resetten aber Tiers behalten?
+
+        // 3. Observation generieren (S_0)
+        // Wir müssen sicherstellen, dass der Scheduler korrekt positioniert ist.
+        let market_view = MarketView::new(&self.sim_data, &self.scheduler.cursor())?;
+
+        // Initialer State (Leeres Inventory, volles Cash)
         let obs = Observation {
-            market_view: MarketView::new(&self.sim_data, &self.scheduler.cursor())?,
+            market_view,
             states: self.states(&self.ep)?,
         };
 
+        // Zu Beginn ist der Reward 0 und Outcome InProgress
         Ok((obs, Reward(0), StepOutcome::InProgress))
     }
-
     fn step(&mut self, actions: Actions) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)> {
         self.check_step_status()?;
         let episode = self.episode();
@@ -132,7 +148,7 @@ impl Env for Environment {
             actions,
             market: market_before,
         };
-        
+
         // The ledger updates state to "Quoted", "Finalized", etc.
         let summary = self.ledger.apply_actions(&episode, action_ctx)?;
 
@@ -158,7 +174,6 @@ impl Env for Environment {
 }
 
 impl Environment {
-    
     // ========================================================================
     // Core Transition Logic (The Heart of Flow)
     // ========================================================================
@@ -169,22 +184,23 @@ impl Environment {
         ep: &Episode,
         summary: ActionSummary,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
-        
         // Loop continuously...
         loop {
             // ...ask the Scheduler for the next event in chronological order.
             // This handles the min-heap priority vs market data tick logic.
-            match self.scheduler.step(&self.sim_data, ep, &mut self.event_queue)? {
-                
+            match self
+                .scheduler
+                .step(&self.sim_data, ep, &mut self.event_queue)?
+            {
                 // Case A: The Market Moved (Tick)
                 SchedulerOutcome::MarketTick { timestamp: _ } => {
                     // 1. Check if this market move triggers a new RFQ (Generator)
                     self.try_generate_rfq()?;
-                    
+
                     // 2. Check if any "Till-Maturity" logic needs update (e.g. expiring RFQs)
                     // (Handled implicitly by ScheduledEvent::Expiration in queue)
-                    
-                    // Continue loop! The agent doesn't need to wake up for every tick 
+
+                    // Continue loop! The agent doesn't need to wake up for every tick
                     // unless an RFQ is waiting.
                 }
 
@@ -195,19 +211,19 @@ impl Environment {
                         RfqEvent::NewRequest(rfq) => {
                             // Register State
                             self.ledger.on_rfq_received(rfq);
-                            
+
                             // Break loop so agent can act
-                            break; 
-                        },
-                        
+                            break;
+                        }
+
                         // B2: Client Replied -> Update Ledger -> Continue
                         RfqEvent::CustomerReply { rfq_id, decision } => {
                             self.ledger.on_customer_reply(rfq_id, decision)?;
                             // Don't break. Loop continues until next "NewRequest" or "Action required".
                             // Note: If we want the agent to see "Fill Confirmed" immediately, we could break here.
                             // But usually, fills are just booked.
-                        },
-                        
+                        }
+
                         // B3: Time To Live Expired -> Update Ledger -> Continue
                         RfqEvent::Expired { rfq_id } => {
                             self.ledger.on_rfq_expired(rfq_id)?;
@@ -220,10 +236,10 @@ impl Environment {
                     return self.finalize_step(ep, summary, StepOutcome::Terminated);
                 }
             }
-            
+
             // Safety Check: If we have Pending Actions in the Ledger that require attention
             // (e.g., Counter-Offer received), we should break.
-            // For MVP: We assume only NewRequest triggers Agent. 
+            // For MVP: We assume only NewRequest triggers Agent.
             // Future: Counter-Offers also trigger break.
         }
 
@@ -236,7 +252,7 @@ impl Environment {
         &mut self,
         ep: &Episode,
         summary: ActionSummary,
-        outcome: StepOutcome
+        outcome: StepOutcome,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
         // Mark-to-Market Update (Portfolio Valuation)
         let market_now = MarketView::new(&self.sim_data, &self.scheduler.cursor())?;
@@ -245,7 +261,7 @@ impl Environment {
         // Pop accumulated rewards (PnL change + Invalid Actions)
         let reward_delta = self.ledger.pop_step_reward(ep)?;
         let penalty = self.penalty(summary);
-        
+
         Ok((outcome, reward_delta + penalty))
     }
 
@@ -258,7 +274,7 @@ impl Environment {
     fn try_generate_rfq(&mut self) -> ChapatyResult<()> {
         // Access current trade from cursor via scheduler
         let cursor = self.scheduler.cursor();
-        
+
         if let Some(trade) = cursor.trade().current() {
             // Get Context (Symbol)
             let market_id = cursor.trade().market_id();
@@ -284,7 +300,6 @@ impl Environment {
     /// Ensures consistency between Transient RFQs and Persistent Client Profiles.
     fn register_client_if_new(&mut self, rfq: &Rfq<Open>) {
         if !self.counterpart_master.contains_key(&rfq.client_id) {
-            
             // Define default limits based on the Tier (Intrinsic property)
             let default_limit = match rfq.client_tier {
                 ClientTier::Tier1 => 50_000_000.0, // Hedge Funds
@@ -298,8 +313,9 @@ impl Environment {
                 max_credit_limit: default_limit,
             };
 
-            self.counterpart_master.insert(rfq.client_id.clone(), profile);
-            
+            self.counterpart_master
+                .insert(rfq.client_id.clone(), profile);
+
             // Sync with Ledger's view of exposure (init to 0.0)
             self.ledger.init_client_exposure(rfq.client_id.clone());
         }
@@ -312,14 +328,14 @@ impl Environment {
             // Note: We need to find the mid-price. Ledger likely knows the symbol.
             // For MVP: We assume we can look it up or passed it in summary.
             // Simplified: We assume fill_simulator needs inputs we have.
-            
+
             // ... Logic to get Mid Price ...
             let mid_price = 100.0; // Placeholder: Fetch from self.market_view or ledger
 
             // 2. Simulate Decision
             // Using a deterministic RNG based on RFQ ID to keep simulation stable
             // let outcome = self.fill_simulator.decide(..., my_quote, mid_price, ...);
-            
+
             // 3. Schedule Event (e.g., 100ms later)
             // let reply_time = self.scheduler.current_time() + Duration::milliseconds(100);
             // self.event_queue.push(Reverse(ScheduledEvent { ... }));
@@ -343,9 +359,20 @@ impl Environment {
         self.ep
     }
 
+    /// Setzt die Simulation komplett auf den Anfangszustand zurück.
+    /// Wird genutzt, wenn die Daten zu Ende sind oder manuell resetet wird.
     fn restart(&mut self) {
-        self.scheduler.reset(&self.sim_data); 
+        // 1. Scheduler auf Startposition der ersten Episode setzen
+        self.scheduler.reset(&self.sim_data);
+
+        // 2. Episode auf Initialwert zurücksetzen
         self.ep = self.initial_ep;
+
+        // 3. Ledger/State komplett leeren
+        self.ledger.clear();
+
+        // 4. CRM leeren (Clean Slate)
+        self.counterpart_master.clear();
     }
 
     fn check_step_status(&self) -> ChapatyResult<()> {
