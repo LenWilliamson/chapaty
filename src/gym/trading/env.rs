@@ -12,15 +12,15 @@ use crate::{
     data::{common::RiskMetricsConfig, episode::Episode, view::MarketView},
     error::{ChapatyError, ChapatyResult, EnvError},
     gym::{
-        Env, EnvStatus, Reward, StepOutcome,
-        trading::{
+        EnvStatus, InvalidActionPenalty, Reward, StepOutcome, trading::{
+            Env,
             action::Actions,
-            config::{ExecutionBias, InvalidActionPenalty},
+            config::ExecutionBias,
             context::{ActionCtx, ActionSummary, UpdateCtx},
             ledger::Ledger,
             observation::Observation,
             state::States,
-        },
+        }
     },
     report::{
         journal::Journal,

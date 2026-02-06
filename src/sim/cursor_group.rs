@@ -90,15 +90,8 @@ impl CursorGroup {
         &self.rsi
     }
 
-    /// Advances the cursor to the next chronological available event in the simulation data.
-    ///
-    /// # Idempotency
-    ///
-    /// This method is idempotent when called at the end of available data or at an episode boundary:
-    /// - When there are no more events, calling this method multiple times has no effect.
-    /// - When at the episode's end, further calls will not advance beyond the episode boundary.
-    pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) -> ChapatyResult<()> {
-        let next_ts = [
+    pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
+        [
             self.ohlcv.next_availability(sim_data.ohlcv()),
             self.trade.next_availability(sim_data.trade()),
             self.economic_cal.next_availability(sim_data.economic_cal()),
@@ -110,9 +103,18 @@ impl CursorGroup {
         ]
         .into_iter()
         .flatten()
-        .min();
+        .min()
+    }
 
-        let Some(mut next_ts) = next_ts else {
+    /// Advances the cursor to the next chronological available event in the simulation data.
+    ///
+    /// # Idempotency
+    ///
+    /// This method is idempotent when called at the end of available data or at an episode boundary:
+    /// - When there are no more events, calling this method multiple times has no effect.
+    /// - When at the episode's end, further calls will not advance beyond the episode boundary.
+    pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) -> ChapatyResult<()> {
+        let Some(mut next_ts) = self.peek(sim_data) else {
             return Ok(());
         };
 

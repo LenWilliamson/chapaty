@@ -501,12 +501,7 @@ impl From<&State> for StateKind {
 
 impl From<State> for StateKind {
     fn from(value: State) -> Self {
-        match value {
-            State::Pending(_) => Self::Pending,
-            State::Active(_) => Self::Active,
-            State::Closed(_) => Self::Closed,
-            State::Canceled(_) => Self::Canceled,
-        }
+        (&value).into()
     }
 }
 

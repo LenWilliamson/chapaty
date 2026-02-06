@@ -1,17 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::ChapatyResult,
-    gym::trading::{action::Actions, observation::Observation},
-    impl_add_sub_mul_div_primitive, impl_from_primitive,
-};
+use crate::{impl_add_sub_mul_div_primitive, impl_from_primitive};
 
+pub mod flow;
 pub mod trading;
-
-pub trait Env {
-    fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
-    fn step(&mut self, actions: Actions) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
-}
 
 /// Represents a reward value in whole dollars.
 ///
@@ -26,6 +18,28 @@ pub trait Env {
 pub struct Reward(pub i64);
 impl_from_primitive!(Reward, i64);
 impl_add_sub_mul_div_primitive!(Reward, i64);
+
+/// Configuration parameter for penalizing invalid actions.
+///
+/// This is a Newtype wrapper around [`Reward`] to distinguish it
+/// from standard step rewards and allow for specific default values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct InvalidActionPenalty(pub Reward);
+
+// Defines the sensible default for this specific parameter
+impl Default for InvalidActionPenalty {
+    fn default() -> Self {
+        Self(Reward(0))
+    }
+}
+
+// Allow seamless conversion to the underlying Reward when doing math
+impl From<InvalidActionPenalty> for Reward {
+    fn from(penalty: InvalidActionPenalty) -> Self {
+        penalty.0
+    }
+}
+
 
 /// Represents the lifecycle status of the trading environment.
 ///

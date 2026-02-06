@@ -2,20 +2,21 @@ use crate::{
     error::ChapatyResult,
     gym::{
         Reward, StepOutcome,
-        trading::{action::Actions, observation::Observation},
+        flow::{action::Actions, observation::Observation},
     },
 };
 
 pub mod action;
 pub mod action_space;
-pub mod config;
-pub(crate) mod context;
+pub mod context;
+pub mod domain;
 pub mod env;
-pub mod factory;
-pub(crate) mod ledger;
+pub mod fill;
+pub mod generator;
+pub mod ledger;
 pub mod observation;
+pub mod scheduler;
 pub mod state;
-pub mod types;
 
 pub trait Env {
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;

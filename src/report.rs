@@ -7,3 +7,6 @@ pub mod leaderboard;
 pub mod polars_ext;
 pub mod portfolio_performance;
 pub mod trade_statistics;
+
+pub mod flow;
+pub mod trading;

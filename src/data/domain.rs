@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::Arc};
 use strum::{Display, EnumIter, IntoStaticStr};
 use strum_macros::EnumString;
 
@@ -439,6 +439,7 @@ pub enum Period {
 pub enum MarketType {
     Spot,
     Future,
+    FixedIncome,
 }
 
 impl From<Symbol> for MarketType {
@@ -446,16 +447,14 @@ impl From<Symbol> for MarketType {
         match value {
             Symbol::Future(_) => Self::Future,
             Symbol::Spot(_) => Self::Spot,
+            Symbol::Bond(_) => Self::FixedIncome,
         }
     }
 }
 
 impl From<&Symbol> for MarketType {
     fn from(value: &Symbol) -> Self {
-        match value {
-            Symbol::Future(_) => Self::Future,
-            Symbol::Spot(_) => Self::Spot,
-        }
+        (*value).into()
     }
 }
 
@@ -465,13 +464,16 @@ impl From<&Symbol> for MarketType {
 pub enum Symbol {
     Spot(SpotPair),
     Future(FutureContract),
+    /// Fixed Income (identified by ISIN)
+    Bond(BondSpec), 
 }
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Symbol::Spot(s) => write!(f, "{}", s),
-            Symbol::Future(s) => write!(f, "{}", s),
+            Self::Spot(s) => write!(f, "{}", s),
+            Self::Future(s) => write!(f, "{}", s),
+            Self::Bond(s) => write!(f, "{}", s.0),
         }
     }
 }
@@ -498,6 +500,39 @@ impl Symbol {
     pub fn market_type(&self) -> MarketType {
         self.into()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub struct BondSpec {
+    pub isin: Isin, 
+    pub currency: Currency,
+    pub tick_size: f64, 
+    pub face_value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct Isin(pub Arc<String>);
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    EnumString,
+    Serialize,
+    Deserialize,
+    PartialOrd,
+    Ord,
+    IntoStaticStr,
+)]
+#[strum(serialize_all = "lowercase")]
+pub enum Currency {
+    Usd,
+    Eur,
+    Chf,
 }
 
 #[derive(
@@ -958,11 +993,34 @@ impl Instrument for FutureRoot {
     }
 }
 
+impl Instrument for BondSpec {
+    fn tick_size(&self) -> f64 {
+        self.tick_size
+    }
+
+    fn tick_value_usd(&self) -> f64 {
+        // Die goldene Bond-Math Regel:
+        // Da Bonds in % notieren, ist der Tick Value relative zum Nennwert.
+        // Wenn Tick = 0.01% und Nominal = 1.0 (Unit Quote), dann:
+        
+        // ACHTUNG: Hier ist die Falle.
+        // Quantity im RFQ ist der Nominalbetrag (z.B. 5.000.000).
+        // Der Preis ist in Prozent (z.B. 98.50).
+        // PnL = (DiffPrice / 100) * Quantity.
+        
+        // TickValue ist definiert als: Wertänderung pro 1 Unit Quantity bei 1 Tick Move.
+        // TickValue = TickSize / 100.0
+        
+        self.tick_size / 100.0
+    }
+}
+
 impl Instrument for Symbol {
     fn tick_size(&self) -> f64 {
         match self {
             Symbol::Spot(spot) => spot.tick_size(),
             Symbol::Future(future) => future.root.tick_size(),
+            Symbol::Bond(bond) => bond.tick_size(),
         }
     }
 
@@ -970,6 +1028,7 @@ impl Instrument for Symbol {
         match self {
             Symbol::Spot(spot) => spot.tick_value_usd(),
             Symbol::Future(future) => future.root.tick_value_usd(),
+            Symbol::Bond(bond) => bond.tick_value_usd(),
         }
     }
 }

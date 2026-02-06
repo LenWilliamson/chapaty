@@ -926,11 +926,7 @@ impl From<OhlcvId> for MarketId {
 
 impl From<&OhlcvId> for MarketId {
     fn from(value: &OhlcvId) -> Self {
-        Self {
-            broker: value.broker,
-            exchange: value.exchange,
-            symbol: value.symbol,
-        }
+        (*value).into()
     }
 }
 impl From<TradesId> for MarketId {
@@ -945,11 +941,7 @@ impl From<TradesId> for MarketId {
 
 impl From<&TradesId> for MarketId {
     fn from(value: &TradesId) -> Self {
-        Self {
-            broker: value.broker,
-            exchange: value.exchange,
-            symbol: value.symbol,
-        }
+        (*value).into()
     }
 }
 

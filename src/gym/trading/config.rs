@@ -17,32 +17,9 @@ use crate::{
         domain::{DataBroker, Exchange, Period, SpotPair, Symbol},
         episode::EpisodeLength,
         filter::FilterConfig,
-    },
-    error::{ChapatyResult, EnvError},
-    gym::Reward,
-    transport::source::{DataSource, SourceGroup},
+    }, error::{ChapatyResult, EnvError}, gym::InvalidActionPenalty, transport::source::{DataSource, SourceGroup}
 };
 
-/// Configuration parameter for penalizing invalid actions.
-///
-/// This is a Newtype wrapper around [`Reward`] to distinguish it
-/// from standard step rewards and allow for specific default values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct InvalidActionPenalty(pub Reward);
-
-// Defines the sensible default for this specific parameter
-impl Default for InvalidActionPenalty {
-    fn default() -> Self {
-        Self(Reward(0))
-    }
-}
-
-// Allow seamless conversion to the underlying Reward when doing math
-impl From<InvalidActionPenalty> for Reward {
-    fn from(penalty: InvalidActionPenalty) -> Self {
-        penalty.0
-    }
-}
 
 // ================================================================================================
 // Preset Environment Configurations
