@@ -90,6 +90,23 @@ impl CursorGroup {
         &self.rsi
     }
 
+    pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
+        [
+            self.ohlcv.next_point_in_time(sim_data.ohlcv()),
+            self.trade.next_point_in_time(sim_data.trade()),
+            self.economic_cal
+                .next_point_in_time(sim_data.economic_cal()),
+            self.vp.next_point_in_time(sim_data.volume_profile()),
+            self.tpo.next_point_in_time(sim_data.tpo()),
+            self.ema.next_point_in_time(sim_data.ema()),
+            self.sma.next_point_in_time(sim_data.sma()),
+            self.rsi.next_point_in_time(sim_data.rsi()),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+    }
+
     /// Advances the cursor to the next chronological available event in the simulation data.
     ///
     /// # Idempotency
@@ -98,21 +115,7 @@ impl CursorGroup {
     /// - When there are no more events, calling this method multiple times has no effect.
     /// - When at the episode's end, further calls will not advance beyond the episode boundary.
     pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) -> ChapatyResult<()> {
-        let next_ts = [
-            self.ohlcv.next_availability(sim_data.ohlcv()),
-            self.trade.next_availability(sim_data.trade()),
-            self.economic_cal.next_availability(sim_data.economic_cal()),
-            self.vp.next_availability(sim_data.volume_profile()),
-            self.tpo.next_availability(sim_data.tpo()),
-            self.ema.next_availability(sim_data.ema()),
-            self.sma.next_availability(sim_data.sma()),
-            self.rsi.next_availability(sim_data.rsi()),
-        ]
-        .into_iter()
-        .flatten()
-        .min();
-
-        let Some(mut next_ts) = next_ts else {
+        let Some(mut next_ts) = self.peek(sim_data) else {
             return Ok(());
         };
 
@@ -172,21 +175,21 @@ impl CursorGroup {
         // 2. Find data availability for that start time
         let start_availability_candidate = [
             self.ohlcv
-                .find_first_availability_at_or_after(sim_data.ohlcv(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.ohlcv(), next_start),
             self.trade
-                .find_first_availability_at_or_after(sim_data.trade(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.trade(), next_start),
             self.economic_cal
-                .find_first_availability_at_or_after(sim_data.economic_cal(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.economic_cal(), next_start),
             self.vp
-                .find_first_availability_at_or_after(sim_data.volume_profile(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.volume_profile(), next_start),
             self.tpo
-                .find_first_availability_at_or_after(sim_data.tpo(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.tpo(), next_start),
             self.ema
-                .find_first_availability_at_or_after(sim_data.ema(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.ema(), next_start),
             self.sma
-                .find_first_availability_at_or_after(sim_data.sma(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.sma(), next_start),
             self.rsi
-                .find_first_availability_at_or_after(sim_data.rsi(), next_start),
+                .find_first_point_in_time_at_or_after(sim_data.rsi(), next_start),
         ]
         .into_iter()
         .flatten()

@@ -109,6 +109,12 @@ pub enum EnvError {
     #[error("Invalid environment state: {0}")]
     InvalidState(String),
 
+    #[error("RfQ not found: {0}")]
+    RfqNotFound(String),
+
+    #[error("Invalid RfQ transition: {0}")]
+    InvalidTransition(String),
+
     #[error("Missing episode length: {0}")]
     MissingEpisodeLength(String),
 

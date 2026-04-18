@@ -2,7 +2,7 @@
 pub use crate::agent::Agent;
 pub use crate::data::config::{ConfigId, TechnicalAnalysis};
 pub use crate::data::view::StreamView;
-pub use crate::gym::Env;
+pub use crate::gym::trading::Env;
 pub use crate::math::indicator::StreamingIndicator;
 pub use crate::report::io::{
     AsFormattedLazyFrame, ReportName, ToCloudCsv, ToCloudParquet, ToCsv, ToJson, ToParquet,
@@ -39,6 +39,7 @@ pub use crate::error::{
 };
 
 // 6. Factories & Configs
-pub use crate::gym::trading::factory::{load, make};
 pub use crate::io::{SerdeFormat, StorageLocation};
 pub use crate::transport::source::{ApiKey, DataSource, Url};
+pub use crate::gym::trading;
+pub use crate::gym::flow;

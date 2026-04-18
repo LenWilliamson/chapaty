@@ -501,12 +501,7 @@ impl From<&State> for StateKind {
 
 impl From<State> for StateKind {
     fn from(value: State) -> Self {
-        match value {
-            State::Pending(_) => Self::Pending,
-            State::Active(_) => Self::Active,
-            State::Closed(_) => Self::Closed,
-            State::Canceled(_) => Self::Canceled,
-        }
+        (&value).into()
     }
 }
 
@@ -637,6 +632,15 @@ impl States {
 }
 
 impl States {
+    /// Consumes and resets the accumulated step reward.
+    pub(crate) fn pop_reward(&mut self) -> Reward {
+        let r = self.step_reward;
+        self.step_reward = 0.0;
+        Reward(r.round() as i64)
+    }
+}
+
+impl States {
     /// Iterates over ALL markets and applies updates to all active trades.
     pub(super) fn update_all_live_trades<F>(
         &mut self,
@@ -688,13 +692,6 @@ impl States {
         self.step_reward = 0.0;
         self.live.iter_mut().for_each(|(_, s)| s.clear());
         self.archive.iter_mut().for_each(|(_, s)| s.clear());
-    }
-
-    /// Consumes and resets the accumulated step reward.
-    pub(super) fn pop_reward(&mut self) -> Reward {
-        let r = self.step_reward;
-        self.step_reward = 0.0;
-        Reward(r.round() as i64)
     }
 
     pub(super) fn open(
@@ -1009,7 +1006,7 @@ impl States {
 struct StateGuard<'a> {
     market_id: MarketId,
     idx: usize,
-    state: Option<State>,
+    working_state: Option<State>,
 
     live_vec: &'a mut Vec<State>,
     archive_vec: &'a mut Vec<State>,
@@ -1028,15 +1025,16 @@ impl<'a> StateGuard<'a> {
         Ok(Self {
             market_id,
             idx,
-            state: Some(working_copy),
+            working_state: Some(working_copy),
             live_vec,
             archive_vec,
             live_index: &mut states.live_index,
         })
     }
 
+    /// Access the working copy (Immutable).
     fn get(&self) -> &State {
-        self.state
+        self.working_state
             .as_ref()
             .expect("StateGuard invariant violated: state missing")
     }
@@ -1067,7 +1065,7 @@ impl<'a> StateGuard<'a> {
             // 4. Log to Archive
             self.archive_vec.push(new_state);
         }
-        self.state = None;
+        self.working_state = None;
     }
 }
 

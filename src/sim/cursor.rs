@@ -83,14 +83,14 @@ pub trait StreamCursor {
     /// Scans future events (starting from current cursor position)
     /// to find the first event that becomes AVAILABLE at or after `ts`.
     /// Use this to determine the exact timestamp when the environment loop should resume.
-    fn find_first_availability_at_or_after(
+    fn find_first_point_in_time_at_or_after(
         &self,
         data: &Self::Storage,
         ts: DateTime<Utc>,
     ) -> Option<DateTime<Utc>>;
 
     fn is_done(&self, data: &Self::Storage) -> bool;
-    fn next_availability(&self, data: &Self::Storage) -> Option<DateTime<Utc>>;
+    fn next_point_in_time(&self, data: &Self::Storage) -> Option<DateTime<Utc>>;
 }
 #[derive(Debug, Clone)]
 pub struct Cursor<S: StreamId>(pub SortedVecMap<S, Range<usize>>);
@@ -186,7 +186,7 @@ where
             .min()
     }
 
-    fn find_first_availability_at_or_after(
+    fn find_first_point_in_time_at_or_after(
         &self,
         data: &EventMap<S>,
         ts: DateTime<Utc>,
@@ -205,7 +205,7 @@ where
             .min()
     }
 
-    fn next_availability(&self, data: &EventMap<S>) -> Option<DateTime<Utc>> {
+    fn next_point_in_time(&self, data: &EventMap<S>) -> Option<DateTime<Utc>> {
         self.0
             .iter()
             .zip(data.iter())
@@ -669,7 +669,7 @@ mod test {
     }
 
     #[test]
-    fn test_cursor_next_availability() {
+    fn test_cursor_next_point_in_time() {
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![
             ohlcv(ts("2025-12-01T00:00:00Z"), ts("2025-12-01T00:03:00Z")),
@@ -682,7 +682,7 @@ mod test {
         let cursor = OhlcvCursor::new(&data);
 
         assert_eq!(
-            cursor.next_availability(&data),
+            cursor.next_point_in_time(&data),
             Some(ts("2025-12-01T00:03:00Z")),
             "Should return the first unconsumed event's availability"
         );
@@ -720,7 +720,7 @@ mod test {
     }
 
     #[test]
-    fn test_cursor_find_first_availability_at_or_after() {
+    fn test_cursor_find_first_point_in_time_at_or_after() {
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![
             ohlcv(ts("2026-01-05T00:00:00Z"), ts("2026-01-05T00:03:00Z")),
@@ -734,7 +734,7 @@ mod test {
         let cursor = OhlcvCursor::new(&data);
 
         // Query 00:05:00 - should return 00:06:00
-        let result = cursor.find_first_availability_at_or_after(&data, ts("2026-01-05T00:05:00Z"));
+        let result = cursor.find_first_point_in_time_at_or_after(&data, ts("2026-01-05T00:05:00Z"));
         assert_eq!(
             result,
             Some(ts("2026-01-05T00:06:00Z")),

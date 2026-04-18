@@ -33,13 +33,16 @@ use crate::{
 /// and the historical record for past episodes. It manages state transitions
 /// and ensures account integrity.
 #[derive(Debug, Clone, Default)]
-pub(super) struct Ledger(Vec<States>);
+pub(crate) struct Ledger(Vec<States>);
 
 impl Ledger {
     pub fn clear(&mut self) {
         self.0.iter_mut().for_each(|states| states.clear());
     }
 
+    /*
+    TODO rename get and get_mut to states and states_mut?
+    */
     pub fn get(&self, episode: &Episode) -> ChapatyResult<&States> {
         self.0
             .get(episode.id().0)
@@ -124,9 +127,9 @@ impl Ledger {
 
     /// Performs Mark-to-Market updates on all active and pending positions.
     #[tracing::instrument(skip(self, ctx), fields(ep_id = %ep.id().0, ts = %ctx.market.current_timestamp()))]
-    pub fn apply_updates(&mut self, ep: &Episode, ctx: UpdateCtx) -> ChapatyResult<()> {
+    pub fn apply_updates(&mut self, ep: &Episode, ctx: &UpdateCtx) -> ChapatyResult<()> {
         self.get_mut(ep)?
-            .update_all_live_trades(&ctx, |m_id, result| {
+            .update_all_live_trades(ctx, |m_id, result| {
                 match result {
                     Ok(exit_event) => {
                         // Log Lifecycle Events
@@ -521,8 +524,8 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
             // === Market Context ===
             data_broker: market_id.broker,
             exchange: market_id.exchange,
-            symbol: market_id.symbol,
-            market_type: market_id.symbol.into(),
+            symbol: *symbol,
+            market_type: symbol.into(),
 
             // === Trade Data ===
             trade_type: *state.trade_type(),
@@ -630,7 +633,8 @@ fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
     DataError::DataFrame(e.to_string()).into()
 }
 
-fn ep_not_found_err(episode: &Episode) -> ChapatyError {
+// TODO this is shared between flow and trading, please move to different place
+pub fn ep_not_found_err(episode: &Episode) -> ChapatyError {
     ChapatyError::System(SystemError::IndexOutOfBounds(format!(
         "Episode {:?} not present in EpisodeLog",
         episode

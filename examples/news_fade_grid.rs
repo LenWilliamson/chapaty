@@ -84,7 +84,7 @@ async fn environment() -> Result<Environment> {
         path: "gs://chapaty-cache/examples/fade",
         options: CloudOptions::default(),
     };
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::trading::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
         .await
         .context("Failed to load trading environment")
 }

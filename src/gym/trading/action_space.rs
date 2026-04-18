@@ -131,6 +131,11 @@ impl<'env> ActionSpace<'env> {
                                 // Ensure at least 1 contract
                                 let contracts = (target_notional / contract_value).round().max(1.0);
                                 Quantity(contracts)
+                            },
+
+                            Symbol::Bond(b) => {
+                                // TODO implement
+                                unimplemented!()
                             }
                         };
 

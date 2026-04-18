@@ -12,10 +12,11 @@ use crate::{
     data::{common::RiskMetricsConfig, episode::Episode, view::MarketView},
     error::{ChapatyError, ChapatyResult, EnvError},
     gym::{
-        Env, EnvStatus, Reward, StepOutcome,
+        EnvStatus, InvalidActionPenalty, Reward, StepOutcome,
         trading::{
+            Env,
             action::Actions,
-            config::{ExecutionBias, InvalidActionPenalty},
+            config::ExecutionBias,
             context::{ActionCtx, ActionSummary, UpdateCtx},
             ledger::Ledger,
             observation::Observation,
@@ -97,7 +98,7 @@ impl Environment {
 
     /// Caches the heavy static simulation data (OHLCV, events) to storage.
     ///
-    /// This allows subsequent runs to use `chapaty::load` with the same configuration
+    /// This allows subsequent runs to use `chapaty::trading::load` with the same configuration
     /// to skip the expensive data fetching and building steps.
     ///
     /// # Naming Convention
@@ -277,7 +278,7 @@ impl Env for Environment {
         // 3. Transition Dynamics (Time passes: t -> t+1)
         let (outcome, total_reward) = self.transition(&episode, summary)?;
 
-        // 4. Update Status (Safe mutation!)
+        // 4. Update Status
         self.update_env_status(outcome)?;
 
         // 5. Observe S(t+1)
@@ -314,7 +315,7 @@ impl Environment {
             market: &market_after,
             bias: self.bias,
         };
-        self.ledger.apply_updates(ep, update_ctx)?;
+        self.ledger.apply_updates(ep, &update_ctx)?;
 
         let reward_delta = self.ledger.pop_step_reward(ep)?;
         let penalty = self.penalty(summary);

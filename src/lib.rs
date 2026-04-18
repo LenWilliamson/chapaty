@@ -21,6 +21,7 @@ pub use crate::io::{SerdeFormat, StorageLocation};
 pub use crate::transport::source::{ApiKey, DataSource, SourceGroup, Url};
 
 // === Convenience ===
-pub mod prelude;
+// pub mod prelude;
 pub mod sorted_vec_map;
-pub use crate::gym::trading::factory::{load, make};
+pub use crate::gym::trading;
+pub use crate::gym::flow;

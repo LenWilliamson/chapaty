@@ -185,7 +185,7 @@ impl<'env> MarketView<'env> {
     pub fn ohlcv(&self) -> &OhlcvView<'env> {
         &self.ohlcv
     }
-    pub fn trade(&self) -> &TradeView<'env> {
+    pub fn trades(&self) -> &TradeView<'env> {
         &self.trade
     }
     pub fn economic_news(&self) -> &EconomicCalendarView<'env> {

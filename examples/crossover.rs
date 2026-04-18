@@ -53,7 +53,7 @@ async fn environment(ohlcv_cfg: OhlcvSpotConfig) -> Result<Environment> {
         options: CloudOptions::default(),
     };
 
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::trading::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
         .await
         .context("Failed to load trading environment")
 }
