@@ -253,15 +253,19 @@ mod tests {
             "Config with policy should not be unrestricted"
         );
 
-        let mut config = FilterConfig::default();
-        config.allowed_years = Some(BTreeSet::from([2023]));
+        let config = FilterConfig {
+            allowed_years: Some(BTreeSet::from([2023])),
+            ..Default::default()
+        };
         assert!(
             !config.is_unrestricted(),
             "Config with years should not be unrestricted"
         );
 
-        let mut config = FilterConfig::default();
-        config.allowed_trading_hours = Some(BTreeMap::from([(Weekday::Monday, vec![])]));
+        let config = FilterConfig {
+            allowed_trading_hours: Some(BTreeMap::from([(Weekday::Monday, vec![])])),
+            ..Default::default()
+        };
         assert!(
             !config.is_unrestricted(),
             "Config with hours should not be unrestricted"

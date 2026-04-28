@@ -1,12 +1,12 @@
 [package]
 name = "chapaty"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 authors = ["Len Williamson <lencewa13@gmail.com>"]
 description = "High-performance backtesting and financial simulation framework for trading strategies and reinforcement learning agents. Async-first, Gym-like API in Rust."
 license = "Apache-2.0"
 readme = "README.md"
-homepage = "https://www.chapaty.com"
+# homepage = "https://www.chapaty.com"
 repository = "https://github.com/LenWilliamson/chapaty"
 keywords = [
     "rl",
@@ -23,6 +23,7 @@ categories = [
 ]
 exclude = [
     "tests/*",
+    ".cargo",
     ".github",
     ".vscode",
     ".gitignore",
@@ -37,12 +38,13 @@ chrono = "0.4"
 chrono-tz = "0.10"
 crossbeam = "0.8"
 futures = "0.3"
+hf-hub = "0.5.0"
 humantime = "2.3.0"
 indicatif = "0.18"
 itertools = "0.14"
 ndarray = "0.17"
 object_store = "0.12.5"
-ordered-float = "5.1"
+ordered-float = { version = "5.3", features = ["serde"] }
 polars = { version = "0.52", features = [
     "abs",
     "aws",
@@ -50,12 +52,14 @@ polars = { version = "0.52", features = [
     "cum_agg",
     "diff",
     "dtype-i128",
+    "dynamic_group_by",
     "ewma",
     "gcp",
     "is_in",
     "json",
     "lazy",
     "parquet",
+    "polars-io",
     "rolling_window",
     "round_series",
     "strings",
@@ -65,18 +69,18 @@ polars = { version = "0.52", features = [
 postcard = { version = "1.1", features = ["use-std"] }
 prost = "0.14"
 prost-types = "0.14"
-rand = "0.9"
-rayon = "1.11"
+rand = "0.10"
+rayon = "1.12"
 regex = "1.12"
-rust_decimal = "1.40"
+rust_decimal = "1.41"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = { version = "3.16", features = ["chrono"] }
+serde_with = { version = "3.18", features = ["chrono"] }
 smallvec = { version = "1.15", features = ["serde"] }
-strum = { version = "0.27", features = ["derive"] }
-strum_macros = "0.27"
+strum = { version = "0.28", features = ["derive"] }
+strum_macros = "0.28"
 thiserror = "2.0"
-tokio = { version = "1.49", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 tokio-util = "0.7"
 tonic = "0.14"
 tonic-prost = "0.14"

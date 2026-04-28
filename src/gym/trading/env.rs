@@ -7,22 +7,24 @@ use strum::{EnumCount, IntoEnumIterator};
 use tracing::warn;
 
 use crate::{
-    SerdeFormat, StorageLocation,
-    agent::Agent,
     data::{common::RiskMetricsConfig, episode::Episode, view::MarketView},
     error::{ChapatyError, ChapatyResult, EnvError},
     gym::{
-        Env, EnvStatus, Reward, StepOutcome,
+        EnvStatus, InvalidActionPenalty, Reward, StepOutcome,
         trading::{
+            Env,
             action::Actions,
-            config::{ExecutionBias, InvalidActionPenalty},
+            agent::Agent,
+            config::ExecutionBias,
             context::{ActionCtx, ActionSummary, UpdateCtx},
             ledger::Ledger,
             observation::Observation,
             state::States,
         },
     },
+    io::IoConfig,
     report::{
+        equity_curve::EquityCurveReport,
         journal::Journal,
         leaderboard::{AgentLeaderboard, Leaderboard, LeaderboardEntry},
         portfolio_performance::{PortfolioPerformance, PortfolioPerformanceCol},
@@ -99,33 +101,8 @@ impl Environment {
     ///
     /// This allows subsequent runs to use `chapaty::load` with the same configuration
     /// to skip the expensive data fetching and building steps.
-    ///
-    /// # Naming Convention
-    /// The file will be named automatically based on the hash of the environment configuration:
-    /// `<hash>.<format>` (e.g., `a1b2c3d4.postcard`).
-    ///
-    /// # Arguments
-    ///
-    /// * `location` - The storage location where the data will be written
-    /// * `format` - The serialization format to use (Postcard or Pickle)
-    /// * `buffer_size` - Size of the internal write buffer, in bytes.
-    ///
-    ///   This controls how much data is buffered in memory before being flushed
-    ///   to the underlying storage. Larger values generally improve throughput
-    ///   for large writes at the cost of higher memory usage, while smaller values
-    ///   reduce memory usage but may result in more frequent I/O operations.
-    ///
-    ///   If unsure, a good default is `128 * 1024` (128 KiB).
-    pub async fn cache(
-        &self,
-        location: &StorageLocation<'_>,
-        format: SerdeFormat,
-        buffer_size: usize,
-    ) -> ChapatyResult<()> {
-        self.sim_data
-            .clone()
-            .write(location, format, buffer_size)
-            .await
+    pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
+        self.sim_data.clone().write(cfg).await
     }
 
     pub fn evaluate_agent<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<Journal> {
@@ -151,7 +128,7 @@ impl Environment {
     ///
     /// # Runtime Estimation
     ///
-    /// Before launching a massive grid search (e.g., 1M+ agents), it is highly recommended
+    /// Before launching a massive grid search (e.g., 1M+ agents), it is recommended
     /// to benchmark a single representative agent first.
     ///
     /// You can use [`Environment::evaluate_agent`] to run one agent sequentially:
@@ -161,7 +138,7 @@ impl Environment {
     /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU Cores`.
     ///
     /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks
-    /// instead of 2 hours!
+    /// instead of 2 hours.
     pub fn evaluate_agents<T>(
         &mut self,
         agents: impl ParallelIterator<Item = (usize, T)>,
@@ -207,8 +184,13 @@ impl Environment {
     }
 
     pub fn journal(&self) -> ChapatyResult<Journal> {
-        let df = self.ledger.as_df()?;
+        let df = self.ledger.journal_df()?;
         Journal::new(df, self.risk_metrics_cfg)
+    }
+
+    pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
+        let df = self.ledger.equity_curve_df()?;
+        EquityCurveReport::new(df)
     }
 }
 
@@ -277,7 +259,7 @@ impl Env for Environment {
         // 3. Transition Dynamics (Time passes: t -> t+1)
         let (outcome, total_reward) = self.transition(&episode, summary)?;
 
-        // 4. Update Status (Safe mutation!)
+        // 4. Update Status
         self.update_env_status(outcome)?;
 
         // 5. Observe S(t+1)
@@ -373,7 +355,7 @@ impl Environment {
     }
 
     fn states(&self, ep: &Episode) -> ChapatyResult<&States> {
-        self.ledger.get(ep)
+        self.ledger.states(ep)
     }
 
     fn penalty(&self, report: ActionSummary) -> Reward {

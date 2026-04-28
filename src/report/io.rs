@@ -19,6 +19,102 @@ use crate::{
 };
 
 // ================================================================================================
+// Core Types & Configurations
+// ================================================================================================
+
+/// Defines the target export format and holds specific Polars writing options.
+#[derive(Debug, Clone)]
+pub enum ExportFormat {
+    Csv(CsvWriterOptions),
+    Parquet(ParquetWriteOptions),
+}
+
+impl Default for ExportFormat {
+    fn default() -> Self {
+        Self::Csv(CsvWriterOptions::default())
+    }
+}
+
+/// Configuration for exporting reports to the local file system.
+#[derive(Debug, Clone)]
+pub struct FileConfig<'a> {
+    pub dir: &'a Path,
+    pub file_stem: Option<String>,
+    pub format: ExportFormat,
+    pub sink_opts: SinkOptions,
+}
+
+impl Default for FileConfig<'_> {
+    fn default() -> Self {
+        Self {
+            dir: Path::new("./chapaty/reports"),
+            file_stem: None,
+            format: ExportFormat::default(),
+            sink_opts: SinkOptions::default(),
+        }
+    }
+}
+
+impl<'a> FileConfig<'a> {
+    pub fn with_dir(self, dir: &'a Path) -> Self {
+        Self { dir, ..self }
+    }
+
+    pub fn with_file_stem(self, file_stem: impl Into<String>) -> Self {
+        Self {
+            file_stem: Some(file_stem.into()),
+            ..self
+        }
+    }
+
+    pub fn with_format(self, format: ExportFormat) -> Self {
+        Self { format, ..self }
+    }
+
+    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+        Self { sink_opts, ..self }
+    }
+}
+
+/// Configuration for exporting reports to cloud storage (GCS, S3, Azure).
+///
+/// # Important: Full URIs Required
+/// To prevent URL malformation, `CloudConfig` requires the **complete URI**, including
+/// the file name and extension (e.g., `gs://bucket/path/to/my_report.csv`).
+/// Do not pass a directory URI.
+#[derive(Debug, Clone)]
+pub struct CloudConfig<'a> {
+    pub uri: &'a str,
+    pub format: ExportFormat,
+    pub cloud_opts: CloudOptions,
+    pub sink_opts: SinkOptions,
+}
+
+impl<'a> CloudConfig<'a> {
+    /// Creates a new `CloudConfig` targeting a specific, complete Cloud URI.
+    pub fn new(uri: &'a str) -> Self {
+        Self {
+            uri,
+            format: ExportFormat::default(),
+            cloud_opts: CloudOptions::default(),
+            sink_opts: SinkOptions::default(),
+        }
+    }
+
+    pub fn with_format(self, format: ExportFormat) -> Self {
+        Self { format, ..self }
+    }
+
+    pub fn with_cloud_opts(self, cloud_opts: CloudOptions) -> Self {
+        Self { cloud_opts, ..self }
+    }
+
+    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+        Self { sink_opts, ..self }
+    }
+}
+
+// ================================================================================================
 // Traits
 // ================================================================================================
 
@@ -33,10 +129,6 @@ pub trait Report {
 
 pub trait ReportName {
     fn base_name(&self) -> String;
-
-    fn filename(&self, ext: FileExtension) -> String {
-        format!("{}.{}", self.base_name(), ext)
-    }
 }
 
 pub trait ToSchema {
@@ -54,69 +146,18 @@ pub trait ToJson {
     fn to_json(&self) -> ChapatyResult<serde_json::Value>;
 }
 
-pub trait ToCsv {
-    /// Writes the report to a CSV file in the target directory.
+pub trait ExportSync {
+    /// Writes the report to a local file system (blocking).
     ///
-    /// # Formatting
-    /// - Applies human-readable formatting to Duration columns (e.g. "2d 1h").
-    /// - Uses the canonical schema defined in `ToSchema`.
-    ///
-    /// # Arguments
-    /// - `dir`: Target directory. Created if it doesn't exist.
-    /// - `opts`: CSV writing options (delimiter, headers, etc.).
-    ///
-    /// # Side Effects
-    /// - Creates the directory if missing.
-    /// - Overwrites the file if it exists.
-    fn to_csv(
-        &self,
-        dir: impl AsRef<Path>,
-        opts: Option<&CsvWriterOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()>;
-}
-
-pub trait ToParquet {
-    fn to_parquet(
-        &self,
-        dir: impl AsRef<Path>,
-        opts: Option<&ParquetWriteOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()>;
+    /// - Creates directories if they do not exist.
+    /// - Automatically generates a file name if one is not provided in `FileConfig`.
+    fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()>;
 }
 
 #[async_trait]
-pub trait ToCloudCsv {
-    /// Streams the report to the specified Cloud URI as a CSV.
-    ///
-    /// # Performance
-    /// - Uses Polars' **Streaming Engine**: Data is formatted and uploaded in chunks.
-    /// - Memory Efficient: Does not materialize the full dataset in RAM.
-    /// - Non-Blocking: Offloads the entire execution graph to a blocking thread.
-    ///
-    /// # Arguments
-    /// * `uri` - The full bucket URI (e.g., `gs://bucket/path.csv`).
-    /// * `opts` - CSV formatting options.
-    /// * `cloud_opts` - Credentials/Region config.
-    /// * `sink_opts` - Sink config.
-    async fn stream_csv(
-        &self,
-        uri: &str,
-        opts: Option<&CsvWriterOptions>,
-        cloud_opts: Option<&CloudOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()>;
-}
-
-#[async_trait]
-pub trait ToCloudParquet {
-    async fn stream_parquet(
-        &self,
-        uri: &str,
-        opts: Option<&ParquetWriteOptions>,
-        cloud_opts: Option<&CloudOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()>;
+pub trait Export {
+    /// Streams the report to a cloud bucket using Polars' streaming engine.
+    async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()>;
 }
 
 // ================================================================================================
@@ -149,24 +190,23 @@ where
     }
 }
 
-impl<T> ToCsv for T
+impl<T> ExportSync for T
 where
-    T: Report + ReportName + ToSchema,
+    T: Report + ReportName + ToSchema + Sync + Send,
 {
-    fn to_csv(
-        &self,
-        dir: impl AsRef<Path>,
-        opts: Option<&CsvWriterOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()> {
-        let dir = dir.as_ref();
-        let file_path = dir.join(self.filename(FileExtension::Csv));
+    fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()> {
+        let ext: FileExtension = (&config.format).into();
+        let filename = match &config.file_stem {
+            Some(stem) => format!("{stem}.{ext}"),
+            None => format!("{}.{ext}", self.base_name()),
+        };
+        let file_path = config.dir.join(&filename);
 
-        if !dir.exists() {
-            fs::create_dir_all(dir).map_err(|e| {
+        if !config.dir.exists() {
+            fs::create_dir_all(config.dir).map_err(|e| {
                 IoError::FileSystem(format!(
                     "Failed to create directory {}: {}",
-                    dir.display(),
+                    config.dir.display(),
                     e
                 ))
             })?;
@@ -178,147 +218,109 @@ where
                 file_path.display()
             ))
         })?;
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let options = opts.cloned().unwrap_or_default();
-        let sink_opts = sink_opts.cloned().unwrap_or_default();
 
+        let target = SinkTarget::Path(PlPath::new(uri));
+        let sink_opts = &config.sink_opts;
         let lf = self.as_formatted_lf();
 
-        let sink_plan = lf
-            .sink_csv(target, options, None, sink_opts)
-            .map_err(|e| DataError::DataFrame(format!("Failed to build CSV sink plan: {e}")))?;
-
-        let _ = sink_plan.collect().map_err(|e| {
-            DataError::DataFrame(format!(
-                "Failed to write CSV to '{}': {e}",
-                file_path.display()
-            ))
-        })?;
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl<T> ToCloudCsv for T
-where
-    T: Report + ToSchema + Sync + Send,
-{
-    async fn stream_csv(
-        &self,
-        uri: &str,
-        opts: Option<&CsvWriterOptions>,
-        cloud_opts: Option<&CloudOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()> {
-        let lf = self.as_formatted_lf();
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let options = opts.cloned().unwrap_or_default();
-        let cloud_options = cloud_opts.cloned();
-        let sink_opts = sink_opts.cloned().unwrap_or_default();
-
-        tokio::task::spawn_blocking(move || {
-            let sink_plan = lf
-                .sink_csv(target, options, cloud_options, sink_opts)
-                .map_err(|e| DataError::DataFrame(format!("Failed to build sink plan: {e}")))?;
-
-            let _ = sink_plan
-                .collect()
-                .map_err(|e| DataError::DataFrame(format!("Streaming CSV upload failed: {e}")))?;
-
-            Ok(())
-        })
-        .await
-        .map_err(|e| SystemError::Generic(format!("Task Join Error: {e}")))?
-    }
-}
-
-impl<T> ToParquet for T
-where
-    T: Report + ReportName + ToSchema,
-{
-    fn to_parquet(
-        &self,
-        dir: impl AsRef<Path>,
-        opts: Option<&ParquetWriteOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()> {
-        let dir = dir.as_ref();
-        let file_path = dir.join(self.filename(FileExtension::Parquet));
-
-        if !dir.exists() {
-            fs::create_dir_all(dir).map_err(|e| {
-                IoError::FileSystem(format!(
-                    "Failed to create directory {}: {}",
-                    dir.display(),
-                    e
-                ))
-            })?;
-        }
-
-        let uri = file_path.to_str().ok_or_else(|| {
-            IoError::FileSystem(format!(
-                "Path contains invalid UTF-8 characters: {}",
-                file_path.display()
-            ))
-        })?;
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let options = opts.cloned().unwrap_or_default();
-        let sink_opts = sink_opts.cloned().unwrap_or_default();
-
-        let lf = self.as_df().clone().lazy();
-
-        let sink_plan = lf
-            .sink_parquet(target, options, None, sink_opts)
-            .map_err(|e| DataError::DataFrame(format!("Failed to build Parquet sink plan: {e}")))?;
-
-        let _ = sink_plan.collect().map_err(|e| {
-            DataError::DataFrame(format!(
-                "Failed to write Parquet to '{}': {e}",
-                file_path.display()
-            ))
-        })?;
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl<T> ToCloudParquet for T
-where
-    T: Report + ToSchema + Sync + Send,
-{
-    async fn stream_parquet(
-        &self,
-        uri: &str,
-        opts: Option<&ParquetWriteOptions>,
-        cloud_opts: Option<&CloudOptions>,
-        sink_opts: Option<&SinkOptions>,
-    ) -> ChapatyResult<()> {
-        let df = self.as_df().clone();
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let options = opts.cloned().unwrap_or_default();
-        let cloud_options = cloud_opts.cloned();
-        let sink_opts = sink_opts.cloned().unwrap_or_default();
-
-        tokio::task::spawn_blocking(move || {
-            let lf = df.lazy();
-
-            let sink_plan = lf
-                .with_new_streaming(true)
-                .sink_parquet(target, options, cloud_options, sink_opts)
+        let sink_plan = match &config.format {
+            ExportFormat::Csv(opts) => lf
+                .sink_csv(target, opts.clone(), None, sink_opts.clone())
+                .map_err(|e| DataError::DataFrame(format!("Failed to build CSV sink plan: {e}"))),
+            ExportFormat::Parquet(opts) => lf
+                .sink_parquet(target, opts.clone(), None, sink_opts.clone())
                 .map_err(|e| {
                     DataError::DataFrame(format!("Failed to build Parquet sink plan: {e}"))
-                })?;
+                }),
+        }?;
+
+        let _ = sink_plan.collect().map_err(|e| {
+            DataError::DataFrame(format!(
+                "Failed to write file to '{}': {e}",
+                file_path.display()
+            ))
+        })?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<T> Export for T
+where
+    T: Report + ReportName + ToSchema + Sync + Send,
+{
+    async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()> {
+        let lf = self.as_formatted_lf();
+        let target = SinkTarget::Path(PlPath::new(config.uri));
+        let cloud_opts = config.cloud_opts;
+        let sink_opts = config.sink_opts;
+        let format = config.format;
+
+        // Clone URI to move into the blocking task safely
+        let uri_string = config.uri.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let sink_plan = match format {
+                ExportFormat::Csv(opts) => lf
+                    .sink_csv(target, opts, Some(cloud_opts), sink_opts)
+                    .map_err(|e| {
+                        DataError::DataFrame(format!("Failed to build Cloud CSV plan: {e}"))
+                    }),
+                ExportFormat::Parquet(opts) => lf
+                    .with_new_streaming(true)
+                    .sink_parquet(target, opts, Some(cloud_opts), sink_opts)
+                    .map_err(|e| {
+                        DataError::DataFrame(format!("Failed to build Cloud Parquet plan: {e}"))
+                    }),
+            }?;
 
             let _ = sink_plan.collect().map_err(|e| {
-                DataError::DataFrame(format!("Streaming Parquet upload failed: {e}"))
+                DataError::DataFrame(format!("Streaming upload failed to '{}': {e}", uri_string))
             })?;
 
             Ok(())
         })
         .await
         .map_err(|e| SystemError::Generic(format!("Task Join Error: {e}")))?
+    }
+}
+
+// ================================================================================================
+// Helpers
+// ================================================================================================
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    EnumString,
+    Display,
+    EnumIter,
+    IntoStaticStr,
+)]
+#[strum(serialize_all = "lowercase")]
+enum FileExtension {
+    Csv,
+    Parquet,
+}
+
+impl From<&ExportFormat> for FileExtension {
+    fn from(format: &ExportFormat) -> Self {
+        match format {
+            ExportFormat::Csv(_) => Self::Csv,
+            ExportFormat::Parquet(_) => Self::Parquet,
+        }
+    }
+}
+
+impl From<ExportFormat> for FileExtension {
+    fn from(format: ExportFormat) -> Self {
+        (&format).into()
     }
 }
 
@@ -355,25 +357,6 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    EnumString,
-    Display,
-    EnumIter,
-    IntoStaticStr,
-)]
-#[strum(serialize_all = "lowercase")]
-pub enum FileExtension {
-    Csv,
-    Parquet,
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -400,7 +383,6 @@ mod tests {
         assert_eq!(name_plain, "stats");
 
         // 2. Case: Single Group (Symbol)
-        // We simulate the "__" prefix that your GroupedJournal logic adds
         let df_symbol = df![
             "__symbol" => &["BTC"],
             "pnl" => &[100.0]
@@ -411,7 +393,6 @@ mod tests {
         assert_eq!(name_symbol, "symbol_stats");
 
         // 3. Case: Multi Group (Symbol + Year)
-        // Order matters in the output name, driven by column order in DF
         let df_multi = df![
             "__symbol" => &["BTC"],
             "__entry_year" => &[2023],

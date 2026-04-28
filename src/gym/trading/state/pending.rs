@@ -15,7 +15,7 @@ use crate::{
 
 impl Trade<Pending> {
     /// Factory: Creates a Pending trade, enforcing grid snapping on prices.
-    pub fn new(
+    pub(super) fn new(
         cmd: OpenCmd,
         limit_price: Price,
         ts: DateTime<Utc>,
@@ -51,7 +51,7 @@ impl Trade<Pending> {
         })
     }
 
-    pub fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
+    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".into(),
@@ -95,31 +95,27 @@ impl Trade<Pending> {
         Ok(())
     }
 
-    pub fn cancel(self, cmd: &CancelCmd, ts: DateTime<Utc>) -> ChapatyResult<Trade<Canceled>> {
+    pub(super) fn cancel(
+        self,
+        cmd: &CancelCmd,
+        ts: DateTime<Utc>,
+    ) -> ChapatyResult<Trade<Canceled>> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".into(),
             )));
         }
 
-        Ok(Trade {
-            uid: self.uid,
-            agent_id: self.agent_id,
-            trade_type: self.trade_type,
-            quantity: self.quantity,
-            stop_loss: self.stop_loss,
-            take_profit: self.take_profit,
-            state: Canceled {
-                created_at: self.state.created_at,
-                canceled_at: ts,
-                limit_price: self.state.limit_price,
-            },
-        })
+        Ok(self.map(|s| Canceled {
+            created_at: s.created_at,
+            canceled_at: ts,
+            limit_price: s.limit_price,
+        }))
     }
 }
 
 /// Updates a Pending trade. Checks for Limit activation.
-pub fn update(
+pub(super) fn update(
     trade: Trade<Pending>,
     m_id: &MarketId,
     ctx: &UpdateCtx,
@@ -135,21 +131,13 @@ pub fn update(
     // We assume it entered exactly at the limit price.
     let ts = ctx.market.current_timestamp();
 
-    let mut transient_active = Trade {
-        uid: trade.uid,
-        agent_id: trade.agent_id,
-        trade_type: trade.trade_type,
-        quantity: trade.quantity,
-        stop_loss: trade.stop_loss,
-        take_profit: trade.take_profit,
-        state: Active {
-            entry_ts: ts,
-            entry_price: limit_price,
-            current_ts: ts,
-            current_price: limit_price,
-            unrealized_pnl: 0.0,
-        },
-    };
+    let mut transient_active = trade.map(|s| Active {
+        entry_ts: ts,
+        entry_price: s.limit_price,
+        current_ts: ts,
+        current_price: s.limit_price,
+        unrealized_pnl: 0.0,
+    });
 
     // 3. Apply "God Candle" Bias Logic
     // Store originals to restore later
@@ -194,7 +182,6 @@ mod test {
 
     use super::*;
     use crate::{
-        agent::AgentIdentifier,
         data::{
             domain::{
                 ContractMonth, ContractYear, DataBroker, Exchange, FutureContract, FutureRoot,
@@ -203,13 +190,16 @@ mod test {
             event::{MarketId, Ohlcv, OhlcvId},
             view::MarketView,
         },
-        gym::trading::{
-            config::{EnvConfig, ExecutionBias},
-            types::{TerminationReason, TradeType},
+        gym::{
+            AgentIdentifier,
+            trading::{
+                config::{EnvConfig, ExecutionBias},
+                types::{TerminationReason, TradeType},
+            },
         },
         sim::{
             cursor_group::CursorGroup,
-            data::{SimulationData, SimulationDataBuilder},
+            data::{SimulationData, SimulationDataBuilder, Streams},
         },
         sorted_vec_map::SortedVecMap,
     };
@@ -264,8 +254,8 @@ mod test {
             let mut map = SortedVecMap::new();
             map.insert(id, vec![candle].into_boxed_slice());
 
-            let sim_data = SimulationDataBuilder::new()
-                .with_ohlcv(map)
+            let streams = Streams::default().with_ohlcv(map);
+            let sim_data = SimulationDataBuilder::new(streams)
                 .build(EnvConfig::default())
                 .expect("Failed to build sim data");
 

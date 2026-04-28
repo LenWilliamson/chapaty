@@ -9,7 +9,7 @@ use crate::{
         episode::{EpisodeBuilder, EpisodeLength},
         event::{
             EconomicCalendarId, EconomicEvent, Ema, EmaId, Ohlcv, OhlcvId, Rsi, RsiId, Sma, SmaId,
-            StreamId, Tpo, TpoBin, TpoId, Trade, TradesId, VolumeProfile, VolumeProfileBin,
+            StreamId, Tpo, TpoBin, TpoId, TradeEvent, TradesId, VolumeProfile, VolumeProfileBin,
             VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
@@ -19,18 +19,21 @@ use crate::{
     gym::trading::{
         config::{EnvConfig, ExecutionBias},
         env::Environment,
-        ledger::Ledger,
+        ledger::{Ledger, LedgerCapacityHint},
         state::States,
     },
-    io::{SerdeFormat, StorageLocation},
+    io::IoConfig,
     math::market_profile::compute_profile_stats,
     sim::{
         cursor_group::CursorGroup,
-        data::{SimulationData, SimulationDataBuilder},
+        data::{SimulationData, SimulationDataBuilder, Streams},
     },
     sorted_vec_map::SortedVecMap,
     transport::{
-        fetcher::Fetchable, loader::load_batch, schema::CanonicalCol, source::SourceGroup,
+        fetcher::Fetchable,
+        loader::load_batch,
+        schema::CanonicalCol,
+        source::{Connect, SourceGroup},
     },
 };
 
@@ -75,23 +78,14 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
 }
 
 /// Loads a pre-built environment from storage, or builds a new one on cache miss.
-///
-/// # Arguments
-///
-/// * `env_cfg` - The environment configuration (used to derive the filename hash)
-/// * `location` - The storage location to read from
-/// * `format` - The serialization format to use (must match the format used to write)
-/// * `buffer_size` - Size of the internal read buffer, in bytes. A good default is: `128 * 1024` (128 KiB).
-#[tracing::instrument(skip(cfg), fields(hash = tracing::field::Empty))]
+#[tracing::instrument(skip(env_cfg, io_cfg))]
 pub async fn load<'a>(
-    cfg: impl Into<EnvConfig>,
-    location: &StorageLocation<'a>,
-    format: SerdeFormat,
-    buffer_size: usize,
+    env_cfg: impl Into<EnvConfig>,
+    io_cfg: &IoConfig<'a>,
 ) -> ChapatyResult<Environment> {
-    let env_cfg: EnvConfig = cfg.into();
+    let env_cfg: EnvConfig = env_cfg.into();
 
-    let sim_data = match SimulationData::read(&env_cfg, location, format, buffer_size).await {
+    let sim_data = match SimulationData::read(&env_cfg, io_cfg).await {
         Ok(data) => {
             tracing::info!("Cache hit: Initializing environment from loaded data.");
             Arc::new(data)
@@ -113,8 +107,11 @@ pub async fn load<'a>(
         .with_length(ep_len)
         .build()?;
 
-    let estimated_capacity = env_cfg.max_episode_capacity();
-    let ledger = Ledger::with_capacity(estimated_capacity, initial_states);
+    let ledger = Ledger::with_capacity(LedgerCapacityHint {
+        expected_episodes: env_cfg.max_episode_capacity(),
+        prototype_states: initial_states,
+        equity_curve_length: sim_data.max_capacity_hint(),
+    });
 
     let cursor = CursorGroup::new(&sim_data)?;
 
@@ -339,7 +336,11 @@ impl BuildCtx {
 
         // Create Master Calendar: Union of all events, projected to minimum schema (Timestamp, Category)
         let master_calendar_lf = {
-            let map = self.economic_calendar_map.as_ref().unwrap();
+            let map = self.economic_calendar_map.as_ref().ok_or_else(|| {
+                ChapatyError::from(EnvError::InvalidState(
+                    "economic_calendar_map is None after non-empty check".to_string(),
+                ))
+            })?;
 
             let lfs = map
                 .values()
@@ -470,7 +471,7 @@ impl BuildCtx {
 
         let mut ohlcv_res: ChapatyResult<SortedVecMap<OhlcvId, Box<[Ohlcv]>>> =
             Ok(SortedVecMap::new());
-        let mut trade_res: ChapatyResult<SortedVecMap<TradesId, Box<[Trade]>>> =
+        let mut trade_res: ChapatyResult<SortedVecMap<TradesId, Box<[TradeEvent]>>> =
             Ok(SortedVecMap::new());
         let mut tpo_res: ChapatyResult<SortedVecMap<TpoId, Box<[Tpo]>>> = Ok(SortedVecMap::new());
         let mut vp_res: ChapatyResult<SortedVecMap<VolumeProfileId, Box<[VolumeProfile]>>> =
@@ -582,24 +583,26 @@ impl BuildCtx {
         let ohlcv = ohlcv_res?;
         let trade = trade_res?;
         let trade_hint = self.env_cfg.trade_hint();
-        let sim_data = Arc::new(
-            SimulationDataBuilder::new()
-                .with_ohlcv(ohlcv)
-                .with_trade(trade)
-                .with_economic_news(cal_res?)
-                .with_volume_profile(vp_res?)
-                .with_tpo(tpo_res?)
-                .with_ema(ema_res?)
-                .with_rsi(rsi_res?)
-                .with_sma(sma_res?)
-                .build(self.env_cfg.clone())?,
-        );
+        let streams = Streams::default()
+            .with_ohlcv(ohlcv)
+            .with_trade(trade)
+            .with_economic_news(cal_res?)
+            .with_volume_profile(vp_res?)
+            .with_tpo(tpo_res?)
+            .with_ema(ema_res?)
+            .with_rsi(rsi_res?)
+            .with_sma(sma_res?);
+
+        let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(self.env_cfg.clone())?);
         let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
 
         info!("SimulationData built successfully");
 
-        let ep_capacity = self.env_cfg.max_episode_capacity();
-        let ep_log = Ledger::with_capacity(ep_capacity, initial_states);
+        let ep_log = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: self.env_cfg.max_episode_capacity(),
+            prototype_states: initial_states,
+            equity_curve_length: sim_data.max_capacity_hint(),
+        });
 
         let ep_len = self.env_cfg.episode_length();
         let episode = EpisodeBuilder::new()
@@ -872,7 +875,7 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[Trade]>> {
+fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -925,7 +928,7 @@ fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[Trade]>> {
         let price_val = price.ok_or(DataError::DataFrame("Missing Price".into()))?;
         let vol_val = vol.ok_or(DataError::DataFrame("Missing Volume".into()))?;
 
-        events.push(Trade {
+        events.push(TradeEvent {
             timestamp,
             price: Price(price_val),
             quantity: Quantity(vol_val),
@@ -1118,8 +1121,16 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
 
                 profiles.push(Tpo {
-                    open_timestamp: DateTime::from_timestamp_micros(start).unwrap(),
-                    close_timestamp: DateTime::from_timestamp_micros(end).unwrap(),
+                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
+                        ChapatyError::Data(DataError::TimestampConversion(format!(
+                            "TPO open timestamp out of range: {start}"
+                        )))
+                    })?,
+                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
+                        ChapatyError::Data(DataError::TimestampConversion(format!(
+                            "TPO close timestamp out of range: {end}"
+                        )))
+                    })?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1148,8 +1159,16 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(Tpo {
-            open_timestamp: DateTime::from_timestamp_micros(start).unwrap(),
-            close_timestamp: DateTime::from_timestamp_micros(end).unwrap(),
+            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
+                ChapatyError::Data(DataError::TimestampConversion(format!(
+                    "TPO open timestamp out of range: {start}"
+                )))
+            })?,
+            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
+                ChapatyError::Data(DataError::TimestampConversion(format!(
+                    "TPO close timestamp out of range: {end}"
+                )))
+            })?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1258,8 +1277,16 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
             {
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
                 profiles.push(VolumeProfile {
-                    open_timestamp: DateTime::from_timestamp_micros(start).unwrap(),
-                    close_timestamp: DateTime::from_timestamp_micros(end).unwrap(),
+                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
+                        ChapatyError::Data(DataError::TimestampConversion(format!(
+                            "VP open timestamp out of range: {start}"
+                        )))
+                    })?,
+                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
+                        ChapatyError::Data(DataError::TimestampConversion(format!(
+                            "VP close timestamp out of range: {end}"
+                        )))
+                    })?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1295,8 +1322,16 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(VolumeProfile {
-            open_timestamp: DateTime::from_timestamp_micros(start).unwrap(),
-            close_timestamp: DateTime::from_timestamp_micros(end).unwrap(),
+            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
+                ChapatyError::Data(DataError::TimestampConversion(format!(
+                    "VP open timestamp out of range: {start}"
+                )))
+            })?,
+            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
+                ChapatyError::Data(DataError::TimestampConversion(format!(
+                    "VP close timestamp out of range: {end}"
+                )))
+            })?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1690,7 +1725,7 @@ mod test {
 
             // 2. Compute (Simulating internal build step)
             let result_lf = compute_indicator(input_lf, case.indicator)
-                .expect(&format!("Failed to compute {}", case.name));
+                .unwrap_or_else(|_| panic!("Failed to compute {}", case.name));
 
             // 3. Assert
             let result_df = result_lf.collect().unwrap();

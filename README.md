@@ -1,17 +1,22 @@
 # Chapaty
 
+[![Discord](https://img.shields.io/discord/1495690333911257108.svg?label=Discord&logo=discord&color=7289da&logoColor=white)](https://discord.gg/k7GWpDQC)
 [![Crates.io](https://img.shields.io/crates/v/chapaty.svg)](https://crates.io/crates/chapaty)
 [![Docs.rs](https://img.shields.io/docsrs/chapaty)](https://docs.rs/chapaty)
+[![CI (Main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
+[![CI (Develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
 
-**Chapaty** is a high-performance, async-first Rust library for **training and evaluating reinforcement learning agents in financial environments**. Inspired by [OpenAI Gymnasium][gymnasiumLink], Chapaty brings the rigor of standardized simulation interfaces to **real-world financial markets**.
+**Chapaty** is an Rust engine for **building and evaluating quantitative trading agents**. Designed with a familiar, [**Gym-style API**][gymnasiumLink], Chapaty brings the rigor of standardized simulation interfaces to **event-driven financial backtesting**.
 
 ## Getting Started
 
-Chapaty supports two primary workflows: **High-Performance Backtesting** for evaluating strategy grids, and **Standard Reinforcement Learning** for training agents step-by-step.
+> **Fast Track:** Use the [**Chapaty Starter Template**](https://github.com/LenWilliamson/chapaty-template) to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice, built-in dashboard setups with [Quantstats](https://github.com/ranaroussi/quantstats), and best-practice strategy examples.
 
-### 1. High-Performance Backtesting (1M+ Agents)
+Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating agent grids, and the **Canonical Gym Loop** for step-by-step control over the environment.
 
-For massive grid searches, Chapaty leverages `rayon` to evaluate millions of agents in parallel, automatically tracking the top performers without memory overhead.
+### 1. Parallel Backtesting
+
+For grid searches, Chapaty leverages `rayon` to evaluate agents in parallel, automatically tracking the top performers.
 
 **Run this example:** [`examples/news_breakout_grid.rs`](examples/news_breakout_grid.rs)
 
@@ -19,7 +24,6 @@ For massive grid searches, Chapaty leverages `rayon` to evaluate millions of age
 use std::path::Path;
 
 use chapaty::prelude::*;
-use polars::prelude::CsvWriterOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,15 +44,15 @@ async fn main() -> Result<()> {
 
     // 4. Export the Leaderboard
     // Results are saved as a structured CSV dataset.
-    leaderboard.to_csv(Path::new("examples/reports/news_breakout"), &CsvWriterOptions::default())?;
+    leaderboard.to_file_sync(&FileConfig::default())?;
 
     Ok(())
 }
 ```
 
-### 2. Custom Reinforcement Learning (Gym Interface)
+### 2. The Canonical Gym Loop (Fine-Grained Control)
 
-For researchers needing fine-grained control over the observation-action loop, Chapaty implements a standard API similar to OpenAI Gym.
+For custom integrations or those who prefer full control over the observation-action transition loop, Chapaty implements a standard API inspired by OpenAI Gym.
 
 ```rust
 use std::path::Path;
@@ -58,22 +62,22 @@ use chapaty::prelude::*;
 #[tokio::main]
 async fn main() -> ChapatyResult<()> {
     // Initialize the environment
-    let mut env = chapaty::make(EnvPreset::BtcUsdtEod).await?;
+    let mut env = chapaty::make(EnvPreset::BinanceBtcUsdt1d).await?;
 
     // Reset the environment to generate the first observation
     let (mut obs, mut reward, mut outcome) = env.reset()?;
 
     while !outcome.is_done() {
-        // this is where you would insert your policy
+        // This is where you would insert your custom policy or agent logic
         let actions = obs.action_space().sample()?;
 
-        // step (transition) through the environment with the actions
-        // receiving the next observation, reward and if the episode has terminated
+        // Step (transition) through the environment with the actions,
+        // receiving the next observation, reward, and termination status.
         (obs, reward, outcome) = env.step(actions)?;
 
-        // If the episode has ended then we can reset to start a new episode
+        // If the episode has ended, reset to start a new episode
         if outcome.is_terminal() {
-            // optionally use the final observation and outcome to bootstrap reward
+            // Optionally use the final observation and outcome to bootstrap reward logic
             drop(obs);
             (obs, reward, outcome) = env.reset()?;
         }
@@ -87,31 +91,35 @@ async fn main() -> ChapatyResult<()> {
     let journal = env.journal()?;
 
     // Save the journal to a directory (the filename is handled internally).
-    journal.to_csv(Path::new("chapaty/reports"), None, None)?;
+    journal.to_file_sync(&FileConfig::default())?;
 
     Ok(())
 }
 ```
 
-> **Note:** Environments are **async** because they stream large financial datasets from cloud storage (e.g. GCS, BigQuery, S3, etc.).
+> **Note:** Environments are **async** because they stream large financial datasets directly from cloud storage (e.g. GCS, BigQuery, HuggingFace).
 
-For practical, _ready-to-run agents_, check out the examples to get started quickly.
+For practical, _ready-to-run agents_, check out the `examples/` directory to get started quickly.
 
 ## Related Projects
 
-| Project                                   | Description                                  |
-| ----------------------------------------- | -------------------------------------------- |
-| [Gymnasium][gymnasiumLink]                | RL API standard for Python environments      |
-| [DeepMind Control Suite][deepmindLink]    | Physics-based simulation and RL environments |
-| [Burn](https://github.com/tracel-ai/burn) | Deep learning framework in Rust              |
+| Project                                   | Description                                          |
+| ----------------------------------------- | ---------------------------------------------------- |
+| [Gymnasium][gymnasiumLink]                | Standard API for Reinforcement Learning environments |
+| [DeepMind Control Suite][deepmindLink]    | Physics-based simulation environments                |
+| [Burn](https://github.com/tracel-ai/burn) | Deep learning framework in Rust                      |
 
-## Chapaty Platform
+## Community
 
-To access hosted market data, simply log in at [chapaty.com][chapatyLink] to obtain an API key. End-of-day OHLCV data is free to use. Prefer your own data? You can **bring your own market data** and start using Chapaty at no cost.
+If you are excited about the project, don't hesitate to join our [Discord](https://discord.gg/k7GWpDQC)! It is the perfect place to ask questions, file data requests, discuss new features, and share what you have built with the community.
 
-[chapatyLink]: https://www.chapaty.com
-[gymnasiumLink]: https://github.com/Farama-Foundation/Gymnasium
-[deepmindLink]: https://github.com/deepmind/dm_control
+## Contributing
+
+Contributions are welcome! Before submitting a pull request, please make sure to run the pre-build script to verify your changes:
+
+```bash
+./bin/pre-push.sh
+```
 
 ## Disclaimer
 
@@ -124,3 +132,6 @@ This software is provided **“AS IS”**, without warranties or conditions of a
 **In no event shall the authors or contributors be liable for any direct or indirect losses, damages, or consequences**, including but not limited to financial losses, arising from the use of this software.
 
 By using Chapaty, you acknowledge that **you are solely responsible for any trading decisions, strategies, or outcomes**.
+
+[gymnasiumLink]: https://github.com/Farama-Foundation/Gymnasium
+[deepmindLink]: https://github.com/deepmind/dm_control

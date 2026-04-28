@@ -1,16 +1,8 @@
-use std::{collections::BTreeSet, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use anyhow::{Context, Result};
-use chapaty::{
-    agent::news::fade::NewsFade,
-    data::{
-        config::{EconomicCalendarConfig, OhlcvFutureConfig},
-        filter::EconomicCalendarPolicy,
-    },
-    prelude::*,
-};
+use chapaty::{gym::trading::agent::news::fade::NewsFade, prelude::*};
 use chrono::Duration;
-use polars::io::cloud::CloudOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,11 +18,14 @@ async fn main() -> Result<()> {
     let fade_time = fade_start.elapsed();
 
     let path = Path::new("examples/reports/news_fade");
-    journal.to_csv(path, None, None)?;
-    journal.cumulative_returns()?.to_csv(path, None, None)?;
-    journal.equity_curve_fitting()?.to_csv(path, None, None)?;
-    journal.portfolio_performance()?.to_csv(path, None, None)?;
-    journal.trade_stats()?.to_csv(path, None, None)?;
+    let file_cfg = FileConfig::default().with_dir(path);
+    journal.to_file_sync(&file_cfg)?;
+    journal.cumulative_returns()?.to_file_sync(&file_cfg)?;
+    journal.portfolio_performance()?.to_file_sync(&file_cfg)?;
+    journal.trade_stats()?.to_file_sync(&file_cfg)?;
+    env.equity_curve_report()?
+        .into_eod()?
+        .to_file_sync(&file_cfg)?;
 
     println!("\n--- Evaluation Timings ---");
     println!("1. Environment build time:      {build_time:?}");
@@ -44,9 +39,7 @@ async fn main() -> Result<()> {
 // ================================================================================================
 
 fn news_fade() -> Result<NewsFade> {
-    let cal_id = economic_calendar_config().to_id()?;
-    let ohlcv_id = ohlcv_config().to_id()?;
-    let agent = NewsFade::baseline(cal_id, ohlcv_id)
+    let agent = NewsFade::baseline(economic_calendar_id(), ohlcv_id())
         .with_candles_after_news(Duration::minutes(8))
         .with_take_profit_risk_factor(1.25)
         .with_risk_reward_ratio(1. / 2.8)?;
@@ -54,51 +47,35 @@ fn news_fade() -> Result<NewsFade> {
 }
 
 async fn environment() -> Result<Environment> {
-    let allowed_years = Some((2024..=2025).collect::<BTreeSet<_>>());
-    let filter_config = FilterConfig {
-        allowed_years,
-        economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
-        ..Default::default()
-    };
+    let preset = EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly;
+    let file_stem = preset.to_string();
+    let loc = StorageLocation::HuggingFace { version: None };
+    let cfg = IoConfig::new(loc).with_file_stem(&file_stem);
 
-    let cfg = EnvConfig::default()
-        .add_ohlcv_future(DataSource::Chapaty, ohlcv_config())
-        .with_episode_length(EpisodeLength::Day)
-        .with_filter_config(filter_config)
-        .add_economic_calendar(DataSource::Chapaty, economic_calendar_config())
-        .with_trade_hint(2);
-
-    let loc = StorageLocation::Cloud {
-        path: "gs://chapaty-cache/examples/fade",
-        options: CloudOptions::default(),
-    };
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::load(preset, &cfg)
         .await
         .context("Failed to load trading environment")
 }
 
-fn economic_calendar_config() -> EconomicCalendarConfig {
-    EconomicCalendarConfig {
+fn economic_calendar_id() -> EconomicCalendarId {
+    EconomicCalendarId {
         broker: DataBroker::InvestingCom,
         data_source: None,
         country_code: Some(CountryCode::Us),
         category: Some(EconomicCategory::Employment),
         importance: Some(EconomicEventImpact::High),
-        batch_size: 1000,
     }
 }
 
-fn ohlcv_config() -> OhlcvFutureConfig {
-    OhlcvFutureConfig {
+fn ohlcv_id() -> OhlcvId {
+    OhlcvId {
         broker: DataBroker::NinjaTrader,
+        exchange: Exchange::Cme,
         symbol: Symbol::Future(FutureContract {
             root: FutureRoot::EurUsd,
             month: ContractMonth::March,
             year: ContractYear::Y6,
         }),
-        exchange: Some(Exchange::Cme),
         period: Period::Minute(1),
-        batch_size: 1000,
-        indicators: vec![],
     }
 }

@@ -479,7 +479,7 @@ mod tests {
     /// # Panics
     /// Panics if `day` is 0 or if the resulting date is invalid.
     fn make_timestamp(day: u8, hour: u8) -> Timestamp {
-        assert!(day >= 1 && day <= 31, "Day must be between 1 and 31");
+        assert!((1..=31).contains(&day), "Day must be between 1 and 31");
         assert!(hour <= 23, "Hour must be between 0 and 23");
 
         let rfc3339 = format!("2026-01-{day:02}T{hour:02}:00:00Z");
@@ -564,7 +564,7 @@ mod tests {
         let event = EconomicCalendarEvent {
             data_source: "investingcom".into(),
             category: "employment".into(),
-            event_timestamp: Some(ts.clone()),
+            event_timestamp: Some(ts),
             news_type: "nfp".into(),
             news_type_confidence: Some(0.95),
             news_type_source: "ml".into(),
@@ -659,8 +659,8 @@ mod tests {
         let close_ts = make_timestamp(2, 10);
 
         let event = OhlcvFutureEvent {
-            open_timestamp: Some(open_ts.clone()),
-            close_timestamp: Some(close_ts.clone()),
+            open_timestamp: Some(open_ts),
+            close_timestamp: Some(close_ts),
             open: 50000.0,
             high: 51000.0,
             low: 49500.0,
@@ -712,8 +712,8 @@ mod tests {
         let close_ts = make_timestamp(3, 15);
 
         let event = OhlcvSpotEvent {
-            open_timestamp: Some(open_ts.clone()),
-            close_timestamp: Some(close_ts.clone()),
+            open_timestamp: Some(open_ts),
+            close_timestamp: Some(close_ts),
             open: 100.0,
             high: 110.0,
             low: 90.0,
@@ -782,7 +782,7 @@ mod tests {
             price: 200.50,
             quantity: 2.0,
             quote_quantity: 401.0,
-            trade_timestamp: Some(trade_ts.clone()),
+            trade_timestamp: Some(trade_ts),
             is_buyer_maker: true,
             is_best_match: true,
         };
@@ -855,8 +855,8 @@ mod tests {
         let win_end = make_timestamp(5, 9);
 
         let event = TpoFutureEvent {
-            window_start: Some(win_start.clone()),
-            window_end: Some(win_end.clone()),
+            window_start: Some(win_start),
+            window_end: Some(win_end),
             price_bin_start: 40000.0,
             price_bin_end: 40010.0,
             time_slot_count: 15,
@@ -904,8 +904,8 @@ mod tests {
         let win_end = make_timestamp(6, 11);
 
         let event = TpoSpotEvent {
-            window_start: Some(win_start.clone()),
-            window_end: Some(win_end.clone()),
+            window_start: Some(win_start),
+            window_end: Some(win_end),
             price_bin_start: 150.0,
             price_bin_end: 151.0,
             time_slot_count: 5,
@@ -953,8 +953,8 @@ mod tests {
         let win_end = make_timestamp(7, 23);
 
         let event = VolumeProfileSpotEvent {
-            window_start: Some(win_start.clone()),
-            window_end: Some(win_end.clone()),
+            window_start: Some(win_start),
+            window_end: Some(win_end),
             price_bin_start: 25.0,
             price_bin_end: 25.5,
             base_volume: 5000.0,
@@ -1033,17 +1033,17 @@ mod tests {
         let events = vec![
             TradesSpotEvent {
                 trade_id: 100,
-                trade_timestamp: Some(t1.clone()),
+                trade_timestamp: Some(t1),
                 ..Default::default()
             },
             TradesSpotEvent {
                 trade_id: 200,
-                trade_timestamp: Some(t2.clone()),
+                trade_timestamp: Some(t2),
                 ..Default::default()
             },
             TradesSpotEvent {
                 trade_id: 300,
-                trade_timestamp: Some(t3.clone()),
+                trade_timestamp: Some(t3),
                 ..Default::default()
             },
         ];
@@ -1155,7 +1155,7 @@ mod tests {
         let micros = timestamp_to_micro(&ts).unwrap();
 
         // 1735689600 * 1_000_000 + 500_000 = 1735689600500000
-        assert_eq!(micros, 1735689600_500_000);
+        assert_eq!(micros, 1_735_689_600_500_000);
     }
 
     #[test]

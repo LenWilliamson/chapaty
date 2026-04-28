@@ -1,5 +1,7 @@
+/// The current version of the chapaty crate
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // === Public Modules (The Canonical Paths) ===
-pub mod agent;
 pub mod data;
 pub mod error;
 pub mod gym;
@@ -18,7 +20,9 @@ mod transport;
 pub use crate::io::{SerdeFormat, StorageLocation};
 
 // Expose specific Transport items
-pub use crate::transport::source::{ApiKey, DataSource, SourceGroup, Url};
+pub use crate::transport::source::{
+    ApiKey, DataSource, EndpointUrl, HostedApi, SelfHostedApi, SourceGroup,
+};
 
 // === Convenience ===
 pub mod prelude;

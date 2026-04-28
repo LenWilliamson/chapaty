@@ -8,7 +8,6 @@ use polars::{
 };
 
 use crate::{
-    agent::AgentIdentifier,
     data::{
         domain::{DataBroker, Exchange, MarketType, Price, Quantity, Symbol, Tick, TradeId},
         episode::{Episode, EpisodeId},
@@ -16,7 +15,7 @@ use crate::{
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
     gym::{
-        Reward,
+        AgentIdentifier, Reward,
         trading::{
             action::{Action, Command},
             context::{ActionCtx, ActionSummary, UpdateCtx},
@@ -24,7 +23,7 @@ use crate::{
             types::{RiskRewardRatio, StateKind, TerminationReason, TradeType},
         },
     },
-    report::journal::JournalCol,
+    report::{equity_curve::EquityCurveCol, journal::JournalCol},
 };
 
 /// The authoritative record of all trading states across an epoch.
@@ -33,35 +32,44 @@ use crate::{
 /// and the historical record for past episodes. It manages state transitions
 /// and ensures account integrity.
 #[derive(Debug, Clone, Default)]
-pub(super) struct Ledger(Vec<States>);
+pub(super) struct Ledger {
+    states: Vec<States>,
+    equity_curves: Vec<EquityCurve>,
+}
 
 impl Ledger {
     pub fn clear(&mut self) {
-        self.0.iter_mut().for_each(|states| states.clear());
+        self.states.iter_mut().for_each(|states| states.clear());
     }
 
-    pub fn get(&self, episode: &Episode) -> ChapatyResult<&States> {
-        self.0
+    pub fn states(&self, episode: &Episode) -> ChapatyResult<&States> {
+        self.states
             .get(episode.id().0)
-            .ok_or_else(|| ep_not_found_err(episode))
-    }
-
-    pub fn get_mut(&mut self, episode: &Episode) -> ChapatyResult<&mut States> {
-        self.0
-            .get_mut(episode.id().0)
             .ok_or_else(|| ep_not_found_err(episode))
     }
 
     pub fn is_terminal(&self, episode: &Episode) -> ChapatyResult<bool> {
         Ok(self
-            .0
+            .states
             .get(episode.id().0)
             .ok_or_else(|| ep_not_found_err(episode))?
             .all_closed())
     }
 
-    pub fn with_capacity(capacity: usize, states: States) -> Self {
-        Self(vec![states; capacity])
+    pub fn with_capacity(capacity: LedgerCapacityHint) -> Self {
+        let mut states = Vec::with_capacity(capacity.expected_episodes);
+        let mut equity_curves = Vec::with_capacity(capacity.expected_episodes);
+
+        for _ in 0..capacity.expected_episodes {
+            states.push(capacity.prototype_states.clone_with_capacity());
+
+            equity_curves.push(EquityCurve::with_capacity(capacity.equity_curve_length));
+        }
+
+        Self {
+            states,
+            equity_curves,
+        }
     }
 
     /// Applies agent actions (Open, Close, Modify).
@@ -71,7 +79,7 @@ impl Ledger {
         let mut report = ActionSummary::default();
         let market_view = ctx.market;
 
-        let states = self.get_mut(ep)?;
+        let states = self.states_mut(ep)?;
 
         for (market_id, action) in ctx.actions.into_sorted_iter() {
             // A. Trace the Intent (Command Sourcing Requirement)
@@ -125,7 +133,7 @@ impl Ledger {
     /// Performs Mark-to-Market updates on all active and pending positions.
     #[tracing::instrument(skip(self, ctx), fields(ep_id = %ep.id().0, ts = %ctx.market.current_timestamp()))]
     pub fn apply_updates(&mut self, ep: &Episode, ctx: UpdateCtx) -> ChapatyResult<()> {
-        self.get_mut(ep)?
+        self.states_mut(ep)?
             .update_all_live_trades(&ctx, |m_id, result| {
                 match result {
                     Ok(exit_event) => {
@@ -153,29 +161,100 @@ impl Ledger {
                         Err(e)
                     }
                 }
-            })
+            })?;
+
+        self.update_equity_curve(ep, ctx.market.current_timestamp())
     }
 
     /// Consumes the accumulated reward delta for the specific episode.
     pub fn pop_step_reward(&mut self, episode: &Episode) -> ChapatyResult<Reward> {
-        self.get_mut(episode).map(States::pop_reward)
+        self.states_mut(episode).map(States::pop_reward)
     }
 
     pub fn episode_pnl(&self, episode: &Episode) -> ChapatyResult<f64> {
-        self.get(episode).map(States::pnl)
+        self.states(episode).map(States::pnl)
     }
 
-    pub fn as_df(&self) -> ChapatyResult<DataFrame> {
-        self.flattened()
+    pub fn journal_df(&self) -> ChapatyResult<DataFrame> {
+        self.flattened_states()
             .try_map_ledger_entry_to_journal_entry()
             .try_collect_soa()?
             .try_into()
     }
+
+    pub fn equity_curve_df(&self) -> ChapatyResult<DataFrame> {
+        let total_rows: usize = self
+            .equity_curves
+            .iter()
+            .map(|ec| ec.timestamps.len())
+            .sum();
+
+        let mut episode_ids = Vec::<u32>::with_capacity(total_rows);
+        let mut timestamps = Vec::<i64>::with_capacity(total_rows);
+        let mut pnls = Vec::<f64>::with_capacity(total_rows);
+
+        for (ep_idx, curve) in self.equity_curves.iter().enumerate() {
+            let ep_id = ep_idx as u32;
+            let len = curve.timestamps.len();
+            let offset = pnls.last().copied().unwrap_or(0.0);
+
+            episode_ids.extend(std::iter::repeat_n(ep_id, len));
+            timestamps.extend(curve.timestamps.iter().map(|ts| ts.timestamp_micros()));
+            pnls.extend(curve.cumulative_pnl.iter().map(|&ep_pnl| offset + ep_pnl));
+        }
+
+        let df = df![
+            EquityCurveCol::EpisodeId.to_string()      => episode_ids,
+            EquityCurveCol::Timestamp.to_string()      => timestamps,
+            EquityCurveCol::PortfolioValue.to_string() => pnls,
+        ]
+        .map_err(polars_to_chapaty_error)?;
+
+        df.lazy()
+            .with_column(
+                col(EquityCurveCol::Timestamp.to_string()).cast(DataType::Datetime(
+                    TimeUnit::Microseconds,
+                    Some(polars::prelude::TimeZone::UTC),
+                )),
+            )
+            .sort(
+                [EquityCurveCol::Timestamp.to_string()],
+                SortMultipleOptions::default().with_maintain_order(false),
+            )
+            .collect()
+            .map_err(polars_to_chapaty_error)?
+            .with_row_index(EquityCurveCol::RowId.to_string().into(), None)
+            .map_err(polars_to_chapaty_error)
+    }
 }
 
 impl Ledger {
-    fn flattened(&self) -> impl Iterator<Item = LedgerEntry<'_>> {
-        self.0.iter().enumerate().flat_map(|(ep, states)| {
+    fn states_mut(&mut self, episode: &Episode) -> ChapatyResult<&mut States> {
+        self.states
+            .get_mut(episode.id().0)
+            .ok_or_else(|| ep_not_found_err(episode))
+    }
+
+    fn update_equity_curve(&mut self, ep: &Episode, ts: DateTime<Utc>) -> ChapatyResult<()> {
+        let pnl = self.episode_pnl(ep)?;
+        let equity_curve = self
+            .equity_curves
+            .get_mut(ep.id().0)
+            .ok_or_else(|| ep_not_found_err(ep))?;
+        equity_curve.timestamps.push(ts);
+        equity_curve.cumulative_pnl.push(pnl);
+
+        debug_assert_eq!(
+            equity_curve.timestamps.len(),
+            equity_curve.cumulative_pnl.len(),
+            "EquityCurve invariant violation: mismatched array lengths"
+        );
+
+        Ok(())
+    }
+
+    fn flattened_states(&self) -> impl Iterator<Item = LedgerEntry<'_>> {
+        self.states.iter().enumerate().flat_map(|(ep, states)| {
             states
                 .flattened()
                 .map(move |(market_id, state)| LedgerEntry {
@@ -188,7 +267,49 @@ impl Ledger {
 }
 
 // ================================================================================================
-// Helper Structs
+// Helper Structs Ledger Configuration
+// ================================================================================================
+
+/// Memory allocation hints for the Ledger to prevent reallocation during the hot loop.
+#[derive(Debug, Clone)]
+pub struct LedgerCapacityHint {
+    /// The maximum number of episodes expected in the epoch.
+    /// Determines the outer capacity of the Ledger's internal vectors.
+    pub expected_episodes: usize,
+
+    /// A pre-allocated `States` instance used as a template.
+    ///
+    /// Because cloning empty vectors in Rust drops their reserved capacity,
+    /// this template is used to explicitly initialize new episodes with the
+    /// correct internal memory reserved for active and pending trades.
+    pub prototype_states: States,
+
+    /// The maximum expected length of the time-series (e.g., longest data stream).
+    /// Determines the internal capacity reserved for each episode's `EquityCurve`.
+    pub equity_curve_length: usize,
+}
+
+// ================================================================================================
+// Helper Structs Equity Curve
+// ================================================================================================
+
+#[derive(Debug, Clone, Default)]
+struct EquityCurve {
+    timestamps: Vec<DateTime<Utc>>,
+    cumulative_pnl: Vec<f64>,
+}
+
+impl EquityCurve {
+    pub fn with_capacity(length: usize) -> Self {
+        Self {
+            timestamps: Vec::with_capacity(length),
+            cumulative_pnl: Vec::with_capacity(length),
+        }
+    }
+}
+
+// ================================================================================================
+// Helper Structs Journal
 // ================================================================================================
 
 struct LedgerEntry<'env> {
@@ -422,7 +543,7 @@ impl JournalSoA {
 }
 
 // ================================================================================================
-// Trait Extensions
+// Trait Extensions Journal
 // ================================================================================================
 
 trait LogEntryTryMapExt<'a>: Iterator<Item = LedgerEntry<'a>> + Sized {
@@ -500,7 +621,7 @@ trait TryCollectJournalSoA: Iterator<Item = ChapatyResult<JournalEntry>> + Sized
 impl<I> TryCollectJournalSoA for I where I: Iterator<Item = ChapatyResult<JournalEntry>> {}
 
 // ================================================================================================
-// Type Conversions
+// Type Conversions Journal
 // ================================================================================================
 
 impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
@@ -606,17 +727,17 @@ impl TryFrom<JournalSoA> for DataFrame {
 
         df.lazy()
             .with_columns([
-                col(JournalCol::EntryTimestamp.to_string()).cast(DataType::Datetime(
+                col(JournalCol::EntryTimestamp).cast(DataType::Datetime(
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
-                col(JournalCol::ExitTimestamp.to_string()).cast(DataType::Datetime(
+                col(JournalCol::ExitTimestamp).cast(DataType::Datetime(
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
             ])
             .sort(
-                [&JournalCol::EntryTimestamp.to_string()],
+                [JournalCol::EntryTimestamp.as_str()],
                 SortMultipleOptions::default().with_maintain_order(false),
             )
             .collect()
@@ -654,7 +775,7 @@ mod test {
         report::{io::ToSchema, journal::Journal},
         sim::{
             cursor_group::CursorGroup,
-            data::{SimulationData, SimulationDataBuilder},
+            data::{SimulationData, SimulationDataBuilder, Streams},
         },
         sorted_vec_map::SortedVecMap,
     };
@@ -706,8 +827,8 @@ mod test {
             let mut map = SortedVecMap::new();
             map.insert(id, vec![candle].into_boxed_slice());
 
-            let sim_data = SimulationDataBuilder::new()
-                .with_ohlcv(map)
+            let streams = Streams::default().with_ohlcv(map);
+            let sim_data = SimulationDataBuilder::new(streams)
                 .build(EnvConfig::default())
                 .expect("Failed to build sim data");
 
@@ -1189,25 +1310,33 @@ mod test {
     #[test]
     fn test_episode_isolation_get() {
         // Create ledger with 3 episodes
-        let ledger = Ledger::with_capacity(3, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 3,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep1 = ep0.next(ts("2026-01-20T00:00:00Z"));
         let ep2 = ep1.next(ts("2026-01-21T00:00:00Z"));
 
         // Each episode should be independently accessible
-        assert!(ledger.get(&ep0).is_ok());
-        assert!(ledger.get(&ep1).is_ok());
-        assert!(ledger.get(&ep2).is_ok());
+        assert!(ledger.states(&ep0).is_ok());
+        assert!(ledger.states(&ep1).is_ok());
+        assert!(ledger.states(&ep2).is_ok());
 
         // Episode 3 (out of bounds) should error
         let ep3 = ep2.next(ts("2026-01-22T00:00:00Z"));
-        assert!(ledger.get(&ep3).is_err());
+        assert!(ledger.states(&ep3).is_err());
     }
 
     #[test]
     fn test_episode_isolation_pnl() {
-        let ledger = Ledger::with_capacity(2, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 2,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep1 = ep0.next(ts("2026-01-20T00:00:00Z"));
@@ -1222,7 +1351,11 @@ mod test {
 
     #[test]
     fn test_episode_isolation_terminal_state() {
-        let ledger = Ledger::with_capacity(2, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 2,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep1 = ep0.next(ts("2026-01-20T00:00:00Z"));
@@ -1234,20 +1367,24 @@ mod test {
 
     #[test]
     fn test_ledger_clear_resets_all_episodes() {
-        let mut ledger = Ledger::with_capacity(3, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 3,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep1 = ep0.next(ts("2026-01-20T00:00:00Z"));
 
         // Ledger should be accessible before and after clear
-        assert!(ledger.get(&ep0).is_ok());
-        assert!(ledger.get(&ep1).is_ok());
+        assert!(ledger.states(&ep0).is_ok());
+        assert!(ledger.states(&ep1).is_ok());
 
         ledger.clear();
 
         // Still accessible after clear
-        assert!(ledger.get(&ep0).is_ok());
-        assert!(ledger.get(&ep1).is_ok());
+        assert!(ledger.states(&ep0).is_ok());
+        assert!(ledger.states(&ep1).is_ok());
     }
 
     // ============================================================================
@@ -1256,7 +1393,11 @@ mod test {
 
     #[test]
     fn test_pop_step_reward_initial_zero() {
-        let mut ledger = Ledger::with_capacity(1, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
         let ep = Episode::default();
 
         let reward = ledger.pop_step_reward(&ep).expect("Should get reward");
@@ -1265,7 +1406,11 @@ mod test {
 
     #[test]
     fn test_pop_step_reward_clears_after_pop() {
-        let mut ledger = Ledger::with_capacity(1, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
         let ep = Episode::default();
 
         // First pop
@@ -1280,7 +1425,11 @@ mod test {
 
     #[test]
     fn test_pop_step_reward_episode_independence() {
-        let mut ledger = Ledger::with_capacity(2, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 2,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep1 = ep0.next(ts("2026-01-20T00:00:00Z"));
@@ -1294,7 +1443,11 @@ mod test {
 
     #[test]
     fn test_pop_step_reward_invalid_episode() {
-        let mut ledger = Ledger::with_capacity(1, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep0 = Episode::default();
         let ep_invalid = ep0
@@ -1311,33 +1464,45 @@ mod test {
 
     #[test]
     fn test_get_invalid_episode_returns_error() {
-        let ledger = Ledger::with_capacity(1, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep_valid = Episode::default();
         let ep_invalid = ep_valid
             .next(ts("2026-01-20T00:00:00Z"))
             .next(ts("2026-01-21T00:00:00Z"));
 
-        assert!(ledger.get(&ep_valid).is_ok());
-        assert!(ledger.get(&ep_invalid).is_err());
+        assert!(ledger.states(&ep_valid).is_ok());
+        assert!(ledger.states(&ep_invalid).is_err());
     }
 
     #[test]
     fn test_get_mut_invalid_episode_returns_error() {
-        let mut ledger = Ledger::with_capacity(1, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep_valid = Episode::default();
         let ep_invalid = ep_valid
             .next(ts("2026-01-20T00:00:00Z"))
             .next(ts("2026-01-21T00:00:00Z"));
 
-        assert!(ledger.get_mut(&ep_valid).is_ok());
-        assert!(ledger.get_mut(&ep_invalid).is_err());
+        assert!(ledger.states_mut(&ep_valid).is_ok());
+        assert!(ledger.states_mut(&ep_invalid).is_err());
     }
 
     #[test]
     fn test_is_terminal_invalid_episode_returns_error() {
-        let ledger = Ledger::with_capacity(1, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep_invalid = Episode::default()
             .next(ts("2026-01-20T00:00:00Z"))
@@ -1348,7 +1513,11 @@ mod test {
 
     #[test]
     fn test_episode_pnl_invalid_episode_returns_error() {
-        let ledger = Ledger::with_capacity(1, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let ep_invalid = Episode::default()
             .next(ts("2026-01-20T00:00:00Z"))
@@ -1362,7 +1531,7 @@ mod test {
         let ledger = Ledger::default();
 
         let df = ledger
-            .as_df()
+            .journal_df()
             .expect("Empty ledger should produce valid DataFrame");
 
         assert_eq!(df.height(), 0);
@@ -1375,10 +1544,14 @@ mod test {
 
     #[test]
     fn test_ledger_with_empty_states_as_df() {
-        let ledger = Ledger::with_capacity(5, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 5,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         let df = ledger
-            .as_df()
+            .journal_df()
             .expect("Ledger with empty States should work");
 
         assert_eq!(df.height(), 0, "No trades means 0 rows");
@@ -1389,7 +1562,11 @@ mod test {
         use crate::gym::trading::action::{Action, Actions, OpenCmd};
 
         // 1. Setup: Create a Ledger with a single active Episode.
-        let mut ledger = Ledger::with_capacity(1, States::default());
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
         let ep = Episode::default();
 
         // 2. Create a minimal MarketView (empty, but provides timestamp).
@@ -1465,30 +1642,41 @@ mod test {
 
         // Default ledger has no episodes
         let ep = Episode::default();
-        assert!(ledger.get(&ep).is_err(), "Default ledger has no episodes");
+        assert!(
+            ledger.states(&ep).is_err(),
+            "Default ledger has no episodes"
+        );
     }
 
     #[test]
     fn test_ledger_with_capacity_creates_episodes() {
-        let ledger = Ledger::with_capacity(10, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 10,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
         // Should be able to access episodes 0-9
         let mut ep = Episode::default();
         for _ in 0..10 {
-            assert!(ledger.get(&ep).is_ok(), "Episode should exist");
+            assert!(ledger.states(&ep).is_ok(), "Episode should exist");
             ep = ep.next(ts("2026-01-20T00:00:00Z"));
         }
 
         // Episode 10 should not exist
-        assert!(ledger.get(&ep).is_err(), "Episode 10 should not exist");
+        assert!(ledger.states(&ep).is_err(), "Episode 10 should not exist");
     }
 
     #[test]
     fn test_as_df_pipeline_smoke_test() {
         // Minimal smoke test: construct empty ledger, call as_df, verify no panic
-        let ledger = Ledger::with_capacity(1, States::default());
+        let ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 0,
+        });
 
-        let result = ledger.as_df();
+        let result = ledger.journal_df();
 
         assert!(result.is_ok(), "as_df should succeed for valid ledger");
 
@@ -1832,5 +2020,210 @@ mod test {
                 field.name()
             );
         }
+    }
+
+    // ============================================================================
+    // Part 9: Equity Curve Invariant and Stitching
+    // ============================================================================
+
+    #[test]
+    fn test_equity_curve_empty_dataframe_schema() {
+        let ledger = Ledger::default();
+
+        let df = ledger
+            .equity_curve_df()
+            .expect("Failed to convert empty equity curve to DataFrame");
+
+        // Verify Schema Integrity even when memory buffers are completely empty
+        let expected_cols = EquityCurveCol::iter()
+            .map(|c| c.as_str())
+            .collect::<HashSet<_>>();
+        let actual_cols = df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            expected_cols, actual_cols,
+            "Schema mismatch on empty dataset"
+        );
+
+        assert_eq!(df.height(), 0, "Empty ledger should yield 0 rows");
+    }
+
+    #[test]
+    fn test_equity_curve_update_out_of_bounds() {
+        let mut ledger = Ledger::default(); // Capacity 0
+        let ep0 = Episode::default();
+
+        let result = ledger.update_equity_curve(&ep0, ts("2026-04-25T16:30:00Z"));
+        assert!(
+            result.is_err(),
+            "Writing to an unallocated episode index must return a system error"
+        );
+    }
+
+    #[test]
+    fn test_equity_curve_soa_invariants() {
+        // CS:APP: Ensure Struct-of-Arrays (SoA) alignment remains strictly 1:1
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 10,
+        });
+
+        let ep0 = Episode::default();
+
+        // 1. Advance the state machine via standard updates
+        ledger
+            .update_equity_curve(&ep0, ts("2026-04-25T16:30:00Z"))
+            .unwrap();
+        ledger
+            .update_equity_curve(&ep0, ts("2026-04-25T16:31:00Z"))
+            .unwrap();
+
+        // 2. Validate internal memory alignment
+        let curve = &ledger.equity_curves[0];
+        assert_eq!(
+            curve.timestamps.len(),
+            curve.cumulative_pnl.len(),
+            "SoA Memory Violation: Timestamps array drifted from PnL array."
+        );
+        assert_eq!(curve.timestamps.len(), 2);
+    }
+
+    #[test]
+    fn test_equity_curve_global_pnl_stitching_with_data_holes() {
+        // DDIA: Test Partitioned Time-Series Stitching.
+        // Edge Case: What happens if an intermediate episode has ZERO data?
+        // The ledger must bridge the gap and carry the global state forward.
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 3,
+            prototype_states: States::default(),
+            equity_curve_length: 5,
+        });
+
+        // === Partition 0 (Episode 0): Successful Trading ===
+        ledger.equity_curves[0]
+            .timestamps
+            .push(ts("2026-01-01T10:00:00Z"));
+        ledger.equity_curves[0].cumulative_pnl.push(50.0);
+
+        ledger.equity_curves[0]
+            .timestamps
+            .push(ts("2026-01-01T11:00:00Z"));
+        ledger.equity_curves[0].cumulative_pnl.push(100.0); // Ends day at +100.0
+
+        // === Partition 1 (Episode 1): EMPTY ===
+        // (Weekend, system downtime, or simply no ticks. Arrays remain length 0)
+
+        // === Partition 2 (Episode 2): More Trading ===
+        // Natively, this episode's PnL starts fresh from 0.0 internally.
+        ledger.equity_curves[2]
+            .timestamps
+            .push(ts("2026-01-03T10:00:00Z"));
+        ledger.equity_curves[2].cumulative_pnl.push(15.0);
+
+        ledger.equity_curves[2]
+            .timestamps
+            .push(ts("2026-01-03T11:00:00Z"));
+        ledger.equity_curves[2].cumulative_pnl.push(-20.0); // Took a loss
+
+        // Generate DataFrame
+        let df = ledger.equity_curve_df().expect("Failed to generate DF");
+
+        // Verify Total Height (2 + 0 + 2 = 4)
+        assert_eq!(
+            df.height(),
+            4,
+            "Dataframe height did not correctly sum partition lengths"
+        );
+
+        // =========================================================================
+        // CRITICAL CHECK: Global Stitching
+        // Partition 2's native values (15.0, -20.0) MUST be offset by Partition 0's
+        // terminal value (100.0), bridging over the empty Partition 1 entirely.
+        // =========================================================================
+        let expected_df = df![
+            EquityCurveCol::RowId.as_str() => [0u32, 1, 2, 3],
+            EquityCurveCol::EpisodeId.as_str() => [0u32, 0, 2, 2],
+            EquityCurveCol::Timestamp.as_str() => [
+                ts("2026-01-01T10:00:00Z").timestamp_micros(),
+                ts("2026-01-01T11:00:00Z").timestamp_micros(),
+                ts("2026-01-03T10:00:00Z").timestamp_micros(),
+                ts("2026-01-03T11:00:00Z").timestamp_micros(),
+            ],
+            // CRITICAL: Ep 2 values (15.0, -20.0) MUST be offset by Ep 0's terminal 100.0
+            EquityCurveCol::PortfolioValue.as_str() => [50.0, 100.0, 115.0, 80.0],
+        ]
+        .unwrap()
+        .lazy()
+        // Cast the raw micros back to the strict Datetime timezone required by the schema
+        .with_column(
+            col(EquityCurveCol::Timestamp.as_str()).cast(DataType::Datetime(
+                TimeUnit::Microseconds,
+                Some(polars::prelude::TimeZone::UTC),
+            )),
+        )
+        .collect()
+        .unwrap();
+
+        assert!(
+            df.equals(&expected_df),
+            "Global PnL stitching failed to correctly bridge empty partitions.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
+            df,
+            expected_df
+        );
+    }
+
+    #[test]
+    fn test_equity_curve_datatype_and_sorting_verification() {
+        let mut ledger = Ledger::with_capacity(LedgerCapacityHint {
+            expected_episodes: 1,
+            prototype_states: States::default(),
+            equity_curve_length: 5,
+        });
+
+        // Insert timestamps deliberately OUT OF ORDER to test the Polars sort fallback
+        ledger.equity_curves[0]
+            .timestamps
+            .push(ts("2026-01-01T12:00:00Z"));
+        ledger.equity_curves[0].cumulative_pnl.push(10.0);
+
+        ledger.equity_curves[0]
+            .timestamps
+            .push(ts("2026-01-01T10:00:00Z")); // Earlier time
+        ledger.equity_curves[0].cumulative_pnl.push(5.0);
+
+        let df = ledger.equity_curve_df().expect("Failed to generate DF");
+
+        let expected_df = df![
+            EquityCurveCol::RowId.as_str()         => [0u32, 1], // RowIds must be assigned AFTER sorting
+            EquityCurveCol::EpisodeId.as_str()     => [0u32, 0],
+            EquityCurveCol::Timestamp.as_str()     => [
+                ts("2026-01-01T10:00:00Z").timestamp_micros(), // Earlier time should be index 0
+                ts("2026-01-01T12:00:00Z").timestamp_micros(),
+            ],
+            EquityCurveCol::PortfolioValue.as_str() => [5.0, 10.0],
+        ]
+        .unwrap()
+        .lazy()
+        // Cast to match the strict schema requirements (Microseconds + UTC timezone)
+        .with_column(
+            col(EquityCurveCol::Timestamp.as_str()).cast(DataType::Datetime(
+                TimeUnit::Microseconds,
+                Some(polars::prelude::TimeZone::UTC),
+            )),
+        )
+        .collect()
+        .unwrap();
+
+        // 3. Assert full DataFrame equality (Values, Types, and Order)
+        assert!(
+            df.equals(&expected_df),
+            "DataFrame failed sorting, schema validation, or RowId assignment.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
+            df,
+            expected_df
+        );
     }
 }

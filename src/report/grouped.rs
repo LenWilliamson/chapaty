@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(df_stats.height(), 3, "Expected 3 stat rows (1 per group)");
 
         // Verify BTC/2025 aggregation (3 trades: -1000, -500, 0 = -1500 total)
-        let btc_2025 = filter_group(&df_stats, "btc-usdt", 2025);
+        let btc_2025 = filter_group(df_stats, "btc-usdt", 2025);
         assert_eq!(btc_2025.height(), 1, "BTC/2025 should have 1 stat row");
 
         let trade_count = btc_2025
@@ -403,7 +403,7 @@ mod tests {
         assert_eq!(df_perf.height(), 3, "Expected 3 perf rows (1 per group)");
 
         // Verify ETH/2026 net profit (2000 + 500 = 2500)
-        let eth_2026 = filter_group(&df_perf, "eth-usdt", 2026);
+        let eth_2026 = filter_group(df_perf, "eth-usdt", 2026);
         assert_eq!(eth_2026.height(), 1, "ETH/2026 should have 1 perf row");
 
         let net_profit = eth_2026
@@ -449,7 +449,7 @@ mod tests {
         );
 
         // Verify group integrity: BTC/2025 should still have 3 rows
-        let btc_2025_cum = filter_group(&df_cum, "btc-usdt", 2025);
+        let btc_2025_cum = filter_group(df_cum, "btc-usdt", 2025);
         assert_eq!(
             btc_2025_cum.height(),
             3,

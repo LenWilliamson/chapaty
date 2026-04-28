@@ -8,17 +8,20 @@ use serde::Serialize;
 use serde_with::{DurationSeconds, serde_as};
 
 use crate::{
-    agent::{Agent, AgentIdentifier, GridAxis, news::NewsPhase},
     data::{
         domain::{CandleDirection, Price, Quantity, TradeId},
         event::{EconomicCalendarId, MarketId, Ohlcv, OhlcvId},
         view::StreamView,
     },
     error::{AgentError, ChapatyResult},
-    gym::trading::{
-        action::{Action, Actions, OpenCmd},
-        observation::Observation,
-        types::TradeType,
+    gym::{
+        AgentIdentifier, GridAxis,
+        trading::{
+            action::{Action, Actions, OpenCmd},
+            agent::{Agent, news::NewsPhase},
+            observation::Observation,
+            types::TradeType,
+        },
     },
 };
 
@@ -371,9 +374,6 @@ impl StopLossTarget {
     /// ```text
     /// take_profit = entry_price - (stop_loss_price - entry_price) / risk_reward_ratio
     /// ```
-    ///
-    /// # Panics
-    /// - If `risk_reward_ratio <= 0.0`, since a non-positive RRR is invalid.
     fn take_profit_price(&self, entry_price: Price, risk_reward_ratio: f64) -> Price {
         let sl = self.stop_loss_price.0;
         let entry = entry_price.0;

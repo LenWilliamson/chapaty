@@ -1,17 +1,15 @@
+use std::{str::FromStr, sync::Arc};
+
+use ndarray::Array;
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 use crate::{
-    error::ChapatyResult,
-    gym::trading::{action::Actions, observation::Observation},
+    error::{ChapatyResult, DataError},
     impl_add_sub_mul_div_primitive, impl_from_primitive,
 };
 
 pub mod trading;
-
-pub trait Env {
-    fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
-    fn step(&mut self, actions: Actions) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
-}
 
 /// Represents a reward value in whole dollars.
 ///
@@ -26,6 +24,27 @@ pub trait Env {
 pub struct Reward(pub i64);
 impl_from_primitive!(Reward, i64);
 impl_add_sub_mul_div_primitive!(Reward, i64);
+
+/// Configuration parameter for penalizing invalid actions.
+///
+/// This is a Newtype wrapper around [`Reward`] to distinguish it
+/// from standard step rewards and allow for specific default values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct InvalidActionPenalty(pub Reward);
+
+// Defines the sensible default for this specific parameter
+impl Default for InvalidActionPenalty {
+    fn default() -> Self {
+        Self(Reward(0))
+    }
+}
+
+// Allow seamless conversion to the underlying Reward when doing math
+impl From<InvalidActionPenalty> for Reward {
+    fn from(penalty: InvalidActionPenalty) -> Self {
+        penalty.0
+    }
+}
 
 /// Represents the lifecycle status of the trading environment.
 ///
@@ -109,4 +128,81 @@ impl StepOutcome {
     pub fn is_terminal(&self) -> bool {
         self.is_terminated() || self.is_truncated()
     }
+}
+
+// ============================================================================
+//  Shared Utilities
+// ============================================================================
+
+/// A utility for defining search space axes in grid searches.
+/// It parses explicit string parameters to avoid floating point ambiguity.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GridAxis {
+    start: f64,
+    end: f64,
+    step: f64,
+    /// Number of decimal places to round to, inferred from the `step` string.
+    precision: u32,
+}
+
+impl GridAxis {
+    /// Create a new axis from string parameters.
+    /// Returns a Result instead of panicking.
+    pub fn new(start: &str, end: &str, step: &str) -> ChapatyResult<Self> {
+        let start_f = f64::from_str(start).map_err(DataError::from)?;
+        let end_f = f64::from_str(end).map_err(DataError::from)?;
+        let step_f = f64::from_str(step).map_err(DataError::from)?;
+
+        let precision = step.split('.').nth(1).map(|s| s.len() as u32).unwrap_or(0);
+
+        Ok(Self {
+            start: start_f,
+            end: end_f,
+            step: step_f,
+            precision,
+        })
+    }
+
+    pub fn generate(&self) -> Vec<f64> {
+        let factor = 10_f64.powi(self.precision as i32);
+
+        Array::range(self.start, self.end, self.step)
+            .iter()
+            .map(|val| (val * factor).round() / factor)
+            .collect()
+    }
+}
+
+// ============================================================================
+//  Core Agent Definitions
+// ============================================================================
+
+/// Represents the unique identifier of an agent, used for tracking actions in reports.
+/// This enum is designed to help identify which agent performed a specific action during
+/// the backtesting or trading process. Each variant contains a `String` that uniquely
+/// identifies the agent for reporting purposes.
+///
+/// The `String` can represent custom agent names or predefined types (e.g., "NewsCounter").
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    Default,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    EnumString,
+)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+pub enum AgentIdentifier {
+    /// A custom user-defined agent.
+    #[strum(to_string = "{0}")]
+    Named(Arc<String>),
+
+    #[default]
+    Random,
 }

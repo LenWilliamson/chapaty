@@ -174,7 +174,7 @@ pub struct TradesId {
 
 /// A single atomic trade execution.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, PartialOrd)]
-pub struct Trade {
+pub struct TradeEvent {
     /// Time of trade execution.
     pub timestamp: DateTime<Utc>,
 
@@ -200,13 +200,13 @@ pub struct Trade {
     pub is_best_match: Option<ExecutionDepth>,
 }
 
-impl PriceReachable for Trade {
+impl PriceReachable for TradeEvent {
     fn price_reached(&self, price: Price) -> bool {
         self.price.0 == price.0
     }
 }
 
-impl ClosePriceProvider for Trade {
+impl ClosePriceProvider for TradeEvent {
     fn close_price(&self) -> Price {
         self.price
     }
@@ -215,7 +215,7 @@ impl ClosePriceProvider for Trade {
     }
 }
 
-impl MarketEvent for Trade {
+impl MarketEvent for TradeEvent {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.timestamp
     }
@@ -228,7 +228,7 @@ impl SymbolProvider for TradesId {
 }
 
 impl StreamId for TradesId {
-    type Event = Trade;
+    type Event = TradeEvent;
 }
 
 // ================================================================================================
@@ -264,9 +264,15 @@ pub enum ProfileCol {
     TimeSlotCount,
 }
 
+impl From<&ProfileCol> for PlSmallStr {
+    fn from(value: &ProfileCol) -> Self {
+        value.as_str().into()
+    }
+}
+
 impl From<ProfileCol> for PlSmallStr {
     fn from(value: ProfileCol) -> Self {
-        value.as_str().into()
+        (&value).into()
     }
 }
 
@@ -914,16 +920,6 @@ impl MarketId {
     }
 }
 
-impl From<OhlcvId> for MarketId {
-    fn from(value: OhlcvId) -> Self {
-        Self {
-            broker: value.broker,
-            exchange: value.exchange,
-            symbol: value.symbol,
-        }
-    }
-}
-
 impl From<&OhlcvId> for MarketId {
     fn from(value: &OhlcvId) -> Self {
         Self {
@@ -933,8 +929,14 @@ impl From<&OhlcvId> for MarketId {
         }
     }
 }
-impl From<TradesId> for MarketId {
-    fn from(value: TradesId) -> Self {
+
+impl From<OhlcvId> for MarketId {
+    fn from(value: OhlcvId) -> Self {
+        (&value).into()
+    }
+}
+impl From<&TradesId> for MarketId {
+    fn from(value: &TradesId) -> Self {
         Self {
             broker: value.broker,
             exchange: value.exchange,
@@ -943,13 +945,9 @@ impl From<TradesId> for MarketId {
     }
 }
 
-impl From<&TradesId> for MarketId {
-    fn from(value: &TradesId) -> Self {
-        Self {
-            broker: value.broker,
-            exchange: value.exchange,
-            symbol: value.symbol,
-        }
+impl From<TradesId> for MarketId {
+    fn from(value: TradesId) -> Self {
+        (&value).into()
     }
 }
 

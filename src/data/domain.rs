@@ -189,12 +189,18 @@ impl From<bool> for LiquiditySide {
     }
 }
 
-impl From<LiquiditySide> for bool {
-    fn from(value: LiquiditySide) -> Self {
+impl From<&LiquiditySide> for bool {
+    fn from(value: &LiquiditySide) -> Self {
         match value {
             LiquiditySide::Bid => true,
             LiquiditySide::Ask => false,
         }
+    }
+}
+
+impl From<LiquiditySide> for bool {
+    fn from(value: LiquiditySide) -> Self {
+        (&value).into()
     }
 }
 
@@ -245,18 +251,24 @@ impl From<bool> for ExecutionDepth {
     }
 }
 
-impl From<ExecutionDepth> for bool {
+impl From<&ExecutionDepth> for bool {
     /// Converts a `TradeMatchQuality` into a boolean value.
     ///
     /// `TradeMatchQuality::BestMatch` converts to `true`, meaning that the trade was filled entirely
     /// at the best available price.
     /// `TradeMatchQuality::NotBestMatch` converts to `false`, indicating that the best available quantity
     /// was insufficient and additional price levels were used.
-    fn from(trade_match_quality: ExecutionDepth) -> Self {
+    fn from(trade_match_quality: &ExecutionDepth) -> Self {
         match trade_match_quality {
             ExecutionDepth::TopOfBook => true,
             ExecutionDepth::BookSweep => false,
         }
+    }
+}
+
+impl From<ExecutionDepth> for bool {
+    fn from(value: ExecutionDepth) -> Self {
+        (&value).into()
     }
 }
 
@@ -288,13 +300,19 @@ impl DataBroker {
     }
 }
 
-impl From<DataBroker> for RpcDataBroker {
-    fn from(broker: DataBroker) -> Self {
+impl From<&DataBroker> for RpcDataBroker {
+    fn from(broker: &DataBroker) -> Self {
         match broker {
             DataBroker::Binance => RpcDataBroker::Binance,
             DataBroker::NinjaTrader => RpcDataBroker::NinjaTrader,
             DataBroker::InvestingCom => RpcDataBroker::InvestingCom,
         }
+    }
+}
+
+impl From<DataBroker> for RpcDataBroker {
+    fn from(broker: DataBroker) -> Self {
+        (&broker).into()
     }
 }
 
@@ -443,10 +461,7 @@ pub enum MarketType {
 
 impl From<Symbol> for MarketType {
     fn from(value: Symbol) -> Self {
-        match value {
-            Symbol::Future(_) => Self::Future,
-            Symbol::Spot(_) => Self::Spot,
-        }
+        (&value).into()
     }
 }
 
@@ -744,8 +759,8 @@ pub enum EconomicCategory {
     Bonds = 8,
 }
 
-impl From<EconomicCategory> for RpcEconomicCategory {
-    fn from(category: EconomicCategory) -> Self {
+impl From<&EconomicCategory> for RpcEconomicCategory {
+    fn from(category: &EconomicCategory) -> Self {
         match category {
             EconomicCategory::Employment => Self::Employment,
             EconomicCategory::EconomicActivity => Self::EconomicActivity,
@@ -756,6 +771,12 @@ impl From<EconomicCategory> for RpcEconomicCategory {
             EconomicCategory::Balance => Self::Balance,
             EconomicCategory::Bonds => Self::Bonds,
         }
+    }
+}
+
+impl From<EconomicCategory> for RpcEconomicCategory {
+    fn from(category: EconomicCategory) -> Self {
+        (&category).into()
     }
 }
 
@@ -803,13 +824,19 @@ pub enum EconomicEventImpact {
     High = 3,
 }
 
-impl From<EconomicEventImpact> for RpcEconomicImportance {
-    fn from(value: EconomicEventImpact) -> Self {
+impl From<&EconomicEventImpact> for RpcEconomicImportance {
+    fn from(value: &EconomicEventImpact) -> Self {
         match value {
             EconomicEventImpact::Low => Self::Low,
             EconomicEventImpact::Medium => Self::Moderate,
             EconomicEventImpact::High => Self::High,
         }
+    }
+}
+
+impl From<EconomicEventImpact> for RpcEconomicImportance {
+    fn from(value: EconomicEventImpact) -> Self {
+        (&value).into()
     }
 }
 
@@ -1075,7 +1102,7 @@ mod tests {
         for (input, root, month, year) in cases {
             let parsed: Symbol = input
                 .parse()
-                .expect(&format!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
             let expected = Symbol::Future(FutureContract { root, month, year });
             assert_eq!(parsed, expected, "Mismatch for '{}'", input);
         }
@@ -1096,7 +1123,7 @@ mod tests {
         for (input, expected_root) in cases {
             let parsed: Symbol = input
                 .parse()
-                .expect(&format!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
             match parsed {
                 Symbol::Future(contract) => assert_eq!(contract.root, expected_root),
                 _ => panic!("Expected Future variant for '{}'", input),

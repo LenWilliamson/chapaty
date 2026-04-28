@@ -1,11 +1,10 @@
 use crate::{
-    agent::AgentIdentifier,
     data::{
         domain::{Price, Quantity, TradeId},
         event::MarketId,
     },
     error::{AgentError, ChapatyResult},
-    gym::trading::types::TradeType,
+    gym::{AgentIdentifier, trading::types::TradeType},
     sorted_vec_map::SortedVecMap,
 };
 use serde::{Deserialize, Serialize};

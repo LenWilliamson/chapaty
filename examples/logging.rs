@@ -1,16 +1,8 @@
-use std::{collections::BTreeSet, env, fs, path::Path, time::Instant};
+use std::{env, fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result};
-use chapaty::{
-    agent::news::fade::NewsFade,
-    data::{
-        config::{EconomicCalendarConfig, OhlcvFutureConfig},
-        filter::EconomicCalendarPolicy,
-    },
-    prelude::*,
-};
+use chapaty::{gym::trading::agent::news::fade::NewsFade, prelude::*};
 use chrono::Duration;
-use polars::io::cloud::CloudOptions;
 use time::macros::format_description;
 use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -33,7 +25,7 @@ async fn main() -> Result<()> {
     let fade_time = fade_start.elapsed();
 
     let path = Path::new("examples/reports/news_fade");
-    journal.to_csv(path, None, None)?;
+    journal.to_file_sync(&FileConfig::default().with_dir(path))?;
 
     println!("\n--- Evaluation Timings ---");
     println!("1. Environment build time:      {build_time:?}");
@@ -120,9 +112,7 @@ fn init_tracing() -> Result<Option<WorkerGuard>> {
 // ================================================================================================
 
 fn news_fade() -> Result<NewsFade> {
-    let cal_id = economic_calendar_config().to_id()?;
-    let ohlcv_id = ohlcv_config().to_id()?;
-    let agent = NewsFade::baseline(cal_id, ohlcv_id)
+    let agent = NewsFade::baseline(economic_calendar_id(), ohlcv_id())
         .with_candles_after_news(Duration::minutes(14))
         .with_take_profit_risk_factor(0.0)
         .with_risk_reward_ratio(0.1)?;
@@ -130,51 +120,35 @@ fn news_fade() -> Result<NewsFade> {
 }
 
 async fn environment() -> Result<Environment> {
-    let allowed_years = Some((2024..=2025).collect::<BTreeSet<_>>());
-    let filter_config = FilterConfig {
-        allowed_years,
-        economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
-        ..Default::default()
-    };
+    let preset = EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly;
+    let file_stem = preset.to_string();
+    let loc = StorageLocation::HuggingFace { version: None };
+    let cfg = IoConfig::new(loc).with_file_stem(&file_stem);
 
-    let cfg = EnvConfig::default()
-        .add_ohlcv_future(DataSource::Chapaty, ohlcv_config())
-        .with_episode_length(EpisodeLength::Day)
-        .with_filter_config(filter_config)
-        .add_economic_calendar(DataSource::Chapaty, economic_calendar_config())
-        .with_trade_hint(2);
-
-    let loc = StorageLocation::Cloud {
-        path: "gs://chapaty-cache/examples/fade",
-        options: CloudOptions::default(),
-    };
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::load(preset, &cfg)
         .await
         .context("Failed to load trading environment")
 }
 
-fn economic_calendar_config() -> EconomicCalendarConfig {
-    EconomicCalendarConfig {
+fn economic_calendar_id() -> EconomicCalendarId {
+    EconomicCalendarId {
         broker: DataBroker::InvestingCom,
         data_source: None,
         country_code: Some(CountryCode::Us),
         category: Some(EconomicCategory::Employment),
         importance: Some(EconomicEventImpact::High),
-        batch_size: 1000,
     }
 }
 
-fn ohlcv_config() -> OhlcvFutureConfig {
-    OhlcvFutureConfig {
+fn ohlcv_id() -> OhlcvId {
+    OhlcvId {
         broker: DataBroker::NinjaTrader,
+        exchange: Exchange::Cme,
         symbol: Symbol::Future(FutureContract {
             root: FutureRoot::EurUsd,
             month: ContractMonth::March,
             year: ContractYear::Y6,
         }),
-        exchange: Some(Exchange::Cme),
         period: Period::Minute(1),
-        batch_size: 1000,
-        indicators: vec![],
     }
 }

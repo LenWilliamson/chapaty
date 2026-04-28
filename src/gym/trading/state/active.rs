@@ -24,7 +24,7 @@ pub enum CloseOutcome {
 
 impl Trade<Active> {
     /// Factory: Creates an Active trade, enforcing grid snapping.
-    pub fn new(
+    pub(super) fn new(
         cmd: OpenCmd,
         entry_price: Price,
         ts: DateTime<Utc>,
@@ -64,7 +64,7 @@ impl Trade<Active> {
         })
     }
 
-    pub fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
+    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".to_string(),
@@ -109,7 +109,7 @@ impl Trade<Active> {
         Ok(())
     }
 
-    pub fn market_close(
+    pub(super) fn market_close(
         self,
         cmd: &MarketCloseCmd,
         exit_price: Price,
@@ -145,30 +145,32 @@ impl Trade<Active> {
             self.trade_type
                 .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
 
-        let closed = Trade {
-            uid: self.uid,
-            agent_id: self.agent_id.clone(),
-            trade_type: self.trade_type,
-            quantity: qty,
-            stop_loss: self.stop_loss,
-            take_profit: self.take_profit,
-            state: Closed {
-                entry_ts: self.state.entry_ts,
-                entry_price: self.state.entry_price,
+        let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
+
+        if is_full_close {
+            let closed = self.map(|s| Closed {
+                entry_ts: s.entry_ts,
+                entry_price: s.entry_price,
                 exit_ts: ts,
                 exit_price: clean_exit_price,
                 termination_reason: reason,
                 realized_pnl,
-            },
-        };
-
-        if (self.quantity.0 - qty.0).abs() < f64::EPSILON {
+            });
             Ok((CloseOutcome::FullyClosed(closed), realized_pnl))
         } else {
             let remaining = Trade {
                 quantity: self.quantity - qty,
-                ..self
+                ..self.clone()
             };
+            let mut closed = self.map(|s| Closed {
+                entry_ts: s.entry_ts,
+                entry_price: s.entry_price,
+                exit_ts: ts,
+                exit_price: clean_exit_price,
+                termination_reason: reason,
+                realized_pnl,
+            });
+            closed.quantity = qty;
             Ok((
                 CloseOutcome::PartiallyClosed { closed, remaining },
                 realized_pnl,
@@ -177,7 +179,7 @@ impl Trade<Active> {
     }
 }
 
-pub fn update(
+pub(super) fn update(
     mut trade: Trade<Active>,
     m_id: &MarketId,
     ctx: &UpdateCtx,
@@ -254,7 +256,6 @@ pub fn update(
 #[cfg(test)]
 mod tests {
     use crate::{
-        agent::AgentIdentifier,
         data::{
             domain::{
                 ContractMonth, ContractYear, DataBroker, Exchange, FutureContract, FutureRoot,
@@ -263,13 +264,16 @@ mod tests {
             event::{MarketId, Ohlcv, OhlcvId},
             view::MarketView,
         },
-        gym::trading::{
-            config::{EnvConfig, ExecutionBias},
-            types::TradeType,
+        gym::{
+            AgentIdentifier,
+            trading::{
+                config::{EnvConfig, ExecutionBias},
+                types::TradeType,
+            },
         },
         sim::{
             cursor_group::CursorGroup,
-            data::{SimulationData, SimulationDataBuilder},
+            data::{SimulationData, SimulationDataBuilder, Streams},
         },
         sorted_vec_map::SortedVecMap,
     };
@@ -326,8 +330,8 @@ mod tests {
             let mut map = SortedVecMap::new();
             map.insert(id, vec![candle].into_boxed_slice());
 
-            let sim_data = SimulationDataBuilder::new()
-                .with_ohlcv(map)
+            let streams = Streams::default().with_ohlcv(map);
+            let sim_data = SimulationDataBuilder::new(streams)
                 .build(EnvConfig::default())
                 .expect("Failed to build sim data");
 

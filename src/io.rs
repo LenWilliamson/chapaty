@@ -14,6 +14,65 @@ use strum::{Display, EnumString, IntoStaticStr};
 use crate::error::{ChapatyError, ChapatyResult, IoError};
 
 // ================================================================================================
+// I/O Configuration
+// ================================================================================================
+
+/// Configuration for loading and caching environment data.
+///
+/// Encapsulates the storage location, serialization format, and I/O buffer settings
+/// to standardize reads and writes across Chapaty environments.
+#[derive(Debug, Clone)]
+pub struct IoConfig<'a> {
+    /// The storage location (local directory, cloud path, or HF dataset).
+    pub location: StorageLocation<'a>,
+    /// Optional explicit file stem (filename without extension).
+    /// If `None`, the environment's configuration hash is used.
+    pub file_stem: Option<&'a str>,
+    /// The serialization format to use. Defaults to `Postcard`.
+    pub format: SerdeFormat,
+    /// Size of the internal read/write buffer in bytes. Defaults to 128 KiB.
+    pub buffer_size: usize,
+}
+
+impl<'a> IoConfig<'a> {
+    /// Creates a new I/O configuration with sensible defaults.
+    ///
+    /// # Defaults
+    /// * `file_stem`: `None` (auto-generates from the configuration hash)
+    /// * `format`: `SerdeFormat::Postcard`
+    /// * `buffer_size`: 128 KiB
+    pub fn new(location: StorageLocation<'a>) -> Self {
+        Self {
+            location,
+            file_stem: None,
+            format: SerdeFormat::default(),
+            buffer_size: 128 * 1024,
+        }
+    }
+
+    /// Sets an explicit base filename (without extension).
+    pub fn with_file_stem(self, file_stem: &'a str) -> Self {
+        Self {
+            file_stem: Some(file_stem),
+            ..self
+        }
+    }
+
+    /// Sets a specific serialization format.
+    pub fn with_format(self, format: SerdeFormat) -> Self {
+        Self { format, ..self }
+    }
+
+    /// Sets a custom internal I/O buffer size in bytes.
+    pub fn with_buffer_size(self, size: usize) -> Self {
+        Self {
+            buffer_size: size,
+            ..self
+        }
+    }
+}
+
+// ================================================================================================
 // Cloud Reader
 // ================================================================================================
 
@@ -75,17 +134,25 @@ pub enum StorageLocation<'a> {
     },
     /// Local storage location (directory only, not a file path).
     Local(&'a Path),
+
+    /// Hugging Face Hosted Dataset.
+    ///
+    /// By default, the `version` should be set to `None`, which automatically
+    /// binds the download to the current `chapaty` crate version to guarantee
+    /// strict memory-layout compatibility. You can explicitly provide
+    /// a version string (e.g., `"v1.1.0"`) to override this behavior.
+    HuggingFace { version: Option<&'a str> },
 }
 
 impl<'a> StorageLocation<'a> {
     pub(crate) async fn writer(
         &self,
-        file_name: &str,
+        filename: &str,
         buffer_size: usize,
     ) -> ChapatyResult<Box<dyn Write + Send>> {
         match self {
             Self::Cloud { path, options } => {
-                let full_path = format!("{path}/{file_name}");
+                let full_path = format!("{path}/{filename}");
                 BlockingCloudWriter::new(PlPathRef::new(&full_path), Some(options))
                     .await
                     .map(|writer| {
@@ -104,7 +171,7 @@ impl<'a> StorageLocation<'a> {
                     })?;
                 }
 
-                let full_path = path.join(file_name);
+                let full_path = path.join(filename);
                 std::fs::File::create(full_path)
                     .map(|file| {
                         Box::new(BufWriter::with_capacity(buffer_size, file))
@@ -112,6 +179,7 @@ impl<'a> StorageLocation<'a> {
                     })
                     .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))
             }
+            Self::HuggingFace { .. } => Err(ChapatyError::Io(IoError::WriterCreation("Writing directly to Hugging Face from environments is not supported. Use the upload CLI by Hugging Face.".to_string()))),
         }
     }
 
@@ -121,12 +189,12 @@ impl<'a> StorageLocation<'a> {
     /// For cloud files, returns `None` if size cannot be determined.
     pub(crate) async fn reader_with_size(
         &self,
-        file_name: &str,
+        filename: &str,
         buffer_size: usize,
     ) -> ChapatyResult<(Box<dyn Read + Send>, Option<u64>)> {
         match self {
             Self::Cloud { path, options } => {
-                let full_path = format!("{path}/{file_name}");
+                let full_path = format!("{path}/{filename}");
                 let cloud_reader = CloudReader::new(&full_path, Some(options)).await?;
                 Ok((
                     Box::new(BufReader::with_capacity(buffer_size, cloud_reader))
@@ -135,21 +203,52 @@ impl<'a> StorageLocation<'a> {
                 ))
             }
             Self::Local(path) => {
-                let full_path = path.join(file_name);
-                let metadata = std::fs::metadata(&full_path)
-                    .map_err(|e| ChapatyError::Io(IoError::ReaderCreation(e.to_string())))?;
-                let size = metadata.len();
+                let full_path = path.join(filename);
+                open_local_file(&full_path, buffer_size)
+            }
+            Self::HuggingFace { version } => {
+                let revision = version
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| format!("v{}", crate::VERSION));
 
-                let file = std::fs::File::open(full_path)
-                    .map_err(|e| ChapatyError::Io(IoError::ReaderCreation(e.to_string())))?;
+                let api = hf_hub::api::tokio::Api::new().map_err(|e| {
+                    ChapatyError::Io(IoError::ReaderCreation(format!(
+                        "Hugging Face API initialization failed: {e}"
+                    )))
+                })?;
 
-                Ok((
-                    Box::new(BufReader::with_capacity(buffer_size, file)) as Box<dyn Read + Send>,
-                    Some(size),
-                ))
+                let repo = api.repo(hf_hub::Repo::with_revision(
+                    "chapaty/environments".to_string(),
+                    hf_hub::RepoType::Dataset,
+                    revision,
+                ));
+
+                let cached_path = repo.get(filename).await.map_err(|e| {
+                    ChapatyError::Io(IoError::ReadFailed(format!(
+                        "Failed to fetch environment from Hugging Face: {e}"
+                    )))
+                })?;
+                open_local_file(&cached_path, buffer_size)
             }
         }
     }
+}
+
+fn open_local_file(
+    full_path: &Path,
+    buffer_size: usize,
+) -> ChapatyResult<(Box<dyn Read + Send>, Option<u64>)> {
+    let metadata = std::fs::metadata(full_path)
+        .map_err(|e| ChapatyError::Io(IoError::ReaderCreation(e.to_string())))?;
+    let size = metadata.len();
+
+    let file = std::fs::File::open(full_path)
+        .map_err(|e| ChapatyError::Io(IoError::ReaderCreation(e.to_string())))?;
+
+    Ok((
+        Box::new(BufReader::with_capacity(buffer_size, file)) as Box<dyn Read + Send>,
+        Some(size),
+    ))
 }
 
 // ================================================================================================
@@ -176,28 +275,4 @@ impl<'a> StorageLocation<'a> {
 pub enum SerdeFormat {
     #[default]
     Postcard,
-}
-
-impl SerdeFormat {
-    pub fn from_path(path: &str) -> ChapatyResult<Self> {
-        match path
-            .rsplit_once('.')
-            .ok_or_else(|| err(path, true))?
-            .1
-            .to_lowercase()
-            .as_str()
-        {
-            "postcard" => Ok(Self::Postcard),
-            ext => Err(err(ext, false)),
-        }
-    }
-}
-
-fn err(s: &str, missing_extension: bool) -> ChapatyError {
-    let msg = if missing_extension {
-        format!("Unsupported file format: missing or invalid extension in path '{s}'")
-    } else {
-        format!("Unsupported file format: '{s}'")
-    };
-    IoError::UnsupportedFormat(msg).into()
 }

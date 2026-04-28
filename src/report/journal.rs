@@ -15,7 +15,6 @@ use crate::{
     error::{ChapatyError, ChapatyResult, DataError},
     report::{
         cumulative_returns::CumulativeReturns,
-        equity_curve_fitting::EquityCurveFitting,
         grouped::{GroupCol, GroupedJournal},
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
         portfolio_performance::PortfolioPerformance,
@@ -204,10 +203,6 @@ impl Journal {
         self.try_into()
     }
 
-    pub fn equity_curve_fitting(&self) -> ChapatyResult<EquityCurveFitting> {
-        self.try_into()
-    }
-
     pub fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
         self.try_into()
     }
@@ -267,7 +262,7 @@ impl Default for Journal {
 
 impl ToSchema for Journal {
     fn to_schema() -> SchemaRef {
-        let fields: Vec<Field> = JournalCol::iter()
+        let fields = JournalCol::iter()
             .map(|col| {
                 let dtype = match col {
                     JournalCol::RowId | JournalCol::EpisodeId => DataType::UInt32,
@@ -303,7 +298,7 @@ impl ToSchema for Journal {
                 };
                 Field::new(col.into(), dtype)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         Arc::new(Schema::from_iter(fields))
     }

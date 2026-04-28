@@ -1,16 +1,10 @@
-use std::{collections::BTreeSet, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use anyhow::{Context, Result};
 use chapaty::{
-    agent::news::breakout::{NewsBreakout, NewsBreakoutGrid},
-    data::{
-        config::{EconomicCalendarConfig, OhlcvFutureConfig},
-        filter::EconomicCalendarPolicy,
-    },
+    gym::trading::agent::news::breakout::{NewsBreakout, NewsBreakoutGrid},
     prelude::*,
 };
-
-use polars::io::cloud::CloudOptions;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 // === BEGIN JEMALLOC CONFIG ===
@@ -40,7 +34,7 @@ async fn main() -> Result<()> {
     let grid_backtest_time = grid_backtest_start.elapsed();
 
     let path = Path::new("examples/reports/news_breakout");
-    leaderboard.to_csv(path, None, None)?;
+    leaderboard.to_file_sync(&FileConfig::default().with_dir(path))?;
 
     println!("\n--- Evaluation Timings ---");
     println!("1. Environment build time:      {build_time:?}");
@@ -54,11 +48,7 @@ async fn main() -> Result<()> {
 // ================================================================================================
 
 fn news_breakout_grid() -> (usize, impl ParallelIterator<Item = (usize, NewsBreakout)>) {
-    let cal_config = economic_calendar_config()
-        .to_id()
-        .expect("Failed to create economic calendar ID");
-    let ohlcv_config = ohlcv_config().to_id().expect("Failed to create OHLCV ID");
-    NewsBreakoutGrid::baseline(cal_config, ohlcv_config)
+    NewsBreakoutGrid::baseline(economic_calendar_id(), ohlcv_id())
         .expect("Failed to create baseline grid")
         // Optional: Constrain the grid for a quick demo run
         // .with_stop_loss_risk_factor(GridAxis::new("0.5", "1.5", "0.01").expect("Invalid stop loss axis"))
@@ -67,52 +57,35 @@ fn news_breakout_grid() -> (usize, impl ParallelIterator<Item = (usize, NewsBrea
 }
 
 async fn environment() -> Result<Environment> {
-    let allowed_years = Some((2024..=2025).collect::<BTreeSet<_>>());
-    let filter_config = FilterConfig {
-        allowed_years,
-        economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
-        ..Default::default()
-    };
+    let preset = EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly;
+    let file_stem = preset.to_string();
+    let loc = StorageLocation::HuggingFace { version: None };
+    let cfg = IoConfig::new(loc).with_file_stem(&file_stem);
 
-    let cfg = EnvConfig::default()
-        .add_ohlcv_future(DataSource::Chapaty, ohlcv_config())
-        .with_episode_length(EpisodeLength::Day)
-        .with_filter_config(filter_config)
-        .add_economic_calendar(DataSource::Chapaty, economic_calendar_config())
-        .with_trade_hint(2);
-
-    let loc = StorageLocation::Cloud {
-        path: "gs://chapaty-cache/examples/breakout",
-        options: CloudOptions::default(),
-    };
-
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::load(preset, &cfg)
         .await
         .context("Failed to load trading environment")
 }
 
-fn economic_calendar_config() -> EconomicCalendarConfig {
-    EconomicCalendarConfig {
+fn economic_calendar_id() -> EconomicCalendarId {
+    EconomicCalendarId {
         broker: DataBroker::InvestingCom,
         data_source: None,
         country_code: Some(CountryCode::Us),
         category: Some(EconomicCategory::Employment),
         importance: Some(EconomicEventImpact::High),
-        batch_size: 1000,
     }
 }
 
-fn ohlcv_config() -> OhlcvFutureConfig {
-    OhlcvFutureConfig {
+fn ohlcv_id() -> OhlcvId {
+    OhlcvId {
         broker: DataBroker::NinjaTrader,
+        exchange: Exchange::Cme,
         symbol: Symbol::Future(FutureContract {
             root: FutureRoot::EurUsd,
             month: ContractMonth::March,
             year: ContractYear::Y6,
         }),
-        exchange: Some(Exchange::Cme),
         period: Period::Minute(1),
-        batch_size: 1000,
-        indicators: vec![],
     }
 }

@@ -1,44 +1,37 @@
-// 1. Traits
-pub use crate::agent::Agent;
-pub use crate::data::config::{ConfigId, TechnicalAnalysis};
-pub use crate::data::view::StreamView;
-pub use crate::gym::Env;
-pub use crate::math::indicator::StreamingIndicator;
-pub use crate::report::io::{
-    AsFormattedLazyFrame, ReportName, ToCloudCsv, ToCloudParquet, ToCsv, ToJson, ToParquet,
-};
+// 1. Report, I/O & Transport
+pub use crate::io::*;
+pub use crate::report::io::*;
+pub use crate::transport::source::*;
 
-// 2. The Core "Loop" Types
+// 2. The Core "Loop", Agents & States
 pub use crate::data::episode::EpisodeLength;
+pub use crate::gym::AgentIdentifier;
 pub use crate::gym::trading::{
-    action::Actions,
-    config::{EnvConfig, EnvPreset},
-    env::Environment,
-    observation::Observation,
-    state::State,
+    Env, action::*, agent::*, config::*, env::*, observation::*, state::*, types::*,
 };
 
-// 3. Financial Domain Types
-pub use crate::data::domain::{
-    ContractMonth, ContractYear, CountryCode, DataBroker, EconomicCategory, EconomicEventImpact,
-    Exchange, FutureContract, FutureRoot, Period, SpotPair, Symbol,
-};
-pub use crate::data::event::{
-    EconomicCalendarId, EmaId, MarketId, OhlcvId, RsiId, SmaId, TpoId, TradesId, VolumeProfileId,
-};
+// 3. Financial Domain Types (Primitives & Classifications)
+// Safely pulls in Price, Quantity, Tick, Volume, TradeId, SpotPair, etc.
+pub use crate::data::domain::*;
 
-// 4. Data Configurations
-pub use crate::data::config::OhlcvSpotConfig;
-pub use crate::data::filter::{FilterConfig, TradingWindow, Weekday};
-pub use crate::data::indicator::{EmaWindow, RsiWindow, SmaWindow, TechnicalIndicator};
+// 4. Events & Views
+// Pulls in Ohlcv, Trade, Tpo, MarketView, StreamView, ClosePriceProvider, etc.
+pub use crate::data::event::*;
+pub use crate::data::view::*;
 
-// 5. Errors
-pub use crate::error::{
-    AgentError, ChapatyError, ChapatyResult, DataError, EnvError, IoError, SystemError,
-    TransportError,
-};
+// 5. Data Configurations & Filters
+// Pulls in TechnicalAnalysis, FilterConfig, TradingWindow, OhlcvSpotConfig, etc.
+pub use crate::data::common::*;
+pub use crate::data::config::*;
+pub use crate::data::filter::*;
 
-// 6. Factories & Configs
-pub use crate::gym::trading::factory::{load, make};
-pub use crate::io::{SerdeFormat, StorageLocation};
-pub use crate::transport::source::{ApiKey, DataSource, Url};
+// 6. Technical Indicators
+// Automatically exposes StreamingSma, StreamingEma, StreamingRsi, StreamingIndicator, etc.
+pub use crate::data::indicator::*;
+pub use crate::math::indicator::*;
+
+// 7. Errors
+pub use crate::error::*;
+
+// 8. Factories
+pub use crate::gym::trading::{load, make};

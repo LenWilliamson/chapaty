@@ -1,16 +1,11 @@
-use std::{collections::BTreeSet, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use anyhow::{Context, Result};
 use chapaty::{
-    agent::news::{breakout::NewsBreakout, fade::NewsFade, hybrid::NewsHybrid},
-    data::{
-        config::{EconomicCalendarConfig, OhlcvFutureConfig},
-        filter::EconomicCalendarPolicy,
-    },
+    gym::trading::agent::news::{breakout::NewsBreakout, fade::NewsFade, hybrid::NewsHybrid},
     prelude::*,
 };
 use chrono::Duration;
-use polars::io::cloud::CloudOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,11 +21,14 @@ async fn main() -> Result<()> {
     let decision_time = decision_start.elapsed();
 
     let path = Path::new("examples/reports/news_hybrid");
-    journal.to_csv(path, None, None)?;
-    journal.cumulative_returns()?.to_csv(path, None, None)?;
-    journal.equity_curve_fitting()?.to_csv(path, None, None)?;
-    journal.portfolio_performance()?.to_csv(path, None, None)?;
-    journal.trade_stats()?.to_csv(path, None, None)?;
+    let file_cfg = FileConfig::default().with_dir(path);
+    journal.to_file_sync(&file_cfg)?;
+    journal.cumulative_returns()?.to_file_sync(&file_cfg)?;
+    journal.portfolio_performance()?.to_file_sync(&file_cfg)?;
+    journal.trade_stats()?.to_file_sync(&file_cfg)?;
+    env.equity_curve_report()?
+        .into_eod()?
+        .to_file_sync(&file_cfg)?;
 
     println!("\n--- Evaluation Timings ---");
     println!("1. Environment build time:      {build_time:?}");
@@ -44,16 +42,14 @@ async fn main() -> Result<()> {
 // ================================================================================================
 
 fn news_hybrid() -> Result<NewsHybrid> {
-    let cal_id = economic_calendar_config().to_id()?;
-    let ohlcv_1m_id = ohlcv_config(Period::Minute(1)).to_id()?;
+    let cal_id = economic_calendar_id();
 
-    let fade = NewsFade::baseline(cal_id, ohlcv_1m_id)
+    let fade = NewsFade::baseline(cal_id, ohlcv_id(Period::Minute(1)))
         .with_candles_after_news(Duration::minutes(7))
         .with_take_profit_risk_factor(1.27)
         .with_risk_reward_ratio(0.276)?;
 
-    let ohlcv_5m_id = ohlcv_config(Period::Minute(5)).to_id()?;
-    let breakout = NewsBreakout::baseline(cal_id, ohlcv_5m_id)
+    let breakout = NewsBreakout::baseline(cal_id, ohlcv_id(Period::Minute(5)))
         .with_earliest_entry_candle(Duration::minutes(8))
         .with_latest_entry_candle(Duration::minutes(50))
         .with_stop_loss_risk_factor(0.89)
@@ -63,52 +59,35 @@ fn news_hybrid() -> Result<NewsHybrid> {
 }
 
 async fn environment() -> Result<Environment> {
-    let allowed_years = Some((2024..=2025).collect::<BTreeSet<_>>());
-    let filter_config = FilterConfig {
-        allowed_years,
-        economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
-        ..Default::default()
-    };
+    let preset = EnvPreset::NinjaTraderCme6eh61m5mUsEmpHighEventsOnly;
+    let file_stem = preset.to_string();
+    let loc = StorageLocation::HuggingFace { version: None };
+    let cfg = IoConfig::new(loc).with_file_stem(&file_stem);
 
-    let cfg = EnvConfig::default()
-        .add_ohlcv_future(DataSource::Chapaty, ohlcv_config(Period::Minute(1)))
-        .add_ohlcv_future(DataSource::Chapaty, ohlcv_config(Period::Minute(5)))
-        .with_episode_length(EpisodeLength::Day)
-        .with_filter_config(filter_config)
-        .add_economic_calendar(DataSource::Chapaty, economic_calendar_config())
-        .with_trade_hint(4);
-
-    let loc = StorageLocation::Cloud {
-        path: "gs://chapaty-cache/examples/hybrid",
-        options: CloudOptions::default(),
-    };
-    chapaty::load(cfg, &loc, SerdeFormat::Postcard, 128 * 1024)
+    chapaty::load(preset, &cfg)
         .await
         .context("Failed to load trading environment")
 }
 
-fn economic_calendar_config() -> EconomicCalendarConfig {
-    EconomicCalendarConfig {
+fn economic_calendar_id() -> EconomicCalendarId {
+    EconomicCalendarId {
         broker: DataBroker::InvestingCom,
         data_source: None,
         country_code: Some(CountryCode::Us),
         category: Some(EconomicCategory::Employment),
         importance: Some(EconomicEventImpact::High),
-        batch_size: 1000,
     }
 }
 
-fn ohlcv_config(period: Period) -> OhlcvFutureConfig {
-    OhlcvFutureConfig {
+fn ohlcv_id(period: Period) -> OhlcvId {
+    OhlcvId {
         broker: DataBroker::NinjaTrader,
+        exchange: Exchange::Cme,
         symbol: Symbol::Future(FutureContract {
             root: FutureRoot::EurUsd,
             month: ContractMonth::March,
             year: ContractYear::Y6,
         }),
-        exchange: Some(Exchange::Cme),
         period,
-        batch_size: 1000,
-        indicators: vec![],
     }
 }

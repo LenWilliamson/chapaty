@@ -4,17 +4,20 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::{
-    agent::{Agent, AgentIdentifier},
     data::{
         domain::{Quantity, TradeId},
         event::{ClosePriceProvider, OhlcvId, SmaId},
         view::StreamView,
     },
     error::ChapatyResult,
-    gym::trading::{
-        action::{Action, Actions, MarketCloseCmd, OpenCmd},
-        observation::Observation,
-        types::TradeType,
+    gym::{
+        AgentIdentifier,
+        trading::{
+            action::{Action, Actions, MarketCloseCmd, OpenCmd},
+            agent::Agent,
+            observation::Observation,
+            types::TradeType,
+        },
     },
     math::indicator::{StreamingIndicator, StreamingSma},
 };

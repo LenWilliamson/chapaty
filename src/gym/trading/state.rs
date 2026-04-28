@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::{
-    agent::AgentIdentifier,
     data::{
         domain::{Instrument, Price, Quantity, Symbol, Tick, TradeId},
         event::MarketId,
@@ -13,7 +12,7 @@ use crate::{
     },
     error::{AgentError, ChapatyError, ChapatyResult, DataError, SystemError},
     gym::{
-        Reward,
+        AgentIdentifier, Reward,
         trading::{
             action::{CancelCmd, MarketCloseCmd, ModifyCmd, OpenCmd},
             context::UpdateCtx,
@@ -189,6 +188,37 @@ impl<S: TradeState> Trade<S> {
 
     pub fn state(&self) -> &S {
         &self.state
+    }
+
+    pub fn map<NewState: TradeState, F>(self, f: F) -> Trade<NewState>
+    where
+        F: FnOnce(S) -> NewState,
+    {
+        Trade {
+            uid: self.uid,
+            agent_id: self.agent_id,
+            trade_type: self.trade_type,
+            quantity: self.quantity,
+            stop_loss: self.stop_loss,
+            take_profit: self.take_profit,
+            state: f(self.state),
+        }
+    }
+
+    pub fn try_map<NewState: TradeState, E, F>(self, f: F) -> Result<Trade<NewState>, E>
+    where
+        F: FnOnce(S) -> Result<NewState, E>,
+    {
+        let new_state = f(self.state)?;
+        Ok(Trade {
+            uid: self.uid,
+            agent_id: self.agent_id,
+            trade_type: self.trade_type,
+            quantity: self.quantity,
+            stop_loss: self.stop_loss,
+            take_profit: self.take_profit,
+            state: new_state,
+        })
     }
 }
 
@@ -501,12 +531,7 @@ impl From<&State> for StateKind {
 
 impl From<State> for StateKind {
     fn from(value: State) -> Self {
-        match value {
-            State::Pending(_) => Self::Pending,
-            State::Active(_) => Self::Active,
-            State::Closed(_) => Self::Closed,
-            State::Canceled(_) => Self::Canceled,
-        }
+        (&value).into()
     }
 }
 
@@ -680,6 +705,36 @@ impl States {
             live_index: HashMap::with_capacity(total_capacity_hint),
             step_reward: 0.0,
             cumulative_pnl: 0.0,
+        }
+    }
+
+    /// Clones the state repository while explicitly preserving the allocated capacity
+    /// of the internal vectors.
+    ///
+    /// Standard `#[derive(Clone)]` on an empty `Vec` will yield a new `Vec` with 0 capacity.
+    /// By using this method, we guarantee that the new episode inherits the exact memory
+    /// footprint reserved in the original prototype.
+    pub(super) fn clone_with_capacity(&self) -> Self {
+        let live: SortedVecMap<MarketId, Vec<State>> = self
+            .live
+            .iter()
+            .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))
+            .collect();
+
+        let archive: SortedVecMap<MarketId, Vec<State>> = self
+            .archive
+            .iter()
+            .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))
+            .collect();
+
+        let live_index = HashMap::with_capacity(self.live_index.capacity());
+
+        Self {
+            live,
+            archive,
+            live_index,
+            step_reward: self.step_reward,
+            cumulative_pnl: self.cumulative_pnl,
         }
     }
 
@@ -1009,7 +1064,7 @@ impl States {
 struct StateGuard<'a> {
     market_id: MarketId,
     idx: usize,
-    state: Option<State>,
+    working_state: Option<State>,
 
     live_vec: &'a mut Vec<State>,
     archive_vec: &'a mut Vec<State>,
@@ -1028,7 +1083,7 @@ impl<'a> StateGuard<'a> {
         Ok(Self {
             market_id,
             idx,
-            state: Some(working_copy),
+            working_state: Some(working_copy),
             live_vec,
             archive_vec,
             live_index: &mut states.live_index,
@@ -1036,7 +1091,7 @@ impl<'a> StateGuard<'a> {
     }
 
     fn get(&self) -> &State {
-        self.state
+        self.working_state
             .as_ref()
             .expect("StateGuard invariant violated: state missing")
     }
@@ -1067,7 +1122,7 @@ impl<'a> StateGuard<'a> {
             // 4. Log to Archive
             self.archive_vec.push(new_state);
         }
-        self.state = None;
+        self.working_state = None;
     }
 }
 
@@ -1122,7 +1177,7 @@ mod tests {
         gym::trading::config::EnvConfig,
         sim::{
             cursor_group::CursorGroup,
-            data::{SimulationData, SimulationDataBuilder},
+            data::{SimulationData, SimulationDataBuilder, Streams},
         },
     };
     use std::panic::{self, AssertUnwindSafe};
@@ -1292,8 +1347,8 @@ mod tests {
             let mut map = SortedVecMap::new();
             map.insert(id, vec![candle].into_boxed_slice());
 
-            let sim_data = SimulationDataBuilder::new()
-                .with_ohlcv(map)
+            let streams = Streams::default().with_ohlcv(map);
+            let sim_data = SimulationDataBuilder::new(streams)
                 .build(EnvConfig::default())
                 .expect("Failed to build sim data");
 
@@ -1539,7 +1594,7 @@ mod tests {
 
         // PRE-CHECK: Establish the Baseline
         // We must prove it starts at 1.0 to prove it was 'restored' to 1.0
-        let original = states.live.get(&m_id).unwrap().get(0).unwrap();
+        let original = states.live.get(&m_id).unwrap().first().unwrap();
         assert_eq!(
             original.quantity().0,
             1.0,
@@ -1560,7 +1615,7 @@ mod tests {
         check_invariants(&states);
 
         // Verify the vector state was NOT updated (Rollback successful)
-        let current = states.live.get(&m_id).unwrap().get(0).unwrap();
+        let current = states.live.get(&m_id).unwrap().first().unwrap();
 
         // It should NOT be the mutated value
         assert_ne!(
@@ -1646,7 +1701,7 @@ mod tests {
         // CHECK: Returns explicit Error, does not Panic
         assert!(result.is_err());
         match result.unwrap_err() {
-            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => assert!(true),
+            ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {} // Expected
             e => panic!("Expected IndexOutOfBounds, got {:?}", e),
         }
         check_invariants(&states);

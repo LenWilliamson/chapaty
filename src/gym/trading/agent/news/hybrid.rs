@@ -4,17 +4,20 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 
 use crate::{
-    agent::{
-        Agent, AgentIdentifier,
-        news::{
-            breakout::{NewsBreakout, NewsBreakoutGrid},
-            fade::{NewsFade, NewsFadeGrid},
-        },
-    },
     error::ChapatyResult,
-    gym::trading::{
-        action::{Action, Actions, MarketCloseCmd},
-        observation::Observation,
+    gym::{
+        AgentIdentifier,
+        trading::{
+            action::{Action, Actions, MarketCloseCmd},
+            agent::{
+                Agent,
+                news::{
+                    breakout::{NewsBreakout, NewsBreakoutGrid},
+                    fade::{NewsFade, NewsFadeGrid},
+                },
+            },
+            observation::Observation,
+        },
     },
 };
 
@@ -28,15 +31,15 @@ use crate::{
 ///   If [`NewsBreakout`] produces an entry signal before (or at the same
 ///   step as) [`NewsFade`], the breakout signal is executed and the fade
 ///   signal is ignored.
-/// - **Fade-first, then Breakout:**  
+/// - **Fade-first, then Breakout:**
 ///   If [`NewsFade`] produces a signal first, the fade trade is opened.
 ///   If a breakout signal occurs afterwards, the fade trade is closed and replaced
 ///   with the breakout trade (“pivot”).
-/// - **Fade-only:**  
+/// - **Fade-only:**
 ///   If only [`NewsFade`] signals, its trade is executed and maintained.
-/// - **Breakout-only:**  
+/// - **Breakout-only:**
 ///   If only [`NewsBreakout`] signals, its trade is executed.
-/// - **Otherwise:**  
+/// - **Otherwise:**
 ///   The agent performs [`Actions::no_op`].
 ///
 /// # Motivation

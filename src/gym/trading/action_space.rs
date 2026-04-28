@@ -1,16 +1,18 @@
-use rand::{Rng, rngs::ThreadRng};
+use rand::{RngExt, rngs::ThreadRng};
 
 use crate::{
-    agent::AgentIdentifier,
     data::{
         domain::{Instrument, Price, Quantity, Symbol, TradeId},
         view::MarketView,
     },
     error::{ChapatyResult, SystemError},
-    gym::trading::{
-        action::{Action, Actions, MarketCloseCmd, ModifyCmd, OpenCmd},
-        state::{State, States},
-        types::TradeType,
+    gym::{
+        AgentIdentifier,
+        trading::{
+            action::{Action, Actions, MarketCloseCmd, ModifyCmd, OpenCmd},
+            state::{State, States},
+            types::TradeType,
+        },
     },
 };
 
@@ -177,7 +179,7 @@ mod tests {
         gym::trading::config::EnvConfig,
         sim::{
             cursor_group::CursorGroup,
-            data::{SimulationData, SimulationDataBuilder},
+            data::{SimulationData, SimulationDataBuilder, Streams},
         },
         sorted_vec_map::SortedVecMap,
     };
@@ -264,8 +266,8 @@ mod tests {
         let mut map = SortedVecMap::new();
         map.insert(market_id, vec![candle].into_boxed_slice());
 
-        let sim_data = SimulationDataBuilder::new()
-            .with_ohlcv(map)
+        let streams = Streams::default().with_ohlcv(map);
+        let sim_data = SimulationDataBuilder::new(streams)
             .build(EnvConfig::default())
             .expect("Failed to build sim data");
 

@@ -149,7 +149,7 @@ where
 #[derive(Debug, Clone)]
 pub struct MarketView<'env> {
     ohlcv: OhlcvView<'env>,
-    trade: TradeView<'env>,
+    trades: TradeView<'env>,
     economic_calendar: EconomicCalendarView<'env>,
     volume_profile: VolumeProfileView<'env>,
     tpo: TpoView<'env>,
@@ -166,27 +166,11 @@ pub struct MarketView<'env> {
 }
 
 impl<'env> MarketView<'env> {
-    pub(crate) fn new(sim_data: &'env SimulationData, cursor: &CursorGroup) -> ChapatyResult<Self> {
-        Ok(Self {
-            ohlcv: slice_map(sim_data.ohlcv(), cursor.ohlcv())?,
-            trade: slice_map(sim_data.trade(), cursor.trade())?,
-            economic_calendar: slice_map(sim_data.economic_cal(), cursor.economic_cal())?,
-            volume_profile: slice_map(sim_data.volume_profile(), cursor.vp())?,
-            tpo: slice_map(sim_data.tpo(), cursor.tpo())?,
-            ema: slice_map(sim_data.ema(), cursor.ema())?,
-            sma: slice_map(sim_data.sma(), cursor.sma())?,
-            rsi: slice_map(sim_data.rsi(), cursor.rsi())?,
-            previous_ts: cursor.previous_ts(),
-            current_ts: cursor.current_ts(),
-            market_ids: sim_data.market_ids(),
-        })
-    }
-
     pub fn ohlcv(&self) -> &OhlcvView<'env> {
         &self.ohlcv
     }
-    pub fn trade(&self) -> &TradeView<'env> {
-        &self.trade
+    pub fn trades(&self) -> &TradeView<'env> {
+        &self.trades
     }
     pub fn economic_news(&self) -> &EconomicCalendarView<'env> {
         &self.economic_calendar
@@ -214,18 +198,6 @@ impl<'env> MarketView<'env> {
     }
     pub fn market_ids(&self) -> Arc<[MarketId]> {
         self.market_ids.clone()
-    }
-
-    /// Returns a stack-allocated array of all views that support price checking.
-    #[inline]
-    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 5] {
-        [&self.ohlcv, &self.trade, &self.ema, &self.sma, &self.rsi]
-    }
-
-    /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
-    #[inline]
-    fn all_close_price_views(&self) -> [&dyn ClosePriceView; 5] {
-        [&self.ohlcv, &self.trade, &self.ema, &self.sma, &self.rsi]
     }
 
     /// Finds the candle active at the specific timestamp (Search: Newest to Oldest).
@@ -259,6 +231,38 @@ impl<'env> MarketView<'env> {
                 target_symbol
             )))
         })
+    }
+}
+
+impl<'env> MarketView<'env> {
+    pub(crate) fn new(sim_data: &'env SimulationData, cursor: &CursorGroup) -> ChapatyResult<Self> {
+        Ok(Self {
+            ohlcv: slice_map(sim_data.ohlcv(), cursor.ohlcv())?,
+            trades: slice_map(sim_data.trade(), cursor.trade())?,
+            economic_calendar: slice_map(sim_data.economic_cal(), cursor.economic_cal())?,
+            volume_profile: slice_map(sim_data.volume_profile(), cursor.vp())?,
+            tpo: slice_map(sim_data.tpo(), cursor.tpo())?,
+            ema: slice_map(sim_data.ema(), cursor.ema())?,
+            sma: slice_map(sim_data.sma(), cursor.sma())?,
+            rsi: slice_map(sim_data.rsi(), cursor.rsi())?,
+            previous_ts: cursor.previous_ts(),
+            current_ts: cursor.current_ts(),
+            market_ids: sim_data.market_ids(),
+        })
+    }
+}
+
+impl<'env> MarketView<'env> {
+    /// Returns a stack-allocated array of all views that support price checking.
+    #[inline]
+    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 5] {
+        [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
+    }
+
+    /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
+    #[inline]
+    fn all_close_price_views(&self) -> [&dyn ClosePriceView; 5] {
+        [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
     }
 }
 
@@ -362,7 +366,7 @@ mod test {
     ) -> MarketView<'a> {
         MarketView {
             ohlcv: OhlcvView { data: ohlcv_data },
-            trade: TradeView {
+            trades: TradeView {
                 data: SortedVecMap::new(),
             },
             economic_calendar: EconomicCalendarView {

@@ -1,5 +1,5 @@
 pub mod cumulative_returns;
-pub mod equity_curve_fitting;
+pub mod equity_curve;
 pub mod grouped;
 pub mod io;
 pub mod journal;

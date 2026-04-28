@@ -56,7 +56,7 @@ impl Report for PortfolioPerformance {
 
 impl ToSchema for PortfolioPerformance {
     fn to_schema() -> SchemaRef {
-        let fields: Vec<Field> = PortfolioPerformanceCol::iter()
+        let fields = PortfolioPerformanceCol::iter()
             .map(|col| {
                 let dtype = match col {
                     PortfolioPerformanceCol::NetProfit
@@ -65,13 +65,13 @@ impl ToSchema for PortfolioPerformance {
                     | PortfolioPerformanceCol::TotalWinProfit
                     | PortfolioPerformanceCol::TotalLoss
                     | PortfolioPerformanceCol::TotalWinProfitByTotalLoss
-                    | PortfolioPerformanceCol::SharpeRatio
-                    | PortfolioPerformanceCol::SortinoRatio
-                    | PortfolioPerformanceCol::OmegaRatio
-                    | PortfolioPerformanceCol::CalmarRatio
-                    | PortfolioPerformanceCol::RecoveryFactor
-                    | PortfolioPerformanceCol::MaxDrawdownUsd
-                    | PortfolioPerformanceCol::MaxDrawdownPct
+                    | PortfolioPerformanceCol::TradeSharpeRatio
+                    | PortfolioPerformanceCol::TradeSortinoRatio
+                    | PortfolioPerformanceCol::TradeOmegaRatio
+                    | PortfolioPerformanceCol::TradeCalmarRatio
+                    | PortfolioPerformanceCol::TradeRecoveryFactor
+                    | PortfolioPerformanceCol::MaxRealizedDrawdownUsd
+                    | PortfolioPerformanceCol::MaxRealizedDrawdownPct
                     | PortfolioPerformanceCol::WinRate
                     | PortfolioPerformanceCol::AvgWinToAvgLossRatio
                     | PortfolioPerformanceCol::TradeReturnStdDev
@@ -98,7 +98,7 @@ impl ToSchema for PortfolioPerformance {
                 };
                 Field::new(col.into(), dtype)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         Arc::new(Schema::from_iter(fields))
     }
@@ -230,27 +230,27 @@ fn exprs(cfg: RiskMetricsConfig) -> Vec<Expr> {
             .alias(PortfolioPerformanceCol::TotalWinProfitByTotalLoss)
             .cast(DataType::Float64),
         // === Risk-adjusted returns ===
-        sharpe_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::SharpeRatio)
+        trade_sharpe_ratio_expr(return_col, cfg)
+            .alias(PortfolioPerformanceCol::TradeSharpeRatio)
             .cast(DataType::Float64),
-        sortino_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::SortinoRatio)
+        trade_sortino_ratio_expr(return_col, cfg)
+            .alias(PortfolioPerformanceCol::TradeSortinoRatio)
             .cast(DataType::Float64),
-        omega_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::OmegaRatio)
+        trade_omega_ratio_expr(return_col, cfg)
+            .alias(PortfolioPerformanceCol::TradeOmegaRatio)
             .cast(DataType::Float64),
-        calmar_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::CalmarRatio)
+        trade_calmar_ratio_expr(return_col, cfg)
+            .alias(PortfolioPerformanceCol::TradeCalmarRatio)
             .cast(DataType::Float64),
-        recovery_factor_expr(return_col, init_val)
-            .alias(PortfolioPerformanceCol::RecoveryFactor)
+        trade_recovery_factor_expr(return_col, init_val)
+            .alias(PortfolioPerformanceCol::TradeRecoveryFactor)
             .cast(DataType::Float64),
         // === Risk measures ===
-        max_drawdown_usd_expr(init_val)
-            .alias(PortfolioPerformanceCol::MaxDrawdownUsd)
+        max_realized_drawdown_usd_expr(init_val)
+            .alias(PortfolioPerformanceCol::MaxRealizedDrawdownUsd)
             .cast(DataType::Float64),
-        max_drawdown_pct_expr(init_val)
-            .alias(PortfolioPerformanceCol::MaxDrawdownPct)
+        max_realized_drawdown_pct_expr(init_val)
+            .alias(PortfolioPerformanceCol::MaxRealizedDrawdownPct)
             .cast(DataType::Float64),
         // === Win/loss structure ===
         win_rate_expr(return_col)
@@ -384,7 +384,7 @@ fn total_win_profit_by_total_loss_expr(return_col: JournalCol) -> Expr {
 ///
 /// # Returns
 /// An expression that evaluates to a scalar Sharpe ratio.
-fn sharpe_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+fn trade_sharpe_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
     let excess = excess_return_expr(return_col, &cfg);
     let std = annualized_return_std_expr(return_col, cfg.initial_portfolio_value());
     excess.safe_div(std, None)
@@ -395,7 +395,7 @@ fn sharpe_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
 /// # Returns
 /// An expression evaluating to the Sortino ratio, using downside deviation
 /// (standard deviation of negative returns only) instead of total volatility.
-fn sortino_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+fn trade_sortino_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
     let excess = excess_return_expr(return_col, &cfg);
     let std = annualized_downside_return_std_expr(return_col, cfg.initial_portfolio_value());
     excess.safe_div(std, None)
@@ -432,7 +432,7 @@ fn sortino_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
 /// # Note
 /// This formulation differs from the Sharpe and Sortino ratios by avoiding reliance on standard deviation
 /// and instead directly comparing weighted return distributions.
-fn omega_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+fn trade_omega_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
     let pct_returns = pct_trade_returns_expr(return_col, cfg.initial_portfolio_value());
     let threshold_expr = lit(cfg.risk_free_rate_f64());
 
@@ -448,23 +448,23 @@ fn omega_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
     gains.safe_div(losses, None)
 }
 
-fn calmar_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+fn trade_calmar_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
     let annualized_mean_return =
         annualized_mean_return_expr(return_col, cfg.initial_portfolio_value());
-    let max_drawdown_pct = max_drawdown_pct_expr(cfg.initial_portfolio_value());
+    let max_drawdown_pct = max_realized_drawdown_pct_expr(cfg.initial_portfolio_value());
     annualized_mean_return.safe_div(max_drawdown_pct, None)
 }
 
-fn recovery_factor_expr(return_col: JournalCol, initial_value: u32) -> Expr {
+fn trade_recovery_factor_expr(return_col: JournalCol, initial_value: u32) -> Expr {
     let net_profit = net_profit_expr(return_col);
-    let max_drawdown_abs = max_drawdown_usd_expr(initial_value);
+    let max_drawdown_abs = max_realized_drawdown_usd_expr(initial_value);
     net_profit.safe_div(max_drawdown_abs, None)
 }
 
 // ================================================================================================
 // === Risk measures ===
 // ================================================================================================
-fn max_drawdown_usd_expr(initial_value: u32) -> Expr {
+fn max_realized_drawdown_usd_expr(initial_value: u32) -> Expr {
     // 1. Cumulative return (equity curve)
     let cum_returns = cumulative_realized_return_usd_expr(initial_value);
 
@@ -478,7 +478,7 @@ fn max_drawdown_usd_expr(initial_value: u32) -> Expr {
     drawdown.max().abs()
 }
 
-fn max_drawdown_pct_expr(initial_value: u32) -> Expr {
+fn max_realized_drawdown_pct_expr(initial_value: u32) -> Expr {
     // 1. Calculate the running peak (High Water Mark) for every row
     let running_peak = peak_cumulative_return_usd_expr(initial_value);
 
@@ -785,15 +785,15 @@ impl PortfolioPerformanceCol {
             TotalWinProfitByTotalLoss => Maximize,
 
             // === Risk-adjusted returns ===
-            SharpeRatio => Maximize,
-            SortinoRatio => Maximize,
-            OmegaRatio => Maximize,
-            CalmarRatio => Maximize,
-            RecoveryFactor => Maximize,
+            TradeSharpeRatio => Maximize,
+            TradeSortinoRatio => Maximize,
+            TradeOmegaRatio => Maximize,
+            TradeCalmarRatio => Maximize,
+            TradeRecoveryFactor => Maximize,
 
             // === Risk measures ===
-            MaxDrawdownUsd => Minimize,
-            MaxDrawdownPct => Minimize,
+            MaxRealizedDrawdownUsd => Minimize,
+            MaxRealizedDrawdownPct => Minimize,
 
             // === Win/loss structure ===
             WinRate => Maximize,
@@ -872,15 +872,15 @@ pub enum PortfolioPerformanceCol {
     TotalWinProfitByTotalLoss,
 
     // === Risk-adjusted returns ===
-    SharpeRatio,
-    SortinoRatio,
-    OmegaRatio,
-    CalmarRatio,
-    RecoveryFactor,
+    TradeSharpeRatio,
+    TradeSortinoRatio,
+    TradeOmegaRatio,
+    TradeCalmarRatio,
+    TradeRecoveryFactor,
 
     // === Risk measures ===
-    MaxDrawdownUsd,
-    MaxDrawdownPct,
+    MaxRealizedDrawdownUsd,
+    MaxRealizedDrawdownPct,
 
     // === Win/loss structure ===
     WinRate,
@@ -1232,7 +1232,7 @@ mod tests {
 
         // Verify Sharpe ratio is computed (may be null if volatility is zero)
         let sharpe = df
-            .column(PortfolioPerformanceCol::SharpeRatio.as_str())
+            .column(PortfolioPerformanceCol::TradeSharpeRatio.as_str())
             .expect("Missing sharpe_ratio column")
             .f64()
             .expect("Column is not f64")
@@ -1246,7 +1246,7 @@ mod tests {
 
         // Verify Sortino ratio exists
         let sortino = df
-            .column(PortfolioPerformanceCol::SortinoRatio.as_str())
+            .column(PortfolioPerformanceCol::TradeSortinoRatio.as_str())
             .expect("Missing sortino_ratio column")
             .f64()
             .expect("Column is not f64")
@@ -1259,7 +1259,7 @@ mod tests {
 
         // Verify Calmar ratio exists
         let calmar = df
-            .column(PortfolioPerformanceCol::CalmarRatio.as_str())
+            .column(PortfolioPerformanceCol::TradeCalmarRatio.as_str())
             .expect("Missing calmar_ratio column")
             .f64()
             .expect("Column is not f64")
@@ -1283,7 +1283,7 @@ mod tests {
 
         // Max drawdown should be calculated
         let max_dd_usd = df
-            .column(PortfolioPerformanceCol::MaxDrawdownUsd.as_str())
+            .column(PortfolioPerformanceCol::MaxRealizedDrawdownUsd.as_str())
             .expect("Missing max_drawdown_usd column")
             .f64()
             .expect("Column is not f64")
@@ -1300,7 +1300,7 @@ mod tests {
         );
 
         let max_dd_pct = df
-            .column(PortfolioPerformanceCol::MaxDrawdownPct.as_str())
+            .column(PortfolioPerformanceCol::MaxRealizedDrawdownPct.as_str())
             .expect("Missing max_drawdown_pct column")
             .f64()
             .expect("Column is not f64")
@@ -1546,7 +1546,7 @@ mod tests {
         let df = perf.as_df();
 
         let recovery = df
-            .column(PortfolioPerformanceCol::RecoveryFactor.as_str())
+            .column(PortfolioPerformanceCol::TradeRecoveryFactor.as_str())
             .expect("Missing recovery_factor column")
             .f64()
             .expect("Column is not f64")

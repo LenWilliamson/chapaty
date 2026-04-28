@@ -69,7 +69,7 @@ impl LeaderboardCol {
 
 impl ToSchema for Leaderboard {
     fn to_schema() -> SchemaRef {
-        let fields: Vec<Field> = LeaderboardCol::iter()
+        let fields = LeaderboardCol::iter()
             .map(|col| {
                 let dtype = match col {
                     LeaderboardCol::Rank => DataType::UInt32,
@@ -82,7 +82,7 @@ impl ToSchema for Leaderboard {
                 };
                 Field::new(col.into(), dtype)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         Arc::new(Schema::from_iter(fields))
     }
@@ -493,7 +493,7 @@ mod tests {
         // Arrange
         let k = 3;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Act: Insert K entries
         for i in 0..k {
@@ -516,7 +516,7 @@ mod tests {
         // Arrange
         let k = 3;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Fill with rewards 10.0, 20.0, 30.0 (agents 1, 2, 3)
         for i in 1..=k {
@@ -582,7 +582,7 @@ mod tests {
         // Arrange
         let k = 2;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Fill heap: rewards 10.0 and 20.0
         board.update(&[make_entry(1, metric, 10.0)], TestAgent::new(1));
@@ -611,7 +611,7 @@ mod tests {
     fn test_merge_correctness() {
         // Arrange
         let k = 3;
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Board A: agents with rewards 10, 20, 30
         let mut board_a = AgentLeaderboard::<TestAgent>::new(k);
@@ -653,7 +653,7 @@ mod tests {
     fn test_merge_garbage_collection() {
         // Arrange
         let k = 2;
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Board A: agents 1 and 2 with rewards 10.0, 20.0
         let mut board_a = AgentLeaderboard::<TestAgent>::new(k);
@@ -712,7 +712,7 @@ mod tests {
     fn test_into_dataframe_schema_and_sorting() {
         // Arrange
         let k = 3;
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
 
@@ -810,7 +810,7 @@ mod tests {
     fn test_soa_generation_missing_data() {
         // Arrange
         let k = 2;
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
         board.update(&[make_entry(1, metric, 10.0)], TestAgent::new(1));
@@ -846,7 +846,7 @@ mod tests {
         // Arrange
         let k = 2;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric_a = PortfolioPerformanceCol::SharpeRatio;
+        let metric_a = PortfolioPerformanceCol::TradeSharpeRatio;
         let metric_b = PortfolioPerformanceCol::NetProfit;
 
         // Act: Insert entries for different metrics (same agent)
@@ -888,7 +888,7 @@ mod tests {
         // Arrange
         let k = 1;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric = PortfolioPerformanceCol::SharpeRatio;
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
 
         // Insert agent 1
         board.update(&[make_entry(1, metric, 10.0)], TestAgent::new(1));
@@ -914,7 +914,7 @@ mod tests {
         // Arrange
         let k = 1;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric_a = PortfolioPerformanceCol::SharpeRatio;
+        let metric_a = PortfolioPerformanceCol::TradeSharpeRatio;
         let metric_b = PortfolioPerformanceCol::NetProfit;
 
         // Agent 1 wins in BOTH metrics
@@ -951,7 +951,7 @@ mod tests {
         // Arrange
         let k = 1;
         let mut board = AgentLeaderboard::<TestAgent>::new(k);
-        let metric_a = PortfolioPerformanceCol::SharpeRatio;
+        let metric_a = PortfolioPerformanceCol::TradeSharpeRatio;
         let metric_b = PortfolioPerformanceCol::NetProfit;
 
         // Agent 1 wins in BOTH metrics
