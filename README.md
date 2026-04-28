@@ -1,6 +1,6 @@
 # Chapaty
 
-[![Discord](https://img.shields.io/discord/1495690333911257108.svg?label=Discord&logo=discord&color=7289da&logoColor=white)](https://discord.gg/k7GWpDQC)
+[![Discord](https://img.shields.io/discord/1495690333911257108.svg?label=Discord&logo=discord&color=7289da&logoColor=white)][discord]
 [![Crates.io](https://img.shields.io/crates/v/chapaty.svg)](https://crates.io/crates/chapaty)
 [![Docs.rs](https://img.shields.io/docsrs/chapaty)](https://docs.rs/chapaty)
 [![CI (Main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
@@ -111,7 +111,7 @@ For practical, _ready-to-run agents_, check out the `examples/` directory to get
 
 ## Community
 
-If you are excited about the project, don't hesitate to join our [Discord](https://discord.gg/k7GWpDQC)! It is the perfect place to ask questions, file data requests, discuss new features, and share what you have built with the community.
+If you are excited about the project, don't hesitate to join our [Discord][discord]! It is the perfect place to ask questions, file data requests, discuss new features, and share what you have built with the community.
 
 ## Contributing
 
@@ -133,5 +133,6 @@ This software is provided **“AS IS”**, without warranties or conditions of a
 
 By using Chapaty, you acknowledge that **you are solely responsible for any trading decisions, strategies, or outcomes**.
 
+[discord]: https://discord.gg/MmMAB6NCuK
 [gymnasiumLink]: https://github.com/Farama-Foundation/Gymnasium
 [deepmindLink]: https://github.com/deepmind/dm_control
