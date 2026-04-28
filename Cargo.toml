@@ -1,6 +1,6 @@
 [package]
 name = "chapaty"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 authors = ["Len Williamson <lencewa13@gmail.com>"]
 description = "High-performance backtesting and financial simulation framework for trading strategies and reinforcement learning agents. Async-first, Gym-like API in Rust."
