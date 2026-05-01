@@ -6,7 +6,7 @@
 [![CI (Main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
 [![CI (Develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
 
-**Chapaty** is an Rust engine for **building and evaluating quantitative trading agents**. Designed with a familiar, [**Gym-style API**][gymnasiumLink], Chapaty brings the rigor of standardized simulation interfaces to **event-driven financial backtesting**.
+**Chapaty** is a Rust engine for **building and evaluating quantitative trading agents**. Designed with a familiar [**Gym-style API**][gymnasiumLink], Chapaty brings the rigor of standardized simulation interfaces to **event-driven financial backtesting**.
 
 ## Getting Started
 

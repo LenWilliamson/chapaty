@@ -31,6 +31,23 @@ pub struct PortfolioPerformance {
     pub df: DataFrame,
 }
 
+impl PortfolioPerformance {
+    /// Efficiently extracts a metric value from a specific row.
+    pub fn get(&self, metric: PortfolioPerformanceCol, row: usize) -> Option<f64> {
+        // GUARD: Polars ChunkedArray::get() will panic if called on an empty series.
+        // We must explicitly verify the row exists within the dataframe bounds first.
+        if row >= self.df.height() {
+            return None;
+        }
+
+        self.df.column(metric.as_str()).ok()?.f64().ok()?.get(row)
+    }
+
+    /// Safely extracts the metric value from the first row.
+    pub fn first(&self, metric: PortfolioPerformanceCol) -> Option<f64> {
+        self.get(metric, 0)
+    }
+}
 impl Default for PortfolioPerformance {
     fn default() -> Self {
         let df = DataFrame::empty_with_schema(&Self::to_schema());
@@ -169,38 +186,6 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
         .map_err(|e| DataError::DataFrame(format!("Execution failed: {e}")))?;
 
         Ok(Self { df: merged })
-    }
-}
-
-pub struct PortfolioPerformanceAccessor<'a> {
-    df: &'a DataFrame,
-}
-
-impl PortfolioPerformance {
-    /// Creates a safe accessor for scalar value extraction.
-    ///
-    /// # Errors
-    /// Returns an error if the report is **Grouped** (rows > 1) or **Empty**.
-    /// This prevents logical errors where users might mistakenly read the first group's
-    /// result as a global metric.
-    pub fn accessor(&self) -> ChapatyResult<PortfolioPerformanceAccessor<'_>> {
-        match self.df.height() {
-            1 => Ok(PortfolioPerformanceAccessor { df: &self.df }),
-            0 => Err(DataError::DataFrame("Report is empty".to_string()).into()),
-            n => Err(DataError::DataFrame(format!(
-                "Cannot extract scalar from grouped report (rows={n})."
-            ))
-            .into()),
-        }
-    }
-}
-
-impl<'a> PortfolioPerformanceAccessor<'a> {
-    /// Efficiently extracts a metric value from the single-row report.
-    ///
-    /// Returns `None` if the value is null (e.g., Sharpe Ratio with 0 volatility).
-    pub fn get(&self, metric: PortfolioPerformanceCol) -> Option<f64> {
-        self.df.column(metric.as_str()).ok()?.f64().ok()?.get(0)
     }
 }
 
@@ -1471,10 +1456,8 @@ mod tests {
         let journal = load_journal_fixture();
         let perf = PortfolioPerformance::try_from(&journal).expect("Conversion failed");
 
-        let accessor = perf.accessor().expect("Should create accessor");
-
-        let net_profit = accessor
-            .get(PortfolioPerformanceCol::NetProfit)
+        let net_profit = perf
+            .first(PortfolioPerformanceCol::NetProfit)
             .expect("Net profit should be available");
 
         assert_eq!(net_profit, 2000.0, "Net profit via accessor should be 2000");
@@ -1496,6 +1479,37 @@ mod tests {
         let perf = result.unwrap();
         let df = perf.as_df();
         assert_eq!(df.height(), 0, "Empty journal should produce 0 rows");
+    }
+
+    // ========================================================================
+    // Test: Empty PortfolioPerformance
+    // ========================================================================
+
+    #[test]
+    fn test_get_and_first_safely_handle_empty_dataframe() {
+        let perf = PortfolioPerformance::default();
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
+
+        // Act & Assert 1: .first() must return None without panicking
+        let first_val = perf.first(metric);
+        assert_eq!(
+            first_val, None,
+            "first() on an empty dataframe must return None"
+        );
+
+        // Act & Assert 2: .get(0) must return None without panicking
+        let get_zero = perf.get(metric, 0);
+        assert_eq!(
+            get_zero, None,
+            "get(0) on an empty dataframe must return None"
+        );
+
+        // Act & Assert 3: .get() out of bounds on empty dataframe must return None
+        let get_out_of_bounds = perf.get(metric, 99);
+        assert_eq!(
+            get_out_of_bounds, None,
+            "get() out of bounds must return None"
+        );
     }
 
     // ========================================================================

@@ -121,7 +121,9 @@ pub(super) fn update(
     ctx: &UpdateCtx,
 ) -> ChapatyResult<(State, f64)> {
     let limit_price = trade.state.limit_price;
-    let hit_entry = ctx.market.reached_price(limit_price, &m_id.symbol);
+    let hit_entry = ctx
+        .market
+        .reached_price(limit_price, &m_id.symbol, trade.trade_type);
 
     if !hit_entry {
         return Ok((State::Pending(trade), 0.0));

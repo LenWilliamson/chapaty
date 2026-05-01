@@ -4,10 +4,12 @@ pub use crate::report::io::*;
 pub use crate::transport::source::*;
 
 // 2. The Core "Loop", Agents & States
-pub use crate::data::episode::EpisodeLength;
-pub use crate::gym::AgentIdentifier;
+pub use crate::data::episode::*;
 pub use crate::gym::trading::{
     Env, action::*, agent::*, config::*, env::*, observation::*, state::*, types::*,
+};
+pub use crate::gym::{
+    AgentIdentifier, EnvStatus, GridAxis, InvalidActionPenalty, Reward, StepOutcome,
 };
 
 // 3. Financial Domain Types (Primitives & Classifications)

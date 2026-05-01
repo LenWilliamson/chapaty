@@ -139,13 +139,13 @@ impl Report for Leaderboard {
 
 /// A report tracking the top-k performing agents for each performance metric.
 ///
-/// This report maintains a **min-heap** (`BinaryHeap<Reverse<LeaderboardEntry>>`)  
-/// to efficiently track the **top-k best-performing agents** per metric.  
+/// This report maintains a **min-heap** (`BinaryHeap<Reverse<LeaderboardEntry>>`)
+/// to efficiently track the **top-k best-performing agents** per metric.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentLeaderboard<T> {
     /// A mapping from performance metrics to **min-heaps** tracking the top-k performing agents.
     ///
-    /// Each entry in the heap is wrapped in `Reverse` to ensure that the smallest (i.e.  
+    /// Each entry in the heap is wrapped in `Reverse` to ensure that the smallest (i.e.
     /// the worst-performing among the top-k) entry is always at the top.
     pub top_per_metric:
         SortedVecMap<PortfolioPerformanceCol, BinaryHeap<Reverse<LeaderboardEntry>>>,
@@ -191,6 +191,11 @@ impl<T> AgentLeaderboard<T> {
     }
 
     pub(crate) fn update(&mut self, new_entries: &[LeaderboardEntry], agent: T) {
+        // GUARD: If the agent produced no trades/metrics, ignore it entirely.
+        if new_entries.is_empty() {
+            return;
+        }
+
         let mut is_global_winner = false;
         let mut potentially_evicted = SmallVec::<[u64; METRIC_COUNT]>::new();
 
@@ -487,6 +492,39 @@ mod tests {
     // ============================================================================================
     // 2. `update` Logic (The Hot Loop)
     // ============================================================================================
+
+    #[test]
+    fn test_update_with_empty_entries_does_not_panic() {
+        // Arrange
+        let k = 3;
+        let mut board = AgentLeaderboard::<TestAgent>::new(k);
+        let metric = PortfolioPerformanceCol::TradeSharpeRatio;
+
+        // Fill with one valid agent
+        let valid_entry = make_entry(1, metric, 10.0);
+        board.update(&[valid_entry], TestAgent::new(1));
+
+        // Act: Attempt to update with an empty array (the 0-trade edge case)
+        board.update(&[], TestAgent::new(2));
+
+        // Assert:
+        // 1. We did not panic.
+        // 2. Agent 2 is not in the heap.
+        // 3. Agent 2 is not in the cache.
+        let heap = board.top_per_metric.get(&metric).unwrap();
+        assert_eq!(heap.len(), 1, "Heap should only contain the valid agent");
+
+        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
+        assert!(
+            !uids.contains(&2),
+            "Zero-entry agent should not be in the heap"
+        );
+
+        assert!(
+            !board.agent_data.contains_key(&2),
+            "Zero-entry agent should not be cached"
+        );
+    }
 
     #[test]
     fn test_update_fills_capacity() {

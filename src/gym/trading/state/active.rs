@@ -210,12 +210,12 @@ pub(super) fn update(
     // A. Detect Triggers (Independent Checks)
     let tp_exit = trade
         .take_profit
-        .filter(|&tp| ctx.market.reached_price(tp, symbol))
+        .filter(|&tp| ctx.market.reached_price(tp, symbol, trade.trade_type))
         .map(|tp| (TerminationReason::TakeProfit, tp.0));
 
     let sl_exit = trade
         .stop_loss
-        .filter(|&sl| ctx.market.reached_price(sl, symbol))
+        .filter(|&sl| ctx.market.reached_price(sl, symbol, trade.trade_type))
         .map(|sl| (TerminationReason::StopLoss, sl.0));
 
     // B. Resolve Conflict (Priority Logic)

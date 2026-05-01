@@ -133,7 +133,7 @@ pub enum StorageLocation<'a> {
         options: CloudOptions,
     },
     /// Local storage location (directory only, not a file path).
-    Local(&'a Path),
+    Local { path: &'a Path },
 
     /// Hugging Face Hosted Dataset.
     ///
@@ -161,7 +161,7 @@ impl<'a> StorageLocation<'a> {
                     })
                     .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))
             }
-            Self::Local(path) => {
+            Self::Local { path } => {
                 if !path.exists() {
                     std::fs::create_dir_all(path).map_err(|e| {
                         ChapatyError::Io(IoError::WriterCreation(format!(
@@ -202,7 +202,7 @@ impl<'a> StorageLocation<'a> {
                     None,
                 ))
             }
-            Self::Local(path) => {
+            Self::Local { path } => {
                 let full_path = path.join(filename);
                 open_local_file(&full_path, buffer_size)
             }

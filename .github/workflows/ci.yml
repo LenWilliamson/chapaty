@@ -77,12 +77,25 @@ jobs:
       - name: Run Tests
         run: cargo test --all-features --verbose
 
-      # 6. Build Documentation
+      # 6. Build Documentation (Stable)
       - name: Verify Documentation Build
         run: cargo doc --no-deps --document-private-items
         env:
-          RUSTDOCFLAGS: "-D warnings" # Fail if docs have broken links
+          RUSTDOCFLAGS: "-D warnings"
 
-      # 7. Check Examples (Compilation Only)
+      # 7 Verify docs.rs Compatibility (Nightly - SOFT FAIL)
+      # docs.rs uses the nightly compiler. Upstream crates frequently break here.
+      # We use continue-on-error so a nightly upstream break doesn't block our PRs.
+      - name: Check Nightly Docs Compatibility
+        continue-on-error: true
+        run: |
+          rustup toolchain install nightly --profile minimal
+          cargo +nightly doc --no-deps
+        env:
+          # We don't use -D warnings here because nightly often introduces
+          # new experimental lints that we don't want to enforce yet.
+          RUSTDOCFLAGS: ""
+
+      # 8. Check Examples (Compilation Only)
       - name: Check Examples Compile
         run: cargo build --examples --verbose
