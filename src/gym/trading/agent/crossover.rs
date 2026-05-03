@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::{
     data::{
         domain::{Quantity, TradeId},
-        event::{ClosePriceProvider, OhlcvId, SmaId},
+        event::{IndicatorValueProvider, OhlcvId, SmaId},
         view::StreamView,
     },
     error::ChapatyResult,
@@ -186,8 +186,8 @@ impl Agent for PrecomputedCrossover {
             return Ok(Actions::no_op());
         };
 
-        let fast = fast_evt.close_price();
-        let slow = slow_evt.close_price();
+        let fast = fast_evt.value();
+        let slow = slow_evt.value();
 
         // 2. Position Management
         let agent_id = self.identifier();

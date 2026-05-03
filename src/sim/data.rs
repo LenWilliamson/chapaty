@@ -774,7 +774,7 @@ mod tests {
 
         // 2. Set up temp directory for cache
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache");
-        let storage = StorageLocation::Local(&temp_dir);
+        let storage = StorageLocation::Local { path: &temp_dir };
         let io_cfg = IoConfig::new(storage);
 
         // 3. Write to file using SimulationData::write()
@@ -823,7 +823,7 @@ mod tests {
 
         // 2. Set up temp directory with a custom file stem
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache_custom");
-        let storage = StorageLocation::Local(&temp_dir);
+        let storage = StorageLocation::Local { path: &temp_dir };
         let io_cfg = IoConfig::new(storage).with_file_stem(CUSTOM_NAME);
 
         // 3. Write using the custom filename

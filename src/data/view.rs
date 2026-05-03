@@ -11,6 +11,7 @@ use crate::{
         },
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
+    gym::trading::types::TradeType,
     sim::{
         cursor::{Cursor, StreamEntity},
         cursor_group::CursorGroup,
@@ -67,6 +68,7 @@ pub trait PriceCheckableView {
         &self,
         target_symbol: &Symbol,
         price: Price,
+        direction: TradeType,
         since_ts: DateTime<Utc>,
     ) -> bool;
 }
@@ -111,6 +113,7 @@ where
         &self,
         target_symbol: &Symbol,
         price: Price,
+        direction: TradeType,
         since_ts: DateTime<Utc>,
     ) -> bool {
         // Linear scan of all streams in this view is cheap (M < 100).
@@ -126,7 +129,7 @@ where
                     .iter()
                     .rev()
                     .take_while(|e| e.point_in_time() > since_ts)
-                    .any(|e| e.price_reached(price))
+                    .any(|e| e.price_reached(price, direction))
             })
     }
 }
@@ -209,17 +212,22 @@ impl<'env> MarketView<'env> {
     }
 
     /// Returns `true` if `price` was reached by any *new* event since the last step.
-    pub fn reached_price(&self, price: Price, target_symbol: &Symbol) -> bool {
+    pub fn reached_price(
+        &self,
+        price: Price,
+        target_symbol: &Symbol,
+        direction: TradeType,
+    ) -> bool {
         let prev = self.previous_timestamp();
         self.all_price_checkable_views()
             .into_iter()
-            .any(|view| view.reached_price_since(target_symbol, price, prev))
+            .any(|view| view.reached_price_since(target_symbol, price, direction, prev))
     }
 
     /// Resolves the most recent, non-leaky close price.
     pub fn try_resolved_close_price(&self, target_symbol: &Symbol) -> ChapatyResult<Price> {
         let best_price = self
-            .all_close_price_views()
+            .close_price_views()
             .into_iter()
             .filter_map(|view| view.latest_price_for_symbol(target_symbol))
             .max_by_key(|(ts, _)| *ts)
@@ -261,8 +269,8 @@ impl<'env> MarketView<'env> {
 
     /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
     #[inline]
-    fn all_close_price_views(&self) -> [&dyn ClosePriceView; 5] {
-        [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
+    fn close_price_views(&self) -> [&dyn ClosePriceView; 2] {
+        [&self.ohlcv, &self.trades]
     }
 }
 
@@ -398,12 +406,12 @@ mod test {
     // Focus: PriceCheckableView and ClosePriceView implementations
     // ============================================================================
 
-    // ==========================================================================
+    // ============================================================================
     // Test: reached_price (Reverse Iteration)
     // Constraint: Must iterate in reverse
     // The view checks if any NEW event (prev_ts < event_ts <= current_ts)
     // hit the price.
-    // ==========================================================================
+    // ============================================================================
 
     #[test]
     fn test_reached_price_basic_hit() {
@@ -434,23 +442,23 @@ mod test {
         );
 
         assert!(
-            market_view.reached_price(Price(110.0), &symbol),
+            market_view.reached_price(Price(110.0), &symbol, TradeType::Long),
             "High (110.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(90.0), &symbol),
+            market_view.reached_price(Price(90.0), &symbol, TradeType::Long),
             "Low (90.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(100.0), &symbol),
+            market_view.reached_price(Price(100.0), &symbol, TradeType::Long),
             "Price in range (100.0) should be reached"
         );
         assert!(
-            !market_view.reached_price(Price(120.0), &symbol),
+            !market_view.reached_price(Price(120.0), &symbol, TradeType::Long),
             "Price above high (120.0) should NOT be reached"
         );
         assert!(
-            !market_view.reached_price(Price(80.0), &symbol),
+            !market_view.reached_price(Price(80.0), &symbol, TradeType::Long),
             "Price below low (80.0) should NOT be reached"
         );
     }
@@ -496,11 +504,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(150.0), &symbol),
+            !market_view.reached_price(Price(150.0), &symbol, TradeType::Long),
             "Price 150 is in OLD candle (<=previous_ts), should be IGNORED"
         );
         assert!(
-            market_view.reached_price(Price(115.0), &symbol),
+            market_view.reached_price(Price(115.0), &symbol, TradeType::Long),
             "Price 115 is in NEW candle, should be reached"
         );
     }
@@ -566,11 +574,11 @@ mod test {
 
         // Both candles are "new" (point_in_time > previous_ts), so both should be checked
         assert!(
-            market_view.reached_price(Price(500.0), &symbol),
+            market_view.reached_price(Price(500.0), &symbol, TradeType::Long),
             "3m candle (new) contains 500, should be reached"
         );
         assert!(
-            market_view.reached_price(Price(200.0), &symbol),
+            market_view.reached_price(Price(200.0), &symbol, TradeType::Long),
             "5m candle (new) contains 200, should be reached"
         );
     }
@@ -618,11 +626,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(111.0), &symbol),
+            !market_view.reached_price(Price(111.0), &symbol, TradeType::Long),
             "Price 111 is in candle at EXACTLY previous_ts, should be EXCLUDED (not > since_ts)"
         );
         assert!(
-            market_view.reached_price(Price(222.0), &symbol),
+            market_view.reached_price(Price(222.0), &symbol, TradeType::Long),
             "Price 222 is in candle 1 second after previous_ts, should be INCLUDED"
         );
     }

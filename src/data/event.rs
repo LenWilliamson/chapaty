@@ -20,6 +20,7 @@ use crate::{
         indicator::{EmaWindow, RsiWindow, SmaWindow},
     },
     error::{ChapatyError, ChapatyResult, DataError},
+    gym::trading::types::TradeType,
 };
 
 // ================================================================================================
@@ -28,14 +29,23 @@ use crate::{
 
 /// Capability to check if a specific price was traded within an event's range.
 pub trait PriceReachable {
-    /// Returns true if the given `price` was observed by this market event.
-    fn price_reached(&self, price: Price) -> bool;
+    /// Returns true if the given `price` was reached or breached based on the intended trade direction.
+    fn price_reached(&self, price: Price, direction: TradeType) -> bool;
 }
 
 /// Capability to provide a "Close" price for resolving market state.
 pub trait ClosePriceProvider {
     fn close_price(&self) -> Price;
     fn close_timestamp(&self) -> DateTime<Utc>;
+}
+
+/// Capability to provide a computed technical indicator value at a specific point in time.
+pub trait IndicatorValueProvider {
+    /// The computed value of the indicator (e.g., the EMA line level).
+    fn value(&self) -> Price;
+
+    /// The timestamp at which this indicator value was recorded/calculated.
+    fn timestamp(&self) -> DateTime<Utc>;
 }
 
 /// Defines the temporal properties of any financial event.
@@ -112,7 +122,7 @@ pub struct Ohlcv {
 }
 
 impl PriceReachable for Ohlcv {
-    fn price_reached(&self, price: Price) -> bool {
+    fn price_reached(&self, price: Price, _direction: TradeType) -> bool {
         self.low.0 <= price.0 && price.0 <= self.high.0
     }
 }
@@ -201,8 +211,11 @@ pub struct TradeEvent {
 }
 
 impl PriceReachable for TradeEvent {
-    fn price_reached(&self, price: Price) -> bool {
-        self.price.0 == price.0
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
     }
 }
 
@@ -691,16 +704,19 @@ pub struct Ema {
 }
 
 impl PriceReachable for Ema {
-    fn price_reached(&self, price: Price) -> bool {
-        self.price.0 == price.0
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
     }
 }
 
-impl ClosePriceProvider for Ema {
-    fn close_price(&self) -> Price {
+impl IndicatorValueProvider for Ema {
+    fn value(&self) -> Price {
         self.price
     }
-    fn close_timestamp(&self) -> DateTime<Utc> {
+    fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
     }
 }
@@ -735,16 +751,19 @@ pub struct Rsi {
 }
 
 impl PriceReachable for Rsi {
-    fn price_reached(&self, price: Price) -> bool {
-        self.price.0 == price.0
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
     }
 }
 
-impl ClosePriceProvider for Rsi {
-    fn close_price(&self) -> Price {
+impl IndicatorValueProvider for Rsi {
+    fn value(&self) -> Price {
         self.price
     }
-    fn close_timestamp(&self) -> DateTime<Utc> {
+    fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
     }
 }
@@ -780,16 +799,19 @@ pub struct Sma {
 }
 
 impl PriceReachable for Sma {
-    fn price_reached(&self, price: Price) -> bool {
-        self.price.0 == price.0
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
     }
 }
 
-impl ClosePriceProvider for Sma {
-    fn close_price(&self) -> Price {
+impl IndicatorValueProvider for Sma {
+    fn value(&self) -> Price {
         self.price
     }
-    fn close_timestamp(&self) -> DateTime<Utc> {
+    fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
     }
 }
@@ -955,14 +977,15 @@ impl From<TradesId> for MarketId {
 mod test {
     use super::*;
 
+    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    fn ts(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
     #[test]
     fn tpo_as_df() {
-        let open_ts = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let close_ts = DateTime::parse_from_rfc3339("2023-01-01T01:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let open_ts = ts("2023-01-01T00:00:00Z");
+        let close_ts = ts("2023-01-01T01:00:00Z");
 
         let tpo = Tpo {
             open_timestamp: open_ts,
@@ -1017,12 +1040,8 @@ mod test {
 
     #[test]
     fn vp_as_df() {
-        let open_ts = DateTime::parse_from_rfc3339("2023-01-02T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let close_ts = DateTime::parse_from_rfc3339("2023-01-02T16:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let open_ts = ts("2023-01-02T12:00:00Z");
+        let close_ts = ts("2023-01-02T16:00:00Z");
 
         let vp = VolumeProfile {
             open_timestamp: open_ts,
@@ -1081,5 +1100,205 @@ mod test {
         let tb_quote = df.column("taker_buy_quote_vol").expect("to get tb_quote");
         assert!(tb_quote.f64().expect("to be f64").get(0).is_none()); // First bin was None
         assert_eq!(tb_quote.f64().expect("to be f64").get(1), Some(60000.0)); // Second bin was Some
+    }
+
+    // ============================================================================
+    // Price Reachability Tests
+    // ============================================================================
+
+    fn mock_trade(price: f64) -> TradeEvent {
+        TradeEvent {
+            timestamp: ts("2026-05-01T00:00:00Z"),
+            price: Price(price),
+            quantity: Quantity(1.0),
+            trade_id: None,
+            quote_asset_volume: None,
+            is_buyer_maker: None,
+            is_best_match: None,
+        }
+    }
+
+    fn mock_ohlcv(low: f64, high: f64) -> Ohlcv {
+        Ohlcv {
+            open_timestamp: ts("2026-05-01T00:00:00Z"),
+            close_timestamp: ts("2026-05-01T00:00:00Z"),
+            open: Price(0.0), // Irrelevant for reachability
+            high: Price(high),
+            low: Price(low),
+            close: Price(0.0), // Irrelevant for reachability
+            volume: Quantity(0.0),
+            quote_asset_volume: None,
+            number_of_trades: None,
+            taker_buy_base_asset_volume: None,
+            taker_buy_quote_asset_volume: None,
+        }
+    }
+
+    fn mock_sma(price: f64) -> Sma {
+        Sma {
+            timestamp: ts("2026-05-01T00:00:00Z"),
+            price: Price(price),
+        }
+    }
+
+    fn mock_ema(price: f64) -> Ema {
+        Ema {
+            timestamp: ts("2026-05-01T00:00:00Z"),
+            price: Price(price),
+        }
+    }
+
+    fn mock_rsi(value: f64) -> Rsi {
+        Rsi {
+            timestamp: ts("2026-05-01T00:00:00Z"),
+            price: Price(value),
+        }
+    }
+
+    #[test]
+    fn test_ohlcv_reachability() {
+        let target = Price(50000.0);
+
+        // 1. Exact Wick Touches (Edge Cases)
+        assert!(
+            mock_ohlcv(49000.0, 50000.0).price_reached(target, TradeType::Long),
+            "High wick exactly touches target"
+        );
+        assert!(
+            mock_ohlcv(50000.0, 51000.0).price_reached(target, TradeType::Short),
+            "Low wick exactly touches target"
+        );
+
+        // 2. Complete Engulfing (Target is inside the candle body/wicks)
+        assert!(mock_ohlcv(49000.0, 51000.0).price_reached(target, TradeType::Long));
+
+        // 3. Flat Candle / Zero Variance (Doji tick)
+        assert!(mock_ohlcv(50000.0, 50000.0).price_reached(target, TradeType::Long));
+
+        // 4. Undershoots / Misses
+        assert!(
+            !mock_ohlcv(49000.0, 49999.999999).price_reached(target, TradeType::Long),
+            "Wick high barely misses"
+        );
+        assert!(
+            !mock_ohlcv(50000.000001, 51000.0).price_reached(target, TradeType::Short),
+            "Wick low barely misses"
+        );
+    }
+
+    #[test]
+    fn test_trade_long_reachability() {
+        let target = Price(50000.0);
+
+        // 1. Miss: Market price hasn't dropped enough.
+        assert!(!mock_trade(50000.000001).price_reached(target, TradeType::Long));
+
+        // 2. Exact Touch: Market prints exactly at our limit.
+        assert!(mock_trade(50000.0).price_reached(target, TradeType::Long));
+
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
+        assert!(mock_trade(49990.0).price_reached(target, TradeType::Long));
+    }
+
+    #[test]
+    fn test_trade_short_reachability() {
+        let target = Price(50000.0);
+
+        // 1. Miss: Market price hasn't risen enough.
+        assert!(!mock_trade(49999.999999).price_reached(target, TradeType::Short));
+
+        // 2. Exact Touch: Market prints exactly at our limit.
+        assert!(mock_trade(50000.0).price_reached(target, TradeType::Short));
+
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
+        assert!(mock_trade(50010.0).price_reached(target, TradeType::Short));
+    }
+
+    #[test]
+    fn test_sma_long_reachability() {
+        // We want to trigger a Long when SMA drops to 50000.0 or below
+        let target = Price(50000.0);
+
+        // 1. Undershoot (Miss): SMA is at 50000.1, hasn't dropped enough.
+        assert!(!mock_sma(50000.1).price_reached(target, TradeType::Long));
+
+        // 2. Exact Touch: SMA hits exactly 50000.0.
+        assert!(mock_sma(50000.0).price_reached(target, TradeType::Long));
+
+        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping 50000.0.
+        assert!(mock_sma(49000.0).price_reached(target, TradeType::Long));
+    }
+
+    #[test]
+    fn test_sma_short_reachability() {
+        // We want to trigger a Short when SMA rises to 50000.0 or above
+        let target = Price(50000.0);
+
+        // 1. Undershoot (Miss): SMA is at 49999.9, hasn't risen enough.
+        assert!(!mock_sma(49999.9).price_reached(target, TradeType::Short));
+
+        // 2. Exact Touch: SMA hits exactly 50000.0.
+        assert!(mock_sma(50000.0).price_reached(target, TradeType::Short));
+
+        // 3. Overshoot (Gap up): SMA gaps up to 51000.0, completely skipping 50000.0.
+        assert!(mock_sma(51000.0).price_reached(target, TradeType::Short));
+    }
+
+    #[test]
+    fn test_ema_long_reachability() {
+        let target = Price(100.5);
+
+        // Test precision boundaries often encountered in floating-point math
+        assert!(!mock_ema(100.50000001).price_reached(target, TradeType::Long));
+        assert!(mock_ema(100.5).price_reached(target, TradeType::Long));
+        assert!(mock_ema(100.49999999).price_reached(target, TradeType::Long));
+    }
+
+    #[test]
+    fn test_ema_short_reachability() {
+        let target = Price(100.5);
+
+        assert!(
+            !mock_ema(100.49999999).price_reached(target, TradeType::Short),
+            "EMA is just below target"
+        );
+        assert!(
+            mock_ema(100.5).price_reached(target, TradeType::Short),
+            "EMA exactly hits target"
+        );
+        assert!(
+            mock_ema(100.50000001).price_reached(target, TradeType::Short),
+            "EMA spikes just above target"
+        );
+    }
+
+    #[test]
+    fn test_rsi_oversold_long() {
+        // Classic strategy: Buy when RSI drops below 30
+        let target = Price(30.0);
+
+        // RSI is 31 (Not oversold enough)
+        assert!(!mock_rsi(31.0).price_reached(target, TradeType::Long));
+
+        // RSI is exactly 30 (Trigger)
+        assert!(mock_rsi(30.0).price_reached(target, TradeType::Long));
+
+        // RSI plummets to 15 (Trigger)
+        assert!(mock_rsi(15.0).price_reached(target, TradeType::Long));
+    }
+
+    #[test]
+    fn test_rsi_overbought_short() {
+        // Classic strategy: Sell when RSI spikes above 70
+        let target = Price(70.0);
+
+        // RSI is 69.9 (Not overbought enough)
+        assert!(!mock_rsi(69.9).price_reached(target, TradeType::Short));
+
+        // RSI is exactly 70.0 (Trigger)
+        assert!(mock_rsi(70.0).price_reached(target, TradeType::Short));
+
+        // RSI rockets to 85.5 (Trigger)
+        assert!(mock_rsi(85.5).price_reached(target, TradeType::Short));
     }
 }

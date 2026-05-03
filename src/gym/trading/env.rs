@@ -335,12 +335,11 @@ impl Environment {
         thread_env.eval(agent)?;
 
         let pp = thread_env.portfolio_performance()?;
-        let accessor = pp.accessor()?;
 
         let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
 
         for metric in PortfolioPerformanceCol::iter() {
-            if let Some(value) = accessor.get(metric) {
+            if let Some(value) = pp.first(metric) {
                 entries.push(LeaderboardEntry {
                     agent_uid,
                     metric,
