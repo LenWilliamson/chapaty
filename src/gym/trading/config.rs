@@ -141,6 +141,10 @@ pub enum EnvPreset {
     /// A classic daily timeframe environment ideal for trend-following or swing trading
     /// strategies on Bitcoin spot markets.
     ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
     /// # Available IDs
     ///
     /// ```rust
@@ -161,6 +165,10 @@ pub enum EnvPreset {
     /// [`EconomicCalendarPolicy::Unrestricted`], meaning **all trading days are included**
     /// regardless of whether an event occurs. The calendar data is still available to the
     /// agent for decision-making.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
     ///
     /// # Available IDs
     ///
@@ -211,6 +219,10 @@ pub enum EnvPreset {
     /// The economic calendar filter policy is [`EconomicCalendarPolicy::OnlyWithEvents`],
     /// meaning **only days that contain a matching economic event are simulated**.
     ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
+    ///
     /// # Available IDs
     ///
     /// ```rust
@@ -247,6 +259,10 @@ pub enum EnvPreset {
     /// for hybrid news strategies that use different timeframes for entry and confirmation.
     /// The economic calendar filter policy is [`EconomicCalendarPolicy::OnlyWithEvents`],
     /// meaning **only days that contain a matching economic event are simulated**.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
     ///
     /// # Available IDs
     ///
@@ -294,6 +310,10 @@ pub enum EnvPreset {
     /// A daily timeframe environment pre-configured with SMA(20) and SMA(50) indicators,
     /// tailored for moving-average crossover strategies.
     ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
     /// # Available IDs
     ///
     /// ```rust
@@ -322,6 +342,10 @@ pub enum EnvPreset {
     /// A multi-resolution spot environment combining 1-hour and 1-minute BTC/USDT OHLCV
     /// data with a daily-aggregated Volume Profile using 100 USDT bin size
     /// (10,000 ticks × $0.01 tick size).
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
     ///
     /// # Available IDs
     ///
@@ -360,6 +384,10 @@ pub enum EnvPreset {
     /// data with a daily-aggregated TPO (Market Profile) using 1 USDT bin size
     /// (100 ticks × $0.01 tick size).
     ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
+    ///
     /// # Available IDs
     ///
     /// ```rust
@@ -396,6 +424,10 @@ pub enum EnvPreset {
     /// An intraday futures environment with 1-minute EUR/USD OHLCV data and a
     /// daily-aggregated TPO (Market Profile) using tick-level bin size
     /// (1 tick = 0.00005).
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Day`] (Default)
     ///
     /// # Available IDs
     ///
@@ -457,6 +489,7 @@ impl From<EnvPreset> for EnvConfig {
                 };
                 EnvConfig::default()
                     .add_ohlcv_spot(source.clone(), market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
             EnvPreset::NinjaTraderCme6eh61m5mUsEmpHigh => {
