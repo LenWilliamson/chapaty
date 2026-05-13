@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use itertools::iproduct;
 use serde::Serialize;
 
 use crate::{
@@ -153,28 +153,21 @@ pub struct NewsHybridGrid {
 }
 
 impl NewsHybridGrid {
-    pub fn build(self) -> (usize, impl ParallelIterator<Item = (usize, NewsHybrid)>) {
-        let (len_breakout, iter_breakout) = self.breakout.build();
-        let (len_fade, iter_fade) = self.fade.build();
-        let total_combinations = len_breakout * len_fade;
+    pub fn build(self) -> Vec<(usize, NewsHybrid)> {
+        let breakout_agents = self.breakout.build();
+        let fade_agents = self.fade.build();
 
-        let fade_agents = iter_fade.map(|(_, agent)| agent).collect::<Vec<_>>();
-        let fade_arc = Arc::new(fade_agents);
-        let iterator = iter_breakout.flat_map(move |(b_uid, breakout)| {
-            let fade_ref = fade_arc.clone();
-            let len_fade = fade_ref.len();
-
-            (0..len_fade).into_par_iter().map(move |f_uid| {
-                let fade = fade_ref[f_uid];
-
-                // === Deterministic UID Calculation ===
-                // Since 'b_uid' is 0..M and 'f_uid' is 0..N,
-                // we can mathematically map them to a unique 0..Total sequence.
-                let hybrid_uid = (b_uid * len_fade) + f_uid;
-                (hybrid_uid, NewsHybrid { breakout, fade })
+        iproduct!(breakout_agents, fade_agents)
+            .enumerate()
+            .map(|(uid, (breakout, fade))| {
+                (
+                    uid,
+                    NewsHybrid {
+                        breakout: breakout.1,
+                        fade: fade.1,
+                    },
+                )
             })
-        });
-
-        (total_combinations, iterator)
+            .collect()
     }
 }

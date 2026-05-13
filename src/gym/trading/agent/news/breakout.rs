@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use chrono::Duration;
 use itertools::iproduct;
-use rand::seq::SliceRandom;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use serde_with::{DurationSeconds, serde_as};
 
@@ -445,11 +443,11 @@ impl NewsBreakoutGrid {
         }
     }
 
-    pub fn build(self) -> (usize, impl ParallelIterator<Item = (usize, NewsBreakout)>) {
+    pub fn build(self) -> Vec<(usize, NewsBreakout)> {
         let (start_earliest, end_earliest) = self.earliest_entry;
         let (start_latest, end_latest) = self.latest_entry;
 
-        // === 1. Generate Axes ===
+        // === Generate Axes ===
         let stop_loss_risk_factors = self.stop_loss_risk_factor.generate();
         let risk_reward_ratios = self.risk_reward_ratio.generate();
 
@@ -461,8 +459,11 @@ impl NewsBreakoutGrid {
             .map(Duration::minutes)
             .collect::<Vec<_>>();
 
-        // === 2. Eagerly Collect Valid Args (The "Fat" Vector) ===
-        let mut args = iproduct!(
+        // === Eagerly Collect Valid Args ===
+        let cal_id = self.cal_id;
+        let market_id = self.market_id;
+
+        iproduct!(
             risk_reward_ratios,
             stop_loss_risk_factors,
             latest_entries,
@@ -470,44 +471,17 @@ impl NewsBreakoutGrid {
         )
         .filter(|(_, _, latest, earliest)| earliest < latest)
         .enumerate()
-        .map(|(uid, (rrr, slrf, latest, earliest))| NewsBreakoutArgs {
-            uid,
-            rrr,
-            slrf,
-            latest,
-            earliest,
-        })
-        .collect::<Vec<_>>();
-
-        let mut rng = rand::rng();
-        args.shuffle(&mut rng);
-
-        let total_combinations = args.len();
-        let cal_id = self.cal_id;
-        let market_id = self.market_id;
-
-        // === 3. Simple Parallel Iterator ===
-        let iterator = args.into_par_iter().map(move |arg| {
+        .map(|(uid, (rrr, slrf, latest, earliest))| {
             (
-                arg.uid,
+                uid,
                 NewsBreakout::baseline(cal_id, market_id)
-                    .with_earliest_entry_candle(arg.earliest)
-                    .with_latest_entry_candle(arg.latest)
-                    .with_stop_loss_risk_factor(arg.slrf)
-                    .with_risk_reward_ratio(arg.rrr)
+                    .with_earliest_entry_candle(earliest)
+                    .with_latest_entry_candle(latest)
+                    .with_stop_loss_risk_factor(slrf)
+                    .with_risk_reward_ratio(rrr)
                     .expect("Valid grid parameters"),
             )
-        });
-
-        (total_combinations, iterator)
+        })
+        .collect::<Vec<_>>()
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NewsBreakoutArgs {
-    uid: usize,
-    rrr: f64,
-    slrf: f64,
-    latest: Duration,
-    earliest: Duration,
 }

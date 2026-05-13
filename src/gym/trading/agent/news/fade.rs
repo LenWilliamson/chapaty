@@ -3,8 +3,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 
 use itertools::iproduct;
-use rand::seq::SliceRandom;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use serde_with::{DurationSeconds, serde_as};
 
@@ -435,7 +433,7 @@ impl NewsFadeGrid {
         }
     }
 
-    pub fn build(self) -> (usize, impl ParallelIterator<Item = (usize, NewsFade)>) {
+    pub fn build(self) -> Vec<(usize, NewsFade)> {
         let (start_wait, end_wait) = self.wait_duration;
 
         // === 1. Generate Axes ===
@@ -446,44 +444,22 @@ impl NewsFadeGrid {
         let take_profit_factors = self.tp_risk_factor.generate();
         let risk_rewards = self.risk_reward.generate();
 
-        // === 2. Eagerly Collect Valid Args (The "Fat" Vector) ===
-        let mut args = iproduct!(risk_rewards, candles_after_news, take_profit_factors)
-            .enumerate()
-            .map(|(uid, (rrr, wait, tprf))| NewsFadeArgs {
-                uid,
-                rrr,
-                wait,
-                tprf,
-            })
-            .collect::<Vec<_>>();
-
-        let mut rng = rand::rng();
-        args.shuffle(&mut rng);
-
-        let total_combinations = args.len();
+        // === 2. Eagerly Collect Valid Args ===
         let cal_id = self.cal_id;
         let ohlcv_id = self.ohlcv_id;
 
-        // === 3. Simple Parallel Iterator ===
-        let iterator = args.into_par_iter().map(move |arg| {
-            (
-                arg.uid,
-                NewsFade::baseline(cal_id, ohlcv_id)
-                    .with_candles_after_news(arg.wait)
-                    .with_take_profit_risk_factor(arg.tprf)
-                    .with_risk_reward_ratio(arg.rrr)
-                    .expect("Valid grid parameters"),
-            )
-        });
-
-        (total_combinations, iterator)
+        iproduct!(risk_rewards, candles_after_news, take_profit_factors)
+            .enumerate()
+            .map(|(uid, (rrr, wait, tprf))| {
+                (
+                    uid,
+                    NewsFade::baseline(cal_id, ohlcv_id)
+                        .with_candles_after_news(wait)
+                        .with_take_profit_risk_factor(tprf)
+                        .with_risk_reward_ratio(rrr)
+                        .expect("Valid grid parameters"),
+                )
+            })
+            .collect::<Vec<_>>()
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NewsFadeArgs {
-    uid: usize,
-    rrr: f64,
-    tprf: f64,
-    wait: Duration,
 }

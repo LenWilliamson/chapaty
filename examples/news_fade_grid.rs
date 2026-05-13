@@ -5,7 +5,6 @@ use chapaty::{
     gym::trading::agent::news::fade::{NewsFade, NewsFadeGrid},
     prelude::*,
 };
-use rayon::iter::{ParallelBridge, ParallelIterator};
 
 // === BEGIN JEMALLOC CONFIG ===
 #[cfg(target_os = "linux")]
@@ -24,13 +23,9 @@ async fn main() -> Result<()> {
     let mut env = environment().await?;
     let build_time = build_start.elapsed();
 
-    let (stream_len, agents_iter) = news_fade_grid();
+    let agents = news_fade_grid();
     let grid_backtest_start = Instant::now();
-    let leaderboard = env.evaluate_agents(
-        agents_iter.collect::<Vec<_>>().into_iter().par_bridge(),
-        100,
-        stream_len as u64,
-    )?;
+    let leaderboard = env.evaluate_agents(agents, 100)?;
     let grid_backtest_time = grid_backtest_start.elapsed();
 
     let path = Path::new("examples/reports/news_fade");
@@ -47,7 +42,7 @@ async fn main() -> Result<()> {
 // Helper Functions
 // ================================================================================================
 
-fn news_fade_grid() -> (usize, impl ParallelIterator<Item = (usize, NewsFade)>) {
+fn news_fade_grid() -> Vec<(usize, NewsFade)> {
     NewsFadeGrid::baseline(economic_calendar_id(), ohlcv_id())
         .expect("Failed to create baseline grid")
         // Optional: Constrain the grid for a quick demo run
