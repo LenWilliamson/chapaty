@@ -158,6 +158,59 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1d,
 
+    /// **BTC/USDT 1-Minute Spot (Binance)**
+    ///
+    /// A high-frequency intraday environment for scalping or short-term momentum strategies
+    /// on Bitcoin spot markets. Each episode covers a single trading day.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
+    ///     period: Period::Minute(1),
+    /// };
+    /// ```
+    BinanceBtcUsdt1m,
+
+    /// **BTC/USDT 1-Minute + 15-Minute Spot (Binance)**
+    ///
+    /// A multi-resolution intraday environment combining 1-minute and 15-minute BTC/USDT
+    /// OHLCV data. The 15-minute timeframe provides trend context while the 1-minute
+    /// timeframe is used for precise entry and exit timing. Each episode covers a single
+    /// trading day.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_1m_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
+    ///     period: Period::Minute(1),
+    /// };
+    ///
+    /// let ohlcv_15m_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
+    ///     period: Period::Minute(15),
+    /// };
+    /// ```
+    BinanceBtcUsdt1m15m,
+
     /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Unrestricted (NinjaTrader, CME 6eh6)**
     ///
     /// A multi-resolution intraday environment with 1-minute and 5-minute EUR/USD futures
@@ -179,7 +232,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -190,7 +243,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -232,7 +285,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -273,7 +326,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -284,7 +337,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -438,7 +491,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -449,7 +502,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::March,
+    ///         month: ContractMonth::June,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     aggregation: ProfileAggregation {
@@ -492,12 +545,57 @@ impl From<EnvPreset> for EnvConfig {
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
+            EnvPreset::BinanceBtcUsdt1m => {
+                let market_config = OhlcvSpotConfig {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::BtcUsdt),
+                    period: Period::Minute(1),
+                    batch_size: 1000,
+                    exchange: Some(Exchange::Binance),
+                    indicators: Vec::new(),
+                };
+                let filter = FilterConfig {
+                    allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
+                    ..FilterConfig::default()
+                };
+                EnvConfig::default()
+                    .add_ohlcv_spot(source.clone(), market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
+            EnvPreset::BinanceBtcUsdt1m15m => {
+                let ohlcv_1m = OhlcvSpotConfig {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::BtcUsdt),
+                    exchange: Some(Exchange::Binance),
+                    period: Period::Minute(1),
+                    batch_size: 1000,
+                    indicators: Vec::new(),
+                };
+                let ohlcv_15m = OhlcvSpotConfig {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::BtcUsdt),
+                    exchange: Some(Exchange::Binance),
+                    period: Period::Minute(15),
+                    batch_size: 1000,
+                    indicators: Vec::new(),
+                };
+                let filter = FilterConfig {
+                    allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
+                    ..FilterConfig::default()
+                };
+                EnvConfig::default()
+                    .add_ohlcv_spot(source.clone(), ohlcv_1m)
+                    .add_ohlcv_spot(source.clone(), ohlcv_15m)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
             EnvPreset::NinjaTraderCme6eh61m5mUsEmpHigh => {
                 let ohlcv_1m = OhlcvFutureConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -509,7 +607,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -542,7 +640,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -575,7 +673,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -587,7 +685,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -720,7 +818,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -732,7 +830,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::March,
+                        month: ContractMonth::June,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),

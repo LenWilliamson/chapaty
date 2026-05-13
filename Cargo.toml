@@ -40,7 +40,7 @@ crossbeam = "0.8"
 futures = "0.3"
 hf-hub = "0.5.0"
 humantime = "2.3.0"
-indicatif = "0.18"
+indicatif = {version ="0.18", features = ["rayon"]}
 itertools = "0.14"
 ndarray = "0.17"
 object_store = "0.12.5"
@@ -72,10 +72,10 @@ prost-types = "0.14"
 rand = "0.10"
 rayon = "1.12"
 regex = "1.12"
-rust_decimal = "1.41"
+rust_decimal = "1.42"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = { version = "3.18", features = ["chrono"] }
+serde_with = { version = "3.20", features = ["chrono"] }
 smallvec = { version = "1.15", features = ["serde"] }
 strum = { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"

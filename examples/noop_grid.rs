@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use chapaty::prelude::*;
-use rayon::iter::ParallelBridge;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
@@ -27,11 +26,7 @@ async fn main() -> Result<()> {
     let num_agents = 5;
     let agents: Vec<(usize, NoOpAgent)> = (0..num_agents).map(|uid| (uid, NoOpAgent)).collect();
 
-    let leaderboard = env.evaluate_agents(
-        agents.into_iter().par_bridge(),
-        10, // top_k
-        num_agents as u64,
-    )?;
+    let leaderboard = env.evaluate_agents(agents, 10)?;
 
     println!(
         "Evaluation complete. Leaderboard size: {}",

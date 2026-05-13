@@ -1,7 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
-use indicatif::{ProgressBar, ProgressStyle};
-use rayon::iter::ParallelIterator;
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use strum::{EnumCount, IntoEnumIterator};
 use tracing::warn;
@@ -119,12 +119,10 @@ impl Environment {
     ///
     /// # Arguments
     ///
-    /// * `agents` - A parallel iterator yielding `(usize, Agent)`. The `usize` is treated as
+    /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as
     ///   the unique **Agent UID**. This is typically created by calling `.enumerate()` on your
-    ///   configuration iterator (e.g., `args.enumerate()`) before converting it to parallel.
+    ///   configuration of the agent grid.
     /// * `top_k` - The maximum number of agents to retain in the leaderboard.
-    /// * `stream_len` - The total number of agents expected. This is used solely to initialize
-    ///   the progress bar's length, as parallel iterators may not always know their exact bounds.
     ///
     /// # Runtime Estimation
     ///
@@ -137,28 +135,27 @@ impl Environment {
     /// 2. Measure the time it takes to run `env.evaluate_agent(&mut agent)`.
     /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU Cores`.
     ///
-    /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks
-    /// instead of 2 hours.
+    /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks instead of 2 hours.
     pub fn evaluate_agents<T>(
         &mut self,
-        agents: impl ParallelIterator<Item = (usize, T)>,
+        agents: Vec<(usize, T)>,
         top_k: usize,
-        stream_len: u64,
     ) -> ChapatyResult<Leaderboard>
     where
         T: Agent + Send + Serialize,
     {
         self.reset()?;
-        let pb = progress_bar(stream_len)?;
+        let pb = progress_bar(agents.len() as u64)?;
         pb.set_message("Running evaluation...");
 
         let agent_leaderboard = agents
+            .into_par_iter()
+            .progress_with(pb.clone())
             .try_fold(
                 || AgentLeaderboard::new(top_k),
                 |mut board, (uid, mut agent)| {
                     let entries = self.worker(&mut agent, uid as u64)?;
                     board.update(&entries, agent);
-                    pb.inc(1);
                     Ok(board)
                 },
             )
