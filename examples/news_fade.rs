@@ -73,7 +73,7 @@ fn ohlcv_id() -> OhlcvId {
         exchange: Exchange::Cme,
         symbol: Symbol::Future(FutureContract {
             root: FutureRoot::EurUsd,
-            month: ContractMonth::March,
+            month: ContractMonth::June,
             year: ContractYear::Y6,
         }),
         period: Period::Minute(1),
