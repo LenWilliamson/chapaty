@@ -32,15 +32,14 @@ async fn main() -> Result<()> {
     let mut env = environment().await?;
 
     // 2. Generate the Agent Grid
-    // Creates a lazy parallel iterator of 1,000,000+ distinct parameter combinations.
-    // This allows efficient streaming without loading all agents into RAM.
-    let (count, agents) = news_breakout_grid();
+    // Creates a vector of 1M distinct parameter combinations.
+    let agents = news_breakout_grid();
 
-    println!("Evaluating {count} agents...");
+    println!("Evaluating agents...");
 
     // 3. Execute Parallel Evaluation
     // Chapaty manages the batching and threading, retaining the Top-100 agents
-    let leaderboard = env.evaluate_agents(agents, 100, count as u64)?;
+    let leaderboard = env.evaluate_agents(agents, 100)?;
 
     // 4. Export the Leaderboard
     // Results are saved as a structured CSV dataset.

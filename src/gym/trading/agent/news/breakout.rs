@@ -482,6 +482,6 @@ impl NewsBreakoutGrid {
                     .expect("Valid grid parameters"),
             )
         })
-        .collect::<Vec<_>>()
+        .collect()
     }
 }

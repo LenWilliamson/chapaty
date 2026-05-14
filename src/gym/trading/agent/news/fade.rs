@@ -460,6 +460,6 @@ impl NewsFadeGrid {
                         .expect("Valid grid parameters"),
                 )
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
