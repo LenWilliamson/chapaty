@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[serde_as]
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NewsBreakout {
     #[serde(skip)]
     economic_cal_id: EconomicCalendarId,
@@ -117,6 +117,9 @@ pub struct NewsBreakout {
 
     #[serde(skip)]
     trade_counter: i64,
+
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
 }
 
 impl NewsBreakout {
@@ -130,6 +133,7 @@ impl NewsBreakout {
             risk_reward_ratio: 0.726,
             phase: NewsPhase::default(),
             trade_counter: 0,
+            agent_id: AgentIdentifier::Named(Arc::new("NewsBreakout".to_string())),
         }
     }
 
@@ -336,7 +340,7 @@ impl Agent for NewsBreakout {
     }
 
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("NewsBreakout".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {

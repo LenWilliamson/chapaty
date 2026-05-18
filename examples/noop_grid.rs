@@ -1,15 +1,25 @@
 use anyhow::{Context, Result};
 use chapaty::prelude::*;
 use serde::Serialize;
-use std::path::Path;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 #[derive(Clone, Serialize)]
-struct NoOpAgent;
+struct NoOpAgent {
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
+}
+
+impl NoOpAgent {
+    fn new() -> Self {
+        Self {
+            agent_id: AgentIdentifier::Named(Arc::new("NoOpAgent".to_string())),
+        }
+    }
+}
 
 impl Agent for NoOpAgent {
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("NoOpAgent".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {}
@@ -24,7 +34,8 @@ impl Agent for NoOpAgent {
 async fn main() -> Result<()> {
     let mut env = environment().await?;
     let num_agents = 5;
-    let agents: Vec<(usize, NoOpAgent)> = (0..num_agents).map(|uid| (uid, NoOpAgent)).collect();
+    let agents: Vec<(usize, NoOpAgent)> =
+        (0..num_agents).map(|uid| (uid, NoOpAgent::new())).collect();
 
     let leaderboard = env.evaluate_agents(agents, 10)?;
 

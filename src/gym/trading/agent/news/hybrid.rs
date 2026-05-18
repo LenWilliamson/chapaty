@@ -68,10 +68,22 @@ use crate::{
 /// or monthly resets), this is not an issue.
 ///
 /// See also: [`NewsFade`], [`NewsBreakout`].
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NewsHybrid {
     pub breakout: NewsBreakout,
     pub fade: NewsFade,
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
+}
+
+impl NewsHybrid {
+    pub fn new(breakout: NewsBreakout, fade: NewsFade) -> Self {
+        Self {
+            breakout,
+            fade,
+            agent_id: AgentIdentifier::Named(Arc::new("NewsHybrid".to_string())),
+        }
+    }
 }
 
 impl Agent for NewsHybrid {
@@ -134,7 +146,7 @@ impl Agent for NewsHybrid {
     }
 
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("NewsHybrid".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {
@@ -159,15 +171,7 @@ impl NewsHybridGrid {
 
         iproduct!(breakout_agents, fade_agents)
             .enumerate()
-            .map(|(uid, (breakout, fade))| {
-                (
-                    uid,
-                    NewsHybrid {
-                        breakout: breakout.1,
-                        fade: fade.1,
-                    },
-                )
-            })
+            .map(|(uid, (breakout, fade))| (uid, NewsHybrid::new(breakout.1, fade.1)))
             .collect()
     }
 }

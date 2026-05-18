@@ -55,7 +55,7 @@ fn news_hybrid() -> Result<NewsHybrid> {
         .with_stop_loss_risk_factor(0.89)
         .with_risk_reward_ratio(0.726)?;
 
-    Ok(NewsHybrid { breakout, fade })
+    Ok(NewsHybrid::new(breakout, fade))
 }
 
 async fn environment() -> Result<Environment> {

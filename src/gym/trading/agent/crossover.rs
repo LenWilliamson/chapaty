@@ -43,6 +43,8 @@ pub struct StreamingCrossover {
     trade_counter: i64,
     #[serde(skip)]
     last_processed_ts: Option<DateTime<Utc>>,
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
 }
 
 impl StreamingCrossover {
@@ -57,13 +59,14 @@ impl StreamingCrossover {
             current_fast: None,
             current_slow: None,
             last_processed_ts: None,
+            agent_id: AgentIdentifier::Named(Arc::new("StreamingCrossover".to_string())),
         }
     }
 }
 
 impl Agent for StreamingCrossover {
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("StreamingCrossover".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {
@@ -153,6 +156,8 @@ pub struct PrecomputedCrossover {
 
     #[serde(skip)]
     trade_counter: i64,
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
 }
 
 impl PrecomputedCrossover {
@@ -162,13 +167,14 @@ impl PrecomputedCrossover {
             fast_sma_id,
             slow_sma_id,
             trade_counter: 0,
+            agent_id: AgentIdentifier::Named(Arc::new("PrecomputedCrossover".to_string())),
         }
     }
 }
 
 impl Agent for PrecomputedCrossover {
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("PrecomputedCrossover".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {

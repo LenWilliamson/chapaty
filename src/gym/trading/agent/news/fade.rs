@@ -25,7 +25,7 @@ use crate::{
 };
 
 #[serde_as]
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NewsFade {
     #[serde(skip)]
     economic_cal_id: EconomicCalendarId,
@@ -130,6 +130,9 @@ pub struct NewsFade {
     ///Track the last news we already handled to prevent re-entry
     #[serde(skip)]
     last_processed_news: Option<DateTime<Utc>>,
+
+    #[serde(skip)]
+    agent_id: AgentIdentifier,
 }
 
 impl NewsFade {
@@ -143,6 +146,7 @@ impl NewsFade {
             phase: NewsPhase::default(),
             trade_counter: 0,
             last_processed_news: None,
+            agent_id: AgentIdentifier::Named(Arc::new("NewsFade".to_string())),
         }
     }
 
@@ -329,7 +333,7 @@ impl Agent for NewsFade {
     }
 
     fn identifier(&self) -> AgentIdentifier {
-        AgentIdentifier::Named(Arc::new("NewsFade".to_string()))
+        self.agent_id.clone()
     }
 
     fn reset(&mut self) {
