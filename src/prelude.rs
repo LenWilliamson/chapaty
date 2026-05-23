@@ -27,6 +27,7 @@ pub use crate::data::indicator::*;
 pub use crate::math::indicator::*;
 pub use crate::math::market_profile::*;
 pub use crate::math::market_structure::*;
+pub use crate::math::traits::*;
 
 // 7. Errors
 pub use crate::error::*;

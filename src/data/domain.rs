@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
-use strum::{Display, EnumIter, IntoStaticStr};
+use strum::{AsRefStr, Display, EnumIter, IntoStaticStr};
 use strum_macros::EnumString;
 
 use crate::{
@@ -402,6 +402,30 @@ impl TryFrom<DataBroker> for EconomicDataSource {
             .into()),
         }
     }
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Hash,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    PartialOrd,
+    Ord,
+    EnumIter,
+    EnumString,
+    Display,
+    AsRefStr,
+    IntoStaticStr,
+)]
+pub enum PriceSource {
+    /// Evaluate the absolute extremes (High for peaks, Low for valleys)
+    HighLow,
+    /// Evaluate the candle bodies (Close for peaks, Open/Close for valleys)
+    OpenClose,
 }
 
 #[derive(
