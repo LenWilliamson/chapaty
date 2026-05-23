@@ -1,11 +1,26 @@
 use anyhow::{Context, Result};
 use chapaty::prelude::*;
 use serde::Serialize;
-use std::{env, fs, sync::Arc};
+use std::{env, fs, path::Path, sync::Arc, time::Instant};
 use time::macros::format_description;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
+
+const LEADERBOARD_TOP_K: usize = 10;
+const GRID_SIZE: usize = 400;
+const REPORTS_SUBDIR: &str = "examples/reports/quickstart";
+
+// ================================================================================================
+// No-Op Agent
+//
+// A placeholder agent that never trades. It exists only to demonstrate the evaluation API
+// (single-agent journals + parallel leaderboards) and the logging setup, without bundling any
+// real strategy logic into the core crate.
+//
+// For real, ready-to-run strategies, see chapaty-zoo:
+// https://github.com/LenWilliamson/chapaty-zoo
+// ================================================================================================
 
 #[derive(Clone, Serialize)]
 struct NoOpAgent {
@@ -28,26 +43,39 @@ impl Agent for NoOpAgent {
 
     fn reset(&mut self) {}
 
+    // `act` is called millions of times.
+    // Keep logging here at `debug` so it stays silent under the default `info` filter.
     #[tracing::instrument(skip_all)]
     fn act(&mut self, _obs: Observation) -> ChapatyResult<Actions> {
-        debug!("Return no actions, guaranteeing 0 trades");
+        debug!("Returning no actions, guaranteeing 0 trades");
         Ok(Actions::no_op())
     }
 }
 
+// ================================================================================================
+// Main
+// ================================================================================================
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Create simple logging subscriber
     let _guard = init_tracing()?;
+    info!("Starting evaluation example...");
 
+    let build_start = Instant::now();
+    let mut env = environment().await?;
+    info!(build_time = ?build_start.elapsed(), "Environment ready");
+
+    let reports_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(REPORTS_SUBDIR);
+    let file_cfg = FileConfig::default().with_dir(&reports_dir);
+
+    // --- 1. Single-agent baseline: full journal + reports ---
     let mut baseline = NoOpAgent::default();
     let label = baseline.identifier();
-    info!("Starting NoOpGrid example with label: {label}");
 
-    let mut env = environment().await?;
+    let baseline_start = Instant::now();
+    info!(%label, "Running baseline backtest...");
+
     let journal = env.evaluate_agent(&mut baseline)?;
-
-    let file_cfg = FileConfig::default();
     journal.to_file_sync(&file_cfg)?;
     journal.cumulative_returns()?.to_file_sync(&file_cfg)?;
     journal.portfolio_performance()?.to_file_sync(&file_cfg)?;
@@ -55,27 +83,29 @@ async fn main() -> Result<()> {
     env.equity_curve_report()?
         .into_eod()?
         .to_file_sync(&file_cfg)?;
-    info!("{label} baseline backtest complete");
 
-    let num_agents = 1_000_000;
-    let agents = (0..num_agents)
+    info!(%label, elapsed = ?baseline_start.elapsed(), "Baseline backtest complete");
+
+    // --- 2. Parallel grid: ranked leaderboard ---
+    let agents = (0..GRID_SIZE)
         .map(|uid| (uid, NoOpAgent::default()))
         .collect::<Vec<_>>();
 
-    info!("Evaluating agents in parallel...");
-    let leaderboard = env.evaluate_agents(agents, 100)?;
+    let grid_start = Instant::now();
+    info!(grid_size = GRID_SIZE, "Evaluating agents in parallel...");
+
+    let leaderboard = env.evaluate_agents(agents, LEADERBOARD_TOP_K)?;
+    leaderboard.to_file_sync(&file_cfg)?;
 
     info!(
-        "{label} grid evaluation complete. Leaderboard size: {}",
-        leaderboard.as_df().height()
+        elapsed = ?grid_start.elapsed(),
+        rows = leaderboard.as_df().height(),
+        dir = %file_cfg.dir.display(),
+        "Grid evaluation complete; leaderboard saved"
     );
-
-    leaderboard.to_file_sync(&file_cfg)?;
-    info!("Saved leaderboard to {}", file_cfg.dir.display());
 
     // The WorkerGuard ensures all buffered logs are flushed when dropped.
     drop(_guard);
-
     Ok(())
 }
 
@@ -92,14 +122,14 @@ async fn environment() -> Result<Environment> {
 
 // ================================================================================================
 // Tracing Configuration
+//
+// JSON to stdout in containers, or to a timestamped file under the OS state dir locally.
 // ================================================================================================
 
 fn init_tracing() -> Result<Option<WorkerGuard>> {
     let app_name = "chapaty";
 
-    // Detect if running in container
-    let in_container =
-        env::var("CONTAINER").is_ok() || std::path::Path::new("/.dockerenv").exists();
+    let in_container = env::var("CONTAINER").is_ok() || Path::new("/.dockerenv").exists();
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -138,10 +168,8 @@ fn init_tracing() -> Result<Option<WorkerGuard>> {
             ))
             .context("Failed to format timestamp")?;
         let file_name = format!("{app_name}-{timestamp}.log");
-        let file_path = log_dir.join(file_name);
 
-        let file_appender =
-            tracing_appender::rolling::never(log_dir.clone(), file_path.file_name().unwrap());
+        let file_appender = tracing_appender::rolling::never(&log_dir, &file_name);
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         tracing_subscriber::fmt()
@@ -155,7 +183,7 @@ fn init_tracing() -> Result<Option<WorkerGuard>> {
             .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
             .init();
 
-        info!(log_file = %file_path.display(), "Logging to file (local mode)");
+        info!(log_file = %log_dir.join(&file_name).display(), "Logging to file (local mode)");
         Ok(Some(guard))
     }
 }

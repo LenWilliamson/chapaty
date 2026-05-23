@@ -10,7 +10,7 @@
 
 ## Getting Started
 
-> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice, built-in dashboard setups with [Quantstats][quantstatsLink], and best-practice strategy examples.
+> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice and built-in dashboard setups with [Quantstats][quantstatsLink]. For a library of ready-to-run strategies, including the top TradingView setups backtested across million-agent grids, see [**chapaty-zoo**][chapatyZooLink].
 
 Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating agent grids, and the **Canonical Gym Loop** for step-by-step control over the environment.
 
@@ -20,9 +20,13 @@ For grid searches, Chapaty leverages `rayon` to evaluate agents in parallel, aut
 
 **Run this example:** [`examples/quickstart.rs`](examples/quickstart.rs)
 
-```rust
-use std::path::Path;
+```bash
+cargo run --release --example quickstart
+```
 
+Under the hood, the parallel path builds the environment, generates a grid of agents, and evaluates them in one call:
+
+```rust
 use chapaty::prelude::*;
 
 #[tokio::main]
@@ -32,16 +36,15 @@ async fn main() -> Result<()> {
     let mut env = environment().await?;
 
     // 2. Create the Agent Grid
-    // Creates a vector of 1M distinct parameter combinations.
+    // Creates a vector of 1M distinct parameter combinations. `NoOpAgent` is a
+    // placeholder. Swap in your own strategy (see chapaty-zoo for examples).
     let num_agents = 1_000_000;
     let agents = (0..num_agents)
-        .map(|uid| (uid, NoOpAgent::new()))
+        .map(|uid| (uid, NoOpAgent::default()))
         .collect::<Vec<_>>();
 
-    println!("Evaluating agents...");
-
     // 3. Execute Parallel Evaluation
-    // Chapaty manages the batching and threading, retaining the Top-100 agents
+    // Chapaty manages the batching and threading, retaining the Top-100 agents.
     let leaderboard = env.evaluate_agents(agents, 100)?;
 
     // 4. Export the Leaderboard
@@ -57,8 +60,6 @@ async fn main() -> Result<()> {
 For custom integrations or those who prefer full control over the observation-action transition loop, Chapaty implements a standard API inspired by OpenAI Gym.
 
 ```rust
-use std::path::Path;
-
 use chapaty::prelude::*;
 
 #[tokio::main]
@@ -101,7 +102,7 @@ async fn main() -> ChapatyResult<()> {
 
 > **Note:** Environments are **async** because they stream large financial datasets directly from cloud storage (e.g. GCS, BigQuery, HuggingFace).
 
-For practical, _ready-to-run agents_, check out the `examples/` directory to get started quickly.
+The [`examples/quickstart.rs`](examples/quickstart.rs) file demonstrates both workflows end to end for a single-agent baseline, a parallel grid, report export, and logging setup. For real, ready-to-run strategies, see [**chapaty-zoo**][chapatyZooLink].
 
 ## Related Projects
 
@@ -140,3 +141,4 @@ By using Chapaty, you acknowledge that **you are solely responsible for any trad
 [deepmindLink]: https://github.com/deepmind/dm_control
 [quantstatsLink]: https://github.com/ranaroussi/quantstats
 [chapatyTemplateLink]: https://github.com/LenWilliamson/chapaty-template
+[chapatyZooLink]: https://github.com/LenWilliamson/chapaty-zoo
