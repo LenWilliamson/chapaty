@@ -10,7 +10,7 @@
 
 ## Getting Started
 
-> **Fast Track:** Use the [**Chapaty Starter Template**](https://github.com/LenWilliamson/chapaty-template) to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice, built-in dashboard setups with [Quantstats](https://github.com/ranaroussi/quantstats), and best-practice strategy examples.
+> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice, built-in dashboard setups with [Quantstats][quantstatsLink], and best-practice strategy examples.
 
 Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating agent grids, and the **Canonical Gym Loop** for step-by-step control over the environment.
 
@@ -18,7 +18,7 @@ Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating 
 
 For grid searches, Chapaty leverages `rayon` to evaluate agents in parallel, automatically tracking the top performers.
 
-**Run this example:** [`examples/news_breakout_grid.rs`](examples/news_breakout_grid.rs)
+**Run this example:** [`examples/quickstart.rs`](examples/quickstart.rs)
 
 ```rust
 use std::path::Path;
@@ -31,9 +31,12 @@ async fn main() -> Result<()> {
     // See the full example file for the 'environment()' helper implementation.
     let mut env = environment().await?;
 
-    // 2. Generate the Agent Grid
+    // 2. Create the Agent Grid
     // Creates a vector of 1M distinct parameter combinations.
-    let agents = news_breakout_grid();
+    let num_agents = 1_000_000;
+    let agents = (0..num_agents)
+        .map(|uid| (uid, NoOpAgent::new()))
+        .collect::<Vec<_>>();
 
     println!("Evaluating agents...");
 
@@ -135,3 +138,5 @@ By using Chapaty, you acknowledge that **you are solely responsible for any trad
 [discord]: https://discord.gg/MmMAB6NCuK
 [gymnasiumLink]: https://github.com/Farama-Foundation/Gymnasium
 [deepmindLink]: https://github.com/deepmind/dm_control
+[quantstatsLink]: https://github.com/ranaroussi/quantstats
+[chapatyTemplateLink]: https://github.com/LenWilliamson/chapaty-template
