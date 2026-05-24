@@ -31,14 +31,12 @@ pub trait StreamView<'env> {
     /// Returns the slice of events visible at the current time step.
     fn get_slice(&self, id: &Self::Id) -> Option<&'env [Self::Event]>;
 
-    #[inline]
     fn last_event(&self, id: &Self::Id) -> Option<&'env Self::Event> {
         self.get_slice(id).and_then(|s| s.last())
     }
 
     /// Returns an iterator over events in reverse chronological order (Newest -> Oldest).
     /// This is the primary access pattern for RL agents reacting to recent news.
-    #[inline]
     fn rev_iter(
         &self,
         id: &Self::Id,
@@ -48,7 +46,6 @@ pub trait StreamView<'env> {
 
     /// Returns all *new* events with point in time after `since_ts`.
     /// Useful for agents to react to the latest news or ticks.
-    #[inline]
     fn new_events_since(
         &self,
         id: &Self::Id,
@@ -98,7 +95,6 @@ impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     type Id = S;
     type Event = S::Event;
 
-    #[inline]
     fn get_slice(&self, id: &S) -> Option<&'env [S::Event]> {
         self.data.get(id).copied()
     }
@@ -262,13 +258,11 @@ impl<'env> MarketView<'env> {
 
 impl<'env> MarketView<'env> {
     /// Returns a stack-allocated array of all views that support price checking.
-    #[inline]
     fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 5] {
         [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
     }
 
     /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
-    #[inline]
     fn close_price_views(&self) -> [&dyn ClosePriceView; 2] {
         [&self.ohlcv, &self.trades]
     }

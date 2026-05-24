@@ -420,9 +420,11 @@ impl TryFrom<DataBroker> for EconomicDataSource {
     Display,
     AsRefStr,
     IntoStaticStr,
+    Default,
 )]
 pub enum PriceSource {
     /// Evaluate the absolute extremes (High for peaks, Low for valleys)
+    #[default]
     HighLow,
     /// Evaluate the candle bodies (Close for peaks, Open/Close for valleys)
     OpenClose,

@@ -32,7 +32,7 @@ impl StreamingIndicator for StreamingEwm {
     type Input = f64;
     type Output = Option<f64>;
 
-    fn update(&mut self, value: f64) -> Option<f64> {
+    fn update(&mut self, value: Self::Input) -> Self::Output {
         self.count += 1;
 
         match self.current_mean {
@@ -86,7 +86,7 @@ impl StreamingIndicator for StreamingSma {
     type Input = f64;
     type Output = Option<f64>;
 
-    fn update(&mut self, value: f64) -> Option<f64> {
+    fn update(&mut self, value: Self::Input) -> Self::Output {
         // 1. Add new value to window
         self.buffer.push_back(value);
         self.sum += value;

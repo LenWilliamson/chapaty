@@ -186,7 +186,7 @@ impl StreamingIndicator for StreamingFvg {
 }
 
 /*
- * 
+ *
 Implemenation Plan Batch Indicator:
 
 ### Part 2: Fair Value Gaps (FVG)
