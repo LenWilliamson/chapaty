@@ -404,7 +404,12 @@ impl StreamingHhll {
                     MarketStructureEvent::NoChange,
                 ),
                 None => {
-                    tracing::warn!();
+                    tracing::warn!(
+                        reason = "nan_detected",
+                        candidate_price = ?current_high_price,
+                        anchor_price = ?anchor.price,
+                        "Invalid float (NaN) detected. Discarding pivot to prevent state poisoning."
+                    );
                     return None;
                 }
             },
@@ -423,20 +428,31 @@ impl StreamingHhll {
         };
 
         self.active_pivot = Some(new_pivot);
+
+        if event != MarketStructureEvent::NoChange {
+            tracing::debug!(
+                event = ?event,
+                trend = ?trend,
+                price = ?current_high_price,
+                "Market Structure Extracted"
+            );
+        }
+
         Some((event, new_pivot))
     }
 
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
     fn process_low(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
         let current_low_price = self.extract_price(candidate, PivotType::Low);
 
-        // 1. Evaluate Alternation & Tiebreakers
         if let Some(latest) = self.active_pivot {
             match (self.alternation_mode, latest.pivot_type) {
                 (AlternationMode::Alternating, PivotType::Low) => {
-                    // Alternation broken: Two lows in a row.
                     let overwrite = match self.tiebreaker {
+                        // If Earliest is active, the first peak should hold its ground.
                         ExtremeTiebreaker::Earliest => current_low_price < latest.price,
+                        // If Latest is active, the second peak should replace the first one.
                         ExtremeTiebreaker::Latest => current_low_price <= latest.price,
                     };
 
@@ -459,26 +475,34 @@ impl StreamingHhll {
             }
         }
 
-        // 2. Classify Structure (Functional / Expression-Oriented)
         let (trend, event) = match self.anchor_low {
             Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Less) => {
-                    let ev = match self.anchor_high.map(|h| h.trend) {
+                    let market_structure_event = match self.anchor_high.map(|h| h.trend) {
                         Some(MarketStructureSequence::HigherHigh) => {
                             MarketStructureEvent::MarketStructureShift
                         }
                         _ => MarketStructureEvent::BreakOfStructure,
                     };
-                    (MarketStructureSequence::LowerLow, ev)
+                    (MarketStructureSequence::LowerLow, market_structure_event)
                 }
                 Some(Ordering::Greater) => (
                     MarketStructureSequence::HigherLow,
                     MarketStructureEvent::NoChange,
                 ),
-                Some(Ordering::Equal) | None => (
+                Some(Ordering::Equal) => (
                     MarketStructureSequence::EqualLow,
                     MarketStructureEvent::NoChange,
                 ),
+                None => {
+                    tracing::warn!(
+                        reason = "nan_detected",
+                        candidate_price = ?current_low_price,
+                        anchor_price = ?anchor.price,
+                        "Invalid float (NaN) detected. Discarding pivot to prevent state poisoning."
+                    );
+                    return None;
+                }
             },
             None => (
                 MarketStructureSequence::UnclassifiedLow,
@@ -486,7 +510,6 @@ impl StreamingHhll {
             ),
         };
 
-        // 3. Construct and lock the new pivot (Immutable)
         let new_pivot = PivotPoint {
             ohlcv_candle: candidate,
             price: current_low_price,
@@ -496,6 +519,16 @@ impl StreamingHhll {
         };
 
         self.active_pivot = Some(new_pivot);
+
+        if event != MarketStructureEvent::NoChange {
+            tracing::debug!(
+                event = ?event,
+                trend = ?trend,
+                price = ?current_low_price,
+                "Market Structure Extracted"
+            );
+        }
+
         Some((event, new_pivot))
     }
 }
