@@ -29,13 +29,13 @@ impl PivotType {
             (PriceSource::HighLow, PivotType::High, _) => candle.high,
             (PriceSource::HighLow, PivotType::Low, _) => candle.low,
 
-            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bullish) => candle.close,
-            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bearish) => candle.open,
-            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Doji) => candle.close,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bullish) => candle.close,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish) => candle.open,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Doji) => candle.close,
 
-            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bullish) => candle.open,
-            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bearish) => candle.close,
-            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Doji) => candle.close,
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bearish) => candle.close,
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Doji) => candle.close,
         }
     }
 }
