@@ -21,6 +21,25 @@ pub enum PivotType {
     Low,
 }
 
+impl PivotType {
+    /// Extracts the relevant price for peak/trough finding given the
+    /// configured [`PriceSource`] and the candle's own direction.
+    fn extract_price(self, candle: Ohlcv, source: PriceSource) -> Price {
+        match (source, self, candle.direction()) {
+            (PriceSource::HighLow, PivotType::High, _) => candle.high,
+            (PriceSource::HighLow, PivotType::Low, _) => candle.low,
+
+            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bullish) => candle.close,
+            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bearish) => candle.open,
+            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Doji) => candle.close,
+
+            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bullish) => candle.open,
+            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bearish) => candle.close,
+            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Doji) => candle.close,
+        }
+    }
+}
+
 /// Represents the relative sequence that defines the market's overall direction.
 ///
 /// While [`PivotType`] tells us the basic shape (peak or trough),
@@ -294,20 +313,6 @@ impl StreamingHhll {
         self.buffer[mid_idx]
     }
 
-    /// Extracts the relevant Y-axis value for peak finding.
-    fn extract_price(&self, candle: Ohlcv, pivot_type: PivotType) -> Price {
-        let candle_direction = candle.direction();
-        match (self.price_source, pivot_type, candle_direction) {
-            (PriceSource::HighLow, PivotType::High, _) => candle.high,
-            (PriceSource::HighLow, PivotType::Low, _) => candle.low,
-            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bullish) => candle.close,
-            (PriceSource::CloseOpen, PivotType::High, CandleDirection::Bearish) => candle.open,
-            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bullish) => candle.open,
-            (PriceSource::CloseOpen, PivotType::Low, CandleDirection::Bearish) => candle.close,
-            _ => candle.close,
-        }
-    }
-
     /// Yields the left side of the rolling window (before the candidate).
     fn left_partition(&self) -> impl Iterator<Item = Ohlcv> + '_ {
         self.buffer
@@ -328,7 +333,7 @@ impl StreamingHhll {
     /// Checks if the candidate price is a valid extremum against its neighbors.
     fn check_extremum(&self, pivot_type: PivotType) -> bool {
         let candidate = self.candidate();
-        let candidate_price = self.extract_price(candidate, pivot_type);
+        let candidate_price = pivot_type.extract_price(candidate, self.price_source);
 
         // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
         let (strict_left, strict_right) = match self.tiebreaker {
@@ -337,7 +342,7 @@ impl StreamingHhll {
         };
 
         let is_valid = |neighbor: Ohlcv, strict: bool| -> bool {
-            let neighbor_price = self.extract_price(neighbor, pivot_type);
+            let neighbor_price = pivot_type.extract_price(neighbor, self.price_source);
             match (pivot_type, strict) {
                 (PivotType::High, true) => candidate_price > neighbor_price,
                 (PivotType::High, false) => candidate_price >= neighbor_price,
@@ -353,7 +358,7 @@ impl StreamingHhll {
     #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
     fn process_high(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let current_high_price = self.extract_price(candidate, PivotType::High);
+        let current_high_price = PivotType::High.extract_price(candidate, self.price_source);
 
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Highs in a row under Alternating mode)
@@ -443,7 +448,7 @@ impl StreamingHhll {
     #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
     fn process_low(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let current_low_price = self.extract_price(candidate, PivotType::Low);
+        let current_low_price = PivotType::Low.extract_price(candidate, self.price_source);
 
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Lows in a row under Alternating mode)

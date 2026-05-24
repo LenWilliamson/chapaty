@@ -1,51 +1,107 @@
-// === 1. Typestate Definitions ===
+use std::{collections::VecDeque, fmt::Debug};
 
-use crate::data::event::MarketEvent;
+use chrono::{DateTime, Utc};
 
-pub trait FvgState {}
+use crate::{
+    data::{
+        domain::Price,
+        event::{MarketEvent, Ohlcv},
+    },
+    math::StreamingIndicator,
+};
+
+const PATTERN_LENGTH: usize = 3;
+pub trait FairValueGapState: Debug + Clone + Send + Sync + 'static {}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OpenState {
-    pub max_fill_percentage: f64,
-    pub touch_count: u32,
+    max_fill_percentage: f64,
+    touch_count: u32,
 }
-impl FvgState for OpenState {}
+
+impl OpenState {
+    pub fn max_fill_percentage(&self) -> f64 {
+        self.max_fill_percentage
+    }
+
+    pub fn touch_count(&self) -> u32 {
+        self.touch_count
+    }
+}
+
+impl FairValueGapState for OpenState {}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClosedState {
-    pub closed_time: DateTime<Utc>,
-    pub max_fill_percentage: f64, // Usually 1.0, but preserved for analytics
-    pub touch_count: u32,
+    closed_time: DateTime<Utc>,
+    touch_count: u32,
 }
-impl FvgState for ClosedState {}
 
-// === 2. The Core Struct & Endofunctor ===
+impl ClosedState {
+    pub fn closed_time(&self) -> DateTime<Utc> {
+        self.closed_time
+    }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FvgDirection {
+    pub const fn max_fill_percentage(&self) -> f64 {
+        1.0
+    }
+
+    pub fn touch_count(&self) -> u32 {
+        self.touch_count
+    }
+}
+
+impl FairValueGapState for ClosedState {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FairValueGapDirection {
     Bullish,
     Bearish,
 }
 
-#[derive(Debug, Clone)]
-pub struct FairValueGap<S: FvgState> {
-    pub direction: FvgDirection,
-    pub creation_time: DateTime<Utc>,
-    // Boundaries are completely immutable
-    pub top: Price,
-    pub bottom: Price,
-    pub state: S,
+#[derive(Debug, Clone, Copy)]
+pub struct FairValueGap<S: FairValueGapState> {
+    direction: FairValueGapDirection,
+    creation_time: DateTime<Utc>,
+    top: Price,
+    bottom: Price,
+    state: S,
 }
 
-impl<S: FvgState> MarketEvent for FairValueGap<S> {
+#[derive(Debug, Clone, Copy)]
+pub enum FairValueGapStatus {
+    Open(FairValueGap<OpenState>),
+    Closed(FairValueGap<ClosedState>),
+}
+
+impl<S: FairValueGapState> MarketEvent for FairValueGap<S> {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.creation_time
     }
 }
 
-impl<S: FvgState> FairValueGap<S> {
-    /// Endofunctor map: Transitions the FVG from one state to another.
-    pub fn map<NewState: FvgState, F>(self, f: F) -> FairValueGap<NewState>
+impl<S: FairValueGapState> FairValueGap<S> {
+    pub fn direction(&self) -> FairValueGapDirection {
+        self.direction
+    }
+
+    pub fn creation_time(&self) -> DateTime<Utc> {
+        self.creation_time
+    }
+
+    pub fn top(&self) -> Price {
+        self.top
+    }
+
+    pub fn bottom(&self) -> Price {
+        self.bottom
+    }
+
+    pub fn state(&self) -> &S {
+        &self.state
+    }
+
+    pub fn map<NewState: FairValueGapState, F>(self, f: F) -> FairValueGap<NewState>
     where
         F: FnOnce(S) -> NewState,
     {
@@ -59,119 +115,161 @@ impl<S: FvgState> FairValueGap<S> {
     }
 }
 
-// === 3. FVG Wrapper Enum for the Gym State ===
+impl FairValueGap<OpenState> {
+    /// Evaluates the incoming candle against the open gap.
+    /// Returns `true` if the gap is fully filled and should be closed.
+    fn process_candle(self, candle: Ohlcv) -> FairValueGapStatus {
+        let top_f = self.top;
+        let bot_f = self.bottom;
+        let gap_size = top_f - bot_f;
 
-#[derive(Debug, Clone)]
-pub enum FvgStatus {
-    Open(FairValueGap<OpenState>),
-    Closed(FairValueGap<ClosedState>),
+        match self.direction {
+            FairValueGapDirection::Bullish => {
+                if candle.low >= self.top {
+                    return FairValueGapStatus::Open(self);
+                }
+
+                let is_fully_filled = candle.low <= self.bottom;
+                if is_fully_filled {
+                    let closed_fvg = self.into_closed(candle.point_in_time());
+                    return FairValueGapStatus::Closed(closed_fvg);
+                }
+
+                let cur_fill_pct = ((top_f - candle.low) / gap_size).0.clamp(0.0, 1.0);
+                let new_gap = self.with_cur_fill_percentage(cur_fill_pct);
+                FairValueGapStatus::Open(new_gap)
+            }
+            FairValueGapDirection::Bearish => {
+                // Highly predictable early exit: Price didn't rally into the gap.
+                if candle.high <= self.bottom {
+                    return FairValueGapStatus::Open(self);
+                }
+
+                let is_fully_filled = candle.high >= self.top;
+                if is_fully_filled {
+                    let closed_fvg = self.into_closed(candle.point_in_time());
+                    return FairValueGapStatus::Closed(closed_fvg);
+                }
+
+                // Use math instead of branches to bound the state
+                let cur_fill_pct = ((candle.high - bot_f) / gap_size).0.clamp(0.0, 1.0);
+                let new_gap = self.with_cur_fill_percentage(cur_fill_pct);
+                FairValueGapStatus::Open(new_gap)
+            }
+        }
+    }
+
+    fn with_cur_fill_percentage(self, cur_fill_percentage: f64) -> Self {
+        let max_fill_percentage = self.state.max_fill_percentage.max(cur_fill_percentage);
+        self.map(|s| OpenState {
+            max_fill_percentage,
+            touch_count: s.touch_count + 1,
+        })
+    }
+
+    /// Consumes the open gap and returns a closed gap state.
+    fn into_closed(self, closed_time: DateTime<Utc>) -> FairValueGap<ClosedState> {
+        self.map(|s| ClosedState {
+            closed_time,
+            touch_count: s.touch_count + 1,
+        })
+    }
 }
 
-// === 4. The Streaming Indicator ===
-
 #[derive(Debug, Clone)]
-pub struct StreamingFvg {
+pub struct StreamingFairValueGap {
+    min_gap_size: f64,
     buffer: VecDeque<Ohlcv>,
-    pub active_gaps: Vec<FairValueGap<OpenState>>,
-    pub historical_gaps: Vec<FairValueGap<ClosedState>>, // Optional: store closed ones
+    active_gaps: Vec<FairValueGap<OpenState>>,
+    historical_gaps: Vec<FairValueGap<ClosedState>>,
 }
 
-impl StreamingFvg {
-    pub fn new() -> Self {
+impl StreamingFairValueGap {
+    /// Creates a new `StreamingFairValueGap` indicator.
+    ///
+    /// # Arguments
+    /// * `min_gap_size` - The minimum absolute price difference required to register a Fair Value Gap.
+    ///                    This acts as a filter to reject microscopic imbalances. Must be > 0.0.
+    ///
+    /// # Panics
+    /// Panics if `min_gap_size` <= 0.0.
+    pub fn new(min_gap_size: f64) -> Self {
+        assert!(
+            min_gap_size > 0.0,
+            "min_gap_size must be strictly positive (got {min_gap_size} which is <= 0.0)"
+        );
         Self {
-            buffer: VecDeque::with_capacity(3),
+            min_gap_size,
+            buffer: VecDeque::with_capacity(PATTERN_LENGTH),
             active_gaps: Vec::new(),
             historical_gaps: Vec::new(),
         }
     }
+}
 
-    // Assumes Price -> f64 conversion for percentage math.
-    // In production, implement a method on `Price` for this.
-    fn to_f64(p: Price) -> f64 {
-        0.0 /* p.into() or p.0 */
+impl StreamingFairValueGap {
+    /// Function to detect a new gap.
+    fn detect_gap(&self, lhs: &Ohlcv, rhs: &Ohlcv) -> Option<FairValueGap<OpenState>> {
+        // Calculate both potential gaps. Only one can physically be >= 0 at a time.
+        let gap_up = rhs.low.0 - lhs.high.0;
+        let gap_down = lhs.low.0 - rhs.high.0;
+
+        if gap_up >= self.min_gap_size {
+            Some(FairValueGap {
+                direction: FairValueGapDirection::Bullish,
+                creation_time: rhs.close_timestamp,
+                top: rhs.low,
+                bottom: lhs.high,
+                state: OpenState {
+                    max_fill_percentage: 0.0,
+                    touch_count: 0,
+                },
+            })
+        } else if gap_down >= self.min_gap_size {
+            Some(FairValueGap {
+                direction: FairValueGapDirection::Bearish,
+                creation_time: rhs.close_timestamp,
+                top: lhs.low,
+                bottom: rhs.high,
+                state: OpenState {
+                    max_fill_percentage: 0.0,
+                    touch_count: 0,
+                },
+            })
+        } else {
+            None
+        }
     }
 }
 
-impl StreamingIndicator for StreamingFvg {
+impl StreamingIndicator for StreamingFairValueGap {
     type Input = Ohlcv;
-    type Output = Vec<FairValueGap<OpenState>>; // Gym only needs currently active gaps
+    type Output = Vec<FairValueGap<OpenState>>;
 
-    fn update(&mut self, candle: Ohlcv) -> Self::Output {
-        // --- 1. State Maintenance (Partial Fills & Closures) ---
-
+    fn update(&mut self, candle: Self::Input) -> Self::Output {
+        // --- 1. State Maintenance ---
         let mut i = 0;
         while i < self.active_gaps.len() {
-            let gap = &mut self.active_gaps[i];
-            let top_f = Self::to_f64(gap.top);
-            let bot_f = Self::to_f64(gap.bottom);
-            let gap_size = top_f - bot_f;
-
-            let mut is_filled = false;
-
-            if gap.direction == FvgDirection::Bullish && candle.low < gap.top {
-                gap.state.touch_count += 1;
-                let penetration = (top_f - Self::to_f64(candle.low)) / gap_size;
-
-                if penetration > gap.state.max_fill_percentage {
-                    gap.state.max_fill_percentage = penetration;
-                }
-
-                if candle.low <= gap.bottom {
-                    is_filled = true;
-                }
-            }
-            // ... (Bearish Logic Mirrored) ...
-
-            // Transition State via the Endofunctor map!
-            if is_filled {
+            if self.active_gaps[i].process_candle(&candle) {
+                // Remove the filled gap and migrate it to historical
                 let open_gap = self.active_gaps.remove(i);
-                let closed_gap = open_gap.map(|s| ClosedState {
-                    closed_time: candle.close_timestamp,
-                    max_fill_percentage: 1.0,
-                    touch_count: s.touch_count,
-                });
-                self.historical_gaps.push(closed_gap);
+                self.historical_gaps.push(open_gap.into_closed(candle.close_timestamp));
             } else {
-                i += 1; // Only advance if we didn't remove an item
+                // Only advance the index if we didn't remove an element
+                i += 1;
             }
         }
 
-        // --- 2. FVG Creation (3-Bar Pattern) ---
-
-        self.buffer.push_back(candle);
-        if self.buffer.len() > 3 {
+        // --- 2. Buffer Management ---
+        if self.buffer.len() == 3 {
             self.buffer.pop_front();
         }
+        self.buffer.push_back(candle);
 
+        // --- 3. FVG Creation ---
         if self.buffer.len() == 3 {
-            let c1 = self.buffer[0];
-            let c3 = self.buffer[2]; // current candle
-
-            // Bullish Imbalance: C1 High < C3 Low
-            if c1.high < c3.low {
-                self.active_gaps.push(FairValueGap {
-                    direction: FvgDirection::Bullish,
-                    creation_time: c3.close_timestamp,
-                    top: c3.low,
-                    bottom: c1.high,
-                    state: OpenState {
-                        max_fill_percentage: 0.0,
-                        touch_count: 0,
-                    },
-                });
-            }
-            // Bearish Imbalance: C1 Low > C3 High
-            else if c1.low > c3.high {
-                self.active_gaps.push(FairValueGap {
-                    direction: FvgDirection::Bearish,
-                    creation_time: c3.close_timestamp,
-                    top: c1.low,     // C1 Low is the top of the gap
-                    bottom: c3.high, // C3 High is the bottom
-                    state: OpenState {
-                        max_fill_percentage: 0.0,
-                        touch_count: 0,
-                    },
-                });
+            if let Some(new_gap) = self.detect_gap(&self.buffer[0], &self.buffer[2]) {
+                self.active_gaps.push(new_gap);
             }
         }
 
