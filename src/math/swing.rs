@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::VecDeque};
 
 use crate::{
     data::{
-        domain::{CandleDirection, CandleDirectionIter, Price, PriceSource},
+        domain::{CandleDirection, Price, PriceSource},
         event::{MarketEvent, Ohlcv},
     },
     math::StreamingIndicator,
@@ -356,31 +356,30 @@ impl StreamingHhll {
         let current_high_price = self.extract_price(candidate, PivotType::High);
 
         if let Some(active) = self.active_pivot {
-            match (self.alternation_mode, active.pivot_type) {
-                (AlternationMode::Alternating, PivotType::High) => {
-                    let overwrite = match self.tiebreaker {
-                        // If Earliest is active, the first peak should hold its ground.
-                        ExtremeTiebreaker::Earliest => current_high_price > active.price,
-                        // If Latest is active, the second peak should replace the first one.
-                        ExtremeTiebreaker::Latest => current_high_price >= active.price,
-                    };
+            // Is there an alternation conflict? (Two Highs in a row under Alternating mode)
+            let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
+                && active.pivot_type == PivotType::High;
 
-                    if !overwrite {
-                        return None;
-                    }
+            if is_alternation_conflict {
+                // Conflict Resolution
+                let overwrite = match self.tiebreaker {
+                    // If Earliest is active, the first peak should hold its ground.
+                    ExtremeTiebreaker::Earliest => current_high_price > active.price,
+                    // If Latest is active, the second peak should replace the first one.
+                    ExtremeTiebreaker::Latest => current_high_price >= active.price,
+                };
+
+                if !overwrite {
+                    return None; // Discard candidate, maintain the existing peak.
                 }
-                (AlternationMode::Alternating, PivotType::Low) => {
-                    self.anchor_low = Some(active);
-                    self.history.push(active);
+            } else {
+                // State Lock & History Invariant
+                // We unconditionally lock the previous pivot because it is confirmed.
+                match active.pivot_type {
+                    PivotType::High => self.anchor_high = Some(active),
+                    PivotType::Low => self.anchor_low = Some(active),
                 }
-                (AlternationMode::Consecutive, PivotType::High) => {
-                    self.anchor_high = Some(active);
-                    self.history.push(active);
-                }
-                (AlternationMode::Consecutive, PivotType::Low) => {
-                    self.anchor_low = Some(active);
-                    self.history.push(active);
-                }
+                self.history.push(active);
             }
         }
 
@@ -446,32 +445,31 @@ impl StreamingHhll {
         let candidate = self.candidate();
         let current_low_price = self.extract_price(candidate, PivotType::Low);
 
-        if let Some(latest) = self.active_pivot {
-            match (self.alternation_mode, latest.pivot_type) {
-                (AlternationMode::Alternating, PivotType::Low) => {
-                    let overwrite = match self.tiebreaker {
-                        // If Earliest is active, the first peak should hold its ground.
-                        ExtremeTiebreaker::Earliest => current_low_price < latest.price,
-                        // If Latest is active, the second peak should replace the first one.
-                        ExtremeTiebreaker::Latest => current_low_price <= latest.price,
-                    };
+        if let Some(active) = self.active_pivot {
+            // Is there an alternation conflict? (Two Lows in a row under Alternating mode)
+            let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
+                && active.pivot_type == PivotType::Low;
 
-                    if !overwrite {
-                        return None;
-                    }
+            if is_alternation_conflict {
+                // Conflict Resolution
+                let overwrite = match self.tiebreaker {
+                    // If Earliest is active, the first trough should hold its ground.
+                    ExtremeTiebreaker::Earliest => current_low_price < active.price,
+                    // If Latest is active, the second trough should replace the first one.
+                    ExtremeTiebreaker::Latest => current_low_price <= active.price,
+                };
+
+                if !overwrite {
+                    return None; // Discard candidate, maintain the existing trough.
                 }
-                (AlternationMode::Alternating, PivotType::High) => {
-                    self.anchor_high = Some(latest);
-                    self.history.push(latest);
+            } else {
+                // State Lock & History Invariant
+                // We unconditionally lock the previous pivot because it is confirmed.
+                match active.pivot_type {
+                    PivotType::High => self.anchor_high = Some(active),
+                    PivotType::Low => self.anchor_low = Some(active),
                 }
-                (AlternationMode::Consecutive, PivotType::High) => {
-                    self.anchor_high = Some(latest);
-                    self.history.push(latest);
-                }
-                (AlternationMode::Consecutive, PivotType::Low) => {
-                    self.anchor_low = Some(latest);
-                    self.history.push(latest);
-                }
+                self.history.push(active);
             }
         }
 
@@ -1084,5 +1082,99 @@ mod tests {
             hhll.active_pivot.unwrap().ohlcv_candle.open_timestamp,
             ts("2026-05-24T10:04:00Z")
         );
+    }
+
+    /// Tests the History Invariant under `Alternating` mode.
+    ///
+    /// # Expected Behavior
+    /// In `Alternating` mode, if two Highs occur in a row, the lesser High is discarded
+    /// (overwritten). It must NOT be pushed to the `history` vector.
+    /// The `history` vector should only grow when a pivot is confirmed by an alternating pivot.
+    #[test]
+    fn test_history_invariant_alternating_mode() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_tiebreaker(ExtremeTiebreaker::Latest)
+            .with_price_source(PriceSource::HighLow);
+
+        let trajectory = vec![
+            candle("1", 10., 10., 10., 10.),
+            candle("2", 20., 20., 20., 20.), // Peak 1 (High)
+            candle("3", 15., 15., 15., 15.), // Dip (No confirmed Low yet)
+            candle("4", 30., 30., 30., 30.), // Peak 2 (Higher High)
+            candle("5", 10., 10., 10., 10.),
+        ];
+
+        for c in trajectory {
+            let _ = hhll.update(c);
+        }
+
+        // Active pivot is Peak 2.
+        assert_eq!(hhll.active_pivot.unwrap().price.0, 30.0);
+
+        // History should be EMPTY. Peak 1 was a High, Peak 2 was a High.
+        // Because alternation was broken, Peak 1 was discarded and never locked in.
+        assert_eq!(
+            hhll.history().len(),
+            0,
+            "History should not contain overwritten pivots"
+        );
+
+        // Now, push a confirmed Low to lock in Peak 2.
+        let _ = hhll.update(candle("6", 5., 5., 5., 5.)); // Swing Low
+        let _ = hhll.update(candle("7", 10., 10., 10., 10.)); // Right window to trigger Low
+
+        // NOW Peak 2 should be safely locked in history.
+        assert_eq!(hhll.history().len(), 1);
+        assert_eq!(hhll.history()[0].price.0, 30.0);
+        assert_eq!(hhll.history()[0].pivot_type, PivotType::High);
+    }
+
+    /// Tests the History Invariant under `Consecutive` mode.
+    ///
+    /// # Expected Behavior
+    /// In `Consecutive` mode, no filter is applied. Every single valid extreme detected
+    /// by the window is instantly locked and pushed to the `history` vector, even if
+    /// there are 5 Highs in a row.
+    #[test]
+    fn test_history_invariant_consecutive_mode() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_alternation_mode(AlternationMode::Consecutive) // Unfiltered
+            .with_tiebreaker(ExtremeTiebreaker::Latest)
+            .with_price_source(PriceSource::HighLow);
+
+        let trajectory = vec![
+            candle("1", 10., 10., 10., 10.),
+            candle("2", 20., 20., 20., 20.), // Peak 1
+            candle("3", 15., 15., 15., 15.),
+            candle("4", 30., 30., 30., 30.), // Peak 2
+            candle("5", 10., 10., 10., 10.),
+            candle("6", 40., 40., 40., 40.), // Peak 3
+            candle("7", 10., 10., 10., 10.),
+        ];
+
+        for c in trajectory {
+            let _ = hhll.update(c);
+        }
+
+        // Active pivot is tracking Peak 3.
+        assert_eq!(hhll.active_pivot.unwrap().price.0, 40.0);
+
+        // History should contain Peak 1 and Peak 2, despite them all being Highs.
+        assert_eq!(
+            hhll.history().len(),
+            2,
+            "Consecutive mode should lock all previous peaks"
+        );
+        assert_eq!(hhll.history()[0].price.0, 20.0);
+        assert_eq!(hhll.history()[1].price.0, 30.0);
     }
 }
