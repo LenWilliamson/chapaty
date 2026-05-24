@@ -26,9 +26,9 @@ impl StreamingRsi {
 
 impl StreamingIndicator for StreamingRsi {
     type Input = f64;
-    type Output = Option<f64>;
+    type Output<'a> = Option<f64>;
 
-    fn update(&mut self, value: Self::Input) -> Self::Output {
+    fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
         let prev = match self.prev_price {
             Some(p) => p,
             None => {

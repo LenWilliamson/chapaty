@@ -214,7 +214,7 @@ impl ZigZagPeriod {
 
 /// A HigherHigh/LowerLow indicator that identifies market structure points on a stream of OHLCV data.
 /// It can be configured with a ZigZag alternation filter to eliminate market noise.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct StreamingHhll {
     zig_zag_period: ZigZagPeriod,
     price_source: PriceSource,
@@ -538,9 +538,9 @@ impl StreamingHhll {
 
 impl StreamingIndicator for StreamingHhll {
     type Input = Ohlcv;
-    type Output = Option<(MarketStructureEvent, PivotPoint)>;
+    type Output<'a> = Option<(MarketStructureEvent, PivotPoint)>;
 
-    fn update(&mut self, candle: Self::Input) -> Self::Output {
+    fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
         self.buffer.push_back(candle);
 
         if self.buffer.len() < self.window_size {

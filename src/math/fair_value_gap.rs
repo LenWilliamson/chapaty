@@ -209,7 +209,14 @@ impl StreamingFairValueGap {
 
 impl StreamingFairValueGap {
     /// Function to detect a new gap.
-    fn detect_gap(&self, lhs: &Ohlcv, rhs: &Ohlcv) -> Option<FairValueGap<OpenState>> {
+    fn detect_gap(&self) -> Option<FairValueGap<OpenState>> {
+        if self.buffer.len() < PATTERN_LENGTH {
+            return None;
+        }
+
+        let lhs = self.buffer[0];
+        let rhs = self.buffer[2];
+
         // Calculate both potential gaps. Only one can physically be >= 0 at a time.
         let gap_up = rhs.low.0 - lhs.high.0;
         let gap_down = lhs.low.0 - rhs.high.0;
@@ -244,36 +251,34 @@ impl StreamingFairValueGap {
 
 impl StreamingIndicator for StreamingFairValueGap {
     type Input = Ohlcv;
-    type Output = Vec<FairValueGap<OpenState>>;
+    type Output<'a> = &'a [FairValueGap<OpenState>];
 
-    fn update(&mut self, candle: Self::Input) -> Self::Output {
-        // --- 1. State Maintenance ---
+    fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
         let mut i = 0;
         while i < self.active_gaps.len() {
-            if self.active_gaps[i].process_candle(&candle) {
-                // Remove the filled gap and migrate it to historical
-                let open_gap = self.active_gaps.remove(i);
-                self.historical_gaps.push(open_gap.into_closed(candle.close_timestamp));
-            } else {
-                // Only advance the index if we didn't remove an element
-                i += 1;
+            let gap = self.active_gaps[i];
+            match gap.process_candle(candle) {
+                FairValueGapStatus::Open(updated_gap) => {
+                    self.active_gaps[i] = updated_gap;
+                    i += 1;
+                }
+                FairValueGapStatus::Closed(closed_gap) => {
+                    self.historical_gaps.push(closed_gap);
+                    self.active_gaps.remove(i);
+                }
             }
         }
 
-        // --- 2. Buffer Management ---
-        if self.buffer.len() == 3 {
+        if self.buffer.len() >= PATTERN_LENGTH {
             self.buffer.pop_front();
         }
         self.buffer.push_back(candle);
 
-        // --- 3. FVG Creation ---
-        if self.buffer.len() == 3 {
-            if let Some(new_gap) = self.detect_gap(&self.buffer[0], &self.buffer[2]) {
-                self.active_gaps.push(new_gap);
-            }
+        if let Some(new_gap) = self.detect_gap() {
+            self.active_gaps.push(new_gap);
         }
 
-        self.active_gaps.clone()
+        self.active_gaps.as_slice()
     }
 
     fn reset(&mut self) {
