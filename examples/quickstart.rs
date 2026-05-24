@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     let reports_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(REPORTS_SUBDIR);
     let file_cfg = FileConfig::default().with_dir(&reports_dir);
 
-    // --- 1. Single-agent baseline: full journal + reports ---
+    // === 1. Single-agent baseline: full journal + reports ===
     let mut baseline = NoOpAgent::default();
     let label = baseline.identifier();
 
@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
 
     info!(%label, elapsed = ?baseline_start.elapsed(), "Baseline backtest complete");
 
-    // --- 2. Parallel grid: ranked leaderboard ---
+    // === 2. Parallel grid: ranked leaderboard ===
     let agents = (0..GRID_SIZE)
         .map(|uid| (uid, NoOpAgent::default()))
         .collect::<Vec<_>>();
