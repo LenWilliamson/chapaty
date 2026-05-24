@@ -327,8 +327,7 @@ impl StreamingHhll {
 
     /// Checks if the candidate price is a valid extremum against its neighbors.
     fn check_extremum(&self, pivot_type: PivotType) -> bool {
-        let mid_idx = self.zig_zag_period.mid_index();
-        let candidate = self.buffer[mid_idx];
+        let candidate = self.candidate();
         let candidate_price = self.extract_price(candidate, pivot_type);
 
         // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
@@ -351,60 +350,77 @@ impl StreamingHhll {
             && self.right_partition().all(|c| is_valid(c, strict_right))
     }
 
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
     fn process_high(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let price = self.extract_price(candidate, PivotType::High);
-        let mut new_pivot = PivotPoint {
-            ohlcv_candle: candidate,
-            price,
-            price_source: self.price_source,
-            pivot_type: PivotType::High,
-            trend: MarketStructureSequence::UnclassifiedHigh,
-        };
+        let current_high_price = self.extract_price(candidate, PivotType::High);
 
-        if let Some(latest) = self.active_pivot {
-            match (self.alternation_mode, latest.pivot_type) {
+        if let Some(active) = self.active_pivot {
+            match (self.alternation_mode, active.pivot_type) {
                 (AlternationMode::Alternating, PivotType::High) => {
-                    // Alternation broken: Two highs in a row. Keep the highest.
-                    if new_pivot.price > latest.price {
-                        // Keep new, but don't lock it as an anchor yet.
-                    } else {
+                    let overwrite = match self.tiebreaker {
+                        // If Earliest is active, the first peak should hold its ground.
+                        ExtremeTiebreaker::Earliest => current_high_price > active.price,
+                        // If Latest is active, the second peak should replace the first one.
+                        ExtremeTiebreaker::Latest => current_high_price >= active.price,
+                    };
+
+                    if !overwrite {
                         return None;
                     }
                 }
                 (AlternationMode::Alternating, PivotType::Low) => {
-                    self.anchor_low = Some(latest);
-                    self.history.push(latest);
+                    self.anchor_low = Some(active);
+                    self.history.push(active);
                 }
                 (AlternationMode::Consecutive, PivotType::High) => {
-                    self.anchor_high = Some(latest);
-                    self.history.push(latest);
+                    self.anchor_high = Some(active);
+                    self.history.push(active);
                 }
                 (AlternationMode::Consecutive, PivotType::Low) => {
-                    self.anchor_low = Some(latest);
-                    self.history.push(latest);
+                    self.anchor_low = Some(active);
+                    self.history.push(active);
                 }
             }
         }
 
-        let mut event = MarketStructureEvent::NoChange;
-
-        // Expressive matching using the standard library's `PartialOrd` trait
-        if let Some(anchor) = self.anchor_high {
-            match new_pivot.price.partial_cmp(&anchor.price) {
+        let (trend, event) = match self.anchor_high {
+            Some(anchor) => match current_high_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Greater) => {
-                    new_pivot.trend = MarketStructureSequence::HigherHigh;
-                    event = match self.anchor_low.map(|l| l.trend) {
+                    let market_structure_event = match self.anchor_low.map(|l| l.trend) {
                         Some(MarketStructureSequence::LowerLow) => {
                             MarketStructureEvent::MarketStructureShift
                         }
                         _ => MarketStructureEvent::BreakOfStructure,
                     };
+                    (MarketStructureSequence::HigherHigh, market_structure_event)
                 }
-                Some(Ordering::Less) => new_pivot.trend = MarketStructureSequence::LowerHigh,
-                _ => new_pivot.trend = MarketStructureSequence::EqualHigh,
-            }
-        }
+                Some(Ordering::Less) => (
+                    MarketStructureSequence::LowerHigh,
+                    MarketStructureEvent::NoChange,
+                ),
+                Some(Ordering::Equal) => (
+                    MarketStructureSequence::EqualHigh,
+                    MarketStructureEvent::NoChange,
+                ),
+                None => {
+                    tracing::warn!();
+                    return None;
+                }
+            },
+            None => (
+                MarketStructureSequence::UnclassifiedHigh,
+                MarketStructureEvent::NoChange,
+            ),
+        };
+
+        let new_pivot = PivotPoint {
+            ohlcv_candle: candidate,
+            price: current_high_price,
+            price_source: self.price_source,
+            pivot_type: PivotType::High,
+            trend,
+        };
 
         self.active_pivot = Some(new_pivot);
         Some((event, new_pivot))
@@ -412,21 +428,19 @@ impl StreamingHhll {
 
     fn process_low(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let price = self.extract_price(candidate, PivotType::Low);
-        let mut new_pivot = PivotPoint {
-            ohlcv_candle: candidate,
-            price,
-            price_source: self.price_source,
-            pivot_type: PivotType::Low,
-            trend: MarketStructureSequence::UnclassifiedLow,
-        };
+        let current_low_price = self.extract_price(candidate, PivotType::Low);
 
+        // 1. Evaluate Alternation & Tiebreakers
         if let Some(latest) = self.active_pivot {
             match (self.alternation_mode, latest.pivot_type) {
                 (AlternationMode::Alternating, PivotType::Low) => {
-                    if new_pivot.price < latest.price {
-                        // Keep new, but don't lock it as an anchor yet.
-                    } else {
+                    // Alternation broken: Two lows in a row.
+                    let overwrite = match self.tiebreaker {
+                        ExtremeTiebreaker::Earliest => current_low_price < latest.price,
+                        ExtremeTiebreaker::Latest => current_low_price <= latest.price,
+                    };
+
+                    if !overwrite {
                         return None;
                     }
                 }
@@ -445,23 +459,41 @@ impl StreamingHhll {
             }
         }
 
-        let mut event = MarketStructureEvent::NoChange;
-
-        if let Some(anchor) = self.anchor_low {
-            match new_pivot.price.partial_cmp(&anchor.price) {
+        // 2. Classify Structure (Functional / Expression-Oriented)
+        let (trend, event) = match self.anchor_low {
+            Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Less) => {
-                    new_pivot.trend = MarketStructureSequence::LowerLow;
-                    event = match self.anchor_high.map(|h| h.trend) {
+                    let ev = match self.anchor_high.map(|h| h.trend) {
                         Some(MarketStructureSequence::HigherHigh) => {
                             MarketStructureEvent::MarketStructureShift
                         }
                         _ => MarketStructureEvent::BreakOfStructure,
                     };
+                    (MarketStructureSequence::LowerLow, ev)
                 }
-                Some(Ordering::Greater) => new_pivot.trend = MarketStructureSequence::HigherLow,
-                _ => new_pivot.trend = MarketStructureSequence::EqualLow,
-            }
-        }
+                Some(Ordering::Greater) => (
+                    MarketStructureSequence::HigherLow,
+                    MarketStructureEvent::NoChange,
+                ),
+                Some(Ordering::Equal) | None => (
+                    MarketStructureSequence::EqualLow,
+                    MarketStructureEvent::NoChange,
+                ),
+            },
+            None => (
+                MarketStructureSequence::UnclassifiedLow,
+                MarketStructureEvent::NoChange,
+            ),
+        };
+
+        // 3. Construct and lock the new pivot (Immutable)
+        let new_pivot = PivotPoint {
+            ohlcv_candle: candidate,
+            price: current_low_price,
+            price_source: self.price_source,
+            pivot_type: PivotType::Low,
+            trend,
+        };
 
         self.active_pivot = Some(new_pivot);
         Some((event, new_pivot))
@@ -568,3 +600,456 @@ Before episode 0, iterate over your `Box<[Ohlcv]>` and the boolean columns gener
 
 
 */
+
+#[cfg(test)]
+mod tests {
+    use crate::data::domain::Quantity;
+
+    use super::*;
+    use std::f64::EPSILON;
+
+    // ==========================================
+    // === 1. Mocks & Helpers ===
+    // ==========================================
+
+    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    fn ts(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    /// A rapid builder for OHLCV candles to keep our test trajectories readable.
+    fn candle(time: &str, open: f64, high: f64, low: f64, close: f64) -> Ohlcv {
+        Ohlcv {
+            open_timestamp: ts(time),
+            close_timestamp: ts(time),
+            open: Price(open),
+            high: Price(high),
+            low: Price(low),
+            close: Price(close),
+            volume: Quantity(100.0),
+            quote_asset_volume: None,
+            number_of_trades: None,
+            taker_buy_base_asset_volume: None,
+            taker_buy_quote_asset_volume: None,
+        }
+    }
+
+    /// Helper to assert floats with epsilon tolerance
+    fn assert_f64_eq(a: f64, b: f64) {
+        assert!((a - b).abs() < EPSILON, "Expected {} to equal {}", a, b);
+    }
+
+    // ==========================================
+    // === 2. Geometric Math Tests ===
+    // ==========================================
+
+    #[test]
+    fn test_pivot_point_interpolation() {
+        let p1 = PivotPoint {
+            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::LowerLow,
+        };
+
+        // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by 50.
+        let p2 = PivotPoint {
+            ohlcv_candle: candle("2026-05-24T15:10:00Z", 150., 150., 150., 150.),
+            price: Price(150.0),
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::HigherLow,
+        };
+
+        // --- 1. Test Index Based Interpolation ---
+        // Slope = (150 - 100) / (20 - 10) = 5.0 per bar
+        let line_by_idx = p1.price_line_by_index(&p2, 10, 20);
+
+        assert_f64_eq(line_by_idx(10).0, 100.0); // Start point
+        assert_f64_eq(line_by_idx(15).0, 125.0); // Exact midpoint
+        assert_f64_eq(line_by_idx(20).0, 150.0); // Target point
+        assert_f64_eq(line_by_idx(25).0, 175.0); // Extrapolation into the future!
+
+        // --- 2. Test Time Based Interpolation ---
+        let line_by_time = p1.price_line_by_time(&p2);
+
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:05:00Z")).0, 125.0); // Midpoint (5 mins)
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:10:00Z")).0, 150.0); // Target
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:20:00Z")).0, 200.0); // Extrapolation into future
+    }
+
+    #[test]
+    fn test_pivot_point_flat_line_and_zero_division() {
+        let p1 = PivotPoint {
+            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            ..p1 // Fill rest with defaults
+        };
+        let p2 = PivotPoint {
+            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            ..p1
+        };
+
+        // Same index/time should result in flat line, NOT a NaN/Inf panic
+        let line = p1.price_line_by_index(&p2, 5, 5);
+        assert_f64_eq(line(10).0, 100.0);
+    }
+
+    // ==========================================
+    // === 3. Indicator Microstructure Tests ===
+    // ==========================================
+
+    fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {
+        StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: left,
+                right_bars: right,
+            })
+            .with_tiebreaker(tiebreaker)
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_price_source(PriceSource::HighLow)
+    }
+
+    #[test]
+    fn test_basic_swing_high_detection() {
+        // Window size 5: 2 left, 1 candidate, 2 right.
+        let mut hhll = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+
+        let trajectory = vec![
+            candle("2026-05-24T15:01:00Z", 10., 10., 10., 10.), // L1
+            candle("2026-05-24T15:02:00Z", 15., 15., 15., 15.), // L2
+            candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak (Candidate)
+            candle("2026-05-24T15:04:00Z", 15., 15., 15., 15.), // R1
+        ];
+
+        for c in trajectory {
+            assert!(
+                hhll.update(c).is_none(),
+                "Should not emit before right window is full"
+            );
+        }
+
+        // Pushing R2 completes the right window for the Candidate (20.0).
+        // It should immediately trigger the Swing High evaluation.
+        let event = hhll
+            .update(candle("2026-05-24T15:05:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(event.1.pivot_type, PivotType::High);
+        assert_eq!(event.1.price.0, 20.0);
+        assert_eq!(
+            event.1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T15:03:00Z")
+        );
+    }
+
+    #[test]
+    fn test_tiebreaker_double_top() {
+        let trajectory = vec![
+            candle("2026-05-24T15:01:00Z", 10., 10., 10., 10.),
+            candle("2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
+            candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle("2026-05-24T15:04:00Z", 10., 10., 10., 10.),
+            candle("2026-05-24T15:05:00Z", 10., 10., 10., 10.),
+            candle("2026-05-24T15:06:00Z", 10., 10., 10., 10.),
+        ];
+
+        // Test Earliest: Should capture Peak 1
+        let mut hhll_early = create_indicator(2, 2, ExtremeTiebreaker::Earliest);
+        let mut early_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_early.update(c) {
+                early_result = Some(res);
+            }
+        }
+        assert_eq!(
+            early_result.unwrap().1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T15:02:00Z")
+        );
+
+        // Test Latest: Should capture Peak 2
+        let mut hhll_late = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+        let mut late_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_late.update(c) {
+                late_result = Some(res);
+            }
+        }
+        assert_eq!(
+            late_result.unwrap().1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T15:03:00Z")
+        );
+    }
+
+    #[test]
+    fn test_outside_bar_mega_bar_resolution() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Pre-fill history to make the last confirmed pivot a HIGH.
+        // This means the algorithm should be looking for a LOW next.
+        hhll.active_pivot = Some(PivotPoint {
+            ohlcv_candle: candle("2026-05-24T14:00:00Z", 50., 50., 50., 50.),
+            price: Price(50.0),
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::High,
+            trend: MarketStructureSequence::UnclassifiedHigh,
+        });
+
+        // 1. Send Left window
+        hhll.update(candle("2026-05-24T15:01:00Z", 20., 20., 20., 20.));
+
+        // 2. Send Mega Bar (Candidate)
+        // High is higher than neighbors, Low is lower than neighbors. Doji close.
+        hhll.update(candle("2026-05-24T15:02:00Z", 25., 30., 10., 25.));
+
+        // 3. Send Right window (Triggers candidate evaluation)
+        let event = hhll
+            .update(candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.))
+            .unwrap();
+
+        // Because active_pivot was a HIGH, and the Mega Bar was a Doji (trend inertia),
+        // the state machine assumes the LOW happened chronologically after the HIGH.
+        assert_eq!(event.1.pivot_type, PivotType::Low);
+        assert_eq!(event.1.price.0, 10.0);
+    }
+
+    #[test]
+    fn test_alternation_filter_overwrites_noise() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Candle 1, 2, 3: First Peak at 20
+        hhll.update(candle("1", 10., 10., 10., 10.));
+        hhll.update(candle("2", 20., 20., 20., 20.));
+        let p1 = hhll.update(candle("3", 15., 15., 15., 15.)).unwrap().1;
+        assert_eq!(p1.price.0, 20.0);
+        assert_eq!(p1.pivot_type, PivotType::High);
+
+        // Candle 4: Dips slightly, but not enough to form a valid Swing Low
+        // (assume it doesn't trigger a low in a wider window, but for this tiny window it might).
+        // Let's force two Highs in a row by just looking at the active_pivot state.
+
+        // Candle 4, 5, 6: Second Peak at 30 (Higher than the first!)
+        hhll.update(candle("4", 15., 15., 15., 15.));
+        hhll.update(candle("5", 30., 30., 30., 30.));
+        let p2 = hhll.update(candle("6", 10., 10., 10., 10.)).unwrap().1;
+
+        // The indicator should emit a new event, but under the hood,
+        // because Alternation is active, anchor_high is still None (unconfirmed).
+        assert_eq!(p2.price.0, 30.0);
+        assert_eq!(p2.pivot_type, PivotType::High);
+
+        // Ensure the lesser peak was overwritten and NOT pushed to history
+        assert_eq!(hhll.history().len(), 0);
+    }
+
+    /// Tests the "Mega Bar" (Outside Bar) anomaly when the candidate closes as a Doji.
+    ///
+    /// # The Microstructure Logic
+    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an outside bar),
+    /// the algorithm must choose which extremum logically extends the current market structure.
+    /// If the candle is a Doji (Open == Close, indicating no directional conviction),
+    /// the algorithm relies on "trend inertia."
+    ///
+    /// # State Machine Interaction
+    /// This test verifies that if the last active pivot was a `PivotType::Low`, passing a
+    /// Mega Doji routes into `self.process_low()`, intentionally triggering the
+    /// **Alternation Broken** (Low -> Low) path:
+    ///
+    /// 1. **Trend Extension:** If the Doji's low sweeps deeper than the active macro low,
+    ///    it updates the extreme, keeping the downtrend alive.
+    /// 2. **Internal Noise:** If the Doji's low is NOT deeper than the active macro low,
+    ///    the state machine safely discards it as high-volatility internal consolidation,
+    ///    returning `None`.
+    #[test]
+    fn test_outside_bar_doji_trend_inertia() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_tiebreaker(ExtremeTiebreaker::Latest)
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_price_source(PriceSource::HighLow);
+
+        // =========================================================================
+        // SCENARIO 1: Mega Doji EXTENDS the established Low (Sweeps Liquidity)
+        // =========================================================================
+
+        // Hardcode the active pivot to a Low at price 10.0
+        hhll.active_pivot = Some(PivotPoint {
+            ohlcv_candle: candle("2026-05-24T14:00:00Z", 10., 10., 10., 10.),
+            price: Price(10.0),
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::UnclassifiedLow,
+        });
+
+        // 1. Push Left Window
+        assert!(
+            hhll.update(candle("2026-05-24T15:01:00Z", 20., 20., 15., 18.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
+        // High is 30, Low is 5. Note that Candidate Low (5.0) < Active Pivot Low (10.0).
+        assert!(
+            hhll.update(candle("2026-05-24T15:02:00Z", 20., 30., 5., 20.))
+                .is_none()
+        );
+
+        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
+        let event = hhll.update(candle("2026-05-24T15:03:00Z", 20., 20., 15., 18.));
+
+        // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low),
+        // but because 5.0 < 10.0, it successfully overwrites the active pivot.
+        assert!(
+            event.is_some(),
+            "Expected Doji to extend the Low, but it returned None"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.pivot_type, PivotType::Low);
+        assert_eq!(pivot.price.0, 5.0, "Expected new active Low to be 5.0");
+
+        // =========================================================================
+        // SCENARIO 2: Mega Doji fails to extend the Low (Internal Noise)
+        // =========================================================================
+        hhll.reset();
+
+        // Hardcode the active pivot to a very deep, established macro Low at price 1.0
+        hhll.active_pivot = Some(PivotPoint {
+            ohlcv_candle: candle("2026-05-24T16:00:00Z", 1., 1., 1., 1.),
+            price: Price(1.0),
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::UnclassifiedLow,
+        });
+
+        // 1. Push Left Window
+        assert!(
+            hhll.update(candle("2026-05-24T17:01:00Z", 20., 20., 15., 18.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
+        // High is 30, Low is 5. Note that Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
+        assert!(
+            hhll.update(candle("2026-05-24T17:02:00Z", 20., 30., 5., 20.))
+                .is_none()
+        );
+
+        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
+        let event_noise = hhll.update(candle("2026-05-24T17:03:00Z", 20., 20., 15., 18.));
+
+        // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low).
+        // Because 5.0 is NOT strictly less than 1.0, it correctly discards the Doji as internal noise.
+        assert!(
+            event_noise.is_none(),
+            "Expected Doji to be discarded as noise, but it emitted an event"
+        );
+    }
+
+    /// Tests Macro Tiebreaker Resolution: Earliest.
+    ///
+    /// # Scenario
+    /// The market prints a High at 20.0. The price dips slightly, but fails to print
+    /// a valid structural Low. It then rallies back to exactly 20.0, forming a Double Top.
+    ///
+    /// # Expected Behavior
+    /// Because `Alternating` mode is active, the algorithm must choose which of the two
+    /// consecutive Highs to keep. Under `ExtremeTiebreaker::Earliest`, it should reject
+    /// the second peak and maintain the first one.
+    #[test]
+    fn test_macro_tiebreaker_equal_peaks_earliest() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_tiebreaker(ExtremeTiebreaker::Earliest)
+            .with_price_source(PriceSource::HighLow);
+
+        let trajectory = vec![
+            candle("2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle("2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
+            candle("2026-05-24T10:02:00Z", 15., 15., 15., 15.),
+            candle("2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
+            candle("2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle("2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+        ];
+
+        let mut events = Vec::new();
+        for c in trajectory {
+            if let Some(event) = hhll.update(c) {
+                events.push(event);
+            }
+        }
+
+        // Only Peak 1 should have been emitted. Peak 2 evaluates in the state machine
+        // but `20.0 > 20.0` is false, so it is discarded.
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T10:01:00Z")
+        );
+        assert_eq!(
+            hhll.active_pivot.unwrap().ohlcv_candle.open_timestamp,
+            ts("2026-05-24T10:01:00Z")
+        );
+    }
+
+    /// Tests Macro Tiebreaker Resolution: Latest.
+    ///
+    /// # Expected Behavior
+    /// In a Double Top scenario under `ExtremeTiebreaker::Latest`, the algorithm should
+    /// emit the first peak, but when the second peak arrives, the state machine evaluates
+    /// `20.0 >= 20.0` (True), usurping and overwriting the first peak with the Latest one.
+    #[test]
+    fn test_macro_tiebreaker_equal_peaks_latest() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_tiebreaker(ExtremeTiebreaker::Latest)
+            .with_price_source(PriceSource::HighLow);
+
+        let trajectory = vec![
+            candle("2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle("2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
+            candle("2026-05-24T10:02:00Z", 15., 15., 15., 15.),
+            candle("2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
+            candle("2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle("2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+        ];
+
+        let mut events = Vec::new();
+        for c in trajectory {
+            if let Some(event) = hhll.update(c) {
+                events.push(event);
+            }
+        }
+
+        // Peak 1 is emitted first. Then Peak 2 arrives and is ALSO emitted because
+        // it overwrites Peak 1 as the new active_pivot.
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[0].1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T10:01:00Z")
+        ); // First emission
+        assert_eq!(
+            events[1].1.ohlcv_candle.open_timestamp,
+            ts("2026-05-24T10:04:00Z")
+        ); // Overwrite emission
+
+        // The active pivot currently tracking the market should be Peak 2.
+        assert_eq!(
+            hhll.active_pivot.unwrap().ohlcv_candle.open_timestamp,
+            ts("2026-05-24T10:04:00Z")
+        );
+    }
+}
