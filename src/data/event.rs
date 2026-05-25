@@ -181,7 +181,7 @@ impl MarketEvent for IndexedOhlcv {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.candle.point_in_time()
     }
-    
+
     fn opened_at(&self) -> DateTime<Utc> {
         self.candle.opened_at()
     }

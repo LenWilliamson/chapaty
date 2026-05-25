@@ -24,9 +24,11 @@ pub use crate::data::filter::*;
 
 // 6. Technical Indicators
 pub use crate::data::indicator::*;
-pub use crate::math::indicator::*;
+pub use crate::math::fair_value_gap::*;
 pub use crate::math::market_profile::*;
-pub use crate::math::market_structure::*;
+pub use crate::math::moving_averages::*;
+pub use crate::math::oscillators::*;
+pub use crate::math::swing::*;
 pub use crate::math::traits::*;
 
 // 7. Errors

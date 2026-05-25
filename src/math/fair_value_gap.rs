@@ -298,53 +298,6 @@ impl StreamingIndicator for StreamingFairValueGap {
     }
 }
 
-/*
- *
-Implemenation Plan Batch Indicator:
-
-### Part 2: Fair Value Gaps (FVG)
-
-FVG boundary logic is purely geometric and trivial for Polars, but tracking partial fills and touches is path-dependent.
-
-#### Step 1: Polars Transformation (Creation)
-
-We use Polars `shift` to instantly find all 3-bar imbalances. No lookahead bias exists here because an FVG is inherently confirmed upon the close of Candle 3 (the current row).
-
-```python
-df = df.with_columns([
-    # Bullish FVG
-    (pl.col("high").shift(2) < pl.col("low")).alias("is_bull_fvg_created"),
-    pl.col("low").alias("bull_fvg_top"),
-    pl.col("high").shift(2).alias("bull_fvg_bottom"),
-
-    # Bearish FVG
-    (pl.col("low").shift(2) > pl.col("high")).alias("is_bear_fvg_created"),
-    pl.col("low").shift(2).alias("bear_fvg_top"),
-    pl.col("high").alias("bear_fvg_bottom"),
-])
-
-```
-
-#### Step 2: Rust AoS Pre-pass (The Lifecycle Simulation)
-
-Because RL agents need to know the exact state of all open gaps at time `t`, we must pre-simulate the mitigations. We will create a `Vec<Vec<Fvg<OpenState>>>` sidecar array, where the outer vector maps 1:1 to your Gym's `t` index.
-
-Iterate through your AoS from `t = 0` to `end`:
-
-1. **Clone Previous State:** Copy the active gaps from `t - 1` into the current step `t`.
-2. **Apply Price Action to Existing Gaps:**
-* Loop through the active gaps.
-* If `current_candle.low` enters a Bullish gap: increment `touch_count`.
-* Calculate the penetration percentage. If it exceeds `max_fill_percentage`, update it.
-* If `max_fill_percentage >= 1.0`, the gap is fully mitigated. Use your `map` endofunctor to transition it to `ClosedState`, and remove it from the active list for step `t`.
-
-
-3. **Add New Gaps:** Check the Polars boolean flags for row `t`. If `is_bull_fvg_created == true`, push a pristine `Fvg<OpenState>` into the active list.
-4. **Store:** Save the active list to `precomputed_fvgs[t]`.
-
-**O(1) Lookup:** During `env.step(t)`, your Gym observation space simply clones `precomputed_fvgs[t]`. The RL agent instantly receives the array of all valid, open gaps, complete with their current `max_fill_percentage` and `touch_count`, with zero runtime cost.
- */
-
 #[cfg(test)]
 mod tests {
     use super::*;

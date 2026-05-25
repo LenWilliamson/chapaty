@@ -636,9 +636,8 @@ Before episode 0, iterate over your `Box<[Ohlcv]>` and the boolean columns gener
 
 #[cfg(test)]
 mod tests {
-    use crate::data::domain::Quantity;
-
     use super::*;
+    use crate::data::domain::Quantity;
     use std::f64::EPSILON;
 
     // ==========================================
@@ -650,20 +649,30 @@ mod tests {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    /// A rapid builder for OHLCV candles to keep our test trajectories readable.
-    fn candle(time: &str, open: f64, high: f64, low: f64, close: f64) -> Ohlcv {
-        Ohlcv {
-            open_timestamp: ts(time),
-            close_timestamp: ts(time),
-            open: Price(open),
-            high: Price(high),
-            low: Price(low),
-            close: Price(close),
-            volume: Quantity(100.0),
-            quote_asset_volume: None,
-            number_of_trades: None,
-            taker_buy_base_asset_volume: None,
-            taker_buy_quote_asset_volume: None,
+    /// A rapid builder for Indexed OHLCV candles to keep our test trajectories readable.
+    fn candle(
+        index: usize,
+        time: &str,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) -> IndexedOhlcv {
+        IndexedOhlcv {
+            index,
+            candle: Ohlcv {
+                open_timestamp: ts(time),
+                close_timestamp: ts(time),
+                open: Price(open),
+                high: Price(high),
+                low: Price(low),
+                close: Price(close),
+                volume: Quantity(100.0),
+                quote_asset_volume: None,
+                number_of_trades: None,
+                taker_buy_base_asset_volume: None,
+                taker_buy_quote_asset_volume: None,
+            },
         }
     }
 
@@ -679,7 +688,7 @@ mod tests {
     #[test]
     fn test_pivot_point_interpolation() {
         let p1 = PivotPoint {
-            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle(10, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -688,7 +697,7 @@ mod tests {
 
         // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by 50.
         let p2 = PivotPoint {
-            indexed_candle: candle("2026-05-24T15:10:00Z", 150., 150., 150., 150.),
+            indexed_candle: candle(20, "2026-05-24T15:10:00Z", 150., 150., 150., 150.),
             price: Price(150.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -697,7 +706,7 @@ mod tests {
 
         // --- 1. Test Index Based Interpolation ---
         // Slope = (150 - 100) / (20 - 10) = 5.0 per bar
-        let line_by_idx = p1.price_line_by_index(&p2, 10, 20);
+        let line_by_idx = p1.price_line_by_index(&p2);
 
         assert_f64_eq(line_by_idx(10).0, 100.0); // Start point
         assert_f64_eq(line_by_idx(15).0, 125.0); // Exact midpoint
@@ -716,18 +725,23 @@ mod tests {
     #[test]
     fn test_pivot_point_flat_line_and_zero_division() {
         let p1 = PivotPoint {
-            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
-            ..p1 // Fill rest with defaults
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::LowerLow,
         };
+
         let p2 = PivotPoint {
-            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
-            ..p1
+            price_source: PriceSource::HighLow,
+            pivot_type: PivotType::Low,
+            trend: MarketStructureSequence::LowerLow,
         };
 
         // Same index/time should result in flat line, NOT a NaN/Inf panic
-        let line = p1.price_line_by_index(&p2, 5, 5);
+        let line = p1.price_line_by_index(&p2);
         assert_f64_eq(line(10).0, 100.0);
     }
 
@@ -752,10 +766,10 @@ mod tests {
         let mut hhll = create_indicator(2, 2, ExtremeTiebreaker::Latest);
 
         let trajectory = vec![
-            candle("2026-05-24T15:01:00Z", 10., 10., 10., 10.), // L1
-            candle("2026-05-24T15:02:00Z", 15., 15., 15., 15.), // L2
-            candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak (Candidate)
-            candle("2026-05-24T15:04:00Z", 15., 15., 15., 15.), // R1
+            candle(0, "2026-05-24T15:01:00Z", 10., 10., 10., 10.), // L1
+            candle(1, "2026-05-24T15:02:00Z", 15., 15., 15., 15.), // L2
+            candle(2, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak (Candidate)
+            candle(3, "2026-05-24T15:04:00Z", 15., 15., 15., 15.), // R1
         ];
 
         for c in trajectory {
@@ -768,13 +782,13 @@ mod tests {
         // Pushing R2 completes the right window for the Candidate (20.0).
         // It should immediately trigger the Swing High evaluation.
         let event = hhll
-            .update(candle("2026-05-24T15:05:00Z", 10., 10., 10., 10.))
+            .update(candle(4, "2026-05-24T15:05:00Z", 10., 10., 10., 10.))
             .unwrap();
 
         assert_eq!(event.1.pivot_type, PivotType::High);
         assert_eq!(event.1.price.0, 20.0);
         assert_eq!(
-            event.1.indexed_candle.open_timestamp,
+            event.1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T15:03:00Z")
         );
     }
@@ -782,12 +796,12 @@ mod tests {
     #[test]
     fn test_tiebreaker_double_top() {
         let trajectory = vec![
-            candle("2026-05-24T15:01:00Z", 10., 10., 10., 10.),
-            candle("2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
-            candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle("2026-05-24T15:04:00Z", 10., 10., 10., 10.),
-            candle("2026-05-24T15:05:00Z", 10., 10., 10., 10.),
-            candle("2026-05-24T15:06:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T15:01:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(2, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle(3, "2026-05-24T15:04:00Z", 10., 10., 10., 10.),
+            candle(4, "2026-05-24T15:05:00Z", 10., 10., 10., 10.),
+            candle(5, "2026-05-24T15:06:00Z", 10., 10., 10., 10.),
         ];
 
         // Test Earliest: Should capture Peak 1
@@ -799,7 +813,7 @@ mod tests {
             }
         }
         assert_eq!(
-            early_result.unwrap().1.indexed_candle.open_timestamp,
+            early_result.unwrap().1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T15:02:00Z")
         );
 
@@ -812,7 +826,7 @@ mod tests {
             }
         }
         assert_eq!(
-            late_result.unwrap().1.indexed_candle.open_timestamp,
+            late_result.unwrap().1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T15:03:00Z")
         );
     }
@@ -824,7 +838,7 @@ mod tests {
         // Pre-fill history to make the last confirmed pivot a HIGH.
         // This means the algorithm should be looking for a LOW next.
         hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle("2026-05-24T14:00:00Z", 50., 50., 50., 50.),
+            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 50., 50., 50., 50.),
             price: Price(50.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::High,
@@ -832,15 +846,15 @@ mod tests {
         });
 
         // 1. Send Left window
-        hhll.update(candle("2026-05-24T15:01:00Z", 20., 20., 20., 20.));
+        hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 20., 20.));
 
         // 2. Send Mega Bar (Candidate)
         // High is higher than neighbors, Low is lower than neighbors. Doji close.
-        hhll.update(candle("2026-05-24T15:02:00Z", 25., 30., 10., 25.));
+        hhll.update(candle(2, "2026-05-24T15:02:00Z", 25., 30., 10., 25.));
 
         // 3. Send Right window (Triggers candidate evaluation)
         let event = hhll
-            .update(candle("2026-05-24T15:03:00Z", 20., 20., 20., 20.))
+            .update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.))
             .unwrap();
 
         // Because active_pivot was a HIGH, and the Mega Bar was a Doji (trend inertia),
@@ -854,9 +868,12 @@ mod tests {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
         // Candle 1, 2, 3: First Peak at 20
-        hhll.update(candle("1", 10., 10., 10., 10.));
-        hhll.update(candle("2", 20., 20., 20., 20.));
-        let p1 = hhll.update(candle("3", 15., 15., 15., 15.)).unwrap().1;
+        hhll.update(candle(0, "2026-05-24T10:01:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+        let p1 = hhll
+            .update(candle(2, "2026-05-24T10:03:00Z", 15., 15., 15., 15.))
+            .unwrap()
+            .1;
         assert_eq!(p1.price.0, 20.0);
         assert_eq!(p1.pivot_type, PivotType::High);
 
@@ -865,9 +882,12 @@ mod tests {
         // Let's force two Highs in a row by just looking at the active_pivot state.
 
         // Candle 4, 5, 6: Second Peak at 30 (Higher than the first!)
-        hhll.update(candle("4", 15., 15., 15., 15.));
-        hhll.update(candle("5", 30., 30., 30., 30.));
-        let p2 = hhll.update(candle("6", 10., 10., 10., 10.)).unwrap().1;
+        hhll.update(candle(3, "2026-05-24T10:04:00Z", 15., 15., 15., 15.));
+        hhll.update(candle(4, "2026-05-24T10:05:00Z", 30., 30., 30., 30.));
+        let p2 = hhll
+            .update(candle(5, "2026-05-24T10:06:00Z", 10., 10., 10., 10.))
+            .unwrap()
+            .1;
 
         // The indicator should emit a new event, but under the hood,
         // because Alternation is active, anchor_high is still None (unconfirmed).
@@ -913,7 +933,7 @@ mod tests {
 
         // Hardcode the active pivot to a Low at price 10.0
         hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle("2026-05-24T14:00:00Z", 10., 10., 10., 10.),
+            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 10., 10., 10., 10.),
             price: Price(10.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -922,19 +942,19 @@ mod tests {
 
         // 1. Push Left Window
         assert!(
-            hhll.update(candle("2026-05-24T15:01:00Z", 20., 20., 15., 18.))
+            hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 15., 18.))
                 .is_none()
         );
 
         // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
         // High is 30, Low is 5. Note that Candidate Low (5.0) < Active Pivot Low (10.0).
         assert!(
-            hhll.update(candle("2026-05-24T15:02:00Z", 20., 30., 5., 20.))
+            hhll.update(candle(2, "2026-05-24T15:02:00Z", 20., 30., 5., 20.))
                 .is_none()
         );
 
         // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event = hhll.update(candle("2026-05-24T15:03:00Z", 20., 20., 15., 18.));
+        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
 
         // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low),
         // but because 5.0 < 10.0, it successfully overwrites the active pivot.
@@ -953,7 +973,7 @@ mod tests {
 
         // Hardcode the active pivot to a very deep, established macro Low at price 1.0
         hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle("2026-05-24T16:00:00Z", 1., 1., 1., 1.),
+            indexed_candle: candle(0, "2026-05-24T16:00:00Z", 1., 1., 1., 1.),
             price: Price(1.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -962,19 +982,19 @@ mod tests {
 
         // 1. Push Left Window
         assert!(
-            hhll.update(candle("2026-05-24T17:01:00Z", 20., 20., 15., 18.))
+            hhll.update(candle(1, "2026-05-24T17:01:00Z", 20., 20., 15., 18.))
                 .is_none()
         );
 
         // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
         // High is 30, Low is 5. Note that Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
         assert!(
-            hhll.update(candle("2026-05-24T17:02:00Z", 20., 30., 5., 20.))
+            hhll.update(candle(2, "2026-05-24T17:02:00Z", 20., 30., 5., 20.))
                 .is_none()
         );
 
         // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event_noise = hhll.update(candle("2026-05-24T17:03:00Z", 20., 20., 15., 18.));
+        let event_noise = hhll.update(candle(3, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
 
         // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low).
         // Because 5.0 is NOT strictly less than 1.0, it correctly discards the Doji as internal noise.
@@ -1006,12 +1026,12 @@ mod tests {
             .with_price_source(PriceSource::HighLow);
 
         let trajectory = vec![
-            candle("2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle("2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
-            candle("2026-05-24T10:02:00Z", 15., 15., 15., 15.),
-            candle("2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
-            candle("2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle("2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 10., 10.),
         ];
 
         let mut events = Vec::new();
@@ -1025,11 +1045,15 @@ mod tests {
         // but `20.0 > 20.0` is false, so it is discarded.
         assert_eq!(events.len(), 1);
         assert_eq!(
-            events[0].1.indexed_candle.open_timestamp,
+            events[0].1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T10:01:00Z")
         );
         assert_eq!(
-            hhll.active_pivot.unwrap().indexed_candle.open_timestamp,
+            hhll.active_pivot
+                .unwrap()
+                .indexed_candle
+                .candle
+                .open_timestamp,
             ts("2026-05-24T10:01:00Z")
         );
     }
@@ -1052,12 +1076,12 @@ mod tests {
             .with_price_source(PriceSource::HighLow);
 
         let trajectory = vec![
-            candle("2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle("2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
-            candle("2026-05-24T10:02:00Z", 15., 15., 15., 15.),
-            candle("2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
-            candle("2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle("2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 10., 10.),
         ];
 
         let mut events = Vec::new();
@@ -1071,17 +1095,21 @@ mod tests {
         // it overwrites Peak 1 as the new active_pivot.
         assert_eq!(events.len(), 2);
         assert_eq!(
-            events[0].1.indexed_candle.open_timestamp,
+            events[0].1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T10:01:00Z")
         ); // First emission
         assert_eq!(
-            events[1].1.indexed_candle.open_timestamp,
+            events[1].1.indexed_candle.candle.open_timestamp,
             ts("2026-05-24T10:04:00Z")
         ); // Overwrite emission
 
         // The active pivot currently tracking the market should be Peak 2.
         assert_eq!(
-            hhll.active_pivot.unwrap().indexed_candle.open_timestamp,
+            hhll.active_pivot
+                .unwrap()
+                .indexed_candle
+                .candle
+                .open_timestamp,
             ts("2026-05-24T10:04:00Z")
         );
     }
@@ -1104,11 +1132,11 @@ mod tests {
             .with_price_source(PriceSource::HighLow);
 
         let trajectory = vec![
-            candle("1", 10., 10., 10., 10.),
-            candle("2", 20., 20., 20., 20.), // Peak 1 (High)
-            candle("3", 15., 15., 15., 15.), // Dip (No confirmed Low yet)
-            candle("4", 30., 30., 30., 30.), // Peak 2 (Higher High)
-            candle("5", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1 (High)
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.), // Dip (No confirmed Low yet)
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 30., 30.), // Peak 2 (Higher High)
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.),
         ];
 
         for c in trajectory {
@@ -1127,8 +1155,8 @@ mod tests {
         );
 
         // Now, push a confirmed Low to lock in Peak 2.
-        let _ = hhll.update(candle("6", 5., 5., 5., 5.)); // Swing Low
-        let _ = hhll.update(candle("7", 10., 10., 10., 10.)); // Right window to trigger Low
+        let _ = hhll.update(candle(5, "2026-05-24T10:05:00Z", 5., 5., 5., 5.)); // Swing Low
+        let _ = hhll.update(candle(6, "2026-05-24T10:06:00Z", 10., 10., 10., 10.)); // Right window to trigger Low
 
         // NOW Peak 2 should be safely locked in history.
         assert_eq!(hhll.history().len(), 1);
@@ -1154,13 +1182,13 @@ mod tests {
             .with_price_source(PriceSource::HighLow);
 
         let trajectory = vec![
-            candle("1", 10., 10., 10., 10.),
-            candle("2", 20., 20., 20., 20.), // Peak 1
-            candle("3", 15., 15., 15., 15.),
-            candle("4", 30., 30., 30., 30.), // Peak 2
-            candle("5", 10., 10., 10., 10.),
-            candle("6", 40., 40., 40., 40.), // Peak 3
-            candle("7", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 30., 30.), // Peak 2
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.),
+            candle(5, "2026-05-24T10:05:00Z", 40., 40., 40., 40.), // Peak 3
+            candle(6, "2026-05-24T10:06:00Z", 10., 10., 10., 10.),
         ];
 
         for c in trajectory {
