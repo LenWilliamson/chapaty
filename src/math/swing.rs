@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::VecDeque};
 use crate::{
     data::{
         domain::{CandleDirection, Price, PriceSource},
-        event::{MarketEvent, Ohlcv},
+        event::{IndexedOhlcv, MarketEvent, Ohlcv},
     },
     math::StreamingIndicator,
 };
@@ -127,7 +127,7 @@ pub enum ExtremeTiebreaker {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PivotPoint {
-    pub ohlcv_candle: Ohlcv,
+    pub indexed_candle: IndexedOhlcv,
     pub price: Price,
     pub price_source: PriceSource,
     pub pivot_type: PivotType,
@@ -136,7 +136,7 @@ pub struct PivotPoint {
 
 impl MarketEvent for PivotPoint {
     fn point_in_time(&self) -> DateTime<Utc> {
-        self.ohlcv_candle.point_in_time()
+        self.indexed_candle.point_in_time()
     }
 }
 
@@ -145,20 +145,17 @@ impl PivotPoint {
     ///
     /// Returns a zero-allocation closure that takes a target bar index (usize)
     /// and returns the interpolated/extrapolated price at that index.
-    pub fn price_line_by_index(
-        &self,
-        target: &PivotPoint,
-        self_index: usize,
-        target_index: usize,
-    ) -> impl Fn(usize) -> Price {
+    pub fn price_line_by_index(&self, target: &PivotPoint) -> impl Fn(usize) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
+        let x0 = self.indexed_candle.index as f64;
+        let x1 = target.indexed_candle.index as f64;
 
-        let dx = (target_index as f64) - (self_index as f64);
+        let dx = x1 - x0;
         let m = if dx == 0.0 { 0.0 } else { (p1 - p0) / dx };
 
         move |x: usize| -> Price {
-            let current_dx = (x as f64) - (self_index as f64);
+            let current_dx = (x as f64) - x0;
             Price(p0 + m * current_dx)
         }
     }
@@ -226,7 +223,7 @@ pub struct StreamingHhll {
     window_size: usize,
 
     /// The rolling window buffer required to evaluate `left_bars` and `right_bars`.
-    buffer: VecDeque<Ohlcv>,
+    buffer: VecDeque<IndexedOhlcv>,
 
     /// The active pivot currently tracking the trailing edge of the market structure.
     ///
@@ -308,13 +305,13 @@ impl StreamingHhll {
 }
 
 impl StreamingHhll {
-    fn candidate(&self) -> Ohlcv {
+    fn candidate(&self) -> IndexedOhlcv {
         let mid_idx = self.zig_zag_period.mid_index();
         self.buffer[mid_idx]
     }
 
     /// Yields the left side of the rolling window (before the candidate).
-    fn left_partition(&self) -> impl Iterator<Item = Ohlcv> + '_ {
+    fn left_partition(&self) -> impl Iterator<Item = IndexedOhlcv> + '_ {
         self.buffer
             .iter()
             .take(self.zig_zag_period.left_bars as usize)
@@ -322,7 +319,7 @@ impl StreamingHhll {
     }
 
     /// Yields the right side of the rolling window (after the candidate).
-    fn right_partition(&self) -> impl Iterator<Item = Ohlcv> + '_ {
+    fn right_partition(&self) -> impl Iterator<Item = IndexedOhlcv> + '_ {
         self.buffer
             .iter()
             .rev()
@@ -333,7 +330,7 @@ impl StreamingHhll {
     /// Checks if the candidate price is a valid extremum against its neighbors.
     fn check_extremum(&self, pivot_type: PivotType) -> bool {
         let candidate = self.candidate();
-        let candidate_price = pivot_type.extract_price(candidate, self.price_source);
+        let candidate_price = pivot_type.extract_price(candidate.candle, self.price_source);
 
         // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
         let (strict_left, strict_right) = match self.tiebreaker {
@@ -341,8 +338,8 @@ impl StreamingHhll {
             ExtremeTiebreaker::Latest => (false, true),
         };
 
-        let is_valid = |neighbor: Ohlcv, strict: bool| -> bool {
-            let neighbor_price = pivot_type.extract_price(neighbor, self.price_source);
+        let is_valid = |neighbor: IndexedOhlcv, strict: bool| -> bool {
+            let neighbor_price = pivot_type.extract_price(neighbor.candle, self.price_source);
             match (pivot_type, strict) {
                 (PivotType::High, true) => candidate_price > neighbor_price,
                 (PivotType::High, false) => candidate_price >= neighbor_price,
@@ -355,10 +352,10 @@ impl StreamingHhll {
             && self.right_partition().all(|c| is_valid(c, strict_right))
     }
 
-    #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().candle.close_timestamp))]
     fn process_high(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let current_high_price = PivotType::High.extract_price(candidate, self.price_source);
+        let current_high_price = PivotType::High.extract_price(candidate.candle, self.price_source);
 
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Highs in a row under Alternating mode)
@@ -424,7 +421,7 @@ impl StreamingHhll {
         };
 
         let new_pivot = PivotPoint {
-            ohlcv_candle: candidate,
+            indexed_candle: candidate,
             price: current_high_price,
             price_source: self.price_source,
             pivot_type: PivotType::High,
@@ -445,10 +442,10 @@ impl StreamingHhll {
         Some((event, new_pivot))
     }
 
-    #[tracing::instrument(skip(self), fields(ts = %self.candidate().close_timestamp))]
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().candle.close_timestamp))]
     fn process_low(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
         let candidate = self.candidate();
-        let current_low_price = PivotType::Low.extract_price(candidate, self.price_source);
+        let current_low_price = PivotType::Low.extract_price(candidate.candle, self.price_source);
 
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Lows in a row under Alternating mode)
@@ -514,7 +511,7 @@ impl StreamingHhll {
         };
 
         let new_pivot = PivotPoint {
-            ohlcv_candle: candidate,
+            indexed_candle: candidate,
             price: current_low_price,
             price_source: self.price_source,
             pivot_type: PivotType::Low,
@@ -537,11 +534,11 @@ impl StreamingHhll {
 }
 
 impl StreamingIndicator for StreamingHhll {
-    type Input = Ohlcv;
+    type Input = IndexedOhlcv;
     type Output<'a> = Option<(MarketStructureEvent, PivotPoint)>;
 
-    fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
-        self.buffer.push_back(candle);
+    fn update(&mut self, indexed_candle: Self::Input) -> Self::Output<'_> {
+        self.buffer.push_back(indexed_candle);
 
         if self.buffer.len() < self.window_size {
             return None;
@@ -557,7 +554,7 @@ impl StreamingIndicator for StreamingHhll {
             (true, true) => {
                 // The candidate is BOTH a Swing High and a Swing Low (Mega Bar).
                 let candidate = self.candidate();
-                match candidate.direction() {
+                match candidate.candle.direction() {
                     CandleDirection::Bullish => self.process_high(),
                     CandleDirection::Bearish => self.process_low(),
                     CandleDirection::Doji => {
@@ -682,7 +679,7 @@ mod tests {
     #[test]
     fn test_pivot_point_interpolation() {
         let p1 = PivotPoint {
-            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -691,7 +688,7 @@ mod tests {
 
         // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by 50.
         let p2 = PivotPoint {
-            ohlcv_candle: candle("2026-05-24T15:10:00Z", 150., 150., 150., 150.),
+            indexed_candle: candle("2026-05-24T15:10:00Z", 150., 150., 150., 150.),
             price: Price(150.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -719,12 +716,12 @@ mod tests {
     #[test]
     fn test_pivot_point_flat_line_and_zero_division() {
         let p1 = PivotPoint {
-            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             ..p1 // Fill rest with defaults
         };
         let p2 = PivotPoint {
-            ohlcv_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            indexed_candle: candle("2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             ..p1
         };
@@ -777,7 +774,7 @@ mod tests {
         assert_eq!(event.1.pivot_type, PivotType::High);
         assert_eq!(event.1.price.0, 20.0);
         assert_eq!(
-            event.1.ohlcv_candle.open_timestamp,
+            event.1.indexed_candle.open_timestamp,
             ts("2026-05-24T15:03:00Z")
         );
     }
@@ -802,7 +799,7 @@ mod tests {
             }
         }
         assert_eq!(
-            early_result.unwrap().1.ohlcv_candle.open_timestamp,
+            early_result.unwrap().1.indexed_candle.open_timestamp,
             ts("2026-05-24T15:02:00Z")
         );
 
@@ -815,7 +812,7 @@ mod tests {
             }
         }
         assert_eq!(
-            late_result.unwrap().1.ohlcv_candle.open_timestamp,
+            late_result.unwrap().1.indexed_candle.open_timestamp,
             ts("2026-05-24T15:03:00Z")
         );
     }
@@ -827,7 +824,7 @@ mod tests {
         // Pre-fill history to make the last confirmed pivot a HIGH.
         // This means the algorithm should be looking for a LOW next.
         hhll.active_pivot = Some(PivotPoint {
-            ohlcv_candle: candle("2026-05-24T14:00:00Z", 50., 50., 50., 50.),
+            indexed_candle: candle("2026-05-24T14:00:00Z", 50., 50., 50., 50.),
             price: Price(50.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::High,
@@ -916,7 +913,7 @@ mod tests {
 
         // Hardcode the active pivot to a Low at price 10.0
         hhll.active_pivot = Some(PivotPoint {
-            ohlcv_candle: candle("2026-05-24T14:00:00Z", 10., 10., 10., 10.),
+            indexed_candle: candle("2026-05-24T14:00:00Z", 10., 10., 10., 10.),
             price: Price(10.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -956,7 +953,7 @@ mod tests {
 
         // Hardcode the active pivot to a very deep, established macro Low at price 1.0
         hhll.active_pivot = Some(PivotPoint {
-            ohlcv_candle: candle("2026-05-24T16:00:00Z", 1., 1., 1., 1.),
+            indexed_candle: candle("2026-05-24T16:00:00Z", 1., 1., 1., 1.),
             price: Price(1.0),
             price_source: PriceSource::HighLow,
             pivot_type: PivotType::Low,
@@ -1028,11 +1025,11 @@ mod tests {
         // but `20.0 > 20.0` is false, so it is discarded.
         assert_eq!(events.len(), 1);
         assert_eq!(
-            events[0].1.ohlcv_candle.open_timestamp,
+            events[0].1.indexed_candle.open_timestamp,
             ts("2026-05-24T10:01:00Z")
         );
         assert_eq!(
-            hhll.active_pivot.unwrap().ohlcv_candle.open_timestamp,
+            hhll.active_pivot.unwrap().indexed_candle.open_timestamp,
             ts("2026-05-24T10:01:00Z")
         );
     }
@@ -1074,17 +1071,17 @@ mod tests {
         // it overwrites Peak 1 as the new active_pivot.
         assert_eq!(events.len(), 2);
         assert_eq!(
-            events[0].1.ohlcv_candle.open_timestamp,
+            events[0].1.indexed_candle.open_timestamp,
             ts("2026-05-24T10:01:00Z")
         ); // First emission
         assert_eq!(
-            events[1].1.ohlcv_candle.open_timestamp,
+            events[1].1.indexed_candle.open_timestamp,
             ts("2026-05-24T10:04:00Z")
         ); // Overwrite emission
 
         // The active pivot currently tracking the market should be Peak 2.
         assert_eq!(
-            hhll.active_pivot.unwrap().ohlcv_candle.open_timestamp,
+            hhll.active_pivot.unwrap().indexed_candle.open_timestamp,
             ts("2026-05-24T10:04:00Z")
         );
     }

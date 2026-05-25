@@ -10,7 +10,7 @@
 
 ## Getting Started
 
-> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice and built-in dashboard setups with [Quantstats][quantstatsLink]. For a library of ready-to-run strategies, including the top TradingView setups backtested across million-agent grids, see [**chapaty-zoo**][chapatyZooLink].
+> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice and built-in dashboard setups with [QuantStats][quantstatsLink]. For a library of ready-to-run strategies, including the top TradingView setups backtested across million-agent grids, see [**chapaty-zoo**][chapatyZooLink].
 
 Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating agent grids, and the **Canonical Gym Loop** for step-by-step control over the environment.
 

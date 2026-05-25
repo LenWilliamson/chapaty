@@ -266,20 +266,18 @@ impl StreamingIndicator for StreamingFairValueGap {
     type Output<'a> = &'a [FairValueGap<OpenState>];
 
     fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
-        let mut i = 0;
-        while i < self.active_gaps.len() {
-            let gap = self.active_gaps[i];
-            match gap.process_candle(candle) {
+        let historical_gaps = &mut self.historical_gaps;
+        self.active_gaps
+            .retain_mut(|gap_ref| match gap_ref.process_candle(candle) {
                 FairValueGapStatus::Open(updated_gap) => {
-                    self.active_gaps[i] = updated_gap;
-                    i += 1;
+                    *gap_ref = updated_gap;
+                    true
                 }
                 FairValueGapStatus::Closed(closed_gap) => {
-                    self.historical_gaps.push(closed_gap);
-                    self.active_gaps.remove(i);
+                    historical_gaps.push(closed_gap);
+                    false
                 }
-            }
-        }
+            });
 
         if self.buffer.len() >= PATTERN_LENGTH {
             self.buffer.pop_front();

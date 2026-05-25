@@ -170,6 +170,23 @@ impl Ohlcv {
     }
 }
 
+/// A wrapper around an OHLCV candle that includes its absolute index in the stream.
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedOhlcv {
+    pub candle: Ohlcv,
+    pub index: usize,
+}
+
+impl MarketEvent for IndexedOhlcv {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.candle.point_in_time()
+    }
+    
+    fn opened_at(&self) -> DateTime<Utc> {
+        self.candle.opened_at()
+    }
+}
+
 // ================================================================================================
 // Trade
 // ================================================================================================

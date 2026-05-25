@@ -31,6 +31,10 @@ pub trait StreamView<'env> {
     /// Returns the slice of events visible at the current time step.
     fn get_slice(&self, id: &Self::Id) -> Option<&'env [Self::Event]>;
 
+    fn len(&self, id: &Self::Id) -> usize {
+        self.get_slice(id).map_or(0, |s| s.len())
+    }
+
     fn last_event(&self, id: &Self::Id) -> Option<&'env Self::Event> {
         self.get_slice(id).and_then(|s| s.last())
     }
