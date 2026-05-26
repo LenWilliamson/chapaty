@@ -10,7 +10,7 @@ use crate::{
             Exchange, Period, Symbol,
         },
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
-        indicator::{BatchOhlcvIndicator, WithBatchIndicators},
+        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
     },
     error::ChapatyResult,
 };

@@ -12,7 +12,7 @@ use crate::{
             VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
-        indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
+        batch_indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         query::QueryId,
     },
     error::{ChapatyError, ChapatyResult, DataError, EnvError},

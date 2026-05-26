@@ -32,31 +32,25 @@ impl StreamingIndicator for StreamingRsi {
         let prev = match self.prev_price {
             Some(p) => p,
             None => {
-                // First trade: just store the price, we cannot calculate delta yet
                 self.prev_price = Some(value);
                 return None;
             }
         };
 
-        // 1. Calculate Delta
         let delta = value - prev;
         self.prev_price = Some(value);
 
-        // 2. Separate Gain/Loss
         let (gain, loss) = if delta > 0.0 {
             (delta, 0.0)
         } else {
             (0.0, delta.abs())
         };
 
-        // 3. Update Wilder's Smoothers
-        // We capture the Option from both. If both are Some, we have enough data.
         let g_val = self.avg_gain.update(gain);
         let l_val = self.avg_loss.update(loss);
 
         match (g_val, l_val) {
             (Some(avg_gain), Some(avg_loss)) => {
-                // 4. Calculate RSI
                 // Prevent division by zero if avg_loss is 0 (Monotonic Up-trend)
                 if avg_loss == 0.0 {
                     if avg_gain == 0.0 {

@@ -17,7 +17,7 @@ use crate::{
         },
         episode::EpisodeLength,
         filter::{EconomicCalendarPolicy, FilterConfig},
-        indicator::{BatchOhlcvIndicator, SmaWindow},
+        batch_indicator::{BatchOhlcvIndicator, SmaWindow},
         query::{
             EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, TpoFutureQuery, TpoSpotQuery,
             TradeSpotQuery, VolumeProfileSpotQuery,

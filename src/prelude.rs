@@ -23,7 +23,7 @@ pub use crate::data::query::*;
 pub use crate::data::filter::*;
 
 // 6. Technical Indicators
-pub use crate::data::indicator::*;
+pub use crate::data::batch_indicator::*;
 pub use crate::math::fair_value_gap::*;
 pub use crate::math::market_profile::*;
 pub use crate::math::moving_averages::*;

@@ -17,7 +17,7 @@ use crate::{
             EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth, LiquiditySide,
             MarketType, Period, Price, Quantity, Symbol, TradeId, Volume,
         },
-        indicator::{EmaWindow, RsiWindow, SmaWindow},
+        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
     },
     error::{ChapatyError, ChapatyResult, DataError},
     gym::trading::types::TradeType,

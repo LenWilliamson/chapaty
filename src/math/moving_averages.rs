@@ -46,7 +46,6 @@ impl StreamingIndicator for StreamingEwm {
             }
         }
 
-        // Only return Some(value) if we've seen enough data
         if self.count >= self.window_size {
             self.current_mean
         } else {
@@ -87,19 +86,15 @@ impl StreamingIndicator for StreamingSma {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
-        // 1. Add new value to window
         self.buffer.push_back(value);
         self.sum += value;
 
-        // 2. Remove old value if we exceeded window size
         if self.buffer.len() > self.window_size {
-            // Safety: We just pushed, so unwrap is safe, but idiomatic rust prefers matching
             if let Some(removed) = self.buffer.pop_front() {
                 self.sum -= removed;
             }
         }
 
-        // 3. Check readiness
         if self.buffer.len() >= self.window_size {
             Some(self.sum / self.buffer.len() as f64)
         } else {
