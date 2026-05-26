@@ -11,17 +11,17 @@ use crate::{
     ApiKey, EndpointUrl, SelfHostedApi,
     data::{
         common::{ProfileAggregation, RiskMetricsConfig},
-        config::{
-            EconomicCalendarConfig, OhlcvFutureConfig, OhlcvSpotConfig, TpoFutureConfig,
-            TpoSpotConfig, TradeSpotConfig, VolumeProfileSpotConfig,
-        },
         domain::{
             ContractMonth, ContractYear, CountryCode, DataBroker, EconomicCategory,
             EconomicEventImpact, Exchange, FutureContract, FutureRoot, Period, SpotPair, Symbol,
         },
         episode::EpisodeLength,
         filter::{EconomicCalendarPolicy, FilterConfig},
-        indicator::{SmaWindow, TechnicalIndicator},
+        indicator::{BatchOhlcvIndicator, SmaWindow},
+        query::{
+            EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, TpoFutureQuery, TpoSpotQuery,
+            TradeSpotQuery, VolumeProfileSpotQuery,
+        },
     },
     error::{ChapatyResult, EnvError},
     gym::InvalidActionPenalty,
@@ -527,7 +527,7 @@ impl From<EnvPreset> for EnvConfig {
         let source = self_hosted_source();
         match preset {
             EnvPreset::BinanceBtcUsdt1d => {
-                let market_config = OhlcvSpotConfig {
+                let market_config = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     period: Period::Day(1),
@@ -546,7 +546,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::BinanceBtcUsdt1m => {
-                let market_config = OhlcvSpotConfig {
+                let market_config = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     period: Period::Minute(1),
@@ -564,7 +564,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::BinanceBtcUsdt1m15m => {
-                let ohlcv_1m = OhlcvSpotConfig {
+                let ohlcv_1m = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -572,7 +572,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: Vec::new(),
                 };
-                let ohlcv_15m = OhlcvSpotConfig {
+                let ohlcv_15m = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -591,7 +591,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::NinjaTraderCme6eh61m5mUsEmpHigh => {
-                let ohlcv_1m = OhlcvFutureConfig {
+                let ohlcv_1m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -603,7 +603,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let ohlcv_5m = OhlcvFutureConfig {
+                let ohlcv_5m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -615,7 +615,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let calendar = EconomicCalendarConfig {
+                let calendar = EconomicCalendarQuery {
                     broker: DataBroker::InvestingCom,
                     data_source: None,
                     country_code: Some(CountryCode::Us),
@@ -636,7 +636,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_trade_hint(4)
             }
             EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly => {
-                let ohlcv = OhlcvFutureConfig {
+                let ohlcv = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -648,7 +648,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let calendar = EconomicCalendarConfig {
+                let calendar = EconomicCalendarQuery {
                     broker: DataBroker::InvestingCom,
                     data_source: None,
                     country_code: Some(CountryCode::Us),
@@ -669,7 +669,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_trade_hint(2)
             }
             EnvPreset::NinjaTraderCme6eh61m5mUsEmpHighEventsOnly => {
-                let ohlcv_1m = OhlcvFutureConfig {
+                let ohlcv_1m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -681,7 +681,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let ohlcv_5m = OhlcvFutureConfig {
+                let ohlcv_5m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -693,7 +693,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let calendar = EconomicCalendarConfig {
+                let calendar = EconomicCalendarQuery {
                     broker: DataBroker::InvestingCom,
                     data_source: None,
                     country_code: Some(CountryCode::Us),
@@ -715,15 +715,15 @@ impl From<EnvPreset> for EnvConfig {
                     .with_trade_hint(4)
             }
             EnvPreset::BinanceBtcUsdt1dSma20Sma50 => {
-                let market_config = OhlcvSpotConfig {
+                let market_config = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
                     period: Period::Day(1),
                     batch_size: 1000,
                     indicators: vec![
-                        TechnicalIndicator::Sma(SmaWindow(20)),
-                        TechnicalIndicator::Sma(SmaWindow(50)),
+                        BatchOhlcvIndicator::Sma(SmaWindow(20)),
+                        BatchOhlcvIndicator::Sma(SmaWindow(50)),
                     ],
                 };
                 let filter = FilterConfig {
@@ -736,7 +736,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::BinanceBtcUsdt1h1mVolumeProfile1d100Usdt => {
-                let ohlcv_1h = OhlcvSpotConfig {
+                let ohlcv_1h = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -744,7 +744,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let ohlcv_1m = OhlcvSpotConfig {
+                let ohlcv_1m = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -752,7 +752,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let vp = VolumeProfileSpotConfig {
+                let vp = VolumeProfileSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -775,7 +775,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::BinanceBtcUsdt1h1mTpo1d1Usdt => {
-                let ohlcv_1h = OhlcvSpotConfig {
+                let ohlcv_1h = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -783,7 +783,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let ohlcv_1m = OhlcvSpotConfig {
+                let ohlcv_1m = OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -791,7 +791,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let tpo = TpoSpotConfig {
+                let tpo = TpoSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -814,7 +814,7 @@ impl From<EnvPreset> for EnvConfig {
                     .with_filter_config(filter)
             }
             EnvPreset::NinjaTraderCme6eh61mTpo1d => {
-                let ohlcv = OhlcvFutureConfig {
+                let ohlcv = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -826,7 +826,7 @@ impl From<EnvPreset> for EnvConfig {
                     batch_size: 1000,
                     indicators: vec![],
                 };
-                let tpo = TpoFutureConfig {
+                let tpo = TpoFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
@@ -886,31 +886,31 @@ pub struct EnvConfig {
     // Market Data (RPC) + Computed Indicators
     // ========================================================================
     /// OHLCV data from spot markets, optionally with technical indicators.
-    ohlcv_spot: Vec<SourceGroup<OhlcvSpotConfig>>,
+    ohlcv_spot: Vec<SourceGroup<OhlcvSpotQuery>>,
 
     /// OHLCV data from futures markets, optionally with technical indicators.
-    ohlcv_future: Vec<SourceGroup<OhlcvFutureConfig>>,
+    ohlcv_future: Vec<SourceGroup<OhlcvFutureQuery>>,
 
     /// Trade-level trade execution data.
-    trade_spot: Vec<SourceGroup<TradeSpotConfig>>,
+    trade_spot: Vec<SourceGroup<TradeSpotQuery>>,
 
     // ========================================================================
     // Profile Data (External RPC)
     // ========================================================================
     /// Time Price Opportunity (Market Profile) data for spot markets.
-    tpo_spot: Vec<SourceGroup<TpoSpotConfig>>,
+    tpo_spot: Vec<SourceGroup<TpoSpotQuery>>,
 
     /// Time Price Opportunity (Market Profile) data for futures markets.
-    tpo_future: Vec<SourceGroup<TpoFutureConfig>>,
+    tpo_future: Vec<SourceGroup<TpoFutureQuery>>,
 
     /// Volume Profile data for spot markets.
-    volume_profile_spot: Vec<SourceGroup<VolumeProfileSpotConfig>>,
+    volume_profile_spot: Vec<SourceGroup<VolumeProfileSpotQuery>>,
 
     // ========================================================================
     // External Event Data
     // ========================================================================
     /// Economic calendar events and news releases.
-    economic_calendar: Vec<SourceGroup<EconomicCalendarConfig>>,
+    economic_calendar: Vec<SourceGroup<EconomicCalendarQuery>>,
 
     // ========================================================================
     // Processing Pipelines
@@ -961,7 +961,7 @@ impl Default for EnvConfig {
 
 impl EnvConfig {
     /// Adds OHLCV spot market data from a specific source.
-    pub fn add_ohlcv_spot(self, source: DataSource, config: OhlcvSpotConfig) -> Self {
+    pub fn add_ohlcv_spot(self, source: DataSource, config: OhlcvSpotQuery) -> Self {
         Self {
             ohlcv_spot: update_source_group(self.ohlcv_spot, source, config),
             ..self
@@ -969,7 +969,7 @@ impl EnvConfig {
     }
 
     /// Adds OHLCV futures market data from a specific source.
-    pub fn add_ohlcv_future(self, source: DataSource, config: OhlcvFutureConfig) -> Self {
+    pub fn add_ohlcv_future(self, source: DataSource, config: OhlcvFutureQuery) -> Self {
         Self {
             ohlcv_future: update_source_group(self.ohlcv_future, source, config),
             ..self
@@ -977,7 +977,7 @@ impl EnvConfig {
     }
 
     /// Adds trade-level spot market data from a specific source.
-    pub fn add_trade_spot(self, source: DataSource, config: TradeSpotConfig) -> Self {
+    pub fn add_trade_spot(self, source: DataSource, config: TradeSpotQuery) -> Self {
         Self {
             trade_spot: update_source_group(self.trade_spot, source, config),
             ..self
@@ -985,7 +985,7 @@ impl EnvConfig {
     }
 
     /// Adds TPO (Market Profile) spot data from a specific source.
-    pub fn add_tpo_spot(self, source: DataSource, config: TpoSpotConfig) -> Self {
+    pub fn add_tpo_spot(self, source: DataSource, config: TpoSpotQuery) -> Self {
         Self {
             tpo_spot: update_source_group(self.tpo_spot, source, config),
             ..self
@@ -993,7 +993,7 @@ impl EnvConfig {
     }
 
     /// Adds TPO (Market Profile) futures data from a specific source.
-    pub fn add_tpo_future(self, source: DataSource, config: TpoFutureConfig) -> Self {
+    pub fn add_tpo_future(self, source: DataSource, config: TpoFutureQuery) -> Self {
         Self {
             tpo_future: update_source_group(self.tpo_future, source, config),
             ..self
@@ -1004,7 +1004,7 @@ impl EnvConfig {
     pub fn add_volume_profile_spot(
         self,
         source: DataSource,
-        config: VolumeProfileSpotConfig,
+        config: VolumeProfileSpotQuery,
     ) -> Self {
         Self {
             volume_profile_spot: update_source_group(self.volume_profile_spot, source, config),
@@ -1013,7 +1013,7 @@ impl EnvConfig {
     }
 
     /// Adds economic calendar events from a specific source.
-    pub fn add_economic_calendar(self, source: DataSource, config: EconomicCalendarConfig) -> Self {
+    pub fn add_economic_calendar(self, source: DataSource, config: EconomicCalendarQuery) -> Self {
         Self {
             economic_calendar: update_source_group(self.economic_calendar, source, config),
             ..self
@@ -1084,31 +1084,31 @@ impl EnvConfig {
 // ================================================================================================
 
 impl EnvConfig {
-    pub fn ohlcv_spot(&self) -> &[SourceGroup<OhlcvSpotConfig>] {
+    pub fn ohlcv_spot(&self) -> &[SourceGroup<OhlcvSpotQuery>] {
         &self.ohlcv_spot
     }
 
-    pub fn ohlcv_future(&self) -> &[SourceGroup<OhlcvFutureConfig>] {
+    pub fn ohlcv_future(&self) -> &[SourceGroup<OhlcvFutureQuery>] {
         &self.ohlcv_future
     }
 
-    pub fn trade_spot(&self) -> &[SourceGroup<TradeSpotConfig>] {
+    pub fn trade_spot(&self) -> &[SourceGroup<TradeSpotQuery>] {
         &self.trade_spot
     }
 
-    pub fn tpo_spot(&self) -> &[SourceGroup<TpoSpotConfig>] {
+    pub fn tpo_spot(&self) -> &[SourceGroup<TpoSpotQuery>] {
         &self.tpo_spot
     }
 
-    pub fn tpo_future(&self) -> &[SourceGroup<TpoFutureConfig>] {
+    pub fn tpo_future(&self) -> &[SourceGroup<TpoFutureQuery>] {
         &self.tpo_future
     }
 
-    pub fn volume_profile_spot(&self) -> &[SourceGroup<VolumeProfileSpotConfig>] {
+    pub fn volume_profile_spot(&self) -> &[SourceGroup<VolumeProfileSpotQuery>] {
         &self.volume_profile_spot
     }
 
-    pub fn economic_calendar(&self) -> &[SourceGroup<EconomicCalendarConfig>] {
+    pub fn economic_calendar(&self) -> &[SourceGroup<EconomicCalendarQuery>] {
         &self.economic_calendar
     }
 

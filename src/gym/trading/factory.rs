@@ -1,7 +1,6 @@
 use crate::{
     data::{
         common::ProfileAggregation,
-        config::ConfigId,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
             Price, Quantity, TradeId,
@@ -13,7 +12,8 @@ use crate::{
             VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
-        indicator::{EmaWindow, RsiWindow, SmaWindow, TechnicalIndicator},
+        indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
+        query::QueryId,
     },
     error::{ChapatyError, ChapatyResult, DataError, EnvError},
     gym::trading::{
@@ -218,27 +218,27 @@ impl BuildCtx {
         // 2. Define a helper to process indicators for a specific parent LazyFrame
         let mut process_indicators = |parent_id: OhlcvId,
                                       source_lf: LazyFrame,
-                                      indicators: &[TechnicalIndicator]|
+                                      indicators: &[BatchOhlcvIndicator]|
          -> ChapatyResult<()> {
             for &ind in indicators {
-                let lf_result = compute_indicator(source_lf.clone(), ind)?;
+                let lf_result = ind.pre_compute(source_lf.clone())?;
 
                 match ind {
-                    TechnicalIndicator::Ema(EmaWindow(w)) => {
+                    BatchOhlcvIndicator::Ema(EmaWindow(w)) => {
                         let id = EmaId {
                             parent: parent_id,
                             length: EmaWindow(w),
                         };
                         ema_map.insert(id, (schema.clone(), lf_result));
                     }
-                    TechnicalIndicator::Sma(SmaWindow(w)) => {
+                    BatchOhlcvIndicator::Sma(SmaWindow(w)) => {
                         let id = SmaId {
                             parent: parent_id,
                             length: SmaWindow(w),
                         };
                         sma_map.insert(id, (schema.clone(), lf_result));
                     }
-                    TechnicalIndicator::Rsi(RsiWindow(w)) => {
+                    BatchOhlcvIndicator::Rsi(RsiWindow(w)) => {
                         let id = RsiId {
                             parent: parent_id,
                             length: RsiWindow(w),
@@ -652,14 +652,6 @@ async fn fetch_groups<T: Fetchable>(
     }
 
     Ok(aggregated_map)
-}
-
-fn compute_indicator(lf: LazyFrame, indicator: TechnicalIndicator) -> ChapatyResult<LazyFrame> {
-    match indicator {
-        TechnicalIndicator::Ema(w) => w.pre_compute_ema(lf),
-        TechnicalIndicator::Sma(w) => w.pre_compute_sma(lf),
-        TechnicalIndicator::Rsi(w) => w.pre_compute_rsi(lf),
-    }
 }
 
 fn apply_overlay<T>(
@@ -1684,7 +1676,7 @@ mod test {
 
     struct IndicatorTestCase {
         name: &'static str,
-        indicator: TechnicalIndicator,
+        indicator: BatchOhlcvIndicator,
         expected_file: &'static str,
     }
 
@@ -1702,17 +1694,17 @@ mod test {
         let test_cases = vec![
             IndicatorTestCase {
                 name: "EMA-20",
-                indicator: TechnicalIndicator::Ema(EmaWindow(20)),
+                indicator: BatchOhlcvIndicator::Ema(EmaWindow(20)),
                 expected_file: "ema_20_daily.csv",
             },
             IndicatorTestCase {
                 name: "SMA-14",
-                indicator: TechnicalIndicator::Sma(SmaWindow(14)),
+                indicator: BatchOhlcvIndicator::Sma(SmaWindow(14)),
                 expected_file: "sma_14_daily.csv",
             },
             IndicatorTestCase {
                 name: "RSI-14",
-                indicator: TechnicalIndicator::Rsi(RsiWindow(14)),
+                indicator: BatchOhlcvIndicator::Rsi(RsiWindow(14)),
                 expected_file: "rsi_14_daily.csv",
             },
         ];
@@ -1724,7 +1716,9 @@ mod test {
             let input_lf = load_ohlcv_fixture("binance-btc-usdt-8h.csv");
 
             // 2. Compute (Simulating internal build step)
-            let result_lf = compute_indicator(input_lf, case.indicator)
+            let result_lf = case
+                .indicator
+                .pre_compute(input_lf)
                 .unwrap_or_else(|_| panic!("Failed to compute {}", case.name));
 
             // 3. Assert

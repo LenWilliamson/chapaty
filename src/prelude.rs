@@ -19,7 +19,7 @@ pub use crate::data::view::*;
 
 // 5. Data Configurations & Filters
 pub use crate::data::common::*;
-pub use crate::data::config::*;
+pub use crate::data::query::*;
 pub use crate::data::filter::*;
 
 // 6. Technical Indicators
