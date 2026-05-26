@@ -10,6 +10,7 @@ use strum::{Display, EnumCount, EnumIter, EnumString, IntoStaticStr};
 use crate::{
     ApiKey, EndpointUrl, SelfHostedApi,
     data::{
+        batch_indicator::{BatchOhlcvIndicator, SmaWindow},
         common::{ProfileAggregation, RiskMetricsConfig},
         domain::{
             ContractMonth, ContractYear, CountryCode, DataBroker, EconomicCategory,
@@ -17,7 +18,6 @@ use crate::{
         },
         episode::EpisodeLength,
         filter::{EconomicCalendarPolicy, FilterConfig},
-        batch_indicator::{BatchOhlcvIndicator, SmaWindow},
         query::{
             EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, TpoFutureQuery, TpoSpotQuery,
             TradeSpotQuery, VolumeProfileSpotQuery,

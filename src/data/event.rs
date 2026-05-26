@@ -11,13 +11,13 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::{
     data::{
+        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
         common::{ProfileAggregation, ProfileBinStats},
         domain::{
             CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
             EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth, LiquiditySide,
             MarketType, Period, Price, Quantity, Symbol, TradeId, Volume,
         },
-        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
     },
     error::{ChapatyError, ChapatyResult, DataError},
     gym::trading::types::TradeType,

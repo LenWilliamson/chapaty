@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
+        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
         common::ProfileAggregation,
         domain::{
             CountryCode, DataBroker, EconomicCategory, EconomicDataSource, EconomicEventImpact,
             Exchange, Period, Symbol,
         },
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
-        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
     },
     error::ChapatyResult,
 };

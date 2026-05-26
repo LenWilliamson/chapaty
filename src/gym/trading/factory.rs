@@ -1,5 +1,6 @@
 use crate::{
     data::{
+        batch_indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         common::ProfileAggregation,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
@@ -12,7 +13,6 @@ use crate::{
             VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
-        batch_indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         query::QueryId,
     },
     error::{ChapatyError, ChapatyResult, DataError, EnvError},
