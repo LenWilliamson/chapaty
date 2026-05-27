@@ -301,7 +301,7 @@ impl StreamingFairValueGap {
     pub fn active_gaps(&self) -> &[FairValueGap<OpenState>] {
         &self.active_gaps
     }
-    pub fn historical_gaps(&self) -> &[FairValueGap<ClosedState>] {
+    pub fn closed_gaps(&self) -> &[FairValueGap<ClosedState>] {
         &self.closed_gaps
     }
     pub fn expired_gaps(&self) -> &[FairValueGap<ExpiredState>] {
@@ -457,7 +457,7 @@ mod tests {
         // As C1.low is greater than C3.high (gap_down) and C3.high >= C3.low (valid candle),
         // we get C1.low > C3.high >= C3.low > C1.high > 0, by extending the left side of the
         // inequality of gap_up.
-        // 
+        //
         // This transitively means C1.low > C1.high, which is a contradiction. Hence, the gap_up
         // and gap_down cannot both exist simultaneously.
 
@@ -538,26 +538,38 @@ mod tests {
         indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 18.));
 
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Bullish gap was not created"
+        );
+        let initial_gap = indicator.active_gaps()[0];
+        assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
+        assert_eq!(initial_gap.top().0, 15.0);
+        assert_eq!(initial_gap.bottom().0, 10.0);
+        assert_f64_eq(initial_gap.gap_size(), 5.0);
+
         // 2. Partial Fill: Wick down to 12.5 (50% fill)
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 12.5, 17.));
 
-        assert_eq!(indicator.active_gaps.len(), 1);
-        assert_eq!(indicator.closed_gaps.len(), 0); // Still active
+        assert_eq!(indicator.active_gaps().len(), 1);
+        assert_eq!(indicator.closed_gaps().len(), 0); // Still active
 
-        let gap = &indicator.active_gaps[0];
+        let gap = &indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 1);
         assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // (15 - 12.5) / 5
 
         // 3. Lesser Fill: Wick down to 14.0 (20% fill). Should NOT reduce max_fill.
         indicator.update(candle(5, "2026-05-24T10:04:00Z", 18., 18., 14.0, 17.));
 
-        let gap = &indicator.active_gaps[0];
+        let gap = &indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 2);
         assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // Retains 50% max
     }
 
     #[test]
-    fn full_fill_migrates_gap_to_historical() {
+    fn full_fill_migrates_gap_to_closed() {
         let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
         // 1. Create Bearish Gap: Top=20.0, Bottom=15.0, Size=5.0
@@ -565,29 +577,38 @@ mod tests {
         indicator.update(candle(2, "2026-05-24T10:01:00Z", 18., 22., 15., 16.)); // C2
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 12., 15., 10., 11.)); // C3 High=15
 
-        assert_eq!(indicator.active_gaps.len(), 1);
-        assert_eq!(indicator.closed_gaps.len(), 0);
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Bearish gap was not created"
+        );
+        let initial_gap = indicator.active_gaps()[0];
+        assert_eq!(initial_gap.direction(), FairValueGapDirection::Bearish);
+        assert_eq!(initial_gap.top().0, 20.0);
+        assert_eq!(initial_gap.bottom().0, 15.0);
+        assert_eq!(indicator.closed_gaps().len(), 0);
 
         // 2. Miss (Price drops further away from the gap)
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 10., 12., 5., 8.));
-        assert_eq!(indicator.active_gaps[0].state().touch_count(), 0);
+        assert_eq!(indicator.active_gaps()[0].state().touch_count(), 0);
 
         // 3. Full Fill (Price violently rallies through Top of 20.0)
         indicator.update(candle(5, "2026-05-24T10:04:00Z", 12., 21., 12., 21.)); // High = 21 >= 20
 
         // Assert Migration
         assert_eq!(
-            indicator.active_gaps.len(),
+            indicator.active_gaps().len(),
             0,
             "Gap should be removed from active pool"
         );
         assert_eq!(
-            indicator.closed_gaps.len(),
+            indicator.closed_gaps().len(),
             1,
             "Gap should be migrated to history"
         );
 
-        let closed = &indicator.closed_gaps[0];
+        let closed = indicator.closed_gaps()[0];
         assert_eq!(closed.direction(), FairValueGapDirection::Bearish);
         assert_f64_eq(closed.state().max_fill_percentage(), 1.0); // Full fill is exactly 1.0
         assert_eq!(closed.state().touch_count(), 1); // Only took 1 touch to close
@@ -602,6 +623,17 @@ mod tests {
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // Verify Setup Assumption
+        let initial_gap = indicator.active_gaps()[0];
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Bullish gap was not created"
+        );
+        assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
+        assert_eq!(initial_gap.top().0, 15.0);
+        assert_eq!(initial_gap.bottom().0, 10.0);
 
         // Send a candle that wicks to EXACTLY 15.0
         // Because process_candle uses `candle.low < self.top`, this evaluates to false.
@@ -626,19 +658,35 @@ mod tests {
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
+        // Verify Setup Assumption A
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap A not created"
+        );
+        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+
         // 2. Create Bullish Gap B (25 -> 30) further up the trend
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 25., 25., 20., 22.));
         indicator.update(candle(5, "2026-05-26T10:05:00Z", 25., 28., 22., 26.));
         indicator.update(candle(6, "2026-05-26T10:06:00Z", 30., 35., 30., 32.));
 
-        assert_eq!(indicator.active_gaps().len(), 2);
+        // Verify Setup Assumption B
+        assert_eq!(
+            indicator.active_gaps().len(),
+            2,
+            "Assumption failed: Gap B not created"
+        );
+        assert_eq!(indicator.active_gaps()[1].top().0, 30.0);
+        assert_eq!(indicator.active_gaps()[1].bottom().0, 25.0);
 
         // 3. Price drops to 20. This completely fills Gap B (25->30), but only misses Gap A (10->15)
         indicator.update(candle(7, "2026-05-26T10:07:00Z", 30., 30., 20., 25.));
 
         assert_eq!(indicator.active_gaps().len(), 1, "Gap B should be closed");
         assert_eq!(
-            indicator.historical_gaps().len(),
+            indicator.closed_gaps().len(),
             1,
             "Gap B should be in history"
         );
@@ -646,11 +694,13 @@ mod tests {
         // Verify Gap A is still active and untouched
         let active_gap = &indicator.active_gaps()[0];
         assert_eq!(active_gap.bottom().0, 10.0);
+        assert_eq!(active_gap.top().0, 15.0);
         assert_eq!(active_gap.state().touch_count(), 0);
 
         // Verify Gap B is closed
-        let closed_gap = &indicator.historical_gaps()[0];
+        let closed_gap = &indicator.closed_gaps()[0];
         assert_eq!(closed_gap.bottom().0, 25.0);
+        assert_eq!(closed_gap.top().0, 30.0);
         assert_eq!(closed_gap.state().touch_count(), 1);
         assert_f64_eq(closed_gap.state().max_fill_percentage(), 1.0);
     }
@@ -662,7 +712,9 @@ mod tests {
     #[test]
     fn ttl_expires_after_n_bars() {
         // Expire if 2 or more bars have closed since creation
-        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Bars(2));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 is the RHS candle, so creation_index = 3
@@ -670,7 +722,13 @@ mod tests {
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
-        assert_eq!(indicator.active_gaps().len(), 1);
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(indicator.active_gaps()[0].creation_index(), 3);
         assert_eq!(indicator.expired_gaps().len(), 0);
 
         // 2. Candle 4 (Index 4). Diff = 4 - 3 = 1 bar.
@@ -703,14 +761,26 @@ mod tests {
     #[test]
     fn ttl_expires_after_time_duration() {
         // Expire if 5 minutes have passed since creation
-        let mut indicator =
-            StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Time(Duration::minutes(5)));
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Time(Duration::minutes(5)));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 close_timestamp = "10:03:00Z"
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(
+            indicator.active_gaps()[0].creation_time(),
+            ts("2026-05-26T10:03:00Z")
+        );
 
         // 2. Candle at 10:07:00Z. Diff = 4 mins.
         // 4 mins < 5 mins, so it remains active.
@@ -726,16 +796,29 @@ mod tests {
 
     #[test]
     fn expired_state_preserves_partial_fill_history() {
-        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Bars(2));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0, Size=5.0
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+
         // 2. Partial Fill: Wick down to 12.5 (50% fill) on the very next bar
         // This is 1 bar after creation, so it does NOT expire yet.
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 18., 18., 12.5, 17.));
+
+        // Verify state prior to expiration
+        assert_eq!(indicator.active_gaps().len(), 1);
+        assert_eq!(indicator.active_gaps()[0].state().touch_count(), 1);
 
         // 3. Expiration: Next bar runs away but triggers the 2-bar expiration limit.
         indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 25., 20., 22.));
@@ -756,12 +839,22 @@ mod tests {
     #[test]
     fn ttl_policy_filled_never_expires() {
         // TtlPolicy::Filled ist der Standard. Die Lücke darf niemals von allein verfallen.
-        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Filled);
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Filled);
 
         // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
 
         // 2. Einen gewaltigen Sprung in die Zukunft simulieren (Index 1000, 10 Stunden später)
         // Der Preis bleibt weit über der Lücke, sodass sie nicht gefüllt wird.
@@ -779,12 +872,22 @@ mod tests {
     fn expiration_takes_precedence_over_fill() {
         // Dieser Test dokumentiert die Invariante, dass das TTL geprüft wird,
         // BEVOR die Preis-Action der Kerze gegen die Lücke evaluiert wird.
-        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Bars(2));
 
         // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
 
         // 2. Index 5 ist exakt 2 Bars nach Index 3. Das löst das Expiration-Limit aus.
         // Obwohl diese Kerze massiv fällt (Low=5.0) und die Lücke eigentlich komplett schließen würde,
@@ -793,7 +896,7 @@ mod tests {
 
         assert_eq!(indicator.active_gaps().len(), 0);
         assert_eq!(
-            indicator.historical_gaps().len(),
+            indicator.closed_gaps().len(),
             0,
             "Gap should NOT be marked as closed"
         );
