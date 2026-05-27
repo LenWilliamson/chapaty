@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 use crate::{
     data::{
         domain::Price,
-        event::{IndexedOhlcv, MarketEvent},
+        event::{IndexedOhlcv, MarketEvent, Ohlcv},
     },
     math::StreamingIndicator,
 };
@@ -95,6 +95,29 @@ pub enum FairValueGapDirection {
     Bearish,
 }
 
+/// Represents how a price candle interacted with a Fair Value Gap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GapInteraction {
+    /// The candle's price range completely missed the gap (no overlap).
+    Miss,
+    /// The candle's price range entered the gap, but did not pierce the far boundary.
+    Touch,
+    /// The candle's price range completely pierced the required boundary to fill the gap.
+    Fill,
+}
+
+impl GapInteraction {
+    /// Returns true if the candle touched OR filled the gap.
+    pub fn is_touch(&self) -> bool {
+        matches!(self, Self::Touch | Self::Fill)
+    }
+
+    /// Returns true strictly if the candle filled the gap.
+    pub fn is_fill(&self) -> bool {
+        matches!(self, Self::Fill)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct FairValueGap<S: FairValueGapState> {
     direction: FairValueGapDirection,
@@ -171,34 +194,68 @@ impl<S: FairValueGapState> FairValueGap<S> {
             state: f(self.state),
         }
     }
+
+    /// Evaluates how a given candle's price action interacts with the gap's price zone.
+    ///
+    /// # The Overlap Logic (Filtering Breakaway Gaps)
+    /// A candle's traded range is a continuous interval defined as `[low, high]`.
+    /// The gap's price zone is defined as `[bottom, top]`.
+    ///
+    /// For a candle to interact with the gap, the market must have physically traded
+    /// inside that zone. Mathematically, two 1-dimensional intervals `[A, B]` and
+    /// `[C, D]` intersect if and only if `A < D` AND `B > C`.
+    ///
+    /// Applying this to our market data:
+    /// `candle.low < gap.top` AND `candle.high > gap.bottom`
+    ///
+    /// **Why this is critical:**
+    /// In markets that close (like traditional equities) or over weekends (like Forex),
+    /// the price can open drastically lower or higher than the previous close.
+    /// If a Bullish Gap exists at `[10.0, 15.0]`, and the market violently crashes
+    /// overnight to open at `5.0` and wicks to a high of `8.0`, the price is technically
+    /// "below" the gap. But because `candle.high (8.0)` is NOT `> gap.bottom (10.0)`,
+    /// the overlap check correctly identifies that the market teleported _over_ the
+    /// zone without ever actually trading inside it. It remains an untouched Miss.
+    pub fn evaluate_interaction(&self, candle: &Ohlcv) -> GapInteraction {
+        let overlaps = candle.low < self.top && candle.high > self.bottom;
+
+        if !overlaps {
+            return GapInteraction::Miss;
+        }
+
+        let is_filled = match self.direction {
+            FairValueGapDirection::Bullish => candle.low <= self.bottom,
+            FairValueGapDirection::Bearish => candle.high >= self.top,
+        };
+
+        if is_filled {
+            GapInteraction::Fill
+        } else {
+            GapInteraction::Touch
+        }
+    }
 }
 
 impl FairValueGap<OpenState> {
     /// Evaluates the incoming indexed candle against the open gap, considering TTL.
     fn process_candle(self, indexed_candle: &IndexedOhlcv, ttl: TtlPolicy) -> FairValueGapStatus {
         let candle = &indexed_candle.candle;
-        let gap_size = self.gap_size();
 
-        // 1. Evaluate Price Action First
-        let (is_touch, is_filled) = match self.direction {
-            FairValueGapDirection::Bullish => (candle.low < self.top, candle.low <= self.bottom),
-            FairValueGapDirection::Bearish => (candle.high > self.bottom, candle.high >= self.top),
-        };
-
-        // If it fully fills, it closes immediately.
-        if is_filled {
-            return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
-        }
-
-        // If it touched (but didn't fully fill), update the partial fill state.
-        let updated_gap = if is_touch {
-            let current_fill_pct = match self.direction {
-                FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
-                FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
-            };
-            self.with_partial_fill(current_fill_pct)
-        } else {
-            self
+        // 1. Evaluate Price Action First via the interaction helper
+        let updated_gap = match self.evaluate_interaction(candle) {
+            GapInteraction::Fill => {
+                // Early return: If it fully fills, it closes immediately before TTL checks.
+                return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
+            }
+            GapInteraction::Touch => {
+                let gap_size = self.gap_size();
+                let current_fill_pct = match self.direction {
+                    FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
+                    FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
+                };
+                self.with_partial_fill(current_fill_pct)
+            }
+            GapInteraction::Miss => self, // pass-through
         };
 
         // 2. Evaluate TTL Expiration
@@ -390,6 +447,7 @@ impl StreamingIndicator for StreamingFairValueGap {
         self.expired_gaps.clear();
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -852,7 +910,11 @@ mod tests {
             FairValueGapDirection::Bullish
         );
         assert_eq!(indicator.closed_gaps().len(), 0, "No closed gaps at setup");
-        assert_eq!(indicator.expired_gaps().len(), 0, "No expired gaps at setup");
+        assert_eq!(
+            indicator.expired_gaps().len(),
+            0,
+            "No expired gaps at setup"
+        );
 
         // 2. Partial Fill: Wick down to 12.5 (50% fill) on the very next bar
         // This is 1 bar after creation, so it does NOT expire yet.
@@ -932,7 +994,28 @@ mod tests {
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
-        assert_eq!(indicator.active_gaps().len(), 1);
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
+        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "Assumption failed: closed_gaps should be empty"
+        );
+        assert_eq!(
+            indicator.expired_gaps().len(),
+            0,
+            "Assumption failed: expired_gaps should be empty"
+        );
 
         // 2. The very next candle misses the gap completely.
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 25., 20., 22.));
@@ -971,6 +1054,29 @@ mod tests {
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
+        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "Assumption failed: closed_gaps should be empty"
+        );
+        assert_eq!(
+            indicator.expired_gaps().len(),
+            0,
+            "Assumption failed: expired_gaps should be empty"
+        );
+
         // 2. The very next candle misses the gap completely.
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 25., 20., 22.));
 
@@ -1005,7 +1111,28 @@ mod tests {
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
-        assert_eq!(indicator.active_gaps().len(), 1);
+        // Verify Setup Assumption
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Assumption failed: Gap not created"
+        );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
+        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "Assumption failed: closed_gaps should be empty"
+        );
+        assert_eq!(
+            indicator.expired_gaps().len(),
+            0,
+            "Assumption failed: expired_gaps should be empty"
+        );
 
         // 2. Advance far into the future (Index 1000) - Gap remains open
         indicator.update(candle(1000, "2026-05-26T20:00:00Z", 20., 25., 20., 22.));
@@ -1034,5 +1161,145 @@ mod tests {
 
         let closed = indicator.closed_gaps()[0];
         assert_f64_eq(closed.state().max_fill_percentage(), 1.0);
+    }
+
+    #[test]
+    fn breakaway_gaps_do_not_touch_or_fill_fvg() {
+        // This tests the non-continuous pricing invariant.
+        // If the market completely teleports over the FVG zone without trading inside it,
+        // the gap must remain open and untouched.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        // ==========================================
+        // SCENARIO A: Bullish FVG Bypassed
+        // ==========================================
+
+        // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        assert_eq!(indicator.active_gaps().len(), 1, "Bullish gap created");
+
+        // 2. A massive gap DOWN completely below the FVG (High=8.0, Low=5.0)
+        indicator.update(candle(4, "2026-05-26T10:04:00Z", 8., 8., 5., 6.));
+
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Bullish gap must remain active because it was leaped over"
+        );
+        let bullish_gap = indicator.active_gaps()[0];
+        assert_eq!(
+            bullish_gap.state().touch_count(),
+            0,
+            "The market never traded inside the Bullish gap"
+        );
+        assert_f64_eq(bullish_gap.state().max_fill_percentage(), 0.0);
+
+        indicator.reset();
+
+        // ==========================================
+        // SCENARIO B: Bearish FVG Bypassed
+        // ==========================================
+
+        // 1. Create Bearish Gap: Top=20.0, Bottom=15.0
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 20., 25., 20., 22.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 18., 22., 15., 16.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 12., 15., 10., 11.));
+
+        assert_eq!(indicator.active_gaps().len(), 1, "Bearish gap created");
+
+        // 2. A massive gap UP completely above the FVG (High=30.0, Low=25.0)
+        indicator.update(candle(4, "2026-05-26T10:04:00Z", 25., 30., 25., 28.));
+
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Bearish gap must remain active because it was leaped over"
+        );
+        let bearish_gap = indicator.active_gaps()[0];
+        assert_eq!(
+            bearish_gap.state().touch_count(),
+            0,
+            "The market never traded inside the Bearish gap"
+        );
+        assert_f64_eq(bearish_gap.state().max_fill_percentage(), 0.0);
+    }
+
+    #[test]
+    fn gap_interaction_evaluates_overlap_and_fills_correctly() {
+        // --- 1. Bullish Gap Setup (Top=15.0, Bottom=10.0) ---
+        let bullish_gap = FairValueGap {
+            direction: FairValueGapDirection::Bullish,
+            creation_time: ts("2026-05-24T10:00:00Z"),
+            creation_index: 0,
+            top: Price(15.0),
+            bottom: Price(10.0),
+            state: OpenState::default(),
+        };
+
+        // A. Bullish Miss (Price stays entirely above the gap)
+        let miss_above = candle(1, "2026-05-24T10:01:00Z", 20., 25., 15.0, 22.).candle;
+        let interaction = bullish_gap.evaluate_interaction(&miss_above);
+        assert_eq!(interaction, GapInteraction::Miss);
+        assert!(!interaction.is_touch());
+
+        // B. Bullish Breakaway Miss (Price teleports completely below the gap)
+        let breakaway_below = candle(2, "2026-05-24T10:02:00Z", 5., 8., 2., 6.).candle;
+        let interaction = bullish_gap.evaluate_interaction(&breakaway_below);
+        assert_eq!(interaction, GapInteraction::Miss);
+
+        // C. Bullish Touch (Wick enters the gap: low is 12.0)
+        let touch_candle = candle(3, "2026-05-24T10:03:00Z", 18., 18., 12., 15.).candle;
+        let interaction = bullish_gap.evaluate_interaction(&touch_candle);
+        assert_eq!(interaction, GapInteraction::Touch);
+        assert!(interaction.is_touch());
+        assert!(!interaction.is_fill());
+
+        // D. Bullish Fill (Wick drops below the bottom of 10.0)
+        let fill_candle = candle(4, "2026-05-24T10:04:00Z", 18., 18., 9., 15.).candle;
+        let interaction = bullish_gap.evaluate_interaction(&fill_candle);
+        assert_eq!(interaction, GapInteraction::Fill);
+        assert!(interaction.is_touch()); // A fill MUST register as a touch
+        assert!(interaction.is_fill());
+
+        // --- 2. Bearish Gap Setup (Top=20.0, Bottom=15.0) ---
+        let bearish_gap = FairValueGap {
+            direction: FairValueGapDirection::Bearish,
+            creation_time: ts("2026-05-24T10:00:00Z"),
+            creation_index: 0,
+            top: Price(20.0),
+            bottom: Price(15.0),
+            state: OpenState::default(),
+        };
+
+        // A. Bearish Miss (Price stays entirely below the gap)
+        let miss_below = candle(5, "2026-05-24T10:01:00Z", 10., 15.0, 5., 12.).candle;
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&miss_below),
+            GapInteraction::Miss
+        );
+
+        // B. Bearish Breakaway Miss (Price teleports completely above the gap)
+        let breakaway_above = candle(6, "2026-05-24T10:02:00Z", 25., 30., 22., 28.).candle;
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&breakaway_above),
+            GapInteraction::Miss
+        );
+
+        // C. Bearish Touch (Wick enters the gap: high is 18.0)
+        let touch_bear = candle(7, "2026-05-24T10:03:00Z", 10., 18., 10., 12.).candle;
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&touch_bear),
+            GapInteraction::Touch
+        );
+
+        // D. Bearish Fill (Wick spikes above the top of 20.0)
+        let fill_bear = candle(8, "2026-05-24T10:04:00Z", 10., 21., 10., 12.).candle;
+        let interaction = bearish_gap.evaluate_interaction(&fill_bear);
+        assert_eq!(interaction, GapInteraction::Fill);
+        assert!(interaction.is_touch());
+        assert!(interaction.is_fill());
     }
 }
