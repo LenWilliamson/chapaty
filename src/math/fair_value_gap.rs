@@ -447,7 +447,6 @@ impl StreamingIndicator for StreamingFairValueGap {
         self.expired_gaps.clear();
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,7 +629,7 @@ mod tests {
 
         // 1. Create Bearish Gap: Top=20.0, Bottom=15.0, Size=5.0
         indicator.update(candle(1, "2026-05-24T10:00:00Z", 20., 25., 20., 22.)); // C1 Low=20
-        indicator.update(candle(2, "2026-05-24T10:01:00Z", 18., 22., 15., 16.)); // C2
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 18., 22., 12., 16.)); // C2 Low down to 12
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 12., 15., 10., 11.)); // C3 High=15
 
         // Verify Setup Assumption
@@ -711,8 +710,8 @@ mod tests {
 
         // 1. Create Bullish Gap A (10 -> 15)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
-        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 22., 15., 18.)); // C3 High up to 22
 
         // Verify Setup Assumption A
         assert_eq!(
@@ -783,7 +782,7 @@ mod tests {
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 is the RHS candle, so creation_index = 3
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -847,7 +846,7 @@ mod tests {
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 close_timestamp = "10:03:00Z"
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -950,7 +949,7 @@ mod tests {
 
         // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -991,7 +990,7 @@ mod tests {
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -1051,7 +1050,7 @@ mod tests {
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // Raise C2 High to 20 to close C2-C4 distance
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -1108,7 +1107,7 @@ mod tests {
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 20., 8., 11.)); // C2 High up to 20
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
         // Verify Setup Assumption
@@ -1205,7 +1204,7 @@ mod tests {
 
         // 1. Create Bearish Gap: Top=20.0, Bottom=15.0
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 20., 25., 20., 22.));
-        indicator.update(candle(2, "2026-05-26T10:02:00Z", 18., 22., 15., 16.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 18., 25., 15., 16.)); // C2 High up to 25
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 12., 15., 10., 11.));
 
         assert_eq!(indicator.active_gaps().len(), 1, "Bearish gap created");
