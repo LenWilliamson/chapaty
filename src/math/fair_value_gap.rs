@@ -177,54 +177,52 @@ impl FairValueGap<OpenState> {
     /// Evaluates the incoming indexed candle against the open gap, considering TTL.
     fn process_candle(self, indexed_candle: &IndexedOhlcv, ttl: TtlPolicy) -> FairValueGapStatus {
         let candle = &indexed_candle.candle;
+        let gap_size = self.gap_size();
 
-        // 1. Evaluate TTL Expiration First
+        // 1. Evaluate Price Action First
+        let (is_touch, is_filled) = match self.direction {
+            FairValueGapDirection::Bullish => (candle.low < self.top, candle.low <= self.bottom),
+            FairValueGapDirection::Bearish => (candle.high > self.bottom, candle.high >= self.top),
+        };
+
+        // If it fully fills, it closes immediately.
+        if is_filled {
+            return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
+        }
+
+        // If it touched (but didn't fully fill), update the partial fill state.
+        let updated_gap = if is_touch {
+            let current_fill_pct = match self.direction {
+                FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
+                FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
+            };
+            self.with_partial_fill(current_fill_pct)
+        } else {
+            self
+        };
+
+        // 2. Evaluate TTL Expiration
         let is_expired = match ttl {
             TtlPolicy::Bars(limit) => {
-                indexed_candle.index.saturating_sub(self.creation_index) >= limit
+                indexed_candle
+                    .index
+                    .saturating_sub(updated_gap.creation_index())
+                    >= limit
             }
             TtlPolicy::Time(limit) => {
                 candle
                     .close_timestamp
-                    .signed_duration_since(self.creation_time)
+                    .signed_duration_since(updated_gap.creation_time())
                     >= limit
             }
             TtlPolicy::Filled => false,
         };
 
         if is_expired {
-            return FairValueGapStatus::Expired(self.into_expired(candle.close_timestamp));
+            FairValueGapStatus::Expired(updated_gap.into_expired(candle.close_timestamp))
+        } else {
+            FairValueGapStatus::Open(updated_gap)
         }
-
-        // 2. Evaluate Gap Interactions
-        let gap_size = self.gap_size();
-        let (is_touch, is_filled) = match self.direction {
-            FairValueGapDirection::Bullish => {
-                let touch = candle.low < self.top;
-                let filled = candle.low <= self.bottom;
-                (touch, filled)
-            }
-            FairValueGapDirection::Bearish => {
-                let touch = candle.high > self.bottom;
-                let filled = candle.high >= self.top;
-                (touch, filled)
-            }
-        };
-
-        if !is_touch {
-            return FairValueGapStatus::Open(self);
-        }
-
-        if is_filled {
-            return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
-        }
-
-        let current_fill_pct = match self.direction {
-            FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
-            FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
-        };
-
-        FairValueGapStatus::Open(self.with_partial_fill(current_fill_pct))
     }
 
     fn with_partial_fill(self, fill_pct: f64) -> Self {
@@ -395,8 +393,8 @@ impl StreamingIndicator for StreamingFairValueGap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::EPSILON;
     use crate::data::{domain::Quantity, event::Ohlcv};
+    use std::f64::EPSILON;
 
     // ==========================================
     // === 1. Mocks & Helpers ===
@@ -504,7 +502,7 @@ mod tests {
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 18.)); // C3 Low = 15
 
         assert_eq!(indicator.active_gaps.len(), 1);
-        let gap = &indicator.active_gaps[0];
+        let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
         assert_eq!(gap.bottom().0, 10.0);
         assert_eq!(gap.top().0, 15.0);
@@ -518,7 +516,7 @@ mod tests {
         indicator.update(candle(6, "2026-05-24T10:02:00Z", 12., 15., 10., 11.)); // C3 High = 15
 
         assert_eq!(indicator.active_gaps.len(), 1);
-        let gap = &indicator.active_gaps[0];
+        let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bearish);
         assert_eq!(gap.top().0, 20.0);
         assert_eq!(gap.bottom().0, 15.0);
@@ -556,14 +554,14 @@ mod tests {
         assert_eq!(indicator.active_gaps().len(), 1);
         assert_eq!(indicator.closed_gaps().len(), 0); // Still active
 
-        let gap = &indicator.active_gaps()[0];
+        let gap = indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 1);
         assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // (15 - 12.5) / 5
 
         // 3. Lesser Fill: Wick down to 14.0 (20% fill). Should NOT reduce max_fill.
         indicator.update(candle(5, "2026-05-24T10:04:00Z", 18., 18., 14.0, 17.));
 
-        let gap = &indicator.active_gaps()[0];
+        let gap = indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 2);
         assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // Retains 50% max
     }
@@ -640,7 +638,7 @@ mod tests {
         // It is mathematically defined as a Miss, NOT a touch/partial fill.
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 20., 15.0, 20.));
 
-        let gap = &indicator.active_gaps()[0];
+        let gap = indicator.active_gaps()[0];
         assert_eq!(
             gap.state().touch_count(),
             0,
@@ -664,6 +662,10 @@ mod tests {
             1,
             "Assumption failed: Gap A not created"
         );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
         assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
         assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
 
@@ -678,6 +680,10 @@ mod tests {
             2,
             "Assumption failed: Gap B not created"
         );
+        assert_eq!(
+            indicator.active_gaps()[1].direction(),
+            FairValueGapDirection::Bullish
+        );
         assert_eq!(indicator.active_gaps()[1].top().0, 30.0);
         assert_eq!(indicator.active_gaps()[1].bottom().0, 25.0);
 
@@ -691,14 +697,14 @@ mod tests {
             "Gap B should be in history"
         );
 
-        // Verify Gap A is still active and untouched
-        let active_gap = &indicator.active_gaps()[0];
+        // Verify Gap A is still active and untouched (passed by value since it is Copy)
+        let active_gap = indicator.active_gaps()[0];
         assert_eq!(active_gap.bottom().0, 10.0);
         assert_eq!(active_gap.top().0, 15.0);
         assert_eq!(active_gap.state().touch_count(), 0);
 
-        // Verify Gap B is closed
-        let closed_gap = &indicator.closed_gaps()[0];
+        // Verify Gap B is closed (passed by value)
+        let closed_gap = indicator.closed_gaps()[0];
         assert_eq!(closed_gap.bottom().0, 25.0);
         assert_eq!(closed_gap.top().0, 30.0);
         assert_eq!(closed_gap.state().touch_count(), 1);
@@ -728,8 +734,13 @@ mod tests {
             1,
             "Assumption failed: Gap not created"
         );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
         assert_eq!(indicator.active_gaps()[0].creation_index(), 3);
         assert_eq!(indicator.expired_gaps().len(), 0);
+        assert_eq!(indicator.closed_gaps().len(), 0, "No closed gaps at setup");
 
         // 2. Candle 4 (Index 4). Diff = 4 - 3 = 1 bar.
         // 1 < 2, so the gap remains active.
@@ -737,6 +748,11 @@ mod tests {
 
         assert_eq!(indicator.active_gaps().len(), 1);
         assert_eq!(indicator.expired_gaps().len(), 0);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "No closed gaps mid-flight"
+        );
 
         // 3. Candle 5 (Index 5). Diff = 5 - 3 = 2 bars.
         // 2 >= 2, so the gap should immediately expire.
@@ -752,8 +768,13 @@ mod tests {
             1,
             "Gap should be migrated to expired"
         );
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "No closed gaps after expiration"
+        );
 
-        let expired = &indicator.expired_gaps()[0];
+        let expired = indicator.expired_gaps()[0];
         assert_eq!(expired.creation_index(), 3);
         assert_eq!(expired.state().expired_time(), ts("2026-05-26T10:05:00Z"));
     }
@@ -778,20 +799,35 @@ mod tests {
             "Assumption failed: Gap not created"
         );
         assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
+        assert_eq!(
             indicator.active_gaps()[0].creation_time(),
             ts("2026-05-26T10:03:00Z")
         );
+        assert_eq!(indicator.closed_gaps().len(), 0, "No closed gaps at setup");
 
         // 2. Candle at 10:07:00Z. Diff = 4 mins.
         // 4 mins < 5 mins, so it remains active.
         indicator.update(candle(4, "2026-05-26T10:07:00Z", 20., 25., 20., 22.));
         assert_eq!(indicator.active_gaps().len(), 1);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "No closed gaps mid-flight"
+        );
 
         // 3. Candle at 10:08:00Z. Diff = 5 mins.
         // 5 mins >= 5 mins, gap expires.
         indicator.update(candle(5, "2026-05-26T10:08:00Z", 20., 25., 20., 22.));
         assert_eq!(indicator.active_gaps().len(), 0);
         assert_eq!(indicator.expired_gaps().len(), 1);
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            0,
+            "No closed gaps after expiration"
+        );
     }
 
     #[test]
@@ -811,6 +847,12 @@ mod tests {
             1,
             "Assumption failed: Gap not created"
         );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
+        assert_eq!(indicator.closed_gaps().len(), 0, "No closed gaps at setup");
+        assert_eq!(indicator.expired_gaps().len(), 0, "No expired gaps at setup");
 
         // 2. Partial Fill: Wick down to 12.5 (50% fill) on the very next bar
         // This is 1 bar after creation, so it does NOT expire yet.
@@ -824,10 +866,11 @@ mod tests {
         indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 25., 20., 22.));
 
         assert_eq!(indicator.active_gaps().len(), 0);
+        assert_eq!(indicator.closed_gaps().len(), 0);
         assert_eq!(indicator.expired_gaps().len(), 1);
 
         // Verify that the ExpiredState successfully inherited the fill data from OpenState
-        let expired = &indicator.expired_gaps()[0];
+        let expired = indicator.expired_gaps()[0];
         assert_eq!(
             expired.state().touch_count(),
             1,
@@ -854,6 +897,10 @@ mod tests {
             1,
             "Assumption failed: Gap not created"
         );
+        assert_eq!(
+            indicator.active_gaps()[0].direction(),
+            FairValueGapDirection::Bullish
+        );
         assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
 
         // 2. Einen gewaltigen Sprung in die Zukunft simulieren (Index 1000, 10 Stunden später)
@@ -868,46 +915,124 @@ mod tests {
         assert_eq!(indicator.expired_gaps().len(), 0);
     }
 
+    // ==========================================
+    // === 6. Edge Cases & Invariants ===
+    // ==========================================
+
     #[test]
-    fn expiration_takes_precedence_over_fill() {
-        // Dieser Test dokumentiert die Invariante, dass das TTL geprüft wird,
-        // BEVOR die Preis-Action der Kerze gegen die Lücke evaluiert wird.
+    fn simultaneous_full_fill_and_expiration_results_in_closed_gap() {
+        // If a gap completely fills on the exact same candle that triggers its expiration,
+        // the fill wins. The price action happened *during* the candle.
         let mut indicator = StreamingFairValueGap::default()
             .with_min_gap_size(1.0)
             .with_ttl_policy(TtlPolicy::Bars(2));
 
-        // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
+        // 1. Create Bullish Gap: Top=15.0, Bottom=10.0 (Creation Index = 3)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
         indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
         indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
 
-        // Verify Setup Assumption
-        assert_eq!(
-            indicator.active_gaps().len(),
-            1,
-            "Assumption failed: Gap not created"
-        );
-        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_eq!(indicator.active_gaps().len(), 1);
 
-        // 2. Index 5 ist exakt 2 Bars nach Index 3. Das löst das Expiration-Limit aus.
-        // Obwohl diese Kerze massiv fällt (Low=5.0) und die Lücke eigentlich komplett schließen würde,
-        // muss sie als 'Expired' (und nicht als 'Closed') markiert werden, da das TTL Vorrang hat.
-        indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 20., 5., 8.));
+        // 2. The very next candle misses the gap completely.
+        indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 25., 20., 22.));
 
+        // 3. The expiry candle! Index 5 triggers the 2-bar expiration.
+        // AT THE EXACT SAME TIME, it has a violent wick down to 5.0, fully covering the gap.
+        indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 20., 5.0, 10.));
+
+        // Verify the invariants
         assert_eq!(indicator.active_gaps().len(), 0);
         assert_eq!(
-            indicator.closed_gaps().len(),
+            indicator.expired_gaps().len(),
             0,
-            "Gap should NOT be marked as closed"
+            "Gap must NOT be expired. It was fully filled during the candle lifespan."
+        );
+        assert_eq!(
+            indicator.closed_gaps().len(),
+            1,
+            "Gap MUST be closed because the fill happened before the candle closed."
+        );
+
+        let closed = indicator.closed_gaps()[0];
+        assert_f64_eq(closed.state().max_fill_percentage(), 1.0);
+    }
+
+    #[test]
+    fn simultaneous_partial_fill_and_expiration_preserves_final_action() {
+        // If a gap partially fills on the exact same candle that triggers its expiration,
+        // it must expire, BUT it must successfully capture the partial fill from its final moments.
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Bars(2));
+
+        // 1. Create Bullish Gap: Top=15.0, Bottom=10.0 (Creation Index = 3)
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // 2. The very next candle misses the gap completely.
+        indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 25., 20., 22.));
+
+        // 3. The expiry candle! Index 5 triggers the 2-bar expiration.
+        // It drops to 12.5, filling exactly 50% of the gap right before time runs out.
+        indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 20., 12.5, 18.));
+
+        // Verify the invariants
+        assert_eq!(indicator.active_gaps().len(), 0);
+        assert_eq!(indicator.closed_gaps().len(), 0);
+        assert_eq!(indicator.expired_gaps().len(), 1);
+
+        let expired = indicator.expired_gaps()[0];
+        assert_eq!(
+            expired.state().touch_count(),
+            1,
+            "Must register the touch from the expiring candle"
+        );
+        assert_f64_eq(expired.state().final_fill_percentage(), 0.5); // Correctly captured the 50% fill right before death
+    }
+
+    #[test]
+    fn ttl_policy_filled_migrates_to_closed_on_full_fill() {
+        // Rule: A gap with TtlPolicy::Filled can NEVER expire.
+        // When it eventually fills, it must explicitly migrate to Closed.
+        let mut indicator = StreamingFairValueGap::default()
+            .with_min_gap_size(1.0)
+            .with_ttl_policy(TtlPolicy::Filled);
+
+        // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        assert_eq!(indicator.active_gaps().len(), 1);
+
+        // 2. Advance far into the future (Index 1000) - Gap remains open
+        indicator.update(candle(1000, "2026-05-26T20:00:00Z", 20., 25., 20., 22.));
+        assert_eq!(indicator.active_gaps().len(), 1);
+        assert_eq!(indicator.closed_gaps().len(), 0);
+        assert_eq!(indicator.expired_gaps().len(), 0);
+
+        // 3. Price finally crashes down and fills the gap
+        indicator.update(candle(1001, "2026-05-26T20:01:00Z", 20., 20., 8.0, 10.));
+
+        assert_eq!(
+            indicator.active_gaps().len(),
+            0,
+            "Gap should be removed from active pool"
         );
         assert_eq!(
             indicator.expired_gaps().len(),
+            0,
+            "Gap with TtlPolicy::Filled must NEVER enter Expired state"
+        );
+        assert_eq!(
+            indicator.closed_gaps().len(),
             1,
-            "Gap MUST be marked as expired due to operation order"
+            "Gap MUST be correctly migrated to Closed state upon fill"
         );
 
-        let expired = &indicator.expired_gaps()[0];
-        // Da die Lücke verfiel, bevor der Drop ausgewertet wurde, bleibt der Fill-Status bei 0.0
-        assert_f64_eq(expired.state().final_fill_percentage(), 0.0);
+        let closed = indicator.closed_gaps()[0];
+        assert_f64_eq(closed.state().max_fill_percentage(), 1.0);
     }
 }
