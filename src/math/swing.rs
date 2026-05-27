@@ -77,54 +77,127 @@ pub enum AlternationMode {
     Consecutive,
 }
 
-/// Represents structural breakthrough events in market microstructure.
+/// Represents structural breakthrough events detected in the price series.
 ///
-/// These events are triggered when an updated or newly confirmed [`PivotPoint`]
-/// breaches a historical macro level stored in either `anchor_high` or `anchor_low`.
+/// A `MarketStructureEvent` is emitted alongside every new confirmed pivot.
+/// It answers the question: _"Did this new pivot break a meaningful prior level,
+/// and if so, does it continue or contradict the prevailing trend?"_
+///
+/// # Background
+///
+/// Most price action consists of small zig-zags within a range. Occasionally,
+/// a new swing high breaks above the previous swing high (or a new swing low
+/// breaks below the previous swing low). Those breakouts are the structural
+/// events this enum classifies.
+///
+/// The classification depends on two things:
+/// 1. Whether the new pivot exceeds the most recent same-side pivot
+///    (e.g. a new high above the last confirmed high).
+/// 2. What the prevailing trend looked like just before the break, inferred
+///    from the most recent opposite-side pivot.
+///
+/// # The asymmetry: MSS is strict, BOS is the default
+///
+/// A `MarketStructureShift` fires **only** when there is clear evidence of an
+/// opposing trend to reverse. Specifically, when the most recent opposite-side
+/// pivot was itself a trend-confirming break (a `LowerLow` for a bullish MSS,
+/// a `HigherHigh` for a bearish MSS). Every other breakout, including the very
+/// first one after startup, when no prior trend exists, is classified as a
+/// `BreakOfStructure`.
+///
+/// # Variants at a glance
+///
+/// For a new swing high that breaks above the prior high:
+///
+/// | Most recent low was...                       | Interpretation                       | Result                                    |
+/// |----------------------------------------------|--------------------------------------|-------------------------------------------|
+/// | `LowerLow`                                   | Downtrend in force, now contradicted | `MarketStructureShift` (bullish reversal) |
+/// | `HigherLow`                                  | Uptrend in force, now extended       | `BreakOfStructure` (continuation)         |
+/// | `EqualLow`                                   | Ranging market, trend initiated      | `BreakOfStructure`                        |
+/// | `UnclassifiedLow` (only one low seen so far) | No prior trend established           | `BreakOfStructure`                        |
+/// | *(no low seen yet)*                          | No prior structure at all            | `BreakOfStructure`                        |
+///
+/// The mirror table applies for a new swing low that breaks below the prior low,
+/// with `HigherHigh` triggering a bearish MSS and every other case yielding BOS.
+///
+/// If the new pivot does *not* exceed the prior same-side pivot (i.e. it forms
+/// a Lower High, Equal High, Higher Low, or Equal Low), the result is `NoChange`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketStructureEvent {
-    /// **Trend Continuation** (Break of Structure).
+    /// The new pivot extends the prevailing trend, or initiates the first one.
     ///
-    /// Occurs when price breaks through a structural barrier in the **same** direction
-    /// as the established trend, extending the current market expansion.
+    /// A *Break of Structure* (BOS) is the default classification for any new pivot
+    /// that exceeds its same-side predecessor. It fires when:
     ///
-    /// # Geometric Triggers:
-    /// - **Bullish BOS**: A new `PivotPoint` closes above the previous `anchor_high`,
-    ///   confirming a `MarketStructureSequence::HigherHigh`.
-    /// - **Bearish BOS**: A new `PivotPoint` closes below the previous `anchor_low`,
-    ///   confirming a `MarketStructureSequence::LowerLow`.
+    /// - **Continuation**: the market was already trending in the same direction
+    ///   (e.g. a new Higher High after a recent Higher Low).
+    /// - **Initiation**: no prior opposing trend has been established yet.
+    ///   Either because the indicator just started, or because the prior
+    ///   opposite-side pivots were equal or unclassified.
+    ///
+    /// # Examples
+    ///
+    /// *Continuation*: Lows print `100, 105, 110` (Higher Lows: uptrend).
+    /// Highs print `120, 125`. A new high at `130` breaks above `125` -> bullish BOS.
+    ///
+    /// *Initiation*: The very first swing high recorded after the very first swing
+    /// low also reports as BOS. There is no prior trend to either continue or shift,
+    /// so the strict-reversal `MarketStructureShift` does not apply.
     BreakOfStructure,
 
-    /// **Trend Reversal** (Market Structure Shift / Change of Character).
+    /// The new pivot reverses a previously confirmed trend.
     ///
-    /// Occurs when price breaches a key structural level in the **opposite** direction
-    /// of the established trend, signaling a supply/demand flip and structural failure.
+    /// Also known as a *Change of Character* (CHoCH). This is the strict case:
+    /// it fires only when the prior opposite-side pivot was itself a trend-confirming
+    /// break, so there is concrete evidence of a trend to reverse.
     ///
-    /// # Geometric Triggers:
-    /// - **Bullish MSS**: Price aggressively breaks *above* the last macro `anchor_high`
-    ///   while the market was heavily entrenched in a downtrend sequence.
-    /// - **Bearish MSS**: Price aggressively breaks *below* the last macro `anchor_low`
-    ///   while the market was heavily entrenched in an uptrend sequence.
+    /// - **Bullish MSS**: a new swing high prints above the most recent swing high,
+    ///   and the most recent low was a `LowerLow` (downtrend -> potential uptrend).
+    /// - **Bearish MSS**: a new swing low prints below the most recent swing low,
+    ///   and the most recent high was a `HigherHigh` (uptrend -> potential downtrend).
+    ///
+    /// # Example
+    ///
+    /// Highs print `130, 125, 120` (Lower Highs: downtrend). Lows print `110, 105, 100`
+    /// (Lower Lows: confirming the downtrend). A new high at `128` breaks above `125`
+    /// while the most recent low (`100`) was a Lower Low -> bullish MSS.
     MarketStructureShift,
 
-    /// **No Structural Change**.
+    /// The new pivot did not exceed the relevant prior pivot on its side.
     ///
-    /// The incoming streaming tick or newly formed local vertex did not break out of
-    /// the current trading range established by `anchor_high` and `anchor_low`.
-    ///
-    /// This represents internal noise, a standard retracement, or a minor sub-structure pivot.
+    /// Returned when the candidate forms a Lower High, Equal High, Higher Low, or
+    /// Equal Low, or when there is no prior pivot on that side yet to compare against.
+    /// The pivot is still recorded and added to the history. It just doesn't
+    /// represent a structural breakout.
     NoChange,
 }
 
+/// Tiebreaker policy when two adjacent bars share the same extreme price.
+///
+/// Affects two situations:
+/// 1. **Plateaus inside the lookback window**: when the candidate bar ties with one of
+///    its neighbors for the highest/lowest price, this rule decides whether the candidate
+///    still qualifies as a pivot.
+/// 2. **Conflicts under [`AlternationMode::Alternating`]**: when a new pivot of the same
+///    type as the active one is detected and their prices are equal, this rule decides
+///    which one wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExtremeTiebreaker {
-    /// The most recently formed extreme wins.
+    /// On a tie, the later bar wins. Pivots track the most recent occurrence
+    /// of a repeated extreme.
     #[default]
     Latest,
-    /// The first formed extreme wins.
+    /// On a tie, the earlier bar wins. Pivots anchor to the first occurrence
+    /// of a repeated extreme.
     Earliest,
 }
 
+/// A confirmed swing point in the price series.
+///
+/// Carries the originating candle, the price that triggered the pivot (which may be
+/// `high`/`low` or `open`/`close` depending on the configured [`PriceSource`]),
+/// the geometric type ([`PivotType::High`] or [`PivotType::Low`]), and the trend-relative
+/// classification ([`MarketStructureSequence`]).
 #[derive(Debug, Clone, Copy)]
 pub struct PivotPoint {
     pub indexed_candle: IndexedOhlcv,
@@ -182,8 +255,15 @@ impl PivotPoint {
     }
 }
 
-/// The lookback and lookforward requirement for a pivot.
-/// Default is 5.
+/// Lookback and lookforward window for swing detection.
+///
+/// A bar is treated as a candidate pivot only if it is the most extreme bar within
+/// a window of `left_bars` preceding bars and `right_bars` following bars. Larger
+/// values produce fewer, more significant pivots; smaller values are more responsive
+/// but noisier. Default is `5` on each side.
+///
+/// Note that the indicator must buffer `left_bars + right_bars + 1` candles before
+/// it can emit its first result, since the candidate sits in the middle of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ZigZagPeriod {
     pub left_bars: u16,
@@ -209,8 +289,44 @@ impl ZigZagPeriod {
     }
 }
 
-/// A HigherHigh/LowerLow indicator that identifies market structure points on a stream of OHLCV data.
-/// It can be configured with a ZigZag alternation filter to eliminate market noise.
+/// A streaming Higher-High / Lower-Low indicator over OHLCV bars.
+///
+/// Consumes a stream of [`IndexedOhlcv`] bars and emits a confirmed [`PivotPoint`]
+/// together with a [`MarketStructureEvent`] whenever a new swing point is identified
+/// and either continues or breaks the prevailing trend.
+///
+/// # How it works
+///
+/// 1. Each incoming bar is appended to an internal rolling window of size
+///    `left_bars + right_bars + 1` (see [`ZigZagPeriod`]).
+/// 2. The bar at the center of that window is the *candidate*. It is considered a
+///    pivot if it is the most extreme bar in the window (highest for a swing high,
+///    lowest for a swing low). Ties are resolved per [`ExtremeTiebreaker`].
+/// 3. When a candidate qualifies, it is classified relative to the most recent
+///    confirmed pivot of the same kind (Higher High / Lower High / Equal High, etc.)
+///    and a [`MarketStructureEvent`] is emitted.
+/// 4. The [`AlternationMode`] controls what happens when consecutive same-type
+///    pivots appear without an intervening opposite-type pivot.
+///
+/// Because the candidate sits at the middle of the window, every emitted pivot is
+/// confirmed with a lag of `right_bars` bars — that's the price of removing
+/// hindsight bias from swing detection.
+///
+/// # Output stream
+///
+/// [`StreamingIndicator::update`] returns `Some((event, pivot))` whenever a pivot
+/// is confirmed, and `None` while the window is still filling or no pivot is detected.
+/// The full chronological history is available via [`Self::history`].
+///
+/// # Builder
+///
+/// ```ignore
+/// let hhll = StreamingHhll::default()
+///     .with_zig_zag_period(ZigZagPeriod { left_bars: 3, right_bars: 3 })
+///     .with_price_source(PriceSource::HighLow)
+///     .with_alternation_mode(AlternationMode::Alternating)
+///     .with_tiebreaker(ExtremeTiebreaker::Latest);
+/// ```
 #[derive(Debug, Clone)]
 pub struct StreamingHhll {
     zig_zag_period: ZigZagPeriod,
