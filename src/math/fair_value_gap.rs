@@ -14,14 +14,14 @@ const LHS: usize = 0;
 const RHS: usize = 2;
 const PATTERN_LENGTH: usize = 3;
 
-/// Defines the condition under which a Fair Value Gap expires.
+/// Defines the time to live (ttl) condition under which a Fair Value Gap expires.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TtlPolicy {
     /// Expires after a specific number of bars have passed since creation.
     Bars(usize),
     /// Expires after a specific time duration has passed since creation.
     Time(Duration),
-    /// Never expires automatically; stays open until completely filled.
+    /// Never expires automatically. Stays open until completely filled.
     #[default]
     Filled,
 }
@@ -86,6 +86,7 @@ impl ExpiredState {
         self.touch_count
     }
 }
+
 impl FairValueGapState for ExpiredState {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,9 +136,12 @@ impl<S: FairValueGapState> FairValueGap<S> {
     pub fn creation_time(&self) -> DateTime<Utc> {
         self.creation_time
     }
+
+    /// Returns the index of the OHLCV candle that created this gap.
     pub fn creation_index(&self) -> usize {
         self.creation_index
     }
+
     pub fn top(&self) -> Price {
         self.top
     }
@@ -149,9 +153,10 @@ impl<S: FairValueGapState> FairValueGap<S> {
     pub fn state(&self) -> &S {
         &self.state
     }
+
     pub fn gap_size(&self) -> f64 {
         (self.top.0 - self.bottom.0).abs()
-    } // Assuming Price(f64)
+    }
 
     pub fn map<NewState: FairValueGapState, F>(self, f: F) -> FairValueGap<NewState>
     where
@@ -170,11 +175,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
 
 impl FairValueGap<OpenState> {
     /// Evaluates the incoming indexed candle against the open gap, considering TTL.
-    pub fn process_candle(
-        self,
-        indexed_candle: &IndexedOhlcv,
-        ttl: TtlPolicy,
-    ) -> FairValueGapStatus {
+    fn process_candle(self, indexed_candle: &IndexedOhlcv, ttl: TtlPolicy) -> FairValueGapStatus {
         let candle = &indexed_candle.candle;
 
         // 1. Evaluate TTL Expiration First
@@ -218,19 +219,16 @@ impl FairValueGap<OpenState> {
             return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
         }
 
-        let fill_pct = match self.direction {
+        let current_fill_pct = match self.direction {
             FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
             FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
         };
 
-        FairValueGapStatus::Open(self.with_partial_fill(fill_pct))
+        FairValueGapStatus::Open(self.with_partial_fill(current_fill_pct))
     }
 
-    fn with_partial_fill(self, cur_fill_pct: f64) -> Self {
-        let max_fill_percentage = self
-            .state
-            .max_fill_percentage
-            .max(cur_fill_pct.clamp(0.0, 1.0));
+    fn with_partial_fill(self, fill_pct: f64) -> Self {
+        let max_fill_percentage = self.state.max_fill_percentage.max(fill_pct.clamp(0.0, 1.0));
         self.map(|s| OpenState {
             max_fill_percentage,
             touch_count: s.touch_count + 1,
@@ -259,31 +257,39 @@ pub struct StreamingFairValueGap {
     ttl_policy: TtlPolicy,
     buffer: VecDeque<IndexedOhlcv>,
     active_gaps: Vec<FairValueGap<OpenState>>,
-    historical_gaps: Vec<FairValueGap<ClosedState>>,
+    closed_gaps: Vec<FairValueGap<ClosedState>>,
     expired_gaps: Vec<FairValueGap<ExpiredState>>,
 }
 
+impl Default for StreamingFairValueGap {
+    fn default() -> Self {
+        Self {
+            min_gap_size: f64::EPSILON,
+            ttl_policy: TtlPolicy::default(),
+            buffer: VecDeque::with_capacity(PATTERN_LENGTH),
+            active_gaps: Vec::new(),
+            closed_gaps: Vec::new(),
+            expired_gaps: Vec::new(),
+        }
+    }
+}
+
 impl StreamingFairValueGap {
-    /// Creates a new `StreamingFairValueGap` indicator.
+    /// Sets the minimum gap size for the indicator.
     ///
     /// # Arguments
-    /// * `min_gap_size` - The minimum absolute price difference required to register a Fair Value Gap.
-    ///                    This acts as a filter to reject microscopic imbalances. Must be > 0.0.
+    /// * `min_gap_size` - The minimum gap size to set. Must be > 0.0.
     ///
     /// # Panics
     /// Panics if `min_gap_size` <= 0.0.
-    pub fn new(min_gap_size: f64) -> Self {
+    pub fn with_min_gap_size(self, min_gap_size: f64) -> Self {
         assert!(
             min_gap_size > 0.0,
             "min_gap_size must be strictly positive (got {min_gap_size} which is <= 0.0)"
         );
         Self {
             min_gap_size,
-            ttl_policy: TtlPolicy::default(),
-            buffer: VecDeque::with_capacity(PATTERN_LENGTH),
-            active_gaps: Vec::new(),
-            historical_gaps: Vec::new(),
-            expired_gaps: Vec::new(),
+            ..self
         }
     }
 
@@ -296,7 +302,7 @@ impl StreamingFairValueGap {
         &self.active_gaps
     }
     pub fn historical_gaps(&self) -> &[FairValueGap<ClosedState>] {
-        &self.historical_gaps
+        &self.closed_gaps
     }
     pub fn expired_gaps(&self) -> &[FairValueGap<ExpiredState>] {
         &self.expired_gaps
@@ -346,8 +352,8 @@ impl StreamingIndicator for StreamingFairValueGap {
     fn update(&mut self, indexed_candle: Self::Input) -> Self::Output<'_> {
         // 1. Process active gaps against the new candle
         let ttl = self.ttl_policy;
-        let mut closed_transfer = Vec::new();
-        let mut expired_transfer = Vec::new();
+        let closed_gaps = &mut self.closed_gaps;
+        let expired_gaps = &mut self.expired_gaps;
 
         self.active_gaps.retain_mut(|gap_ref| {
             match gap_ref.clone().process_candle(&indexed_candle, ttl) {
@@ -356,18 +362,15 @@ impl StreamingIndicator for StreamingFairValueGap {
                     true // Keep in active
                 }
                 FairValueGapStatus::Closed(closed_gap) => {
-                    closed_transfer.push(closed_gap);
+                    closed_gaps.push(closed_gap);
                     false // Remove from active
                 }
                 FairValueGapStatus::Expired(expired_gap) => {
-                    expired_transfer.push(expired_gap);
+                    expired_gaps.push(expired_gap);
                     false // Remove from active
                 }
             }
         });
-
-        self.historical_gaps.extend(closed_transfer);
-        self.expired_gaps.extend(expired_transfer);
 
         // 2. Update buffer and detect new gaps
         if self.buffer.len() >= PATTERN_LENGTH {
@@ -385,7 +388,7 @@ impl StreamingIndicator for StreamingFairValueGap {
     fn reset(&mut self) {
         self.buffer.clear();
         self.active_gaps.clear();
-        self.historical_gaps.clear();
+        self.closed_gaps.clear();
         self.expired_gaps.clear();
     }
 }
@@ -393,7 +396,6 @@ impl StreamingIndicator for StreamingFairValueGap {
 mod tests {
     use super::*;
     use std::f64::EPSILON;
-    // Assuming Quantity is your domain type for volume based on the HHLL tests
     use crate::data::{domain::Quantity, event::Ohlcv};
 
     // ==========================================
@@ -448,10 +450,18 @@ mod tests {
         // Bullish Gap requires: gap_up > 0 => C3.low > C1.high
         // Bearish Gap requires: gap_down > 0 => C1.low > C3.high
         // For a valid candle, High >= Low always.
-        // If both gaps existed: C3.low > C1.high >= C1.low > C3.high
-        // This transitively means C3.low > C3.high, which is physically impossible.
+        // If both gaps existed:
+        // - gap_up: C3.low > C1.high > 0
+        // - gap_down: C1.low > C3.high > 0
+        //
+        // As C1.low is greater than C3.high (gap_down) and C3.high >= C3.low (valid candle),
+        // we get C1.low > C3.high >= C3.low > C1.high > 0, by extending the left side of the
+        // inequality of gap_up.
+        // 
+        // This transitively means C1.low > C1.high, which is a contradiction. Hence, the gap_up
+        // and gap_down cannot both exist simultaneously.
 
-        let mut fvg = StreamingFairValueGap::new(0.1);
+        let mut fvg = StreamingFairValueGap::default().with_min_gap_size(0.1);
 
         // Feed an erratic sequence to ensure the math holds and the debug_assert never fires
         let trajectory = vec![
@@ -464,7 +474,6 @@ mod tests {
             let _ = fvg.update(c);
         }
 
-        // The debug_assert! in detect_gap mathematically guarantees this state.
         assert_eq!(fvg.active_gaps.len(), 0);
     }
 
@@ -474,7 +483,7 @@ mod tests {
 
     #[test]
     fn filters_noise_below_min_gap_size() {
-        let mut indicator = StreamingFairValueGap::new(2.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(2.0);
 
         // Gap size will be 11.0 - 10.0 = 1.0.
         // Since 1.0 < min_gap_size (2.0), it must be rejected as noise.
@@ -487,9 +496,9 @@ mod tests {
 
     #[test]
     fn detects_bullish_and_bearish_fvgs() {
-        let mut indicator = StreamingFairValueGap::new(1.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
-        // --- Bullish Sequence ---
+        // === Bullish Sequence ===
         indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 5., 8.)); // C1 High = 10
         indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 12., 8., 11.)); // C2
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 18.)); // C3 Low = 15
@@ -503,7 +512,7 @@ mod tests {
 
         indicator.reset();
 
-        // --- Bearish Sequence ---
+        // === Bearish Sequence ===
         indicator.update(candle(4, "2026-05-24T10:00:00Z", 20., 25., 20., 22.)); // C1 Low = 20
         indicator.update(candle(5, "2026-05-24T10:01:00Z", 18., 22., 15., 16.)); // C2
         indicator.update(candle(6, "2026-05-24T10:02:00Z", 12., 15., 10., 11.)); // C3 High = 15
@@ -522,7 +531,7 @@ mod tests {
 
     #[test]
     fn partial_fill_updates_active_state_and_clamps() {
-        let mut indicator = StreamingFairValueGap::new(1.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0, Size=5.0
         indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 5., 8.));
@@ -533,7 +542,7 @@ mod tests {
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 12.5, 17.));
 
         assert_eq!(indicator.active_gaps.len(), 1);
-        assert_eq!(indicator.historical_gaps.len(), 0); // Still active
+        assert_eq!(indicator.closed_gaps.len(), 0); // Still active
 
         let gap = &indicator.active_gaps[0];
         assert_eq!(gap.state().touch_count(), 1);
@@ -549,7 +558,7 @@ mod tests {
 
     #[test]
     fn full_fill_migrates_gap_to_historical() {
-        let mut indicator = StreamingFairValueGap::new(1.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
         // 1. Create Bearish Gap: Top=20.0, Bottom=15.0, Size=5.0
         indicator.update(candle(1, "2026-05-24T10:00:00Z", 20., 25., 20., 22.)); // C1 Low=20
@@ -557,7 +566,7 @@ mod tests {
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 12., 15., 10., 11.)); // C3 High=15
 
         assert_eq!(indicator.active_gaps.len(), 1);
-        assert_eq!(indicator.historical_gaps.len(), 0);
+        assert_eq!(indicator.closed_gaps.len(), 0);
 
         // 2. Miss (Price drops further away from the gap)
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 10., 12., 5., 8.));
@@ -573,12 +582,12 @@ mod tests {
             "Gap should be removed from active pool"
         );
         assert_eq!(
-            indicator.historical_gaps.len(),
+            indicator.closed_gaps.len(),
             1,
             "Gap should be migrated to history"
         );
 
-        let closed = &indicator.historical_gaps[0];
+        let closed = &indicator.closed_gaps[0];
         assert_eq!(closed.direction(), FairValueGapDirection::Bearish);
         assert_f64_eq(closed.state().max_fill_percentage(), 1.0); // Full fill is exactly 1.0
         assert_eq!(closed.state().touch_count(), 1); // Only took 1 touch to close
@@ -587,7 +596,7 @@ mod tests {
 
     #[test]
     fn boundary_exact_tick_is_a_miss() {
-        let mut indicator = StreamingFairValueGap::new(1.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
         // Create Bullish Gap: Top=15.0, Bottom=10.0
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
@@ -610,7 +619,7 @@ mod tests {
 
     #[test]
     fn multiple_gaps_tracked_and_filled_independently() {
-        let mut indicator = StreamingFairValueGap::new(1.0);
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
 
         // 1. Create Bullish Gap A (10 -> 15)
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
@@ -653,7 +662,7 @@ mod tests {
     #[test]
     fn ttl_expires_after_n_bars() {
         // Expire if 2 or more bars have closed since creation
-        let mut indicator = StreamingFairValueGap::new(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 is the RHS candle, so creation_index = 3
@@ -695,7 +704,7 @@ mod tests {
     fn ttl_expires_after_time_duration() {
         // Expire if 5 minutes have passed since creation
         let mut indicator =
-            StreamingFairValueGap::new(1.0).with_ttl_policy(TtlPolicy::Time(Duration::minutes(5)));
+            StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Time(Duration::minutes(5)));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0
         // C3 close_timestamp = "10:03:00Z"
@@ -717,7 +726,7 @@ mod tests {
 
     #[test]
     fn expired_state_preserves_partial_fill_history() {
-        let mut indicator = StreamingFairValueGap::new(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
 
         // 1. Create Bullish Gap: Top=15.0, Bottom=10.0, Size=5.0
         indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
@@ -742,5 +751,60 @@ mod tests {
             "Should preserve the touch count before expiration"
         );
         assert_f64_eq(expired.state().final_fill_percentage(), 0.5);
+    }
+
+    #[test]
+    fn ttl_policy_filled_never_expires() {
+        // TtlPolicy::Filled ist der Standard. Die Lücke darf niemals von allein verfallen.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Filled);
+
+        // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // 2. Einen gewaltigen Sprung in die Zukunft simulieren (Index 1000, 10 Stunden später)
+        // Der Preis bleibt weit über der Lücke, sodass sie nicht gefüllt wird.
+        indicator.update(candle(1000, "2026-05-26T20:00:00Z", 20., 25., 20., 22.));
+
+        assert_eq!(
+            indicator.active_gaps().len(),
+            1,
+            "Gap with TtlPolicy::Filled must remain active indefinitely"
+        );
+        assert_eq!(indicator.expired_gaps().len(), 0);
+    }
+
+    #[test]
+    fn expiration_takes_precedence_over_fill() {
+        // Dieser Test dokumentiert die Invariante, dass das TTL geprüft wird,
+        // BEVOR die Preis-Action der Kerze gegen die Lücke evaluiert wird.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0).with_ttl_policy(TtlPolicy::Bars(2));
+
+        // 1. Bullish Gap erstellen: Top=15.0, Bottom=10.0 (Creation Index = 3)
+        indicator.update(candle(1, "2026-05-26T10:01:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-26T10:02:00Z", 10., 12., 8., 11.));
+        indicator.update(candle(3, "2026-05-26T10:03:00Z", 15., 20., 15., 18.));
+
+        // 2. Index 5 ist exakt 2 Bars nach Index 3. Das löst das Expiration-Limit aus.
+        // Obwohl diese Kerze massiv fällt (Low=5.0) und die Lücke eigentlich komplett schließen würde,
+        // muss sie als 'Expired' (und nicht als 'Closed') markiert werden, da das TTL Vorrang hat.
+        indicator.update(candle(5, "2026-05-26T10:05:00Z", 20., 20., 5., 8.));
+
+        assert_eq!(indicator.active_gaps().len(), 0);
+        assert_eq!(
+            indicator.historical_gaps().len(),
+            0,
+            "Gap should NOT be marked as closed"
+        );
+        assert_eq!(
+            indicator.expired_gaps().len(),
+            1,
+            "Gap MUST be marked as expired due to operation order"
+        );
+
+        let expired = &indicator.expired_gaps()[0];
+        // Da die Lücke verfiel, bevor der Drop ausgewertet wurde, bleibt der Fill-Status bei 0.0
+        assert_f64_eq(expired.state().final_fill_percentage(), 0.0);
     }
 }

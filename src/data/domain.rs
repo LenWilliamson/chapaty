@@ -642,6 +642,10 @@ pub enum FutureRoot {
     NzdUsd,
     #[strum(serialize = "btc")]
     Btc,
+    #[strum(serialize = "es")]
+    EminiSp500,
+    #[strum(serialize = "nq")]
+    EminiNasdaq100,
 }
 
 #[derive(
@@ -905,12 +909,18 @@ impl TryFrom<RpcEconomicImportance> for EconomicEventImpact {
 pub enum CountryCode {
     /// Australia
     Au,
+    /// Brazil
+    Br,
     /// Canada
     Ca,
+    /// China
+    Cn,
     /// Euro Zone
     Ez,
     /// United Kingdom
     Gb,
+    /// India
+    In,
     /// Japan
     Jp,
     /// New Zealand
@@ -985,7 +995,6 @@ impl Instrument for SpotPair {
     }
 
     fn tick_value_usd(&self) -> f64 {
-        // For spot, 1 unit of movement = 1 USD per unit held
         self.tick_size()
     }
 }
@@ -999,13 +1008,18 @@ impl Instrument for FutureRoot {
             FutureRoot::GbpUsd => 0.0001,
             FutureRoot::JpyUsd => 0.0000005,
             FutureRoot::Btc => 5.0,
+            FutureRoot::EminiSp500 | FutureRoot::EminiNasdaq100 => 0.25,
         }
     }
 
     fn tick_value_usd(&self) -> f64 {
         match self {
             FutureRoot::EurUsd | FutureRoot::GbpUsd | FutureRoot::JpyUsd => 6.25,
-            FutureRoot::AudUsd | FutureRoot::CadUsd | FutureRoot::NzdUsd => 5.0,
+            FutureRoot::AudUsd
+            | FutureRoot::CadUsd
+            | FutureRoot::NzdUsd
+            | FutureRoot::EminiNasdaq100 => 5.0,
+            FutureRoot::EminiSp500 => 12.50,
             FutureRoot::Btc => 25.0,
         }
     }
