@@ -149,9 +149,10 @@ pub enum MarketStructureEvent {
 /// Tiebreaker policy when two adjacent bars share the same extreme price.
 ///
 /// Affects two situations:
-/// 1. **Plateaus inside the lookback window**: when the candidate bar ties with one of
-///    its neighbors for the highest/lowest price, this rule decides whether the candidate
-///    still qualifies as a pivot.
+/// 1. **Plateaus inside the lookback window**: when a sequence of adjacent bars shares the
+///    exact same extreme price, they will all eventually pass through the center candidate
+///    position. This rule applies strict/inclusive inequalities to ensure only one of them
+///    (the earliest or latest) actually triggers a valid pivot.
 /// 2. **Conflicts under [`AlternationMode::Alternating`]**: when a new pivot of the same
 ///    type as the active one is detected and their prices are equal, this rule decides
 ///    which one wins.
@@ -292,7 +293,7 @@ impl ZigZagPeriod {
 ///
 /// 1. Each incoming bar is appended to an internal rolling window of size
 ///    `left_bars + right_bars + 1` (see [`ZigZagPeriod`]).
-/// 2. The bar at the center of that window is the *candidate*. It is considered a
+/// 2. The bar at the center of that window is the _candidate_. It is considered a
 ///    pivot if it is the most extreme bar in the window (highest for a swing high,
 ///    lowest for a swing low). Ties are resolved per [`ExtremeTiebreaker`].
 /// 3. When a candidate qualifies, it is classified relative to the most recent
@@ -302,8 +303,7 @@ impl ZigZagPeriod {
 ///    pivots appear without an intervening opposite-type pivot.
 ///
 /// Because the candidate sits at the middle of the window, every emitted pivot is
-/// confirmed with a lag of `right_bars` bars — that's the price of removing
-/// hindsight bias from swing detection.
+/// confirmed with a lag of `right_bars` bars.
 ///
 /// # Output stream
 ///
@@ -328,49 +328,22 @@ pub struct StreamingHhll {
     alternation_mode: AlternationMode,
 
     // === Internal State ===
-    /// The size of the rolling window buffer required to evaluate `left_bars` and `right_bars`.
-    window_size: usize,
-
-    /// The rolling window buffer required to evaluate `left_bars` and `right_bars`.
     buffer: VecDeque<IndexedOhlcv>,
-
-    /// The active pivot currently tracking the trailing edge of the market structure.
-    ///
-    /// If [`AlternationMode::Alternating`] is active, this pivot remains mutable.
-    /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
-    /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
     active_pivot: Option<PivotPoint>,
-
-    /// The historical, safely locked-in `PivotType::High` used as a baseline for relative classification.
-    ///
-    /// When a new High vertex is detected, it is compared against this anchor to determine if it
-    /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
     anchor_high: Option<PivotPoint>,
-
-    /// The historical, safely locked-in `PivotType::Low` used as a baseline for relative classification.
-    ///
-    /// When a new Low vertex is detected, it is compared against this anchor to determine if it
-    /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
     anchor_low: Option<PivotPoint>,
-
-    /// Chronological history of all safely locked-in pivots.
-    ///
-    /// This vector guarantees perfect time-order. To iterate from latest to earliest,
-    /// you simply call `self.history.iter().rev()`.
     history: Vec<PivotPoint>,
 }
 
 impl Default for StreamingHhll {
     fn default() -> Self {
         let zig_zag_period = ZigZagPeriod::default();
-        let window_size = zig_zag_period.buffer_size();
         Self {
             zig_zag_period,
             price_source: PriceSource::default(),
             tiebreaker: ExtremeTiebreaker::default(),
             alternation_mode: AlternationMode::default(),
-            window_size,
-            buffer: VecDeque::with_capacity(window_size),
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
             active_pivot: None,
             anchor_high: None,
             anchor_low: None,
@@ -381,11 +354,9 @@ impl Default for StreamingHhll {
 
 impl StreamingHhll {
     pub fn with_zig_zag_period(self, zig_zag_period: ZigZagPeriod) -> Self {
-        let window_size = zig_zag_period.buffer_size();
         Self {
             zig_zag_period,
-            window_size,
-            buffer: VecDeque::with_capacity(window_size),
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
             ..self
         }
     }
@@ -408,6 +379,35 @@ impl StreamingHhll {
         }
     }
 
+    /// The active pivot currently tracking the trailing edge of the market structure.
+    ///
+    /// If [`AlternationMode::Alternating`] is active, this pivot remains mutable.
+    /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
+    /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
+    pub fn active_pivot(&self) -> Option<PivotPoint> {
+        self.active_pivot
+    }
+
+    /// The historical, safely locked-in `PivotType::High` used as a baseline for relative classification.
+    ///
+    /// When a new High vertex is detected, it is compared against this anchor to determine if it
+    /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
+    pub fn anchor_high(&self) -> Option<PivotPoint> {
+        self.anchor_high
+    }
+
+    /// The historical, safely locked-in `PivotType::Low` used as a baseline for relative classification.
+    ///
+    /// When a new Low vertex is detected, it is compared against this anchor to determine if it
+    /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
+    pub fn anchor_low(&self) -> Option<PivotPoint> {
+        self.anchor_low
+    }
+
+    /// Chronological history of all safely locked-in pivots.
+    ///
+    /// This vector guarantees perfect time-order. To iterate from latest to earliest,
+    /// you simply call `self.history.iter().rev()`.
     pub fn history(&self) -> &[PivotPoint] {
         &self.history
     }
@@ -466,44 +466,72 @@ impl StreamingHhll {
         let candidate = self.candidate();
         let current_high_price = PivotType::High.extract_price(candidate.candle, self.price_source);
 
-        if let Some(active) = self.active_pivot {
-            // Is there an alternation conflict? (Two Highs in a row under Alternating mode)
-            let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
-                && active.pivot_type() == PivotType::High;
-
-            if is_alternation_conflict {
-                // Conflict Resolution
+        // 1. Evaluate the candidate against the active pivot
+        let resolution = match self.active_pivot {
+            Some(active)
+                if self.alternation_mode == AlternationMode::Alternating
+                    && active.pivot_type() == PivotType::High =>
+            {
+                // Alternation Conflict: We have two Highs in a row.
                 let overwrite = match self.tiebreaker {
-                    // If Earliest is active, the first peak should hold its ground.
                     ExtremeTiebreaker::Earliest => current_high_price > active.price,
-                    // If Latest is active, the second peak should replace the first one.
                     ExtremeTiebreaker::Latest => current_high_price >= active.price,
                 };
 
-                if !overwrite {
-                    return None; // Discard candidate, maintain the existing peak.
+                if overwrite {
+                    CandidateResolution::ReplaceActive
+                } else {
+                    CandidateResolution::Discard
                 }
-            } else {
-                // State Lock & History Invariant
-                // We unconditionally lock the previous pivot because it is confirmed.
-                match active.pivot_type() {
-                    PivotType::High => self.anchor_high = Some(active),
-                    PivotType::Low => self.anchor_low = Some(active),
+            }
+            Some(_) | None => CandidateResolution::ConfirmActive,
+        };
+
+        // 2. Execute the state transition
+        match resolution {
+            CandidateResolution::Discard => return None,
+            CandidateResolution::ReplaceActive => {
+                // Do nothing to the history. We will simply overwrite `self.active_pivot`
+                // with the new candidate at the end of the method.
+            }
+            CandidateResolution::ConfirmActive => {
+                // The active pivot is safe. Lock it into the anchors and history.
+                if let Some(active) = self.active_pivot {
+                    match active.pivot_type() {
+                        PivotType::High => self.anchor_high = Some(active),
+                        PivotType::Low => self.anchor_low = Some(active),
+                    }
+                    self.history.push(active);
                 }
-                self.history.push(active);
             }
         }
 
+        // 3. Classify the new pivot
         let (trend, event) = match self.anchor_high {
             Some(anchor) => match current_high_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Greater) => {
+                    use MarketStructureSequence::*;
+
                     let market_structure_event = match self.anchor_low.map(|l| l.trend) {
-                        Some(MarketStructureSequence::LowerLow) => {
-                            MarketStructureEvent::MarketStructureShift
+                        Some(LowerLow) => MarketStructureEvent::MarketStructureShift,
+
+                        Some(HigherLow | EqualLow | UnclassifiedLow) | None => {
+                            MarketStructureEvent::BreakOfStructure
                         }
-                        _ => MarketStructureEvent::BreakOfStructure,
+
+                        Some(
+                            invalid_trend @ (HigherHigh | LowerHigh | EqualHigh | UnclassifiedHigh),
+                        ) => {
+                            tracing::error!(
+                                reason = "corrupted_state",
+                                anchor_low_trend = ?invalid_trend,
+                                "anchor_low contains a High pivot sequence. Defaulting to BreakOfStructure."
+                            );
+                            MarketStructureEvent::BreakOfStructure
+                        }
                     };
-                    (MarketStructureSequence::HigherHigh, market_structure_event)
+
+                    (HigherHigh, market_structure_event)
                 }
                 Some(Ordering::Less) => (
                     MarketStructureSequence::LowerHigh,
@@ -529,6 +557,7 @@ impl StreamingHhll {
             ),
         };
 
+        // 4. Construct and emit the new pivot
         let new_pivot = PivotPoint {
             indexed_candle: candidate,
             price: current_high_price,
@@ -555,44 +584,74 @@ impl StreamingHhll {
         let candidate = self.candidate();
         let current_low_price = PivotType::Low.extract_price(candidate.candle, self.price_source);
 
-        if let Some(active) = self.active_pivot {
-            // Is there an alternation conflict? (Two Lows in a row under Alternating mode)
-            let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
-                && active.pivot_type() == PivotType::Low;
-
-            if is_alternation_conflict {
-                // Conflict Resolution
+        // 1. Evaluate the candidate against the active pivot
+        let resolution = match self.active_pivot {
+            Some(active)
+                if self.alternation_mode == AlternationMode::Alternating
+                    && active.pivot_type() == PivotType::Low =>
+            {
+                // Alternation Conflict: We have two Lows in a row.
                 let overwrite = match self.tiebreaker {
-                    // If Earliest is active, the first trough should hold its ground.
                     ExtremeTiebreaker::Earliest => current_low_price < active.price,
-                    // If Latest is active, the second trough should replace the first one.
                     ExtremeTiebreaker::Latest => current_low_price <= active.price,
                 };
 
-                if !overwrite {
-                    return None; // Discard candidate, maintain the existing trough.
+                if overwrite {
+                    CandidateResolution::ReplaceActive
+                } else {
+                    CandidateResolution::Discard
                 }
-            } else {
-                // State Lock & History Invariant
-                // We unconditionally lock the previous pivot because it is confirmed.
-                match active.pivot_type() {
-                    PivotType::High => self.anchor_high = Some(active),
-                    PivotType::Low => self.anchor_low = Some(active),
+            }
+            Some(_) | None => CandidateResolution::ConfirmActive,
+        };
+
+        // 2. Execute the state transition
+        match resolution {
+            CandidateResolution::Discard => return None,
+            CandidateResolution::ReplaceActive => {
+                // Do nothing to the history. We will simply overwrite `self.active_pivot`
+                // with the new candidate at the end of the method.
+            }
+            CandidateResolution::ConfirmActive => {
+                // The active pivot is safe. Lock it into the anchors and history.
+                if let Some(active) = self.active_pivot {
+                    match active.pivot_type() {
+                        PivotType::High => self.anchor_high = Some(active),
+                        PivotType::Low => self.anchor_low = Some(active),
+                    }
+                    self.history.push(active);
                 }
-                self.history.push(active);
             }
         }
 
+        // 3. Classify the new pivot
         let (trend, event) = match self.anchor_low {
             Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Less) => {
+                    use MarketStructureSequence::*;
+
+                    // Explicitly match all variants to prevent black holes
                     let market_structure_event = match self.anchor_high.map(|h| h.trend) {
-                        Some(MarketStructureSequence::HigherHigh) => {
-                            MarketStructureEvent::MarketStructureShift
+                        Some(HigherHigh) => MarketStructureEvent::MarketStructureShift,
+
+                        Some(LowerHigh | EqualHigh | UnclassifiedHigh) | None => {
+                            MarketStructureEvent::BreakOfStructure
                         }
-                        _ => MarketStructureEvent::BreakOfStructure,
+
+                        // Explicitly trap invalid states that the old `_` was swallowing
+                        Some(
+                            invalid_trend @ (HigherLow | LowerLow | EqualLow | UnclassifiedLow),
+                        ) => {
+                            tracing::error!(
+                                reason = "corrupted_state",
+                                anchor_high_trend = ?invalid_trend,
+                                "anchor_high contains a Low pivot sequence. Defaulting to BreakOfStructure."
+                            );
+                            MarketStructureEvent::BreakOfStructure
+                        }
                     };
-                    (MarketStructureSequence::LowerLow, market_structure_event)
+
+                    (LowerLow, market_structure_event)
                 }
                 Some(Ordering::Greater) => (
                     MarketStructureSequence::HigherLow,
@@ -618,6 +677,7 @@ impl StreamingHhll {
             ),
         };
 
+        // 4. Construct and emit the new pivot
         let new_pivot = PivotPoint {
             indexed_candle: candidate,
             price: current_low_price,
@@ -645,12 +705,13 @@ impl StreamingIndicator for StreamingHhll {
     type Output<'a> = Option<(MarketStructureEvent, PivotPoint)>;
 
     fn update(&mut self, indexed_candle: Self::Input) -> Self::Output<'_> {
+        let window_size = self.zig_zag_period.buffer_size();
         self.buffer.push_back(indexed_candle);
 
-        if self.buffer.len() < self.window_size {
+        if self.buffer.len() < window_size {
             return None;
         }
-        if self.buffer.len() > self.window_size {
+        if self.buffer.len() > window_size {
             self.buffer.pop_front();
         }
 
@@ -689,6 +750,21 @@ impl StreamingIndicator for StreamingHhll {
     }
 }
 
+// ================================================================================================
+// Helper Enum
+// ================================================================================================
+
+/// Represents how a new candidate resolves against the currently active pivot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CandidateResolution {
+    /// The candidate violates alternation and is weaker. Discard it.
+    Discard,
+    /// The candidate violates alternation but is stronger. Overwrite the active pivot.
+    ReplaceActive,
+    /// The candidate respects alternation. Lock the active pivot into history.
+    ConfirmActive,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -696,11 +772,49 @@ mod tests {
     use std::f64::EPSILON;
 
     /*
-     *
-     * Record unittest to handle the inial classification correct. Is it BOS or NoChange?
-     * Unittest: impl From<MarketStructureSequence> for PivotType
-     *
-     */
+    *
+    * Record unittest to handle the inial classification correct. Is it BOS or NoChange?
+    * Unittest: impl From<MarketStructureSequence> for PivotType
+    * unittest: left_partition and candidate and other StreamingHll helper
+    * Comprehensive edge caess for the ExtremeTiebreaker: Plateaus inside the lookback window: when a sequence of adjacent bars shares the exact same extreme price, they will all eventually pass through the center candidate position. This rule applies strict/inclusive inequalities to ensure only one of them (the earliest or latest) actually triggers a valid pivot:
+
+    ou are exactly right that the candidate is always the physical middle bar of the VecDeque. Your mental model of the array is 100% correct.
+    But here is the trick: the array is moving. Because this is a streaming indicator, a plateau of identical prices will slide through your window one bar at a time. This means every bar in that plateau will eventually get a turn sitting in the "middle" candidate seat. The tiebreaker doesn't choose an index inside the window; it decides which of those candidates is allowed to return true when it takes its turn in the middle.
+    Let’s trace a visual example to see why the tiebreaker is strictly necessary to prevent duplicate pivots.
+    Imagine a window size of 3 (left_bars = 1, right_bars = 1).
+    The price action hits a flat top of 15 across three bars (A, B, and C):
+    Prices: [10, 15(A), 15(B), 15(C), 10]
+    Here is how the window slides over time:
+    Scenario 1: No Tiebreaker (Inclusive checks on both sides)
+    If check_extremum simply checked candidate >= neighbor on both sides:
+    Tick 1 [10, 15(A), 15(B)]: Candidate is 15(A).
+    Left: 15 >= 10 (Pass)
+    Right: 15 >= 15 (Pass)
+    Result: Emits Pivot A.
+    Tick 2 [15(A), 15(B), 15(C)]: Candidate is 15(B).
+    Left: 15 >= 15 (Pass)
+    Right: 15 >= 15 (Pass)
+    Result: Emits Pivot B.
+    Tick 3 [15(B), 15(C), 10]: Candidate is 15(C).
+    Left: 15 >= 15 (Pass)
+    Right: 15 >= 10 (Pass)
+    Result: Emits Pivot C.
+    Without the tiebreaker, a flat top of 3 bars results in three identical PivotPoint events firing back-to-back.
+    Scenario 2: With ExtremeTiebreaker::Earliest
+    Now look at your code's logic for Earliest, which makes the Left side strict (>) and the Right side inclusive (>=):
+    Tick 1 [10, 15(A), 15(B)]: Candidate is 15(A).
+    Left: 15 > 10 (Pass)
+    Right: 15 >= 15 (Pass)
+    Result: Emits Pivot A.
+    Tick 2 [15(A), 15(B), 15(C)]: Candidate is 15(B).
+    Left: 15 > 15 (FAIL).
+    Result: Ignored.
+    Tick 3 [15(B), 15(C), 10]: Candidate is 15(C).
+    Left: 15 > 15 (FAIL).
+    Result: Ignored.
+
+    *
+    */
 
     // ==========================================
     // === 1. Mocks & Helpers ===
