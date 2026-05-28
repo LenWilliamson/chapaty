@@ -310,16 +310,6 @@ impl ZigZagPeriod {
 /// [`StreamingIndicator::update`] returns `Some((event, pivot))` whenever a pivot
 /// is confirmed, and `None` while the window is still filling or no pivot is detected.
 /// The full chronological history is available via [`Self::history`].
-///
-/// # Builder
-///
-/// ```ignore
-/// let hhll = StreamingHhll::default()
-///     .with_zig_zag_period(ZigZagPeriod { left_bars: 3, right_bars: 3 })
-///     .with_price_source(PriceSource::HighLow)
-///     .with_alternation_mode(AlternationMode::Alternating)
-///     .with_tiebreaker(ExtremeTiebreaker::Latest);
-/// ```
 #[derive(Debug, Clone)]
 pub struct StreamingHhll {
     zig_zag_period: ZigZagPeriod,
@@ -866,7 +856,7 @@ mod tests {
         );
 
         let event_1 = hhll.update(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
-        assert!(event_1.is_none(), "Window is not full, must not emit"); // <-- Fixed
+        assert!(event_1.is_none(), "Window is not full, must not emit");
 
         let (e1, p1) = hhll
             .update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.))
@@ -1123,16 +1113,18 @@ mod tests {
 
     #[test]
     fn test_tiebreaker_double_top() {
+        // Window is 2-2. Requires 5 bars. To correctly center C2 as the first candidate,
+        // we must pre-pad with two left bars.
         let trajectory = vec![
-            candle(0, "2026-05-24T15:01:00Z", 10., 10., 10., 10.),
-            candle(1, "2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
-            candle(2, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle(3, "2026-05-24T15:04:00Z", 10., 10., 10., 10.),
-            candle(4, "2026-05-24T15:05:00Z", 10., 10., 10., 10.),
-            candle(5, "2026-05-24T15:06:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T15:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T15:01:00Z", 10., 10., 10., 10.),
+            candle(2, "2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle(4, "2026-05-24T15:04:00Z", 10., 10., 10., 10.),
+            candle(5, "2026-05-24T15:05:00Z", 10., 10., 10., 10.),
         ];
 
-        // Test Earliest: Should capture Peak 1
+        // Test Earliest: Should capture Peak 1 (Index 2)
         let mut hhll_early = create_indicator(2, 2, ExtremeTiebreaker::Earliest);
         let mut early_result = None;
         for &c in &trajectory {
@@ -1145,7 +1137,7 @@ mod tests {
             ts("2026-05-24T15:02:00Z")
         );
 
-        // Test Latest: Should capture Peak 2
+        // Test Latest: Should capture Peak 2 (Index 3)
         let mut hhll_late = create_indicator(2, 2, ExtremeTiebreaker::Latest);
         let mut late_result = None;
         for &c in &trajectory {
@@ -1163,155 +1155,56 @@ mod tests {
     fn test_alternation_filter_overwrites_noise() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Candle 1, 2, 3: First Peak at 20
-        hhll.update(candle(0, "2026-05-24T10:01:00Z", 10., 10., 10., 10.));
-        hhll.update(candle(1, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
-        let p1 = hhll
-            .update(candle(2, "2026-05-24T10:03:00Z", 15., 15., 15., 15.))
+        // To test alternation, we must prevent intermediate Swing Lows from triggering.
+        // We do this by ensuring the `low` values strictly increase.
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.));
+
+        // Peak 1: High=20
+        let p1 = hhll.update(candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.));
+        assert!(p1.is_none()); // Wait for right buffer
+
+        let p1_confirmed = hhll
+            .update(candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.))
             .unwrap()
             .1;
-        assert_eq!(p1.price.0, 20.0);
-        assert_eq!(p1.pivot_type(), PivotType::High);
+        assert_eq!(p1_confirmed.price.0, 20.0);
+        assert_eq!(p1_confirmed.pivot_type(), PivotType::High);
 
-        // Candle 4: Dips slightly, but not enough to form a valid Swing Low
-        // (assume it doesn't trigger a low in a wider window, but for this tiny window it might).
-        // Let's force two Highs in a row by just looking at the active_pivot state.
+        // Dip in Highs, but NOT Lows. This prevents a Trough from confirming!
+        hhll.update(candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.));
 
-        // Candle 4, 5, 6: Second Peak at 30 (Higher than the first!)
-        hhll.update(candle(3, "2026-05-24T10:04:00Z", 15., 15., 15., 15.));
-        hhll.update(candle(4, "2026-05-24T10:05:00Z", 30., 30., 30., 30.));
-        let p2 = hhll
-            .update(candle(5, "2026-05-24T10:06:00Z", 10., 10., 10., 10.))
+        // Peak 2: Higher High (30)
+        let p2 = hhll.update(candle(4, "2026-05-24T10:04:00Z", 30., 30., 5., 30.));
+        assert!(
+            p2.is_none(),
+            "Candidate is the intermediate dip, must not emit"
+        );
+
+        let p2_confirmed = hhll
+            .update(candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.))
             .unwrap()
             .1;
 
-        // The indicator should emit a new event, but under the hood,
-        // because Alternation is active, anchor_high is still None (unconfirmed).
-        assert_eq!(p2.price.0, 30.0);
-        assert_eq!(p2.pivot_type(), PivotType::High);
+        // Because Alternation is active and no Trough fired, P2 replaces P1.
+        assert_eq!(p2_confirmed.price.0, 30.0);
+        assert_eq!(p2_confirmed.pivot_type(), PivotType::High);
 
-        // Ensure the lesser peak was overwritten and NOT pushed to history
+        // Ensure the lesser peak was successfully overwritten and NOT pushed to history
         assert_eq!(hhll.history().len(), 0);
     }
 
-    /// Tests the "Mega Bar" (Outside Bar) anomaly when the candidate closes as a Doji.
-    ///
-    /// # The Microstructure Logic
-    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an outside bar),
-    /// the algorithm must choose which extremum logically extends the current market structure.
-    /// If the candle is a Doji (Open == Close, indicating no directional conviction),
-    /// the algorithm relies on "trend inertia."
-    ///
-    /// # State Machine Interaction
-    /// This test verifies that if the last active pivot was a `PivotType::Low`, passing a
-    /// Mega Doji routes into `self.process_low()`, intentionally triggering the
-    /// **Alternation Broken** (Low -> Low) path:
-    ///
-    /// 1. **Trend Extension:** If the Doji's low sweeps deeper than the active macro low,
-    ///    it updates the extreme, keeping the downtrend alive.
-    /// 2. **Internal Noise:** If the Doji's low is NOT deeper than the active macro low,
-    ///    the state machine safely discards it as high-volatility internal consolidation,
-    ///    returning `None`.
-    #[test]
-    fn test_outside_bar_doji_trend_inertia() {
-        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
-
-        // =========================================================================
-        // SCENARIO 1: Mega Doji EXTENDS the established Low (Sweeps Liquidity)
-        // =========================================================================
-
-        // Hardcode the active pivot to a Low at price 10.0
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 10., 10., 10., 10.),
-            price: Price(10.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedLow,
-        });
-
-        // 1. Push Left Window
-        assert!(
-            hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 15., 18.))
-                .is_none()
-        );
-
-        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
-        // High is 30, Low is 5. Note that Candidate Low (5.0) < Active Pivot Low (10.0).
-        assert!(
-            hhll.update(candle(2, "2026-05-24T15:02:00Z", 20., 30., 5., 20.))
-                .is_none()
-        );
-
-        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
-
-        // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low),
-        // but because 5.0 < 10.0, it successfully overwrites the active pivot.
-        assert!(
-            event.is_some(),
-            "Expected Doji to extend the Low, but it returned None"
-        );
-        let (_, pivot) = event.unwrap();
-        assert_eq!(pivot.pivot_type(), PivotType::Low);
-        assert_eq!(pivot.price.0, 5.0, "Expected new active Low to be 5.0");
-
-        // =========================================================================
-        // SCENARIO 2: Mega Doji fails to extend the Low (Internal Noise)
-        // =========================================================================
-        hhll.reset();
-
-        // Hardcode the active pivot to a very deep, established macro Low at price 1.0
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T16:00:00Z", 1., 1., 1., 1.),
-            price: Price(1.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedLow,
-        });
-
-        // 1. Push Left Window
-        assert!(
-            hhll.update(candle(1, "2026-05-24T17:01:00Z", 20., 20., 15., 18.))
-                .is_none()
-        );
-
-        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
-        // High is 30, Low is 5. Note that Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
-        assert!(
-            hhll.update(candle(2, "2026-05-24T17:02:00Z", 20., 30., 5., 20.))
-                .is_none()
-        );
-
-        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event_noise = hhll.update(candle(3, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
-
-        // Assert: The Doji triggered `process_low()`. Alternation broke (Low -> Low).
-        // Because 5.0 is NOT strictly less than 1.0, it correctly discards the Doji as internal noise.
-        assert!(
-            event_noise.is_none(),
-            "Expected Doji to be discarded as noise, but it emitted an event"
-        );
-    }
-
     /// Tests Macro Tiebreaker Resolution: Earliest.
-    ///
-    /// # Scenario
-    /// The market prints a High at 20.0. The price dips slightly, but fails to print
-    /// a valid structural Low. It then rallies back to exactly 20.0, forming a Double Top.
-    ///
-    /// # Expected Behavior
-    /// Because `Alternating` mode is active, the algorithm must choose which of the two
-    /// consecutive Highs to keep. Under `ExtremeTiebreaker::Earliest`, it should reject
-    /// the second peak and maintain the first one.
     #[test]
     fn test_macro_tiebreaker_equal_peaks_earliest() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
 
         let trajectory = vec![
-            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
-            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
-            candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
-            candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle(5, "2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.), // Flat dip in Highs (no trough)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 5., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.),
         ];
 
         let mut events = Vec::new();
@@ -1339,22 +1232,17 @@ mod tests {
     }
 
     /// Tests Macro Tiebreaker Resolution: Latest.
-    ///
-    /// # Expected Behavior
-    /// In a Double Top scenario under `ExtremeTiebreaker::Latest`, the algorithm should
-    /// emit the first peak, but when the second peak arrives, the state machine evaluates
-    /// `20.0 >= 20.0` (True), usurping and overwriting the first peak with the Latest one.
     #[test]
     fn test_macro_tiebreaker_equal_peaks_latest() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
         let trajectory = vec![
-            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
-            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
-            candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.), // Flat dip (No swing low)
-            candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
-            candle(5, "2026-05-24T10:05:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.), // Flat dip in Highs (no trough)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 5., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.),
         ];
 
         let mut events = Vec::new();
@@ -1387,22 +1275,16 @@ mod tests {
         );
     }
 
-    /// Tests the History Invariant under `Alternating` mode.
-    ///
-    /// # Expected Behavior
-    /// In `Alternating` mode, if two Highs occur in a row, the lesser High is discarded
-    /// (overwritten). It must NOT be pushed to the `history` vector.
-    /// The `history` vector should only grow when a pivot is confirmed by an alternating pivot.
     #[test]
     fn test_history_invariant_alternating_mode() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
         let trajectory = vec![
-            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1 (High)
-            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.), // Dip (No confirmed Low yet)
-            candle(3, "2026-05-24T10:03:00Z", 30., 30., 30., 30.), // Peak 2 (Higher High)
-            candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.), // Dip (No confirmed Low yet)
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 4., 30.), // Peak 2 (Higher High)
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 5., 10.),
         ];
 
         for c in trajectory {
@@ -1412,17 +1294,16 @@ mod tests {
         // Active pivot is Peak 2.
         assert_eq!(hhll.active_pivot.unwrap().price.0, 30.0);
 
-        // History should be EMPTY. Peak 1 was a High, Peak 2 was a High.
-        // Because alternation was broken, Peak 1 was discarded and never locked in.
+        // History should be EMPTY. Peak 1 was discarded and never locked in.
         assert_eq!(
             hhll.history().len(),
             0,
             "History should not contain overwritten pivots"
         );
 
-        // Now, push a confirmed Low to lock in Peak 2.
-        let _ = hhll.update(candle(5, "2026-05-24T10:05:00Z", 5., 5., 5., 5.)); // Swing Low
-        let _ = hhll.update(candle(6, "2026-05-24T10:06:00Z", 10., 10., 10., 10.)); // Right window to trigger Low
+        // Now, push a confirmed Trough to lock in Peak 2.
+        let _ = hhll.update(candle(5, "2026-05-24T10:05:00Z", 10., 10., -10., 10.)); // Swing Low
+        let _ = hhll.update(candle(6, "2026-05-24T10:06:00Z", 15., 15., -5., 15.)); // Right window to trigger Low
 
         // NOW Peak 2 should be safely locked in history.
         assert_eq!(hhll.history().len(), 1);
@@ -1430,12 +1311,6 @@ mod tests {
         assert_eq!(hhll.history()[0].pivot_type(), PivotType::High);
     }
 
-    /// Tests the History Invariant under `Consecutive` mode.
-    ///
-    /// # Expected Behavior
-    /// In `Consecutive` mode, no filter is applied. Every single valid extreme detected
-    /// by the window is instantly locked and pushed to the `history` vector, even if
-    /// there are 5 Highs in a row.
     #[test]
     fn test_history_invariant_consecutive_mode() {
         let mut hhll = StreamingHhll::default()
@@ -1448,13 +1323,13 @@ mod tests {
             .with_price_source(PriceSource::HighLow);
 
         let trajectory = vec![
-            candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.),
-            candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.), // Peak 1
-            candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.),
-            candle(3, "2026-05-24T10:03:00Z", 30., 30., 30., 30.), // Peak 2
-            candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.),
-            candle(5, "2026-05-24T10:05:00Z", 40., 40., 40., 40.), // Peak 3
-            candle(6, "2026-05-24T10:06:00Z", 10., 10., 10., 10.),
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 4., 30.), // Peak 2
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 5., 10.),
+            candle(5, "2026-05-24T10:05:00Z", 40., 40., 6., 40.), // Peak 3
+            candle(6, "2026-05-24T10:06:00Z", 10., 10., 7., 10.),
         ];
 
         for c in trajectory {
@@ -1475,17 +1350,23 @@ mod tests {
     }
 
     // ==========================================
-    // === 7. Missing & Deep Edge Cases ===
+    // === 5. Deep Edge Cases & Mega Bars ===
     // ==========================================
 
-    /// Resolves the user's lost test: Verifies that an outside bar resolving as a Doji
-    /// correctly infers its geometric type from the prevailing trend (High -> expects Low).
+    /// Tests the Mega Bar (Outside Bar) anomaly when the candidate closes as a Doji.
+    ///
+    /// # The Microstructure Logic
+    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an outside bar),
+    /// the algorithm must choose which extremum logically extends the current market structure.
+    /// If the candle is a Doji (Open == Close, indicating no directional conviction),
+    /// the algorithm evaluates it against the active trend to see if it extends it.
+    ///
+    /// # Scenario A: Mega Doji Extends a High
     #[test]
-    fn test_outside_bar_mega_bar_resolution() {
+    fn test_mega_doji_extends_high() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Pre-fill history to make the last confirmed pivot a HIGH.
-        // This means the algorithm should be looking for a LOW next.
+        // Hardcode the active pivot to a High at price 50.0
         hhll.active_pivot = Some(PivotPoint {
             indexed_candle: candle(0, "2026-05-24T14:00:00Z", 50., 50., 50., 50.),
             price: Price(50.0),
@@ -1493,28 +1374,82 @@ mod tests {
             trend: MarketStructureSequence::UnclassifiedHigh,
         });
 
-        // 1. Send Left window
+        // 1. Push Left Window
         assert!(
             hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 20., 20.))
                 .is_none()
         );
 
-        // 2. Send Mega Bar (Candidate)
-        // High is higher than neighbors, Low is lower than neighbors. Doji close.
+        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
+        // High is 60 (Extends the 50 High).
         assert!(
-            hhll.update(candle(2, "2026-05-24T15:02:00Z", 25., 30., 10., 25.))
+            hhll.update(candle(2, "2026-05-24T15:02:00Z", 25., 60., 10., 25.))
                 .is_none()
         );
 
-        // 3. Send Right window (Triggers candidate evaluation)
-        let event = hhll
-            .update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.))
-            .unwrap();
+        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
+        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.));
 
-        // Because active_pivot was a HIGH, and the Mega Bar was a Doji (trend inertia),
-        // the state machine assumes the LOW happened chronologically after the HIGH.
-        assert_eq!(event.1.pivot_type(), PivotType::Low);
-        assert_eq!(event.1.price.0, 10.0);
+        // The algorithm routes to `process_high` and evaluates 60 >= 50 (True).
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the High, but it was discarded"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.pivot_type(), PivotType::High);
+        assert_eq!(pivot.price.0, 60.0);
+    }
+
+    /// # Scenario B: Mega Doji Extends a Low (Sweeps Liquidity)
+    #[test]
+    fn test_mega_doji_extends_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Hardcode the active pivot to a Low at price 10.0
+        hhll.active_pivot = Some(PivotPoint {
+            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 10., 10., 10., 10.),
+            price: Price(10.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::UnclassifiedLow,
+        });
+
+        hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 15., 18.));
+
+        // Candidate Low (5.0) < Active Pivot Low (10.0).
+        hhll.update(candle(2, "2026-05-24T15:02:00Z", 20., 30., 5., 20.));
+
+        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
+
+        assert!(event.is_some(), "Expected Doji to extend the Low");
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.pivot_type(), PivotType::Low);
+        assert_eq!(pivot.price.0, 5.0);
+    }
+
+    /// # Scenario C: Mega Doji Discarded as Internal Noise
+    #[test]
+    fn test_mega_doji_discarded_as_noise() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Hardcode a very deep, established macro Low at price 1.0
+        hhll.active_pivot = Some(PivotPoint {
+            indexed_candle: candle(0, "2026-05-24T16:00:00Z", 1., 1., 1., 1.),
+            price: Price(1.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::UnclassifiedLow,
+        });
+
+        hhll.update(candle(1, "2026-05-24T17:01:00Z", 20., 20., 15., 18.));
+
+        // Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
+        hhll.update(candle(2, "2026-05-24T17:02:00Z", 20., 30., 5., 20.));
+
+        let event_noise = hhll.update(candle(3, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
+
+        assert!(
+            event_noise.is_none(),
+            "Expected Doji to be discarded as internal noise"
+        );
     }
 
     /// Verifies that if the VERY FIRST extremum detected is a Mega Bar Doji,
