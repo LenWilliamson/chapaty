@@ -21,6 +21,16 @@ pub enum PivotType {
     Low,
 }
 
+impl From<MarketStructureSequence> for PivotType {
+    fn from(sequence: MarketStructureSequence) -> Self {
+        use MarketStructureSequence::*;
+        match sequence {
+            LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => PivotType::High,
+            HigherLow | LowerLow | EqualLow | UnclassifiedLow => PivotType::Low,
+        }
+    }
+}
+
 impl PivotType {
     /// Extracts the relevant price for peak/trough finding given the
     /// configured [`PriceSource`] and the candle's own direction.
@@ -55,6 +65,12 @@ pub enum MarketStructureSequence {
     EqualLow,
     UnclassifiedHigh,
     UnclassifiedLow,
+}
+
+impl MarketStructureSequence {
+    pub fn as_pivot_type(&self) -> PivotType {
+        (*self).into()
+    }
 }
 
 /// Defines how the indicator handles consecutive pivots of the same type
@@ -95,80 +111,38 @@ pub enum AlternationMode {
 ///    (e.g. a new high above the last confirmed high).
 /// 2. What the prevailing trend looked like just before the break, inferred
 ///    from the most recent opposite-side pivot.
-///
-/// # The asymmetry: MSS is strict, BOS is the default
-///
-/// A `MarketStructureShift` fires **only** when there is clear evidence of an
-/// opposing trend to reverse. Specifically, when the most recent opposite-side
-/// pivot was itself a trend-confirming break (a `LowerLow` for a bullish MSS,
-/// a `HigherHigh` for a bearish MSS). Every other breakout, including the very
-/// first one after startup, when no prior trend exists, is classified as a
-/// `BreakOfStructure`.
-///
-/// # Variants at a glance
-///
-/// For a new swing high that breaks above the prior high:
-///
-/// | Most recent low was...                       | Interpretation                       | Result                                    |
-/// |----------------------------------------------|--------------------------------------|-------------------------------------------|
-/// | `LowerLow`                                   | Downtrend in force, now contradicted | `MarketStructureShift` (bullish reversal) |
-/// | `HigherLow`                                  | Uptrend in force, now extended       | `BreakOfStructure` (continuation)         |
-/// | `EqualLow`                                   | Ranging market, trend initiated      | `BreakOfStructure`                        |
-/// | `UnclassifiedLow` (only one low seen so far) | No prior trend established           | `BreakOfStructure`                        |
-/// | *(no low seen yet)*                          | No prior structure at all            | `BreakOfStructure`                        |
-///
-/// The mirror table applies for a new swing low that breaks below the prior low,
-/// with `HigherHigh` triggering a bearish MSS and every other case yielding BOS.
-///
-/// If the new pivot does *not* exceed the prior same-side pivot (i.e. it forms
-/// a Lower High, Equal High, Higher Low, or Equal Low), the result is `NoChange`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketStructureEvent {
-    /// The new pivot extends the prevailing trend, or initiates the first one.
+    /// The new pivot extends the prevailing trend, or establishes the first directional trend.
     ///
-    /// A *Break of Structure* (BOS) is the default classification for any new pivot
-    /// that exceeds its same-side predecessor. It fires when:
+    /// A _Break of Structure_ (BOS) is the classification for any new pivot
+    /// that exceeds its confirmed same-side predecessor. It fires when:
     ///
     /// - **Continuation**: the market was already trending in the same direction
-    ///   (e.g. a new Higher High after a recent Higher Low).
-    /// - **Initiation**: no prior opposing trend has been established yet.
-    ///   Either because the indicator just started, or because the prior
-    ///   opposite-side pivots were equal or unclassified.
-    ///
-    /// # Examples
-    ///
-    /// *Continuation*: Lows print `100, 105, 110` (Higher Lows: uptrend).
-    /// Highs print `120, 125`. A new high at `130` breaks above `125` -> bullish BOS.
-    ///
-    /// *Initiation*: The very first swing high recorded after the very first swing
-    /// low also reports as BOS. There is no prior trend to either continue or shift,
-    /// so the strict-reversal `MarketStructureShift` does not apply.
+    ///   (e.g., a new Higher High after a recent Higher Low).
+    /// - **Initiation**: the pivot establishes the first directional trend by breaking
+    ///   the initial anchor (e.g., a Higher High occurs, but the prior opposite-side
+    ///   pivot is still `UnclassifiedLow` or `EqualLow`).
     BreakOfStructure,
 
     /// The new pivot reverses a previously confirmed trend.
     ///
-    /// Also known as a *Change of Character* (CHoCH). This is the strict case:
+    /// Also known as a _Change of Character_ (CHoCH). This is the strict case:
     /// it fires only when the prior opposite-side pivot was itself a trend-confirming
     /// break, so there is concrete evidence of a trend to reverse.
     ///
-    /// - **Bullish MSS**: a new swing high prints above the most recent swing high,
+    /// - **Bullish Shift**: a new swing high prints above the most recent swing high,
     ///   and the most recent low was a `LowerLow` (downtrend -> potential uptrend).
-    /// - **Bearish MSS**: a new swing low prints below the most recent swing low,
+    /// - **Bearish Shift**: a new swing low prints below the most recent swing low,
     ///   and the most recent high was a `HigherHigh` (uptrend -> potential downtrend).
-    ///
-    /// # Example
-    ///
-    /// Highs print `130, 125, 120` (Lower Highs: downtrend). Lows print `110, 105, 100`
-    /// (Lower Lows: confirming the downtrend). A new high at `128` breaks above `125`
-    /// while the most recent low (`100`) was a Lower Low -> bullish MSS.
     MarketStructureShift,
 
-    /// The new pivot did not exceed the relevant prior pivot on its side.
+    /// The new pivot did not break structure or shift the trend.
     ///
     /// Returned when the candidate forms a Lower High, Equal High, Higher Low, or
-    /// Equal Low, or when there is no prior pivot on that side yet to compare against.
-    /// The pivot is still recorded and added to the history. It just doesn't
-    /// represent a structural breakout.
+    /// Equal Low. This is also emitted for the **very first detected pivot** (unclassified),
+    /// as there is no prior structure on that side to compare against. The pivot is
+    /// still recorded and added to the history. It just doesn't represent a breakout.
     NoChange,
 }
 
@@ -196,17 +170,17 @@ pub enum ExtremeTiebreaker {
 ///
 /// Carries the originating candle, the price that triggered the pivot (which may be
 /// `high`/`low` or `open`/`close` depending on the configured [`PriceSource`]),
-/// the geometric type ([`PivotType::High`] or [`PivotType::Low`]), and the trend-relative
-/// classification ([`MarketStructureSequence`]).
+/// and the trend-relative classification ([`MarketStructureSequence`]).
+///
+/// Note: The geometric type ([`PivotType::High`] or [`PivotType::Low`]) is intrinsically
+/// implied by the `trend` and can be accessed via [`Self::pivot_type`].
 #[derive(Debug, Clone, Copy)]
 pub struct PivotPoint {
     pub indexed_candle: IndexedOhlcv,
     pub price: Price,
     pub price_source: PriceSource,
-    pub pivot_type: PivotType,
     pub trend: MarketStructureSequence,
 }
-
 impl MarketEvent for PivotPoint {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.indexed_candle.point_in_time()
@@ -214,6 +188,11 @@ impl MarketEvent for PivotPoint {
 }
 
 impl PivotPoint {
+    /// Returns the geometric type of the pivot, derived directly from its trend sequence.
+    pub fn pivot_type(&self) -> PivotType {
+        self.trend.into()
+    }
+
     /// Generates a linear interpolation function based on bar indices.
     ///
     /// Returns a zero-allocation closure that takes a target bar index (usize)
@@ -233,12 +212,15 @@ impl PivotPoint {
         }
     }
 
-    /// Generates a linear interpolation function based on exact timestamps.
+    /// Generates a linear interpolation function based on exact point-in-time timestamps.
     ///
     /// Returns a zero-allocation closure that takes a target point in time
     /// (DateTime<Utc>) and returns the interpolated/extrapolated price.
     /// Uses chrono::Duration to safely compute the time deltas in milliseconds.
-    pub fn price_line_by_time(&self, target: &PivotPoint) -> impl Fn(DateTime<Utc>) -> Price {
+    pub fn price_line_by_point_in_time(
+        &self,
+        target: &PivotPoint,
+    ) -> impl Fn(DateTime<Utc>) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
 
@@ -259,8 +241,8 @@ impl PivotPoint {
 ///
 /// A bar is treated as a candidate pivot only if it is the most extreme bar within
 /// a window of `left_bars` preceding bars and `right_bars` following bars. Larger
-/// values produce fewer, more significant pivots; smaller values are more responsive
-/// but noisier. Default is `5` on each side.
+/// values produce fewer, more significant pivots and smaller values are more responsive
+/// but noisier. Default is a symmetric window with `5` bars on each side.
 ///
 /// Note that the indicator must buffer `left_bars + right_bars + 1` candles before
 /// it can emit its first result, since the candidate sits in the middle of the window.
@@ -272,14 +254,25 @@ pub struct ZigZagPeriod {
 
 impl Default for ZigZagPeriod {
     fn default() -> Self {
-        Self {
-            left_bars: 5,
-            right_bars: 5,
-        }
+        Self::symmetric(5)
     }
 }
 
 impl ZigZagPeriod {
+    /// Creates a `ZigZagPeriod` with equal lookback and lookforward windows.
+    ///
+    /// Sets both `left_bars` and `right_bars` to `bars`, producing a symmetric
+    /// window where the candidate pivot sits exactly in the middle.
+    ///
+    /// The indicator will buffer `2 * bars + 1` candles before emitting its first
+    /// result.
+    pub fn symmetric(bars: u16) -> Self {
+        Self {
+            left_bars: bars,
+            right_bars: bars,
+        }
+    }
+
     fn buffer_size(&self) -> usize {
         (self.left_bars + self.right_bars + 1) as usize
     }
@@ -476,7 +469,7 @@ impl StreamingHhll {
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Highs in a row under Alternating mode)
             let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
-                && active.pivot_type == PivotType::High;
+                && active.pivot_type() == PivotType::High;
 
             if is_alternation_conflict {
                 // Conflict Resolution
@@ -493,7 +486,7 @@ impl StreamingHhll {
             } else {
                 // State Lock & History Invariant
                 // We unconditionally lock the previous pivot because it is confirmed.
-                match active.pivot_type {
+                match active.pivot_type() {
                     PivotType::High => self.anchor_high = Some(active),
                     PivotType::Low => self.anchor_low = Some(active),
                 }
@@ -540,7 +533,6 @@ impl StreamingHhll {
             indexed_candle: candidate,
             price: current_high_price,
             price_source: self.price_source,
-            pivot_type: PivotType::High,
             trend,
         };
 
@@ -566,7 +558,7 @@ impl StreamingHhll {
         if let Some(active) = self.active_pivot {
             // Is there an alternation conflict? (Two Lows in a row under Alternating mode)
             let is_alternation_conflict = self.alternation_mode == AlternationMode::Alternating
-                && active.pivot_type == PivotType::Low;
+                && active.pivot_type() == PivotType::Low;
 
             if is_alternation_conflict {
                 // Conflict Resolution
@@ -583,7 +575,7 @@ impl StreamingHhll {
             } else {
                 // State Lock & History Invariant
                 // We unconditionally lock the previous pivot because it is confirmed.
-                match active.pivot_type {
+                match active.pivot_type() {
                     PivotType::High => self.anchor_high = Some(active),
                     PivotType::Low => self.anchor_low = Some(active),
                 }
@@ -630,7 +622,6 @@ impl StreamingHhll {
             indexed_candle: candidate,
             price: current_low_price,
             price_source: self.price_source,
-            pivot_type: PivotType::Low,
             trend,
         };
 
@@ -675,7 +666,7 @@ impl StreamingIndicator for StreamingHhll {
                     CandleDirection::Bearish => self.process_low(),
                     CandleDirection::Doji => {
                         // Assumption: Extend the current market structure
-                        match self.active_pivot.map(|p| p.pivot_type) {
+                        match self.active_pivot.map(|p| p.pivot_type()) {
                             Some(PivotType::Low) => self.process_low(),
                             Some(PivotType::High) => self.process_high(),
                             None => None, // A doji candle and no history.
@@ -703,6 +694,13 @@ mod tests {
     use super::*;
     use crate::data::domain::Quantity;
     use std::f64::EPSILON;
+
+    /*
+     *
+     * Record unittest to handle the inial classification correct. Is it BOS or NoChange?
+     * Unittest: impl From<MarketStructureSequence> for PivotType
+     *
+     */
 
     // ==========================================
     // === 1. Mocks & Helpers ===
@@ -755,7 +753,6 @@ mod tests {
             indexed_candle: candle(10, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::LowerLow,
         };
 
@@ -764,7 +761,6 @@ mod tests {
             indexed_candle: candle(20, "2026-05-24T15:10:00Z", 150., 150., 150., 150.),
             price: Price(150.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::HigherLow,
         };
 
@@ -778,7 +774,7 @@ mod tests {
         assert_f64_eq(line_by_idx(25).0, 175.0); // Extrapolation into the future!
 
         // --- 2. Test Time Based Interpolation ---
-        let line_by_time = p1.price_line_by_time(&p2);
+        let line_by_time = p1.price_line_by_point_in_time(&p2);
 
         assert_f64_eq(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
         assert_f64_eq(line_by_time(ts("2026-05-24T15:05:00Z")).0, 125.0); // Midpoint (5 mins)
@@ -792,7 +788,6 @@ mod tests {
             indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::LowerLow,
         };
 
@@ -800,7 +795,6 @@ mod tests {
             indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
             price: Price(100.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::LowerLow,
         };
 
@@ -849,7 +843,7 @@ mod tests {
             .update(candle(4, "2026-05-24T15:05:00Z", 10., 10., 10., 10.))
             .unwrap();
 
-        assert_eq!(event.1.pivot_type, PivotType::High);
+        assert_eq!(event.1.pivot_type(), PivotType::High);
         assert_eq!(event.1.price.0, 20.0);
         assert_eq!(
             event.1.indexed_candle.candle.open_timestamp,
@@ -905,7 +899,6 @@ mod tests {
             indexed_candle: candle(0, "2026-05-24T14:00:00Z", 50., 50., 50., 50.),
             price: Price(50.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::High,
             trend: MarketStructureSequence::UnclassifiedHigh,
         });
 
@@ -923,7 +916,7 @@ mod tests {
 
         // Because active_pivot was a HIGH, and the Mega Bar was a Doji (trend inertia),
         // the state machine assumes the LOW happened chronologically after the HIGH.
-        assert_eq!(event.1.pivot_type, PivotType::Low);
+        assert_eq!(event.1.pivot_type(), PivotType::Low);
         assert_eq!(event.1.price.0, 10.0);
     }
 
@@ -939,7 +932,7 @@ mod tests {
             .unwrap()
             .1;
         assert_eq!(p1.price.0, 20.0);
-        assert_eq!(p1.pivot_type, PivotType::High);
+        assert_eq!(p1.pivot_type(), PivotType::High);
 
         // Candle 4: Dips slightly, but not enough to form a valid Swing Low
         // (assume it doesn't trigger a low in a wider window, but for this tiny window it might).
@@ -956,7 +949,7 @@ mod tests {
         // The indicator should emit a new event, but under the hood,
         // because Alternation is active, anchor_high is still None (unconfirmed).
         assert_eq!(p2.price.0, 30.0);
-        assert_eq!(p2.pivot_type, PivotType::High);
+        assert_eq!(p2.pivot_type(), PivotType::High);
 
         // Ensure the lesser peak was overwritten and NOT pushed to history
         assert_eq!(hhll.history().len(), 0);
@@ -1000,7 +993,6 @@ mod tests {
             indexed_candle: candle(0, "2026-05-24T14:00:00Z", 10., 10., 10., 10.),
             price: Price(10.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::UnclassifiedLow,
         });
 
@@ -1027,7 +1019,7 @@ mod tests {
             "Expected Doji to extend the Low, but it returned None"
         );
         let (_, pivot) = event.unwrap();
-        assert_eq!(pivot.pivot_type, PivotType::Low);
+        assert_eq!(pivot.pivot_type(), PivotType::Low);
         assert_eq!(pivot.price.0, 5.0, "Expected new active Low to be 5.0");
 
         // =========================================================================
@@ -1040,7 +1032,6 @@ mod tests {
             indexed_candle: candle(0, "2026-05-24T16:00:00Z", 1., 1., 1., 1.),
             price: Price(1.0),
             price_source: PriceSource::HighLow,
-            pivot_type: PivotType::Low,
             trend: MarketStructureSequence::UnclassifiedLow,
         });
 
@@ -1225,7 +1216,7 @@ mod tests {
         // NOW Peak 2 should be safely locked in history.
         assert_eq!(hhll.history().len(), 1);
         assert_eq!(hhll.history()[0].price.0, 30.0);
-        assert_eq!(hhll.history()[0].pivot_type, PivotType::High);
+        assert_eq!(hhll.history()[0].pivot_type(), PivotType::High);
     }
 
     /// Tests the History Invariant under `Consecutive` mode.
