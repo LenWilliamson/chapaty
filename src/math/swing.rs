@@ -826,6 +826,71 @@ mod tests {
     // === 2. Enum/Math/Classification Tests ===
     // ==========================================
 
+    #[test]
+    fn test_pivot_type_extract_price() {
+        // Create mock candles with explicit directions
+        let bullish_candle = candle(0, "2026-05-24T10:00:00Z", 10., 20., 5., 15.).candle;
+        let bearish_candle = candle(1, "2026-05-24T10:01:00Z", 15., 20., 5., 10.).candle;
+        let doji_candle = candle(2, "2026-05-24T10:02:00Z", 15., 20., 5., 15.).candle;
+
+        // === HighLow PriceSource (Always extracts High/Low regardless of direction) ===
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bullish_candle, PriceSource::HighLow)
+                .0,
+            20.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bullish_candle, PriceSource::HighLow)
+                .0,
+            5.,
+        );
+
+        // === OpenClose PriceSource ===
+        // Bullish: High -> Close(15), Low -> Open(10)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bullish_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bullish_candle, PriceSource::OpenClose)
+                .0,
+            10.,
+        );
+
+        // Bearish: High -> Open(15), Low -> Close(10)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bearish_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bearish_candle, PriceSource::OpenClose)
+                .0,
+            10.,
+        );
+
+        // Doji: High -> Close(15), Low -> Close(15)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(doji_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(doji_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+    }
+
     /// Verifies that all `MarketStructureSequence` variants correctly map to their implied geometric `PivotType`.
     #[test]
     fn test_market_structure_sequence_to_pivot_type() {
@@ -884,6 +949,16 @@ mod tests {
 
         assert_eq!(e3, MarketStructureEvent::BreakOfStructure);
         assert_eq!(p3.trend, MarketStructureSequence::HigherHigh);
+
+        // 4. Fire a SECOND Low that exceeds (is lower than) the FIRST Low.
+        // This proves symmetry: Breaking the initial low structure also triggers BOS.
+        hhll.update(candle(7, "2026-05-24T10:07:00Z", 2., 2., 2., 2.));
+        let (e4, p4) = hhll
+            .update(candle(8, "2026-05-24T10:08:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(e4, MarketStructureEvent::MarketStructureShift);
+        assert_eq!(p4.trend, MarketStructureSequence::LowerLow);
     }
 
     #[test]
@@ -903,7 +978,7 @@ mod tests {
             trend: MarketStructureSequence::HigherLow,
         };
 
-        // --- 1. Test Index Based Interpolation ---
+        // === 1. Test Index Based Interpolation ===
         // Slope = (150 - 100) / (20 - 10) = 5.0 per bar
         let line_by_idx = p1.price_line_by_index(&p2);
 
@@ -912,7 +987,7 @@ mod tests {
         assert_f64_eq(line_by_idx(20).0, 150.0); // Target point
         assert_f64_eq(line_by_idx(25).0, 175.0); // Extrapolation into the future!
 
-        // --- 2. Test Time Based Interpolation ---
+        // === 2. Test Time Based Interpolation ===
         let line_by_time = p1.price_line_by_point_in_time(&p2);
 
         assert_f64_eq(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
@@ -961,12 +1036,98 @@ mod tests {
         assert_eq!(hhll.candidate().index, 2);
 
         // Left partition should take `left_bars` from the front
-        let left: Vec<_> = hhll.left_partition().map(|c| c.index).collect();
+        let left = hhll.left_partition().map(|c| c.index).collect::<Vec<_>>();
         assert_eq!(left, vec![0, 1]);
 
         // Right partition takes `right_bars` from the end (in reverse iteration)
-        let right: Vec<_> = hhll.right_partition().map(|c| c.index).collect();
+        let right = hhll.right_partition().map(|c| c.index).collect::<Vec<_>>();
         assert_eq!(right, vec![4, 3]);
+    }
+
+    /// Evaluates the `check_extremum` logic in strict isolation to prove micro-swing detection.
+    ///
+    /// Note: Because this tests a private internal method, we manually populate the buffer
+    /// to bypass the `update()` state machine and avoid triggering `process_high/low`.
+    #[test]
+    fn test_check_extremum_isolated() {
+        // === Case 1: Clear Swing High ===
+        {
+            let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll.buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.));
+            hhll.buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll.buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            assert!(
+                hhll.check_extremum(PivotType::High),
+                "Clear peak should be High"
+            );
+            assert!(
+                !hhll.check_extremum(PivotType::Low),
+                "Clear peak is not a Low"
+            );
+        }
+
+        // === Case 2: Clear Swing Low ===
+        {
+            let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll.buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll.buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.));
+            hhll.buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+
+            assert!(
+                hhll.check_extremum(PivotType::Low),
+                "Clear trough should be Low"
+            );
+            assert!(
+                !hhll.check_extremum(PivotType::High),
+                "Clear trough is not a High"
+            );
+        }
+
+        // === Case 3: Tiebreaker on a Flat Top Plateau [20, 20(Candidate), 10] ===
+        {
+            // Sub-case: Latest Tiebreaker
+            let mut hhll_latest = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll_latest
+                .buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll_latest
+                .buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll_latest
+                .buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            // Latest: Left is inclusive (20 >= 20 = Pass). Right is strict (20 > 10 = Pass).
+            assert!(
+                hhll_latest.check_extremum(PivotType::High),
+                "Latest should pass on flat left side"
+            );
+
+            // Sub-case: Earliest Tiebreaker
+            let mut hhll_earliest = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+            hhll_earliest
+                .buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll_earliest
+                .buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll_earliest
+                .buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            // Earliest: Left is strict (20 > 20 = FAIL). Right is inclusive (20 >= 10 = Pass).
+            assert!(
+                !hhll_earliest.check_extremum(PivotType::High),
+                "Earliest should fail on flat left side"
+            );
+        }
     }
 
     /// Comprehensive edge case: Plateau inside lookback window under Earliest policy.
@@ -1006,6 +1167,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_sliding_window_plateaus_earliest_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.)); // Buffer: [20]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.)); // Buffer: [20, 10(A)]
+
+        // Tick 1: Buffer is [20, 10(A), 10(B)]. Candidate is 10(A).
+        // Left is 20. 10 < 20 (Pass). Right is 10. 10 <= 10 (Pass).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_a.is_some(),
+            "Earliest policy should emit the first trough (A)."
+        );
+        assert_eq!(event_a.unwrap().1.indexed_candle.index, 1);
+
+        // Tick 2: Buffer is [10(A), 10(B), 10(C)]. Candidate is 10(B).
+        // Left is 10(A). 10 < 10 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 10., 10., 10., 10.));
+        assert!(event_b.is_none());
+
+        // Tick 3: Buffer is [10(B), 10(C), 20]. Candidate is 10(C).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.));
+        assert!(event_c.is_none());
+    }
+
     /// Comprehensive edge case: Plateau inside lookback window under Latest policy.
     /// Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
     /// `Latest` dictates that ONLY 15(C) should be emitted.
@@ -1043,13 +1230,43 @@ mod tests {
         assert_eq!(event_c.unwrap().1.indexed_candle.index, 3);
     }
 
+    #[test]
+    fn test_sliding_window_plateaus_latest_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.)); // Buffer: [20]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.)); // Buffer: [20, 10(A)]
+
+        // Tick 1: Buffer is [20, 10(A), 10(B)]. Candidate is 10(A).
+        // Right is 10. 10 < 10 (FAIL under Latest strict right).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_a.is_none(),
+            "Latest policy must discard early plateau bars (A)."
+        );
+
+        // Tick 2: Buffer is [10(A), 10(B), 10(C)]. Candidate is 10(B).
+        // Right is 10. 10 < 10 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 10., 10., 10., 10.));
+        assert!(event_b.is_none());
+
+        // Tick 3: Buffer is [10(B), 10(C), 20]. Candidate is 10(C).
+        // Left is 10. 10 <= 10 (Pass). Right is 20. 10 < 20 (Pass).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.));
+        assert!(
+            event_c.is_some(),
+            "Latest policy should emit the final trough (C)."
+        );
+        assert_eq!(event_c.unwrap().1.indexed_candle.index, 3);
+    }
+
     /// Verifies the update block bootstrapping logic explicitly routes Mega Bars
     /// to the correct processor based on Bullish / Bearish candle closes.
     #[test]
     fn test_mega_bar_bullish_and_bearish_routing() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // -- Subtest: Bullish Mega Bar (Close > Open) --
+        // === Subtest: Bullish Mega Bar (Close > Open) ===
         hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
         // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bullish Close (25 > 10).
         hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 30., 5., 25.));
@@ -1062,7 +1279,7 @@ mod tests {
 
         hhll.reset();
 
-        // -- Subtest: Bearish Mega Bar (Close < Open) --
+        // === Subtest: Bearish Mega Bar (Close < Open) ===
         hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
         // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bearish Close (10 < 25).
         hhll.update(candle(1, "2026-05-24T10:01:00Z", 25., 30., 5., 10.));
@@ -1105,10 +1322,7 @@ mod tests {
 
         assert_eq!(event.1.pivot_type(), PivotType::High);
         assert_eq!(event.1.price.0, 20.0);
-        assert_eq!(
-            event.1.indexed_candle.candle.open_timestamp,
-            ts("2026-05-24T15:03:00Z")
-        );
+        assert_eq!(event.1.point_in_time(), ts("2026-05-24T15:03:00Z"));
     }
 
     #[test]
@@ -1133,7 +1347,7 @@ mod tests {
             }
         }
         assert_eq!(
-            early_result.unwrap().1.indexed_candle.candle.open_timestamp,
+            early_result.unwrap().1.point_in_time(),
             ts("2026-05-24T15:02:00Z")
         );
 
@@ -1146,7 +1360,47 @@ mod tests {
             }
         }
         assert_eq!(
-            late_result.unwrap().1.indexed_candle.candle.open_timestamp,
+            late_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:03:00Z")
+        );
+    }
+
+    #[test]
+    fn test_tiebreaker_double_bottom() {
+        // Symmetrical test to double_top. We ensure decreasing Highs to avoid
+        // generating micro-swing highs during the test window.
+        let trajectory = vec![
+            candle(0, "2026-05-24T15:00:00Z", 20., 50., 20., 20.),
+            candle(1, "2026-05-24T15:01:00Z", 20., 45., 20., 20.),
+            candle(2, "2026-05-24T15:02:00Z", 10., 40., 10., 10.), // Trough 1
+            candle(3, "2026-05-24T15:03:00Z", 10., 35., 10., 10.), // Trough 2 (Double Bottom)
+            candle(4, "2026-05-24T15:04:00Z", 20., 30., 20., 20.),
+            candle(5, "2026-05-24T15:05:00Z", 20., 25., 20., 20.),
+        ];
+
+        // Test Earliest: Should capture Trough 1 (Index 2)
+        let mut hhll_early = create_indicator(2, 2, ExtremeTiebreaker::Earliest);
+        let mut early_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_early.update(c) {
+                early_result = Some(res);
+            }
+        }
+        assert_eq!(
+            early_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:02:00Z")
+        );
+
+        // Test Latest: Should capture Trough 2 (Index 3)
+        let mut hhll_late = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+        let mut late_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_late.update(c) {
+                late_result = Some(res);
+            }
+        }
+        assert_eq!(
+            late_result.unwrap().1.point_in_time(),
             ts("2026-05-24T15:03:00Z")
         );
     }
@@ -1167,8 +1421,15 @@ mod tests {
             .update(candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.))
             .unwrap()
             .1;
+
+        // Assert strict initial state before the conflict
         assert_eq!(p1_confirmed.price.0, 20.0);
         assert_eq!(p1_confirmed.pivot_type(), PivotType::High);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 20.0);
+        assert!(
+            hhll.history().is_empty(),
+            "History must be empty before confirmation"
+        );
 
         // Dip in Highs, but NOT Lows. This prevents a Trough from confirming!
         hhll.update(candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.));
@@ -1191,6 +1452,7 @@ mod tests {
 
         // Ensure the lesser peak was successfully overwritten and NOT pushed to history
         assert_eq!(hhll.history().len(), 0);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 30.0);
     }
 
     /// Tests Macro Tiebreaker Resolution: Earliest.
@@ -1217,16 +1479,9 @@ mod tests {
         // Only Peak 1 should have been emitted. Peak 2 evaluates in the state machine
         // but `20.0 > 20.0` is false, so it is discarded.
         assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.point_in_time(), ts("2026-05-24T10:01:00Z"));
         assert_eq!(
-            events[0].1.indexed_candle.candle.open_timestamp,
-            ts("2026-05-24T10:01:00Z")
-        );
-        assert_eq!(
-            hhll.active_pivot
-                .unwrap()
-                .indexed_candle
-                .candle
-                .open_timestamp,
+            hhll.active_pivot.unwrap().point_in_time(),
             ts("2026-05-24T10:01:00Z")
         );
     }
@@ -1255,22 +1510,12 @@ mod tests {
         // Peak 1 is emitted first. Then Peak 2 arrives and is ALSO emitted because
         // it overwrites Peak 1 as the new active_pivot.
         assert_eq!(events.len(), 2);
-        assert_eq!(
-            events[0].1.indexed_candle.candle.open_timestamp,
-            ts("2026-05-24T10:01:00Z")
-        ); // First emission
-        assert_eq!(
-            events[1].1.indexed_candle.candle.open_timestamp,
-            ts("2026-05-24T10:04:00Z")
-        ); // Overwrite emission
+        assert_eq!(events[0].1.point_in_time(), ts("2026-05-24T10:01:00Z")); // First emission
+        assert_eq!(events[1].1.point_in_time(), ts("2026-05-24T10:04:00Z")); // Overwrite emission
 
         // The active pivot currently tracking the market should be Peak 2.
         assert_eq!(
-            hhll.active_pivot
-                .unwrap()
-                .indexed_candle
-                .candle
-                .open_timestamp,
+            hhll.active_pivot.unwrap().point_in_time(),
             ts("2026-05-24T10:04:00Z")
         );
     }
@@ -1366,29 +1611,30 @@ mod tests {
     fn test_mega_doji_extends_high() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Hardcode the active pivot to a High at price 50.0
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 50., 50., 50., 50.),
-            price: Price(50.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedHigh,
-        });
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 10., 10., 10., 10.));
 
-        // 1. Push Left Window
+        // Assert natural setup is valid
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::High);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 50.0);
+
+        // 1. Push Left Window (prevents Low from firing)
         assert!(
-            hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 20., 20.))
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 20., 20.))
                 .is_none()
         );
 
         // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
         // High is 60 (Extends the 50 High).
         assert!(
-            hhll.update(candle(2, "2026-05-24T15:02:00Z", 25., 60., 10., 25.))
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
                 .is_none()
         );
 
         // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.));
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 20., 20.));
 
         // The algorithm routes to `process_high` and evaluates 60 >= 50 (True).
         assert!(
@@ -1405,20 +1651,21 @@ mod tests {
     fn test_mega_doji_extends_low() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Hardcode the active pivot to a Low at price 10.0
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 10., 10., 10., 10.),
-            price: Price(10.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedLow,
-        });
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 50., 50.));
 
-        hhll.update(candle(1, "2026-05-24T15:01:00Z", 20., 20., 15., 18.));
+        // Assert natural setup is valid
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 15., 18.));
 
         // Candidate Low (5.0) < Active Pivot Low (10.0).
-        hhll.update(candle(2, "2026-05-24T15:02:00Z", 20., 30., 5., 20.));
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 20., 30., 5., 20.));
 
-        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
 
         assert!(event.is_some(), "Expected Doji to extend the Low");
         let (_, pivot) = event.unwrap();
@@ -1431,20 +1678,19 @@ mod tests {
     fn test_mega_doji_discarded_as_noise() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Hardcode a very deep, established macro Low at price 1.0
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T16:00:00Z", 1., 1., 1., 1.),
-            price: Price(1.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedLow,
-        });
+        // Naturally setup a very deep, established macro Low at price 1.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 1., 1., 1., 1.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 50., 50.));
 
-        hhll.update(candle(1, "2026-05-24T17:01:00Z", 20., 20., 15., 18.));
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 1.0);
+
+        hhll.update(candle(3, "2026-05-24T17:01:00Z", 20., 20., 15., 18.));
 
         // Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
-        hhll.update(candle(2, "2026-05-24T17:02:00Z", 20., 30., 5., 20.));
+        hhll.update(candle(4, "2026-05-24T17:02:00Z", 20., 30., 5., 20.));
 
-        let event_noise = hhll.update(candle(3, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
+        let event_noise = hhll.update(candle(5, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
 
         assert!(
             event_noise.is_none(),
@@ -1492,7 +1738,7 @@ mod tests {
 
         assert!(
             event.is_none(),
-            "An inside bar should never trigger check_extremum"
+            "An inside bar should never emit a pivot event"
         );
     }
 
@@ -1502,26 +1748,31 @@ mod tests {
     fn test_nan_price_corruption_resistance() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
-        // Hardcode a valid baseline High
-        hhll.active_pivot = Some(PivotPoint {
-            indexed_candle: candle(0, "2026-05-24T14:00:00Z", 50., 50., 50., 50.),
-            price: Price(50.0),
-            price_source: PriceSource::HighLow,
-            trend: MarketStructureSequence::UnclassifiedHigh,
-        });
-        hhll.anchor_high = hhll.active_pivot;
+        // Naturally setup a baseline High and establish the anchor
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 10., 10., 10., 10.));
+
+        // Push a confirmed Low to lock the High into `anchor_high`
+        hhll.update(candle(3, "2026-05-24T14:02:00Z", 5., 5., 5., 5.));
+        hhll.update(candle(4, "2026-05-24T14:03:00Z", 10., 10., 10., 10.));
+
+        assert!(
+            hhll.anchor_high().is_some(),
+            "Anchor High must be securely established"
+        );
 
         // Introduce a corrupt candidate with f64::NAN
-        hhll.update(candle(1, "2026-05-24T15:01:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(5, "2026-05-24T15:01:00Z", 10., 10., 10., 10.));
         hhll.update(candle(
-            2,
+            6,
             "2026-05-24T15:02:00Z",
             f64::NAN,
             f64::NAN,
             f64::NAN,
             f64::NAN,
         ));
-        let event = hhll.update(candle(3, "2026-05-24T15:03:00Z", 10., 10., 10., 10.));
+        let event = hhll.update(candle(7, "2026-05-24T15:03:00Z", 10., 10., 10., 10.));
 
         // The float partial_cmp(50.0, f64::NAN) yields None.
         // The code logs a warning and returns None.
