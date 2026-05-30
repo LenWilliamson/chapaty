@@ -1,0 +1,1978 @@
+use std::{cmp::Ordering, collections::VecDeque};
+
+use crate::{
+    data::{
+        domain::{CandleDirection, Price, PriceSource},
+        event::{IndexedOhlcv, MarketEvent, Ohlcv},
+    },
+    math::StreamingIndicator,
+};
+use chrono::{DateTime, Utc};
+
+/// Represents the geometric type of a single pivot point.
+///
+/// [`PivotType`] is required for the [`AlternationMode`] filter.
+/// To enforce alternation (High -> Low -> High -> Low), the algorithm
+/// needs to know the type of the current pivot to check if it
+/// violates the sequence (e.g., detecting two `High`s in a row).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PivotType {
+    High,
+    Low,
+}
+
+impl From<MarketStructureSequence> for PivotType {
+    fn from(sequence: MarketStructureSequence) -> Self {
+        use MarketStructureSequence::*;
+        match sequence {
+            LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => PivotType::High,
+            HigherLow | LowerLow | EqualLow | UnclassifiedLow => PivotType::Low,
+        }
+    }
+}
+
+impl PivotType {
+    /// Extracts the relevant price for peak/trough finding given the
+    /// configured [`PriceSource`] and the candle's own direction.
+    fn extract_price(self, candle: Ohlcv, source: PriceSource) -> Price {
+        match (source, self, candle.direction()) {
+            (PriceSource::HighLow, PivotType::High, _) => candle.high,
+            (PriceSource::HighLow, PivotType::Low, _) => candle.low,
+
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bullish) => candle.close,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish) => candle.open,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Doji) => candle.close,
+
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bearish) => candle.close,
+            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Doji) => candle.close,
+        }
+    }
+}
+
+/// Represents the relative sequence that defines the market's overall direction.
+///
+/// While [`PivotType`] tells us the basic shape (peak or trough),
+/// [`MarketStructureSequence`] provides the **trend context** by comparing it
+/// to historical pivots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketStructureSequence {
+    HigherHigh,
+    LowerHigh,
+    EqualHigh,
+    HigherLow,
+    LowerLow,
+    EqualLow,
+    UnclassifiedHigh,
+    UnclassifiedLow,
+}
+
+impl MarketStructureSequence {
+    pub fn as_pivot_type(&self) -> PivotType {
+        (*self).into()
+    }
+}
+
+/// Defines how the indicator handles consecutive pivots of the same type
+/// (e.g., detecting two `PivotType::High`s in a row without a `PivotType::Low` in between).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlternationMode {
+    /// Forces alternating `High -> Low -> High -> Low` sequences (ZigZag behavior).
+    ///
+    /// If the algorithm detects a new `PivotType::High`, but the last confirmed pivot
+    /// was also a `PivotType::High`, it evaluates both and only keeps the one with
+    /// the higher price. The lesser pivot is discarded as market noise.
+    #[default]
+    Alternating,
+
+    /// No alternation filtering. Every detected [`PivotType`] is kept.
+    ///
+    /// If the algorithm detects two `PivotType::High`s in a row, the second `PivotType::High`
+    /// is simply classified against the first `PivotType::High` (resulting in a HH or LH),
+    /// regardless of the missing `PivotType::Low`.
+    Consecutive,
+}
+
+/// Represents structural breakthrough events detected in the price series.
+///
+/// A `MarketStructureEvent` is emitted alongside every new confirmed pivot.
+/// It answers the question: _"Did this new pivot break a meaningful prior level,
+/// and if so, does it continue or contradict the prevailing trend?"_
+///
+/// # Background
+///
+/// Most price action consists of small zig-zags within a range. Occasionally,
+/// a new swing high breaks above the previous swing high (or a new swing low
+/// breaks below the previous swing low). Those breakouts are the structural
+/// events this enum classifies.
+///
+/// The classification depends on two things:
+/// 1. Whether the new pivot exceeds the most recent same-side pivot
+///    (e.g. a new high above the last confirmed high).
+/// 2. What the prevailing trend looked like just before the break, inferred
+///    from the most recent opposite-side pivot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketStructureEvent {
+    /// The new pivot extends the prevailing trend, or establishes the first directional trend.
+    ///
+    /// A _Break of Structure_ (BOS) is the classification for any new pivot
+    /// that exceeds its confirmed same-side predecessor. It fires when:
+    ///
+    /// - **Continuation**: the market was already trending in the same direction
+    ///   (e.g., a new Higher High after a recent Higher Low).
+    /// - **Initiation**: the pivot establishes the first directional trend by breaking
+    ///   the initial anchor (e.g., a Higher High occurs, but the prior opposite-side
+    ///   pivot is still `UnclassifiedLow` or `EqualLow`).
+    BreakOfStructure,
+
+    /// The new pivot reverses a previously confirmed trend.
+    ///
+    /// Also known as a _Change of Character_ (CHoCH). This is the strict case:
+    /// it fires only when the prior opposite-side pivot was itself a trend-confirming
+    /// break, so there is concrete evidence of a trend to reverse.
+    ///
+    /// - **Bullish Shift**: a new swing high prints above the most recent swing high,
+    ///   and the most recent low was a `LowerLow` (downtrend -> potential uptrend).
+    /// - **Bearish Shift**: a new swing low prints below the most recent swing low,
+    ///   and the most recent high was a `HigherHigh` (uptrend -> potential downtrend).
+    MarketStructureShift,
+
+    /// The new pivot did not break structure or shift the trend.
+    ///
+    /// Returned when the candidate forms a Lower High, Equal High, Higher Low, or
+    /// Equal Low. This is also emitted for the **very first detected pivot** (unclassified),
+    /// as there is no prior structure on that side to compare against. The pivot is
+    /// still recorded and added to the history. It just doesn't represent a breakout.
+    NoChange,
+}
+
+/// Tiebreaker policy when two adjacent bars share the same extreme price.
+///
+/// Affects two situations:
+/// 1. **Plateaus inside the lookback window**: when a sequence of adjacent bars shares the
+///    exact same extreme price, they will all eventually pass through the center candidate
+///    position. This rule applies strict/inclusive inequalities to ensure only one of them
+///    (the earliest or latest) actually triggers a valid pivot.
+/// 2. **Conflicts under [`AlternationMode::Alternating`]**: when a new pivot of the same
+///    type as the active one is detected and their prices are equal, this rule decides
+///    which one wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExtremeTiebreaker {
+    /// On a tie, the later bar wins. Pivots track the most recent occurrence
+    /// of a repeated extreme.
+    #[default]
+    Latest,
+    /// On a tie, the earlier bar wins. Pivots anchor to the first occurrence
+    /// of a repeated extreme.
+    Earliest,
+}
+
+/// A confirmed swing point in the price series.
+///
+/// Carries the originating candle, the price that triggered the pivot (which may be
+/// `high`/`low` or `open`/`close` depending on the configured [`PriceSource`]),
+/// and the trend-relative classification ([`MarketStructureSequence`]).
+///
+/// Note: The geometric type ([`PivotType::High`] or [`PivotType::Low`]) is intrinsically
+/// implied by the `trend` and can be accessed via [`Self::pivot_type`].
+#[derive(Debug, Clone, Copy)]
+pub struct PivotPoint {
+    pub indexed_candle: IndexedOhlcv,
+    pub price: Price,
+    pub price_source: PriceSource,
+    pub trend: MarketStructureSequence,
+}
+impl MarketEvent for PivotPoint {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.indexed_candle.point_in_time()
+    }
+}
+
+impl PivotPoint {
+    /// Returns the geometric type of the pivot, derived directly from its trend sequence.
+    pub fn pivot_type(&self) -> PivotType {
+        self.trend.into()
+    }
+
+    /// Generates a linear interpolation function based on bar indices.
+    ///
+    /// Returns a zero-allocation closure that takes a target bar index (usize)
+    /// and returns the interpolated/extrapolated price at that index.
+    pub fn price_line_by_index(&self, target: &PivotPoint) -> impl Fn(usize) -> Price {
+        let p0 = self.price.0;
+        let p1 = target.price.0;
+        let x0 = self.indexed_candle.index as f64;
+        let x1 = target.indexed_candle.index as f64;
+
+        let dx = x1 - x0;
+        let m = if dx == 0.0 { 0.0 } else { (p1 - p0) / dx };
+
+        move |x: usize| -> Price {
+            let current_dx = (x as f64) - x0;
+            Price(p0 + m * current_dx)
+        }
+    }
+
+    /// Generates a linear interpolation function based on exact point-in-time timestamps.
+    ///
+    /// Returns a zero-allocation closure that takes a target point in time
+    /// (DateTime<Utc>) and returns the interpolated/extrapolated price.
+    /// Uses chrono::Duration to safely compute the time deltas in milliseconds.
+    pub fn price_line_by_point_in_time(
+        &self,
+        target: &PivotPoint,
+    ) -> impl Fn(DateTime<Utc>) -> Price {
+        let p0 = self.price.0;
+        let p1 = target.price.0;
+
+        let t0 = self.point_in_time();
+        let t1 = target.point_in_time();
+
+        let dx = (t1 - t0).num_milliseconds() as f64;
+        let m = if dx == 0.0 { 0.0 } else { (p1 - p0) / dx };
+
+        move |t: DateTime<Utc>| -> Price {
+            let current_dx = (t - t0).num_milliseconds() as f64;
+            Price(p0 + m * current_dx)
+        }
+    }
+}
+
+/// Lookback and lookforward window for swing detection.
+///
+/// A bar is treated as a candidate pivot only if it is the most extreme bar within
+/// a window of `left_bars` preceding bars and `right_bars` following bars. Larger
+/// values produce fewer, more significant pivots and smaller values are more responsive
+/// but noisier. Default is a symmetric window with `5` bars on each side.
+///
+/// Note that the indicator must buffer `left_bars + right_bars + 1` candles before
+/// it can emit its first result, since the candidate sits in the middle of the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZigZagPeriod {
+    pub left_bars: u16,
+    pub right_bars: u16,
+}
+
+impl Default for ZigZagPeriod {
+    fn default() -> Self {
+        Self::symmetric(5)
+    }
+}
+
+impl ZigZagPeriod {
+    /// Creates a `ZigZagPeriod` with equal lookback and lookforward windows.
+    ///
+    /// Sets both `left_bars` and `right_bars` to `bars`, producing a symmetric
+    /// window where the candidate pivot sits exactly in the middle.
+    ///
+    /// The indicator will buffer `2 * bars + 1` candles before emitting its first
+    /// result.
+    pub fn symmetric(bars: u16) -> Self {
+        Self {
+            left_bars: bars,
+            right_bars: bars,
+        }
+    }
+
+    fn buffer_size(&self) -> usize {
+        (self.left_bars + self.right_bars + 1) as usize
+    }
+
+    fn mid_index(&self) -> usize {
+        self.left_bars as usize
+    }
+}
+
+/// A streaming Higher-High / Lower-Low indicator over OHLCV bars.
+///
+/// Consumes a stream of [`IndexedOhlcv`] bars and emits a confirmed [`PivotPoint`]
+/// together with a [`MarketStructureEvent`] whenever a new swing point is identified
+/// and either continues or breaks the prevailing trend.
+///
+/// # How it works
+///
+/// 1. Each incoming bar is appended to an internal rolling window of size
+///    `left_bars + right_bars + 1` (see [`ZigZagPeriod`]).
+/// 2. The bar at the center of that window is the _candidate_. It is considered a
+///    pivot if it is the most extreme bar in the window (highest for a swing high,
+///    lowest for a swing low). Ties are resolved per [`ExtremeTiebreaker`].
+/// 3. When a candidate qualifies, it is classified relative to the most recent
+///    confirmed pivot of the same kind (Higher High / Lower High / Equal High, etc.)
+///    and a [`MarketStructureEvent`] is emitted.
+/// 4. The [`AlternationMode`] controls what happens when consecutive same-type
+///    pivots appear without an intervening opposite-type pivot.
+///
+/// Because the candidate sits at the middle of the window, every emitted pivot is
+/// confirmed with a lag of `right_bars` bars.
+///
+/// # Output stream
+///
+/// [`StreamingIndicator::update`] returns `Some((event, pivot))` whenever a pivot
+/// is confirmed, and `None` while the window is still filling or no pivot is detected.
+/// The full chronological history is available via [`Self::history`].
+#[derive(Debug, Clone)]
+pub struct StreamingHhll {
+    zig_zag_period: ZigZagPeriod,
+    price_source: PriceSource,
+    tiebreaker: ExtremeTiebreaker,
+    alternation_mode: AlternationMode,
+
+    // === Internal State ===
+    buffer: VecDeque<IndexedOhlcv>,
+    active_pivot: Option<PivotPoint>,
+    anchor_high: Option<PivotPoint>,
+    anchor_low: Option<PivotPoint>,
+    history: Vec<PivotPoint>,
+}
+
+impl Default for StreamingHhll {
+    fn default() -> Self {
+        let zig_zag_period = ZigZagPeriod::default();
+        Self {
+            zig_zag_period,
+            price_source: PriceSource::default(),
+            tiebreaker: ExtremeTiebreaker::default(),
+            alternation_mode: AlternationMode::default(),
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
+            active_pivot: None,
+            anchor_high: None,
+            anchor_low: None,
+            history: Vec::new(),
+        }
+    }
+}
+
+impl StreamingHhll {
+    pub fn with_zig_zag_period(self, zig_zag_period: ZigZagPeriod) -> Self {
+        Self {
+            zig_zag_period,
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
+            ..self
+        }
+    }
+
+    pub fn with_price_source(self, price_source: PriceSource) -> Self {
+        Self {
+            price_source,
+            ..self
+        }
+    }
+
+    pub fn with_tiebreaker(self, tiebreaker: ExtremeTiebreaker) -> Self {
+        Self { tiebreaker, ..self }
+    }
+
+    pub fn with_alternation_mode(self, alternation_mode: AlternationMode) -> Self {
+        Self {
+            alternation_mode,
+            ..self
+        }
+    }
+
+    /// The active pivot currently tracking the trailing edge of the market structure.
+    ///
+    /// If [`AlternationMode::Alternating`] is active, this pivot remains mutable.
+    /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
+    /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
+    pub fn active_pivot(&self) -> Option<PivotPoint> {
+        self.active_pivot
+    }
+
+    /// The historical, safely locked-in `PivotType::High` used as a baseline for relative classification.
+    ///
+    /// When a new High vertex is detected, it is compared against this anchor to determine if it
+    /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
+    pub fn anchor_high(&self) -> Option<PivotPoint> {
+        self.anchor_high
+    }
+
+    /// The historical, safely locked-in `PivotType::Low` used as a baseline for relative classification.
+    ///
+    /// When a new Low vertex is detected, it is compared against this anchor to determine if it
+    /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
+    pub fn anchor_low(&self) -> Option<PivotPoint> {
+        self.anchor_low
+    }
+
+    /// Chronological history of all safely locked-in pivots.
+    ///
+    /// This vector guarantees perfect time-order. To iterate from latest to earliest,
+    /// you simply call `self.history.iter().rev()`.
+    pub fn history(&self) -> &[PivotPoint] {
+        &self.history
+    }
+}
+
+impl StreamingHhll {
+    fn candidate(&self) -> IndexedOhlcv {
+        let mid_idx = self.zig_zag_period.mid_index();
+        self.buffer[mid_idx]
+    }
+
+    /// Yields the left side of the rolling window (before the candidate).
+    fn left_partition(&self) -> impl Iterator<Item = IndexedOhlcv> + '_ {
+        self.buffer
+            .iter()
+            .take(self.zig_zag_period.left_bars as usize)
+            .copied()
+    }
+
+    /// Yields the right side of the rolling window (after the candidate).
+    fn right_partition(&self) -> impl Iterator<Item = IndexedOhlcv> + '_ {
+        self.buffer
+            .iter()
+            .rev()
+            .take(self.zig_zag_period.right_bars as usize)
+            .copied()
+    }
+
+    /// Checks if the candidate price is a valid extremum against its neighbors.
+    fn check_extremum(&self, pivot_type: PivotType) -> bool {
+        let candidate = self.candidate();
+        let candidate_price = pivot_type.extract_price(candidate.candle, self.price_source);
+
+        // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
+        let (strict_left, strict_right) = match self.tiebreaker {
+            ExtremeTiebreaker::Earliest => (true, false),
+            ExtremeTiebreaker::Latest => (false, true),
+        };
+
+        let is_valid = |neighbor: IndexedOhlcv, strict: bool| -> bool {
+            let neighbor_price = pivot_type.extract_price(neighbor.candle, self.price_source);
+            match (pivot_type, strict) {
+                (PivotType::High, true) => candidate_price > neighbor_price,
+                (PivotType::High, false) => candidate_price >= neighbor_price,
+                (PivotType::Low, true) => candidate_price < neighbor_price,
+                (PivotType::Low, false) => candidate_price <= neighbor_price,
+            }
+        };
+
+        self.left_partition().all(|c| is_valid(c, strict_left))
+            && self.right_partition().all(|c| is_valid(c, strict_right))
+    }
+
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().candle.close_timestamp))]
+    fn process_high(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
+        let candidate = self.candidate();
+        let current_high_price = PivotType::High.extract_price(candidate.candle, self.price_source);
+
+        // 1. Evaluate the candidate against the active pivot
+        let resolution = match self.active_pivot {
+            Some(active)
+                if self.alternation_mode == AlternationMode::Alternating
+                    && active.pivot_type() == PivotType::High =>
+            {
+                // Alternation Conflict: We have two Highs in a row.
+                let overwrite = match self.tiebreaker {
+                    ExtremeTiebreaker::Earliest => current_high_price > active.price,
+                    ExtremeTiebreaker::Latest => current_high_price >= active.price,
+                };
+
+                if overwrite {
+                    CandidateResolution::ReplaceActive
+                } else {
+                    CandidateResolution::Discard
+                }
+            }
+            Some(_) | None => CandidateResolution::ConfirmActive,
+        };
+
+        // 2. Execute the state transition
+        match resolution {
+            CandidateResolution::Discard => return None,
+            CandidateResolution::ReplaceActive => {
+                // Do nothing to the history. We will simply overwrite `self.active_pivot`
+                // with the new candidate at the end of the method.
+            }
+            CandidateResolution::ConfirmActive => {
+                // The active pivot is safe. Lock it into the anchors and history.
+                if let Some(active) = self.active_pivot {
+                    match active.pivot_type() {
+                        PivotType::High => self.anchor_high = Some(active),
+                        PivotType::Low => self.anchor_low = Some(active),
+                    }
+                    self.history.push(active);
+                }
+            }
+        }
+
+        // 3. Classify the new pivot
+        let (trend, event) = match self.anchor_high {
+            Some(anchor) => match current_high_price.partial_cmp(&anchor.price) {
+                Some(Ordering::Greater) => {
+                    use MarketStructureSequence::*;
+
+                    let market_structure_event = match self.anchor_low.map(|l| l.trend) {
+                        Some(LowerLow) => MarketStructureEvent::MarketStructureShift,
+
+                        Some(HigherLow | EqualLow | UnclassifiedLow) | None => {
+                            MarketStructureEvent::BreakOfStructure
+                        }
+
+                        Some(
+                            invalid_trend @ (HigherHigh | LowerHigh | EqualHigh | UnclassifiedHigh),
+                        ) => {
+                            tracing::error!(
+                                reason = "corrupted_state",
+                                anchor_low_trend = ?invalid_trend,
+                                "anchor_low contains a High pivot sequence. Defaulting to BreakOfStructure."
+                            );
+                            MarketStructureEvent::BreakOfStructure
+                        }
+                    };
+
+                    (HigherHigh, market_structure_event)
+                }
+                Some(Ordering::Less) => (
+                    MarketStructureSequence::LowerHigh,
+                    MarketStructureEvent::NoChange,
+                ),
+                Some(Ordering::Equal) => (
+                    MarketStructureSequence::EqualHigh,
+                    MarketStructureEvent::NoChange,
+                ),
+                None => {
+                    tracing::warn!(
+                        reason = "nan_detected",
+                        candidate_price = ?current_high_price,
+                        anchor_price = ?anchor.price,
+                        "Invalid float (NaN) detected. Discarding pivot to prevent state poisoning."
+                    );
+                    return None;
+                }
+            },
+            None => (
+                MarketStructureSequence::UnclassifiedHigh,
+                MarketStructureEvent::NoChange,
+            ),
+        };
+
+        // 4. Construct and emit the new pivot
+        let new_pivot = PivotPoint {
+            indexed_candle: candidate,
+            price: current_high_price,
+            price_source: self.price_source,
+            trend,
+        };
+
+        self.active_pivot = Some(new_pivot);
+
+        if event != MarketStructureEvent::NoChange {
+            tracing::debug!(
+                event = ?event,
+                trend = ?trend,
+                price = ?current_high_price,
+                "Market Structure Extracted"
+            );
+        }
+
+        Some((event, new_pivot))
+    }
+
+    #[tracing::instrument(skip(self), fields(ts = %self.candidate().candle.close_timestamp))]
+    fn process_low(&mut self) -> Option<(MarketStructureEvent, PivotPoint)> {
+        let candidate = self.candidate();
+        let current_low_price = PivotType::Low.extract_price(candidate.candle, self.price_source);
+
+        // 1. Evaluate the candidate against the active pivot
+        let resolution = match self.active_pivot {
+            Some(active)
+                if self.alternation_mode == AlternationMode::Alternating
+                    && active.pivot_type() == PivotType::Low =>
+            {
+                // Alternation Conflict: We have two Lows in a row.
+                let overwrite = match self.tiebreaker {
+                    ExtremeTiebreaker::Earliest => current_low_price < active.price,
+                    ExtremeTiebreaker::Latest => current_low_price <= active.price,
+                };
+
+                if overwrite {
+                    CandidateResolution::ReplaceActive
+                } else {
+                    CandidateResolution::Discard
+                }
+            }
+            Some(_) | None => CandidateResolution::ConfirmActive,
+        };
+
+        // 2. Execute the state transition
+        match resolution {
+            CandidateResolution::Discard => return None,
+            CandidateResolution::ReplaceActive => {
+                // Do nothing to the history. We will simply overwrite `self.active_pivot`
+                // with the new candidate at the end of the method.
+            }
+            CandidateResolution::ConfirmActive => {
+                // The active pivot is safe. Lock it into the anchors and history.
+                if let Some(active) = self.active_pivot {
+                    match active.pivot_type() {
+                        PivotType::High => self.anchor_high = Some(active),
+                        PivotType::Low => self.anchor_low = Some(active),
+                    }
+                    self.history.push(active);
+                }
+            }
+        }
+
+        // 3. Classify the new pivot
+        let (trend, event) = match self.anchor_low {
+            Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
+                Some(Ordering::Less) => {
+                    use MarketStructureSequence::*;
+
+                    // Explicitly match all variants to prevent black holes
+                    let market_structure_event = match self.anchor_high.map(|h| h.trend) {
+                        Some(HigherHigh) => MarketStructureEvent::MarketStructureShift,
+
+                        Some(LowerHigh | EqualHigh | UnclassifiedHigh) | None => {
+                            MarketStructureEvent::BreakOfStructure
+                        }
+
+                        // Explicitly trap invalid states that the old `_` was swallowing
+                        Some(
+                            invalid_trend @ (HigherLow | LowerLow | EqualLow | UnclassifiedLow),
+                        ) => {
+                            tracing::error!(
+                                reason = "corrupted_state",
+                                anchor_high_trend = ?invalid_trend,
+                                "anchor_high contains a Low pivot sequence. Defaulting to BreakOfStructure."
+                            );
+                            MarketStructureEvent::BreakOfStructure
+                        }
+                    };
+
+                    (LowerLow, market_structure_event)
+                }
+                Some(Ordering::Greater) => (
+                    MarketStructureSequence::HigherLow,
+                    MarketStructureEvent::NoChange,
+                ),
+                Some(Ordering::Equal) => (
+                    MarketStructureSequence::EqualLow,
+                    MarketStructureEvent::NoChange,
+                ),
+                None => {
+                    tracing::warn!(
+                        reason = "nan_detected",
+                        candidate_price = ?current_low_price,
+                        anchor_price = ?anchor.price,
+                        "Invalid float (NaN) detected. Discarding pivot to prevent state poisoning."
+                    );
+                    return None;
+                }
+            },
+            None => (
+                MarketStructureSequence::UnclassifiedLow,
+                MarketStructureEvent::NoChange,
+            ),
+        };
+
+        // 4. Construct and emit the new pivot
+        let new_pivot = PivotPoint {
+            indexed_candle: candidate,
+            price: current_low_price,
+            price_source: self.price_source,
+            trend,
+        };
+
+        self.active_pivot = Some(new_pivot);
+
+        if event != MarketStructureEvent::NoChange {
+            tracing::debug!(
+                event = ?event,
+                trend = ?trend,
+                price = ?current_low_price,
+                "Market Structure Extracted"
+            );
+        }
+
+        Some((event, new_pivot))
+    }
+}
+
+impl StreamingIndicator for StreamingHhll {
+    type Input = IndexedOhlcv;
+    type Output<'a> = Option<(MarketStructureEvent, PivotPoint)>;
+
+    fn update(&mut self, indexed_candle: Self::Input) -> Self::Output<'_> {
+        let window_size = self.zig_zag_period.buffer_size();
+        self.buffer.push_back(indexed_candle);
+
+        if self.buffer.len() < window_size {
+            return None;
+        }
+        if self.buffer.len() > window_size {
+            self.buffer.pop_front();
+        }
+
+        let is_swing_high = self.check_extremum(PivotType::High);
+        let is_swing_low = self.check_extremum(PivotType::Low);
+
+        match (is_swing_high, is_swing_low) {
+            (true, true) => {
+                // The candidate is BOTH a Swing High and a Swing Low (Mega Bar).
+                let candidate = self.candidate();
+                match candidate.candle.direction() {
+                    CandleDirection::Bullish => self.process_high(),
+                    CandleDirection::Bearish => self.process_low(),
+                    CandleDirection::Doji => {
+                        // Assumption: Extend the current market structure
+                        match self.active_pivot.map(|p| p.pivot_type()) {
+                            Some(PivotType::Low) => self.process_low(),
+                            Some(PivotType::High) => self.process_high(),
+                            None => None, // A doji candle and no history.
+                        }
+                    }
+                }
+            }
+            (true, false) => self.process_high(),
+            (false, true) => self.process_low(),
+            (false, false) => None,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.buffer.clear();
+        self.active_pivot = None;
+        self.anchor_high = None;
+        self.anchor_low = None;
+        self.history.clear();
+    }
+}
+
+// ================================================================================================
+// Helper Enum
+// ================================================================================================
+
+/// Represents how a new candidate resolves against the currently active pivot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CandidateResolution {
+    /// The candidate violates alternation and is weaker. Discard it.
+    Discard,
+    /// The candidate violates alternation but is stronger. Overwrite the active pivot.
+    ReplaceActive,
+    /// The candidate respects alternation. Lock the active pivot into history.
+    ConfirmActive,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::domain::Quantity;
+    use std::f64::EPSILON;
+
+    // ==========================================
+    // === 1. Mocks & Helpers ===
+    // ==========================================
+
+    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    fn ts(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    /// A rapid builder for Indexed OHLCV candles to keep our test trajectories readable.
+    fn candle(
+        index: usize,
+        time: &str,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) -> IndexedOhlcv {
+        IndexedOhlcv {
+            index,
+            candle: Ohlcv {
+                open_timestamp: ts(time),
+                close_timestamp: ts(time),
+                open: Price(open),
+                high: Price(high),
+                low: Price(low),
+                close: Price(close),
+                volume: Quantity(100.0),
+                quote_asset_volume: None,
+                number_of_trades: None,
+                taker_buy_base_asset_volume: None,
+                taker_buy_quote_asset_volume: None,
+            },
+        }
+    }
+
+    /// Helper to assert floats with epsilon tolerance
+    fn assert_f64_eq(a: f64, b: f64) {
+        assert!((a - b).abs() < EPSILON, "Expected {} to equal {}", a, b);
+    }
+
+    fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {
+        let indicator = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: left,
+                right_bars: right,
+            })
+            .with_tiebreaker(tiebreaker)
+            .with_alternation_mode(AlternationMode::Alternating)
+            .with_price_source(PriceSource::HighLow);
+
+        // ALWAYS Verify strictly correct initial state
+        assert!(indicator.active_pivot().is_none());
+        assert!(indicator.anchor_high().is_none());
+        assert!(indicator.anchor_low().is_none());
+        assert!(indicator.history().is_empty());
+        assert!(indicator.buffer.is_empty());
+
+        indicator
+    }
+
+    // ==========================================
+    // === 2. Enum/Math/Classification Tests ===
+    // ==========================================
+
+    #[test]
+    fn test_pivot_type_extract_price() {
+        // Create mock candles with explicit directions
+        let bullish_candle = candle(0, "2026-05-24T10:00:00Z", 10., 20., 5., 15.).candle;
+        let bearish_candle = candle(1, "2026-05-24T10:01:00Z", 15., 20., 5., 10.).candle;
+        let doji_candle = candle(2, "2026-05-24T10:02:00Z", 15., 20., 5., 15.).candle;
+
+        // === HighLow PriceSource (Always extracts High/Low regardless of direction) ===
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bullish_candle, PriceSource::HighLow)
+                .0,
+            20.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bullish_candle, PriceSource::HighLow)
+                .0,
+            5.,
+        );
+
+        // === OpenClose PriceSource ===
+        // Bullish: High -> Close(15), Low -> Open(10)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bullish_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bullish_candle, PriceSource::OpenClose)
+                .0,
+            10.,
+        );
+
+        // Bearish: High -> Open(15), Low -> Close(10)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(bearish_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(bearish_candle, PriceSource::OpenClose)
+                .0,
+            10.,
+        );
+
+        // Doji: High -> Close(15), Low -> Close(15)
+        assert_f64_eq(
+            PivotType::High
+                .extract_price(doji_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+        assert_f64_eq(
+            PivotType::Low
+                .extract_price(doji_candle, PriceSource::OpenClose)
+                .0,
+            15.,
+        );
+    }
+
+    /// Verifies that all `MarketStructureSequence` variants correctly map to their implied geometric `PivotType`.
+    #[test]
+    fn test_market_structure_sequence_to_pivot_type() {
+        use MarketStructureSequence::*;
+
+        let highs = vec![HigherHigh, LowerHigh, EqualHigh, UnclassifiedHigh];
+        for h in highs {
+            assert_eq!(h.as_pivot_type(), PivotType::High);
+            assert_eq!(PivotType::from(h), PivotType::High);
+        }
+
+        let lows = vec![HigherLow, LowerLow, EqualLow, UnclassifiedLow];
+        for l in lows {
+            assert_eq!(l.as_pivot_type(), PivotType::Low);
+            assert_eq!(PivotType::from(l), PivotType::Low);
+        }
+    }
+
+    /// Verifies the initial struct classification accurately returns NoChange for the first unclassified points.
+    #[test]
+    fn test_initial_classification_bos_vs_nochange() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // 1. Fire the first High. It has no prior structure to compare against.
+        assert!(
+            hhll.update(candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.))
+                .is_none()
+        );
+
+        let event_1 = hhll.update(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+        assert!(event_1.is_none(), "Window is not full, must not emit");
+
+        let (e1, p1) = hhll
+            .update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        // Assert INITIAL classification behavior
+        assert_eq!(e1, MarketStructureEvent::NoChange);
+        assert_eq!(p1.trend, MarketStructureSequence::UnclassifiedHigh);
+
+        // 2. Fire the first Low to establish opposite-side anchor.
+        hhll.update(candle(3, "2026-05-24T10:03:00Z", 5., 5., 5., 5.));
+        let (e2, p2) = hhll
+            .update(candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(e2, MarketStructureEvent::NoChange);
+        assert_eq!(p2.trend, MarketStructureSequence::UnclassifiedLow);
+
+        // 3. Fire a SECOND High that exceeds the FIRST High.
+        // This initiates the trend and must trigger a BreakOfStructure.
+        hhll.update(candle(5, "2026-05-24T10:05:00Z", 30., 30., 30., 30.));
+        let (e3, p3) = hhll
+            .update(candle(6, "2026-05-24T10:06:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(e3, MarketStructureEvent::BreakOfStructure);
+        assert_eq!(p3.trend, MarketStructureSequence::HigherHigh);
+
+        // 4. Fire a SECOND Low that exceeds (is lower than) the FIRST Low.
+        hhll.update(candle(7, "2026-05-24T10:07:00Z", 2., 2., 2., 2.));
+        let (e4, p4) = hhll
+            .update(candle(8, "2026-05-24T10:08:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(e4, MarketStructureEvent::MarketStructureShift);
+        assert_eq!(p4.trend, MarketStructureSequence::LowerLow);
+    }
+
+    #[test]
+    fn test_pivot_point_interpolation() {
+        let p1 = PivotPoint {
+            indexed_candle: candle(10, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::LowerLow,
+        };
+
+        // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by 50.
+        let p2 = PivotPoint {
+            indexed_candle: candle(20, "2026-05-24T15:10:00Z", 150., 150., 150., 150.),
+            price: Price(150.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::HigherLow,
+        };
+
+        // === 1. Test Index Based Interpolation ===
+        // Slope = (150 - 100) / (20 - 10) = 5.0 per bar
+        let line_by_idx = p1.price_line_by_index(&p2);
+
+        assert_f64_eq(line_by_idx(10).0, 100.0); // Start point
+        assert_f64_eq(line_by_idx(15).0, 125.0); // Exact midpoint
+        assert_f64_eq(line_by_idx(20).0, 150.0); // Target point
+        assert_f64_eq(line_by_idx(25).0, 175.0); // Extrapolation into the future!
+
+        // === 2. Test Time Based Interpolation ===
+        let line_by_time = p1.price_line_by_point_in_time(&p2);
+
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:05:00Z")).0, 125.0); // Midpoint (5 mins)
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:10:00Z")).0, 150.0); // Target
+        assert_f64_eq(line_by_time(ts("2026-05-24T15:20:00Z")).0, 200.0); // Extrapolation into future
+    }
+
+    #[test]
+    fn test_pivot_point_flat_line_and_zero_division() {
+        let p1 = PivotPoint {
+            indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::LowerLow,
+        };
+
+        let p2 = PivotPoint {
+            indexed_candle: candle(5, "2026-05-24T15:00:00Z", 100., 100., 100., 100.),
+            price: Price(100.0),
+            price_source: PriceSource::HighLow,
+            trend: MarketStructureSequence::LowerLow,
+        };
+
+        // Same index/time should result in flat line, NOT a NaN/Inf panic
+        let line = p1.price_line_by_index(&p2);
+        assert_f64_eq(line(10).0, 100.0);
+    }
+
+    // ==========================================
+    // === 3. Partitions & Tiebreaker Microstructure Tests ===
+    // ==========================================
+
+    /// Validates the internal left/right partitioning logic and `candidate()` pointer.
+    #[test]
+    fn test_streaming_hhll_partitions_and_candidate() {
+        let mut hhll = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+
+        // Fill buffer exactly to window size (5 bars)
+        for i in 0..5 {
+            hhll.buffer
+                .push_back(candle(i, "2026-05-24T10:00:00Z", 10., 10., 10., 10.));
+        }
+
+        // With left_bars=2, mid index must be 2.
+        assert_eq!(hhll.candidate().index, 2);
+
+        // Left partition should take `left_bars` from the front
+        let left = hhll.left_partition().map(|c| c.index).collect::<Vec<_>>();
+        assert_eq!(left, vec![0, 1]);
+
+        // Right partition takes `right_bars` from the end (in reverse iteration)
+        let right = hhll.right_partition().map(|c| c.index).collect::<Vec<_>>();
+        assert_eq!(right, vec![4, 3]);
+    }
+
+    /// Evaluates the `check_extremum` logic in strict isolation to prove micro-swing detection.
+    ///
+    /// Note: Because this tests a private internal method, we manually populate the buffer
+    /// to bypass the `update()` state machine and avoid triggering `process_high/low`.
+    #[test]
+    fn test_check_extremum_isolated() {
+        // === Case 1: Clear Swing High ===
+        {
+            let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll.buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.));
+            hhll.buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll.buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            assert!(
+                hhll.check_extremum(PivotType::High),
+                "Clear peak should be High"
+            );
+            assert!(
+                !hhll.check_extremum(PivotType::Low),
+                "Clear peak is not a Low"
+            );
+        }
+
+        // === Case 2: Clear Swing Low ===
+        {
+            let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll.buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll.buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.));
+            hhll.buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+
+            assert!(
+                hhll.check_extremum(PivotType::Low),
+                "Clear trough should be Low"
+            );
+            assert!(
+                !hhll.check_extremum(PivotType::High),
+                "Clear trough is not a High"
+            );
+        }
+
+        // === Case 3: Tiebreaker on a Flat Top Plateau [20, 20(Candidate), 10] ===
+        {
+            // Sub-case: Latest Tiebreaker
+            let mut hhll_latest = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+            hhll_latest
+                .buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll_latest
+                .buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll_latest
+                .buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            // Latest: Left is inclusive (20 >= 20 = Pass). Right is strict (20 > 10 = Pass).
+            assert!(
+                hhll_latest.check_extremum(PivotType::High),
+                "Latest should pass on flat left side"
+            );
+
+            // Sub-case: Earliest Tiebreaker
+            let mut hhll_earliest = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+            hhll_earliest
+                .buffer
+                .push_back(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+            hhll_earliest
+                .buffer
+                .push_back(candle(1, "2026-05-24T10:01:00Z", 20., 20., 20., 20.));
+            hhll_earliest
+                .buffer
+                .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+
+            // Earliest: Left is strict (20 > 20 = FAIL). Right is inclusive (20 >= 10 = Pass).
+            assert!(
+                !hhll_earliest.check_extremum(PivotType::High),
+                "Earliest should fail on flat left side"
+            );
+        }
+    }
+
+    /// Comprehensive edge case: Plateau inside lookback window under Earliest policy.
+    /// Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
+    /// `Earliest` dictates that ONLY 15(A) should be emitted.
+    #[test]
+    fn test_sliding_window_plateaus_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Pre-fill to start the sliding window
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.)); // Buffer: [10]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 15., 15., 15., 15.)); // Buffer: [10, 15(A)]
+
+        // Tick 1: Buffer is [10, 15(A), 15(B)]. Candidate is 15(A).
+        // Left is 10. 15 > 10 (Pass). Right is 15. 15 >= 15 (Pass).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.));
+        assert!(
+            event_a.is_some(),
+            "Earliest policy should emit the first peak (A)."
+        );
+        assert_eq!(event_a.unwrap().1.indexed_candle.index, 1);
+
+        // Tick 2: Buffer is [15(A), 15(B), 15(C)]. Candidate is 15(B).
+        // Left is 15(A). 15 > 15 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.));
+        assert!(
+            event_b.is_none(),
+            "Earliest policy must discard middle plateau bars (B)."
+        );
+
+        // Tick 3: Buffer is [15(B), 15(C), 10]. Candidate is 15(C).
+        // Left is 15(B). 15 > 15 (FAIL).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_c.is_none(),
+            "Earliest policy must discard final plateau bars (C)."
+        );
+    }
+
+    #[test]
+    fn test_sliding_window_plateaus_earliest_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.)); // Buffer: [20]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.)); // Buffer: [20, 10(A)]
+
+        // Tick 1: Buffer is [20, 10(A), 10(B)]. Candidate is 10(A).
+        // Left is 20. 10 < 20 (Pass). Right is 10. 10 <= 10 (Pass).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_a.is_some(),
+            "Earliest policy should emit the first trough (A)."
+        );
+        assert_eq!(event_a.unwrap().1.indexed_candle.index, 1);
+
+        // Tick 2: Buffer is [10(A), 10(B), 10(C)]. Candidate is 10(B).
+        // Left is 10(A). 10 < 10 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 10., 10., 10., 10.));
+        assert!(event_b.is_none());
+
+        // Tick 3: Buffer is [10(B), 10(C), 20]. Candidate is 10(C).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.));
+        assert!(event_c.is_none());
+    }
+
+    /// Comprehensive edge case: Plateau inside lookback window under Latest policy.
+    /// Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
+    /// `Latest` dictates that ONLY 15(C) should be emitted.
+    #[test]
+    fn test_sliding_window_plateaus_latest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Pre-fill to start the sliding window
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 10., 10., 10., 10.)); // Buffer: [10]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 15., 15., 15., 15.)); // Buffer: [10, 15(A)]
+
+        // Tick 1: Buffer is [10, 15(A), 15(B)]. Candidate is 15(A).
+        // Right is 15. 15 > 15 (FAIL under Latest strict right).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 15., 15., 15., 15.));
+        assert!(
+            event_a.is_none(),
+            "Latest policy must discard early plateau bars (A)."
+        );
+
+        // Tick 2: Buffer is [15(A), 15(B), 15(C)]. Candidate is 15(B).
+        // Right is 15. 15 > 15 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 15., 15., 15., 15.));
+        assert!(
+            event_b.is_none(),
+            "Latest policy must discard middle plateau bars (B)."
+        );
+
+        // Tick 3: Buffer is [15(B), 15(C), 10]. Candidate is 15(C).
+        // Left is 15. 15 >= 15 (Pass). Right is 10. 15 > 10 (Pass).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_c.is_some(),
+            "Latest policy should emit the final peak (C)."
+        );
+        assert_eq!(event_c.unwrap().1.indexed_candle.index, 3);
+    }
+
+    #[test]
+    fn test_sliding_window_plateaus_latest_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.)); // Buffer: [20]
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 10., 10., 10.)); // Buffer: [20, 10(A)]
+
+        // Tick 1: Buffer is [20, 10(A), 10(B)]. Candidate is 10(A).
+        // Right is 10. 10 < 10 (FAIL under Latest strict right).
+        let event_a = hhll.update(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
+        assert!(
+            event_a.is_none(),
+            "Latest policy must discard early plateau bars (A)."
+        );
+
+        // Tick 2: Buffer is [10(A), 10(B), 10(C)]. Candidate is 10(B).
+        // Right is 10. 10 < 10 (FAIL).
+        let event_b = hhll.update(candle(3, "2026-05-24T10:03:00Z", 10., 10., 10., 10.));
+        assert!(event_b.is_none());
+
+        // Tick 3: Buffer is [10(B), 10(C), 20]. Candidate is 10(C).
+        // Left is 10. 10 <= 10 (Pass). Right is 20. 10 < 20 (Pass).
+        let event_c = hhll.update(candle(4, "2026-05-24T10:04:00Z", 20., 20., 20., 20.));
+        assert!(
+            event_c.is_some(),
+            "Latest policy should emit the final trough (C)."
+        );
+        assert_eq!(event_c.unwrap().1.indexed_candle.index, 3);
+    }
+
+    /// Verifies the update block bootstrapping logic explicitly routes Mega Bars
+    /// to the correct processor based on Bullish / Bearish candle closes.
+    #[test]
+    fn test_mega_bar_bullish_and_bearish_routing() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // === Subtest: Bullish Mega Bar (Close > Open) ===
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bullish Close (25 > 10).
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 30., 5., 25.));
+        let event_bullish = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+
+        // Assert: Bullish Mega Bar routes to `process_high`
+        assert!(event_bullish.is_some());
+        assert_eq!(event_bullish.unwrap().1.pivot_type(), PivotType::High);
+        assert_eq!(event_bullish.unwrap().1.price.0, 30.0);
+
+        hhll.reset();
+
+        // === Subtest: Bearish Mega Bar (Close < Open) ===
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bearish Close (10 < 25).
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 25., 30., 5., 10.));
+        let event_bearish = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+
+        // Assert: Bearish Mega Bar routes to `process_low`
+        assert!(event_bearish.is_some());
+        assert_eq!(event_bearish.unwrap().1.pivot_type(), PivotType::Low);
+        assert_eq!(event_bearish.unwrap().1.price.0, 5.0);
+    }
+
+    // ==========================================
+    // === 4. Macro Tiebreaker Tests ===
+    // ==========================================
+
+    #[test]
+    fn test_basic_swing_high_detection() {
+        // Window size 5: 2 left, 1 candidate, 2 right.
+        let mut hhll = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+
+        let trajectory = vec![
+            candle(0, "2026-05-24T15:01:00Z", 10., 10., 10., 10.), // L1
+            candle(1, "2026-05-24T15:02:00Z", 15., 15., 15., 15.), // L2
+            candle(2, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak (Candidate)
+            candle(3, "2026-05-24T15:04:00Z", 15., 15., 15., 15.), // R1
+        ];
+
+        for c in trajectory {
+            assert!(
+                hhll.update(c).is_none(),
+                "Should not emit before right window is full"
+            );
+        }
+
+        // Pushing R2 completes the right window for the Candidate (20.0).
+        // It should immediately trigger the Swing High evaluation.
+        let event = hhll
+            .update(candle(4, "2026-05-24T15:05:00Z", 10., 10., 10., 10.))
+            .unwrap();
+
+        assert_eq!(event.1.pivot_type(), PivotType::High);
+        assert_eq!(event.1.price.0, 20.0);
+        assert_eq!(event.1.point_in_time(), ts("2026-05-24T15:03:00Z"));
+    }
+
+    #[test]
+    fn test_tiebreaker_double_top() {
+        // Window is 2-2. Requires 5 bars. To correctly center C2 as the first candidate,
+        // we must pre-pad with two left bars.
+        let trajectory = vec![
+            candle(0, "2026-05-24T15:00:00Z", 10., 10., 10., 10.),
+            candle(1, "2026-05-24T15:01:00Z", 10., 10., 10., 10.),
+            candle(2, "2026-05-24T15:02:00Z", 20., 20., 20., 20.), // Peak 1
+            candle(3, "2026-05-24T15:03:00Z", 20., 20., 20., 20.), // Peak 2 (Double Top)
+            candle(4, "2026-05-24T15:04:00Z", 10., 10., 10., 10.),
+            candle(5, "2026-05-24T15:05:00Z", 10., 10., 10., 10.),
+        ];
+
+        // Test Earliest: Should capture Peak 1 (Index 2)
+        let mut hhll_early = create_indicator(2, 2, ExtremeTiebreaker::Earliest);
+        let mut early_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_early.update(c) {
+                early_result = Some(res);
+            }
+        }
+        assert_eq!(
+            early_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:02:00Z")
+        );
+
+        // Test Latest: Should capture Peak 2 (Index 3)
+        let mut hhll_late = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+        let mut late_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_late.update(c) {
+                late_result = Some(res);
+            }
+        }
+        assert_eq!(
+            late_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:03:00Z")
+        );
+    }
+
+    #[test]
+    fn test_tiebreaker_double_bottom() {
+        // Symmetrical test to double_top. We ensure decreasing Highs to avoid
+        // generating micro-swing highs during the test window.
+        let trajectory = vec![
+            candle(0, "2026-05-24T15:00:00Z", 20., 50., 20., 20.),
+            candle(1, "2026-05-24T15:01:00Z", 20., 45., 20., 20.),
+            candle(2, "2026-05-24T15:02:00Z", 10., 40., 10., 10.), // Trough 1
+            candle(3, "2026-05-24T15:03:00Z", 10., 35., 10., 10.), // Trough 2 (Double Bottom)
+            candle(4, "2026-05-24T15:04:00Z", 20., 30., 20., 20.),
+            candle(5, "2026-05-24T15:05:00Z", 20., 25., 20., 20.),
+        ];
+
+        // Test Earliest: Should capture Trough 1 (Index 2)
+        let mut hhll_early = create_indicator(2, 2, ExtremeTiebreaker::Earliest);
+        let mut early_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_early.update(c) {
+                early_result = Some(res);
+            }
+        }
+        assert_eq!(
+            early_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:02:00Z")
+        );
+
+        // Test Latest: Should capture Trough 2 (Index 3)
+        let mut hhll_late = create_indicator(2, 2, ExtremeTiebreaker::Latest);
+        let mut late_result = None;
+        for &c in &trajectory {
+            if let Some(res) = hhll_late.update(c) {
+                late_result = Some(res);
+            }
+        }
+        assert_eq!(
+            late_result.unwrap().1.point_in_time(),
+            ts("2026-05-24T15:03:00Z")
+        );
+    }
+
+    #[test]
+    fn test_alternation_filter_overwrites_noise() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // To test alternation, we must prevent intermediate Swing Lows from triggering.
+        // We do this by ensuring the `low` values strictly increase.
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.));
+
+        // Peak 1: High=20
+        let p1 = hhll.update(candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.));
+        assert!(p1.is_none()); // Wait for right buffer
+
+        let p1_confirmed = hhll
+            .update(candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.))
+            .unwrap()
+            .1;
+
+        // Assert strict initial state before the conflict
+        assert_eq!(p1_confirmed.price.0, 20.0);
+        assert_eq!(p1_confirmed.pivot_type(), PivotType::High);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 20.0);
+        assert!(
+            hhll.history().is_empty(),
+            "History must be empty before confirmation"
+        );
+
+        // Dip in Highs, but NOT Lows. This prevents a Trough from confirming!
+        hhll.update(candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.));
+
+        // Peak 2: Higher High (30)
+        let p2 = hhll.update(candle(4, "2026-05-24T10:04:00Z", 30., 30., 5., 30.));
+        assert!(
+            p2.is_none(),
+            "Candidate is the intermediate dip, must not emit"
+        );
+
+        let p2_confirmed = hhll
+            .update(candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.))
+            .unwrap()
+            .1;
+
+        // Because Alternation is active and no Trough fired, P2 replaces P1.
+        assert_eq!(p2_confirmed.price.0, 30.0);
+        assert_eq!(p2_confirmed.pivot_type(), PivotType::High);
+
+        // Ensure the lesser peak was successfully overwritten and NOT pushed to history
+        assert_eq!(hhll.history().len(), 0);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 30.0);
+    }
+
+    /// Tests Macro Tiebreaker Resolution: Earliest.
+    #[test]
+    fn test_macro_tiebreaker_equal_peaks_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        let trajectory = vec![
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.), // Flat dip in Highs (no trough)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 5., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.),
+        ];
+
+        let mut events = Vec::new();
+        for c in trajectory {
+            if let Some(event) = hhll.update(c) {
+                events.push(event);
+            }
+        }
+
+        // Only Peak 1 should have been emitted. Peak 2 evaluates in the state machine
+        // but `20.0 > 20.0` is false, so it is discarded.
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.point_in_time(), ts("2026-05-24T10:01:00Z"));
+        assert_eq!(
+            hhll.active_pivot.unwrap().point_in_time(),
+            ts("2026-05-24T10:01:00Z")
+        );
+    }
+
+    /// Tests Macro Tiebreaker Resolution: Latest.
+    #[test]
+    fn test_macro_tiebreaker_equal_peaks_latest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        let trajectory = vec![
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 15., 15., 4., 15.), // Flat dip in Highs (no trough)
+            candle(4, "2026-05-24T10:04:00Z", 20., 20., 5., 20.), // Peak 2 (Double Top)
+            candle(5, "2026-05-24T10:05:00Z", 10., 10., 6., 10.),
+        ];
+
+        let mut events = Vec::new();
+        for c in trajectory {
+            if let Some(event) = hhll.update(c) {
+                events.push(event);
+            }
+        }
+
+        // Peak 1 is emitted first. Then Peak 2 arrives and is ALSO emitted because
+        // it overwrites Peak 1 as the new active_pivot.
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1.point_in_time(), ts("2026-05-24T10:01:00Z")); // First emission
+        assert_eq!(events[1].1.point_in_time(), ts("2026-05-24T10:04:00Z")); // Overwrite emission
+
+        // The active pivot currently tracking the market should be Peak 2.
+        assert_eq!(
+            hhll.active_pivot.unwrap().point_in_time(),
+            ts("2026-05-24T10:04:00Z")
+        );
+    }
+
+    #[test]
+    fn test_history_invariant_alternating_mode() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        let trajectory = vec![
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.), // Dip (No confirmed Low yet)
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 4., 30.), // Peak 2 (Higher High)
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 5., 10.),
+        ];
+
+        for c in trajectory {
+            let _ = hhll.update(c);
+        }
+
+        // Active pivot is Peak 2.
+        assert_eq!(hhll.active_pivot.unwrap().price.0, 30.0);
+
+        // History should be EMPTY. Peak 1 was discarded and never locked in.
+        assert_eq!(
+            hhll.history().len(),
+            0,
+            "History should not contain overwritten pivots"
+        );
+
+        // Now, push a confirmed Trough to lock in Peak 2.
+        let _ = hhll.update(candle(5, "2026-05-24T10:05:00Z", 10., 10., -10., 10.)); // Swing Low
+        let _ = hhll.update(candle(6, "2026-05-24T10:06:00Z", 15., 15., -5., 15.)); // Right window to trigger Low
+
+        // NOW Peak 2 should be safely locked in history.
+        assert_eq!(hhll.history().len(), 1);
+        assert_eq!(hhll.history()[0].price.0, 30.0);
+        assert_eq!(hhll.history()[0].pivot_type(), PivotType::High);
+    }
+
+    #[test]
+    fn test_history_invariant_consecutive_mode() {
+        let mut hhll = StreamingHhll::default()
+            .with_zig_zag_period(ZigZagPeriod {
+                left_bars: 1,
+                right_bars: 1,
+            })
+            .with_alternation_mode(AlternationMode::Consecutive) // Unfiltered
+            .with_tiebreaker(ExtremeTiebreaker::Latest)
+            .with_price_source(PriceSource::HighLow);
+
+        let trajectory = vec![
+            candle(0, "2026-05-24T10:00:00Z", 10., 10., 1., 10.),
+            candle(1, "2026-05-24T10:01:00Z", 20., 20., 2., 20.), // Peak 1
+            candle(2, "2026-05-24T10:02:00Z", 15., 15., 3., 15.),
+            candle(3, "2026-05-24T10:03:00Z", 30., 30., 4., 30.), // Peak 2
+            candle(4, "2026-05-24T10:04:00Z", 10., 10., 5., 10.),
+            candle(5, "2026-05-24T10:05:00Z", 40., 40., 6., 40.), // Peak 3
+            candle(6, "2026-05-24T10:06:00Z", 10., 10., 7., 10.),
+        ];
+
+        for c in trajectory {
+            let _ = hhll.update(c);
+        }
+
+        // Active pivot is tracking Peak 3.
+        assert_eq!(hhll.active_pivot.unwrap().price.0, 40.0);
+
+        // History should contain Peak 1 and Peak 2, despite them all being Highs.
+        assert_eq!(
+            hhll.history().len(),
+            2,
+            "Consecutive mode should lock all previous peaks"
+        );
+        assert_eq!(hhll.history()[0].price.0, 20.0);
+        assert_eq!(hhll.history()[1].price.0, 30.0);
+    }
+
+    // ==========================================
+    // === 5. Deep Edge Cases & Mega Bars ===
+    // ==========================================
+
+    /// Tests the Mega Bar (Outside Bar) anomaly when the candidate closes as a Doji.
+    ///
+    /// # The Microstructure Logic
+    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an outside bar),
+    /// the algorithm must choose which extremum logically extends the current market structure.
+    /// If the candle is a Doji (Open == Close, indicating no directional conviction),
+    /// the algorithm evaluates it against the active trend to see if it extends it.
+    ///
+    /// # Scenario A: Mega Doji Extends a High
+    #[test]
+    fn test_mega_doji_extends_high() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        // Assert natural setup is valid
+        assert!(p1.is_some());
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::High);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 50.0);
+
+        // 1. Push Left Window (prevents Low from firing)
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
+        // High is 60 (Extends the 50 High).
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        // 3. Push Right Window -> Triggers evaluation of the Mega Doji
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        // The algorithm routes to `process_high` and evaluates 60 >= 50 (True).
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the High, but it was discarded"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.pivot_type(), PivotType::High);
+        assert_eq!(pivot.price.0, 60.0);
+    }
+
+    /// # Scenario B: Mega Doji Extends a Low (Sweeps Liquidity)
+    #[test]
+    fn test_mega_doji_extends_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        // Assert natural setup is valid
+        assert!(p1.is_some());
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
+
+        // Candidate Low (5.0) < Active Pivot Low (10.0).
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(event.is_some(), "Expected Doji to extend the Low");
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.pivot_type(), PivotType::Low);
+        assert_eq!(pivot.price.0, 5.0);
+    }
+
+    /// # Scenario C: Mega Doji Discarded as Internal Noise
+    #[test]
+    fn test_mega_doji_discarded_as_noise() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup a very deep, established macro Low at price 1.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 1., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        assert!(p1.is_some());
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 1.0);
+
+        assert!(
+            hhll.update(candle(3, "2026-05-24T17:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
+
+        // Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
+        assert!(
+            hhll.update(candle(4, "2026-05-24T17:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        let event_noise = hhll.update(candle(5, "2026-05-24T17:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event_noise.is_none(),
+            "Expected Doji to be discarded as internal noise"
+        );
+    }
+
+    /// # Scenario D: Mega Doji Extends a High under Earliest Tiebreaker
+    #[test]
+    fn test_mega_doji_extends_high_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        assert!(p1.is_some());
+
+        // 1. Push Left Window (prevents Low from firing)
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate
+        // High is 60. Under Earliest, 60 > 50 is TRUE.
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the High under Earliest"
+        );
+        assert_eq!(event.unwrap().1.price.0, 60.0);
+    }
+
+    /// # Scenario E: Mega Doji Exact Tie under Earliest (Discarded)
+    #[test]
+    fn test_mega_doji_exact_tie_earliest_discarded() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.));
+
+        // 2. Push Mega Doji Candidate
+        // High is EXACTLY 50. Under Earliest, 50 > 50 is FALSE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 50., 5., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_none(),
+            "Expected exact tie Doji to be discarded under Earliest tiebreaker"
+        );
+    }
+
+    /// # Scenario F: Mega Doji Exact Tie under Latest (Overwrites)
+    #[test]
+    fn test_mega_doji_exact_tie_latest_overwrites() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.));
+
+        // 2. Push Mega Doji Candidate
+        // High is EXACTLY 50. Under Latest, 50 >= 50 is TRUE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 50., 5., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_some(),
+            "Expected exact tie Doji to overwrite under Latest tiebreaker"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.price.0, 50.0);
+        // Ensure it is actually the NEW candle by checking the timestamp
+        assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
+    }
+
+    /// # Scenario G: Mega Doji Extends a Low under Earliest Tiebreaker
+    #[test]
+    fn test_mega_doji_extends_low_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        assert!(p1.is_some());
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+
+        // 1. Push Left Window (prevents High from firing)
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate
+        // Low is 5. Under Earliest, 5 < 10 is TRUE.
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the Low under Earliest"
+        );
+        assert_eq!(event.unwrap().1.price.0, 5.0);
+    }
+
+    /// # Scenario H: Mega Doji Exact Tie under Earliest (Discarded for Low)
+    #[test]
+    fn test_mega_doji_exact_tie_earliest_discarded_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.));
+
+        // 2. Push Mega Doji Candidate
+        // Low is EXACTLY 10. Under Earliest, 10 < 10 is FALSE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 10., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_none(),
+            "Expected exact tie Doji to be discarded under Earliest tiebreaker"
+        );
+    }
+
+    /// # Scenario I: Mega Doji Exact Tie under Latest (Overwrites for Low)
+    #[test]
+    fn test_mega_doji_exact_tie_latest_overwrites_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.));
+
+        // 2. Push Mega Doji Candidate
+        // Low is EXACTLY 10. Under Latest, 10 <= 10 is TRUE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 10., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_some(),
+            "Expected exact tie Doji to overwrite under Latest tiebreaker"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.price.0, 10.0);
+        // Ensure it is actually the NEW candle by checking the timestamp
+        assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
+    }
+
+    /// Verifies that if the VERY FIRST extremum detected is a Mega Bar Doji,
+    /// the algorithm safely ignores it because there is no prior trend to derive inertia from.
+    #[test]
+    fn test_initial_orphaned_mega_doji_safely_ignored() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Ensure strictly clean state
+        assert!(hhll.active_pivot().is_none());
+
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
+
+        // Candidate: Mega Doji (High = 30, Low = 10, Open = 20, Close = 20)
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 20., 30., 10., 20.));
+
+        // Right boundary closes the window
+        let event = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
+
+        // Because active_pivot is None, `CandleDirection::Doji` logic explicitly returns `None`.
+        assert!(
+            event.is_none(),
+            "Expected initial Mega Doji to be safely discarded, but it emitted an event."
+        );
+    }
+
+    /// Geometrically proves that an Inside Bar can never be evaluated as an extremum.
+    #[test]
+    fn test_inside_bar_never_triggers() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Huge outer bar bounds the window
+        hhll.update(candle(0, "2026-05-24T10:00:00Z", 50., 100., 10., 50.));
+
+        // Candidate is strictly inside the previous bar's range
+        hhll.update(candle(1, "2026-05-24T10:01:00Z", 50., 60., 40., 50.));
+
+        // Right boundary closes the window
+        let event = hhll.update(candle(2, "2026-05-24T10:02:00Z", 50., 50., 50., 50.));
+
+        assert!(
+            event.is_none(),
+            "An inside bar should never emit a pivot event"
+        );
+    }
+
+    /// Verifies that state-poisoning (NaN prices) are trapped by the partial_cmp logic
+    /// and gracefully return None without panicking the application.
+    #[test]
+    fn test_nan_price_corruption_resistance() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup a baseline High and establish the anchor
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 10., 10., 10., 10.));
+
+        // Push a confirmed Low to lock the High into `anchor_high`
+        hhll.update(candle(3, "2026-05-24T14:02:00Z", 5., 5., 5., 5.));
+        hhll.update(candle(4, "2026-05-24T14:03:00Z", 10., 10., 10., 10.));
+
+        assert!(
+            hhll.anchor_high().is_some(),
+            "Anchor High must be securely established"
+        );
+
+        // Introduce a corrupt candidate with f64::NAN
+        hhll.update(candle(5, "2026-05-24T15:01:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(
+            6,
+            "2026-05-24T15:02:00Z",
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+        ));
+        let event = hhll.update(candle(7, "2026-05-24T15:03:00Z", 10., 10., 10., 10.));
+
+        // The float partial_cmp(50.0, f64::NAN) yields None.
+        // The code logs a warning and returns None.
+        assert!(
+            event.is_none(),
+            "Indicator failed to trap NaN price and allowed state corruption."
+        );
+    }
+}

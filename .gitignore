@@ -27,3 +27,7 @@
 
 # Cargo local config with secrets
 /.cargo/config.toml
+
+# Generated example reports (keep the dir, ignore contents)
+/examples/reports/*
+!/examples/reports/.gitkeep

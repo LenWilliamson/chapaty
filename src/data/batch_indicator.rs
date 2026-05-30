@@ -16,14 +16,36 @@ pub struct SmaWindow(pub u16);
 pub struct RsiWindow(pub u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TechnicalIndicator {
+pub enum BatchOhlcvIndicator {
     Ema(EmaWindow),
     Sma(SmaWindow),
     Rsi(RsiWindow),
 }
 
+/// A trait for data configurations that support derived technical analysis.
+impl BatchOhlcvIndicator {
+    pub fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+        match self {
+            BatchOhlcvIndicator::Ema(ema) => ema.pre_compute_ema(lf),
+            BatchOhlcvIndicator::Sma(sma) => sma.pre_compute_sma(lf),
+            BatchOhlcvIndicator::Rsi(rsi) => rsi.pre_compute_rsi(lf),
+        }
+    }
+}
+
+pub trait WithBatchIndicators: Sized {
+    type BatchIndicator: Clone;
+
+    fn with_indicator(self, kind: Self::BatchIndicator) -> Self;
+    fn with_indicators(self, kinds: &[Self::BatchIndicator]) -> Self {
+        kinds
+            .iter()
+            .fold(self, |acc, kind| acc.with_indicator(kind.clone()))
+    }
+}
+
 impl EmaWindow {
-    pub fn pre_compute_ema(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    fn pre_compute_ema(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         let window = self.0;
 
         // Standard EMA formula: alpha = 2 / (span + 1)
@@ -60,7 +82,7 @@ impl EmaWindow {
     }
 }
 impl SmaWindow {
-    pub fn pre_compute_sma(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    fn pre_compute_sma(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         let window = self.0;
         let options = RollingOptionsFixedWindow {
             window_size: window as usize,
@@ -86,7 +108,7 @@ impl SmaWindow {
 }
 
 impl RsiWindow {
-    pub fn pre_compute_rsi(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    fn pre_compute_rsi(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         let window = self.0;
         // Wilder's Smoothing for RSI: alpha = 1 / N
         let alpha = 1.0 / (window as f64);

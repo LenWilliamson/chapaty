@@ -67,7 +67,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let map: SortedVecMap<i32, String> = SortedVecMap::new();
     /// assert!(map.is_empty());
     /// ```
-    #[inline]
     pub const fn new() -> Self {
         Self {
             inner: SmallVec::new_const(),
@@ -102,7 +101,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// map.insert(1, "a");
     /// assert_eq!(map.len(), 1);
     /// ```
-    #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -118,13 +116,11 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// map.insert(1, "a");
     /// assert!(!map.is_empty());
     /// ```
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
     /// Returns the number of elements the map can hold without reallocating.
-    #[inline]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
@@ -140,7 +136,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// map.clear();
     /// assert!(map.is_empty());
     /// ```
-    #[inline]
     pub fn clear(&mut self) {
         self.inner.clear();
     }
@@ -162,7 +157,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// assert!(map.contains_key(&1));
     /// assert!(!map.contains_key(&2));
     /// ```
-    #[inline]
     pub fn contains_key(&self, key: &K) -> bool {
         self.inner.iter().any(|(k, _)| k == key)
     }
@@ -178,7 +172,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// assert_eq!(map.get(&1), Some(&"a"));
     /// assert_eq!(map.get(&2), None);
     /// ```
-    #[inline]
     pub fn get(&self, key: &K) -> Option<&V> {
         self.inner.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
@@ -196,7 +189,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// }
     /// assert_eq!(map.get(&1), Some(&"b"));
     /// ```
-    #[inline]
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         self.inner
             .iter_mut()
@@ -214,7 +206,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// map.insert(1, "a");
     /// assert_eq!(map.get_key_value(&1), Some((&1, &"a")));
     /// ```
-    #[inline]
     pub fn get_key_value(&self, key: &K) -> Option<(&K, &V)> {
         self.inner
             .iter()
@@ -405,7 +396,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let keys: Vec<_> = map.keys().copied().collect();
     /// assert_eq!(keys, vec![1, 2]);
     /// ```
-    #[inline]
     pub fn keys(&self) -> impl Iterator<Item = &K> {
         self.inner.iter().map(|(k, _)| k)
     }
@@ -423,7 +413,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let values: Vec<_> = map.values().copied().collect();
     /// assert_eq!(values, vec!["a", "b"]);
     /// ```
-    #[inline]
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.inner.iter().map(|(_, v)| v)
     }
@@ -444,7 +433,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     ///
     /// assert_eq!(map.get(&1), Some(&2));
     /// ```
-    #[inline]
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.inner.iter_mut().map(|(_, v)| v)
     }
@@ -463,7 +451,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     ///     println!("{}: {}", key, value);
     /// }
     /// ```
-    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.inner.iter().map(|(k, v)| (k, v))
     }
@@ -481,7 +468,6 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     ///     *value = "b";
     /// }
     /// ```
-    #[inline]
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.inner.iter_mut().map(|(k, v)| (&*k, v))
     }
@@ -504,7 +490,6 @@ impl<K: Ord + Sync, V: Sync> SortedVecMap<K, V> {
     /// Returns a parallel iterator over the key-value pairs.
     ///
     /// Requires the `rayon` feature to be enabled.
-    #[inline]
     pub fn par_iter(&self) -> impl ParallelIterator<Item = (&K, &V)> {
         self.inner.par_iter().map(|(k, v)| (k, v))
     }
