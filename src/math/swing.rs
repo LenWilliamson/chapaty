@@ -951,7 +951,6 @@ mod tests {
         assert_eq!(p3.trend, MarketStructureSequence::HigherHigh);
 
         // 4. Fire a SECOND Low that exceeds (is lower than) the FIRST Low.
-        // This proves symmetry: Breaking the initial low structure also triggers BOS.
         hhll.update(candle(7, "2026-05-24T10:07:00Z", 2., 2., 2., 2.));
         let (e4, p4) = hhll
             .update(candle(8, "2026-05-24T10:08:00Z", 10., 10., 10., 10.))
@@ -1613,16 +1612,17 @@ mod tests {
 
         // Naturally setup the active pivot to be a High at 50.0
         hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
-        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 50., 50.));
-        hhll.update(candle(2, "2026-05-24T14:01:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
 
         // Assert natural setup is valid
+        assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::High);
         assert_eq!(hhll.active_pivot().unwrap().price.0, 50.0);
 
         // 1. Push Left Window (prevents Low from firing)
         assert!(
-            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 20., 20.))
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.))
                 .is_none()
         );
 
@@ -1634,7 +1634,7 @@ mod tests {
         );
 
         // 3. Push Right Window -> Triggers evaluation of the Mega Doji
-        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 20., 20.));
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
 
         // The algorithm routes to `process_high` and evaluates 60 >= 50 (True).
         assert!(
@@ -1653,19 +1653,26 @@ mod tests {
 
         // Naturally setup the active pivot to be a Low at 10.0
         hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
-        hhll.update(candle(1, "2026-05-24T14:00:00Z", 10., 10., 10., 10.));
-        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
 
         // Assert natural setup is valid
+        assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
         assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
 
-        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 15., 18.));
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
 
         // Candidate Low (5.0) < Active Pivot Low (10.0).
-        hhll.update(candle(4, "2026-05-24T15:02:00Z", 20., 30., 5., 20.));
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
 
-        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 15., 18.));
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
 
         assert!(event.is_some(), "Expected Doji to extend the Low");
         let (_, pivot) = event.unwrap();
@@ -1680,22 +1687,209 @@ mod tests {
 
         // Naturally setup a very deep, established macro Low at price 1.0
         hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
-        hhll.update(candle(1, "2026-05-24T14:00:00Z", 1., 1., 1., 1.));
-        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 1., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
 
+        assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().price.0, 1.0);
 
-        hhll.update(candle(3, "2026-05-24T17:01:00Z", 20., 20., 15., 18.));
+        assert!(
+            hhll.update(candle(3, "2026-05-24T17:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
 
         // Candidate Low (5.0) is NOT < Active Pivot Low (1.0).
-        hhll.update(candle(4, "2026-05-24T17:02:00Z", 20., 30., 5., 20.));
+        assert!(
+            hhll.update(candle(4, "2026-05-24T17:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
 
-        let event_noise = hhll.update(candle(5, "2026-05-24T17:03:00Z", 20., 20., 15., 18.));
+        let event_noise = hhll.update(candle(5, "2026-05-24T17:03:00Z", 50., 50., 20., 50.));
 
         assert!(
             event_noise.is_none(),
             "Expected Doji to be discarded as internal noise"
         );
+    }
+
+    /// # Scenario D: Mega Doji Extends a High under Earliest Tiebreaker
+    #[test]
+    fn test_mega_doji_extends_high_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        assert!(p1.is_some());
+
+        // 1. Push Left Window (prevents Low from firing)
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate
+        // High is 60. Under Earliest, 60 > 50 is TRUE.
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the High under Earliest"
+        );
+        assert_eq!(event.unwrap().1.price.0, 60.0);
+    }
+
+    /// # Scenario E: Mega Doji Exact Tie under Earliest (Discarded)
+    #[test]
+    fn test_mega_doji_exact_tie_earliest_discarded() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.));
+
+        // 2. Push Mega Doji Candidate
+        // High is EXACTLY 50. Under Earliest, 50 > 50 is FALSE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 50., 5., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_none(),
+            "Expected exact tie Doji to be discarded under Earliest tiebreaker"
+        );
+    }
+
+    /// # Scenario F: Mega Doji Exact Tie under Latest (Overwrites)
+    #[test]
+    fn test_mega_doji_exact_tie_latest_overwrites() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a High at 50.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 10., 10., 10., 10.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 20., 20., 10., 20.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 20., 20., 10., 20.));
+
+        // 2. Push Mega Doji Candidate
+        // High is EXACTLY 50. Under Latest, 50 >= 50 is TRUE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 50., 5., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 20., 20., 10., 20.));
+
+        assert!(
+            event.is_some(),
+            "Expected exact tie Doji to overwrite under Latest tiebreaker"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.price.0, 50.0);
+        // Ensure it is actually the NEW candle by checking the timestamp
+        assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
+    }
+
+    /// # Scenario G: Mega Doji Extends a Low under Earliest Tiebreaker
+    #[test]
+    fn test_mega_doji_extends_low_earliest() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        assert!(p1.is_some());
+        assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
+        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+
+        // 1. Push Left Window (prevents High from firing)
+        assert!(
+            hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
+                .is_none()
+        );
+
+        // 2. Push Mega Doji Candidate
+        // Low is 5. Under Earliest, 5 < 10 is TRUE.
+        assert!(
+            hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
+                .is_none()
+        );
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_some(),
+            "Expected Doji to successfully extend the Low under Earliest"
+        );
+        assert_eq!(event.unwrap().1.price.0, 5.0);
+    }
+
+    /// # Scenario H: Mega Doji Exact Tie under Earliest (Discarded for Low)
+    #[test]
+    fn test_mega_doji_exact_tie_earliest_discarded_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Earliest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.));
+
+        // 2. Push Mega Doji Candidate
+        // Low is EXACTLY 10. Under Earliest, 10 < 10 is FALSE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 10., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_none(),
+            "Expected exact tie Doji to be discarded under Earliest tiebreaker"
+        );
+    }
+
+    /// # Scenario I: Mega Doji Exact Tie under Latest (Overwrites for Low)
+    #[test]
+    fn test_mega_doji_exact_tie_latest_overwrites_low() {
+        let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
+
+        // Naturally setup the active pivot to be a Low at 10.0
+        hhll.update(candle(0, "2026-05-24T13:59:00Z", 50., 50., 50., 50.));
+        hhll.update(candle(1, "2026-05-24T14:00:00Z", 50., 50., 10., 50.));
+        hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
+
+        hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.));
+
+        // 2. Push Mega Doji Candidate
+        // Low is EXACTLY 10. Under Latest, 10 <= 10 is TRUE.
+        hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 10., 25.));
+
+        // 3. Push Right Window
+        let event = hhll.update(candle(5, "2026-05-24T15:03:00Z", 50., 50., 20., 50.));
+
+        assert!(
+            event.is_some(),
+            "Expected exact tie Doji to overwrite under Latest tiebreaker"
+        );
+        let (_, pivot) = event.unwrap();
+        assert_eq!(pivot.price.0, 10.0);
+        // Ensure it is actually the NEW candle by checking the timestamp
+        assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
     }
 
     /// Verifies that if the VERY FIRST extremum detected is a Mega Bar Doji,
