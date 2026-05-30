@@ -216,7 +216,7 @@ impl PivotPoint {
     /// Generates a linear interpolation function based on exact point-in-time timestamps.
     ///
     /// Returns a zero-allocation closure that takes a target point in time
-    /// (DateTime<Utc>) and returns the interpolated/extrapolated price.
+    /// (`DateTime<Utc>`) and returns the interpolated/extrapolated price.
     /// Uses chrono::Duration to safely compute the time deltas in milliseconds.
     pub fn price_line_by_point_in_time(
         &self,
@@ -759,7 +759,6 @@ enum CandidateResolution {
 mod tests {
     use super::*;
     use crate::data::domain::Quantity;
-    use std::f64::EPSILON;
 
     // ==========================================
     // === 1. Mocks & Helpers ===
@@ -799,7 +798,12 @@ mod tests {
 
     /// Helper to assert floats with epsilon tolerance
     fn assert_f64_eq(a: f64, b: f64) {
-        assert!((a - b).abs() < EPSILON, "Expected {} to equal {}", a, b);
+        assert!(
+            (a - b).abs() < f64::EPSILON,
+            "Expected {} to equal {}",
+            a,
+            b
+        );
     }
 
     fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {

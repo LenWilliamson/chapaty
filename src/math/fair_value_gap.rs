@@ -411,7 +411,7 @@ impl StreamingIndicator for StreamingFairValueGap {
         let expired_gaps = &mut self.expired_gaps;
 
         self.active_gaps.retain_mut(|gap_ref| {
-            match gap_ref.clone().process_candle(&indexed_candle, ttl) {
+            match gap_ref.process_candle(&indexed_candle, ttl) {
                 FairValueGapStatus::Open(updated_gap) => {
                     *gap_ref = updated_gap;
                     true // Keep in active
@@ -451,7 +451,6 @@ impl StreamingIndicator for StreamingFairValueGap {
 mod tests {
     use super::*;
     use crate::data::{domain::Quantity, event::Ohlcv};
-    use std::f64::EPSILON;
 
     // ==========================================
     // === 1. Mocks & Helpers ===
@@ -492,7 +491,12 @@ mod tests {
 
     /// Helper to assert floats with epsilon tolerance
     fn assert_f64_eq(a: f64, b: f64) {
-        assert!((a - b).abs() < EPSILON, "Expected {} to equal {}", a, b);
+        assert!(
+            (a - b).abs() < f64::EPSILON,
+            "Expected {} to equal {}",
+            a,
+            b
+        );
     }
 
     // ==========================================

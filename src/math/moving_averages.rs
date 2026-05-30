@@ -89,10 +89,10 @@ impl StreamingIndicator for StreamingSma {
         self.buffer.push_back(value);
         self.sum += value;
 
-        if self.buffer.len() > self.window_size {
-            if let Some(removed) = self.buffer.pop_front() {
-                self.sum -= removed;
-            }
+        if self.buffer.len() > self.window_size
+            && let Some(removed) = self.buffer.pop_front()
+        {
+            self.sum -= removed;
         }
 
         if self.buffer.len() >= self.window_size {
