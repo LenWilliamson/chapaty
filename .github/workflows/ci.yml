@@ -96,6 +96,6 @@ jobs:
           # new experimental lints that we don't want to enforce yet.
           RUSTDOCFLAGS: ""
 
-      # 8. Check Examples (Compilation Only)
-      - name: Check Examples Compile
+      # 8. Check Example (Compilation Only)
+      - name: Check Example Compiles
         run: cargo build --examples --verbose

@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
+        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
         common::ProfileAggregation,
         domain::{
             CountryCode, DataBroker, EconomicCategory, EconomicDataSource, EconomicEventImpact,
             Exchange, Period, Symbol,
         },
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
-        indicator::{EmaWindow, RsiWindow, SmaWindow, TechnicalIndicator},
     },
     error::ChapatyResult,
 };
@@ -24,7 +24,7 @@ use crate::{
 /// OHLCV data represents aggregated price and volume information over specified time periods,
 /// commonly used for candlestick charts and technical analysis.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct OhlcvSpotConfig {
+pub struct OhlcvSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -43,7 +43,7 @@ pub struct OhlcvSpotConfig {
     pub batch_size: i32,
 
     // Data configurations that support derived technical analysis.
-    pub indicators: Vec<TechnicalIndicator>,
+    pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
 /// Configuration for retrieving OHLCV (Open, High, Low, Close, Volume) data from futures markets.
@@ -51,7 +51,7 @@ pub struct OhlcvSpotConfig {
 /// Similar to spot OHLCV data, but specifically for futures contracts which include
 /// additional fields like open interest and funding rates.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct OhlcvFutureConfig {
+pub struct OhlcvFutureQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -70,7 +70,7 @@ pub struct OhlcvFutureConfig {
     pub batch_size: i32,
 
     // Data configurations that support derived technical analysis.
-    pub indicators: Vec<TechnicalIndicator>,
+    pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
 // ================================================================================================
@@ -82,7 +82,7 @@ pub struct OhlcvFutureConfig {
 /// Trade data represents individual trades or price updates at the finest granularity,
 /// capturing every market transaction with microsecond precision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TradeSpotConfig {
+pub struct TradeSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -109,7 +109,7 @@ pub struct TradeSpotConfig {
 /// and time, showing where trading activity has occurred and helping identify
 /// key support/resistance levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TpoSpotConfig {
+pub struct TpoSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -134,7 +134,7 @@ pub struct TpoSpotConfig {
 ///
 /// TPO data for futures markets, providing Market Profile insights for futures contracts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TpoFutureConfig {
+pub struct TpoFutureQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -165,7 +165,7 @@ pub struct TpoFutureConfig {
 /// helping identify high-volume nodes (HVN) and low-volume nodes (LVN) that often act
 /// as support or resistance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct VolumeProfileSpotConfig {
+pub struct VolumeProfileSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -195,7 +195,7 @@ pub struct VolumeProfileSpotConfig {
 /// Economic calendar data provides scheduled releases of economic indicators,
 /// central bank announcements, and other market-moving events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EconomicCalendarConfig {
+pub struct EconomicCalendarQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -230,181 +230,21 @@ pub struct EconomicCalendarConfig {
 // Traits
 // ================================================================================================
 
-/// A trait for data configurations that support derived technical analysis.
-///
-/// This trait enables fluent, compile-time checked configuration of indicators
-/// on OHLCV data streams.
-pub trait TechnicalAnalysis {
-    /// Adds a technical indicator to be computed for this data stream.
-    fn add_indicator(&mut self, kind: TechnicalIndicator);
+impl WithBatchIndicators for OhlcvSpotQuery {
+    type BatchIndicator = BatchOhlcvIndicator;
 
-    /// Fluent builder version of `add_indicator`.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_indicator(TechnicalIndicator::Sma(SmaWindow(20)));
-    /// ```
-    fn with_indicator(mut self, kind: TechnicalIndicator) -> Self
-    where
-        Self: Sized,
-    {
-        self.add_indicator(kind);
-        self
-    }
-
-    // === Ergonomic Sugar Helpers ===
-
-    /// Adds a Simple Moving Average (SMA) indicator.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_sma(20);
-    /// ```
-    fn with_sma(self, window: u16) -> Self
-    where
-        Self: Sized,
-    {
-        self.with_indicator(TechnicalIndicator::Sma(SmaWindow(window)))
-    }
-
-    /// Adds an Exponential Moving Average (EMA) indicator.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_ema(12);
-    /// ```
-    fn with_ema(self, window: u16) -> Self
-    where
-        Self: Sized,
-    {
-        self.with_indicator(TechnicalIndicator::Ema(EmaWindow(window)))
-    }
-
-    /// Adds a Relative Strength Index (RSI) indicator.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_rsi(14);
-    /// ```
-    fn with_rsi(self, window: u16) -> Self
-    where
-        Self: Sized,
-    {
-        self.with_indicator(TechnicalIndicator::Rsi(RsiWindow(window)))
-    }
-
-    // === Multi-indicator Helpers ===
-
-    /// Adds multiple indicators at once.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_indicators(vec![
-    ///     TechnicalIndicator::Sma(SmaWindow(20)),
-    ///     TechnicalIndicator::Ema(EmaWindow(12)),
-    /// ]);
-    /// ```
-    fn with_indicators(mut self, kinds: Vec<TechnicalIndicator>) -> Self
-    where
-        Self: Sized,
-    {
-        for kind in kinds {
-            self.add_indicator(kind);
-        }
-        self
-    }
-
-    /// Chainable helper to add multiple SMAs.
-    ///
-    /// # Example
-    /// ```
-    /// # use chapaty::prelude::*;
-    /// let config = OhlcvSpotConfig {
-    ///     broker: DataBroker::Binance,
-    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
-    ///     exchange: None,
-    ///     period: Period::Minute(1),
-    ///     batch_size: 1000,
-    ///     indicators: vec![],
-    /// }
-    /// .with_smas(&[20, 50, 200]);
-    /// ```
-    fn with_smas(mut self, windows: &[u16]) -> Self
-    where
-        Self: Sized,
-    {
-        for &window in windows {
-            self.add_indicator(TechnicalIndicator::Sma(SmaWindow(window)));
-        }
-        self
-    }
-
-    /// Chainable helper to add multiple EMAs.
-    fn with_emas(mut self, windows: &[u16]) -> Self
-    where
-        Self: Sized,
-    {
-        for &window in windows {
-            self.add_indicator(TechnicalIndicator::Ema(EmaWindow(window)));
-        }
+    fn with_indicator(mut self, kind: Self::BatchIndicator) -> Self {
+        self.indicators.push(kind);
         self
     }
 }
 
-impl TechnicalAnalysis for OhlcvSpotConfig {
-    fn add_indicator(&mut self, kind: TechnicalIndicator) {
-        self.indicators.push(kind);
-    }
-}
+impl WithBatchIndicators for OhlcvFutureQuery {
+    type BatchIndicator = BatchOhlcvIndicator;
 
-impl TechnicalAnalysis for OhlcvFutureConfig {
-    fn add_indicator(&mut self, kind: TechnicalIndicator) {
+    fn with_indicator(mut self, kind: Self::BatchIndicator) -> Self {
         self.indicators.push(kind);
+        self
     }
 }
 
@@ -413,7 +253,7 @@ impl TechnicalAnalysis for OhlcvFutureConfig {
 /// This trait enables type-safe conversion from user-facing configuration
 /// (which includes wire protocol details like batch_size) to internal
 /// domain identifiers used for stream management.
-pub trait ConfigId {
+pub trait QueryId {
     /// The unique identifier type for this configuration's data stream.
     type Id: Copy + PartialEq + Eq + Hash + PartialOrd + Ord + Debug + Send + Sync;
 
@@ -428,7 +268,7 @@ pub trait ConfigId {
     /// combinations or if required conversions fail.
     fn to_id(&self) -> ChapatyResult<Self::Id>;
 }
-impl ConfigId for OhlcvSpotConfig {
+impl QueryId for OhlcvSpotQuery {
     type Id = OhlcvId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -446,7 +286,7 @@ impl ConfigId for OhlcvSpotConfig {
     }
 }
 
-impl ConfigId for OhlcvFutureConfig {
+impl QueryId for OhlcvFutureQuery {
     type Id = OhlcvId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -464,7 +304,7 @@ impl ConfigId for OhlcvFutureConfig {
     }
 }
 
-impl ConfigId for TradeSpotConfig {
+impl QueryId for TradeSpotQuery {
     type Id = TradesId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -481,7 +321,7 @@ impl ConfigId for TradeSpotConfig {
     }
 }
 
-impl ConfigId for TpoSpotConfig {
+impl QueryId for TpoSpotQuery {
     type Id = TpoId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -499,7 +339,7 @@ impl ConfigId for TpoSpotConfig {
     }
 }
 
-impl ConfigId for TpoFutureConfig {
+impl QueryId for TpoFutureQuery {
     type Id = TpoId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -517,7 +357,7 @@ impl ConfigId for TpoFutureConfig {
     }
 }
 
-impl ConfigId for VolumeProfileSpotConfig {
+impl QueryId for VolumeProfileSpotQuery {
     type Id = VolumeProfileId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {
@@ -535,7 +375,7 @@ impl ConfigId for VolumeProfileSpotConfig {
     }
 }
 
-impl ConfigId for EconomicCalendarConfig {
+impl QueryId for EconomicCalendarQuery {
     type Id = EconomicCalendarId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {

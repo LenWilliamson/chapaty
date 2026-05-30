@@ -1,9 +1,6 @@
 use crate::{
     error::ChapatyResult,
-    gym::{
-        Reward, StepOutcome,
-        trading::{action::Actions, observation::Observation},
-    },
+    gym::{Reward, StepOutcome},
 };
 
 pub mod action;
@@ -18,7 +15,15 @@ pub mod observation;
 pub mod state;
 pub mod types;
 
-pub use factory::{load, make};
+pub use action::*;
+pub use action_space::*;
+pub use agent::*;
+pub use config::*;
+pub use env::*;
+pub use factory::*;
+pub use observation::*;
+pub use state::*;
+pub use types::*;
 
 pub trait Env {
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;

@@ -444,12 +444,12 @@ mod tests {
     use crate::{
         DataSource, SelfHostedApi, StorageLocation,
         data::{
-            config::{EconomicCalendarConfig, OhlcvSpotConfig},
             domain::{
                 CountryCode, DataBroker, EconomicCategory, EconomicEventImpact, Exchange, Period,
                 Price, Quantity, SpotPair, Symbol,
             },
             event::{EconomicCalendarId, EconomicEvent, Ohlcv, OhlcvId, TradeEvent, TradesId},
+            query::{EconomicCalendarQuery, OhlcvSpotQuery},
         },
         transport::source::EndpointUrl,
     };
@@ -712,7 +712,7 @@ mod tests {
                     endpoint: EndpointUrl::from("http://test:50051"),
                     api_key: None,
                 }),
-                OhlcvSpotConfig {
+                OhlcvSpotQuery {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     exchange: Some(Exchange::Binance),
@@ -726,7 +726,7 @@ mod tests {
                     endpoint: EndpointUrl::from("http://test:50051"),
                     api_key: None,
                 }),
-                EconomicCalendarConfig {
+                EconomicCalendarQuery {
                     broker: DataBroker::InvestingCom,
                     data_source: None,
                     country_code: Some(CountryCode::Us),

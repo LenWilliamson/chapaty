@@ -1,6 +1,6 @@
 [package]
 name = "chapaty"
-version = "1.1.4"
+version = "1.2.0"
 edition = "2024"
 authors = ["Len Williamson <lencewa13@gmail.com>"]
 description = "An event-driven Rust engine for building and evaluating quantitative trading agents. Features a Gym-style API for algorithmic backtesting and reinforcement learning."
@@ -95,7 +95,3 @@ time = { version = "0.3", features = ["macros", "formatting"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"] }
 anyhow = "1.0"
-
-# Only pull jemalloc on Linux
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-tikv-jemallocator = "0.6"

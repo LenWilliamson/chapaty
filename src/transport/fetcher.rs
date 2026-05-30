@@ -1,7 +1,7 @@
 use crate::{
-    data::config::{
-        ConfigId, EconomicCalendarConfig, OhlcvFutureConfig, OhlcvSpotConfig, TpoFutureConfig,
-        TpoSpotConfig, TradeSpotConfig, VolumeProfileSpotConfig,
+    data::query::{
+        EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, QueryId, TpoFutureQuery,
+        TpoSpotQuery, TradeSpotQuery, VolumeProfileSpotQuery,
     },
     error::ChapatyResult,
     generated::chapaty::{
@@ -29,7 +29,7 @@ use tonic::async_trait;
 
 /// Defines how a specific Config/Spec fetches its data.
 #[async_trait]
-pub trait Fetchable: ConfigId + Clone + Send + Sync + Debug + 'static {
+pub trait Fetchable: QueryId + Clone + Send + Sync + Debug + 'static {
     /// The Protobuf Response type (e.g., OhlcvSpotResponse)
     type Response: ProtoBatch + Send;
     /// The Protobuf Request type (e.g., OhlcvSpotRequest)
@@ -52,7 +52,7 @@ pub trait Fetchable: ConfigId + Clone + Send + Sync + Debug + 'static {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for OhlcvSpotConfig {
+impl Fetchable for OhlcvSpotQuery {
     type Response = OhlcvSpotResponse;
     type Request = OhlcvSpotRequest;
 
@@ -90,7 +90,7 @@ impl Fetchable for OhlcvSpotConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for OhlcvFutureConfig {
+impl Fetchable for OhlcvFutureQuery {
     type Response = OhlcvFutureResponse;
     type Request = OhlcvFutureRequest;
 
@@ -128,7 +128,7 @@ impl Fetchable for OhlcvFutureConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for TradeSpotConfig {
+impl Fetchable for TradeSpotQuery {
     type Response = TradesSpotResponse;
     type Request = TradesSpotRequest;
 
@@ -165,7 +165,7 @@ impl Fetchable for TradeSpotConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for TpoSpotConfig {
+impl Fetchable for TpoSpotQuery {
     type Response = TpoSpotResponse;
     type Request = TpoSpotRequest;
 
@@ -218,7 +218,7 @@ impl Fetchable for TpoSpotConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for TpoFutureConfig {
+impl Fetchable for TpoFutureQuery {
     type Response = TpoFutureResponse;
     type Request = TpoFutureRequest;
 
@@ -271,7 +271,7 @@ impl Fetchable for TpoFutureConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for VolumeProfileSpotConfig {
+impl Fetchable for VolumeProfileSpotQuery {
     type Response = VolumeProfileSpotResponse;
     type Request = VolumeProfileSpotRequest;
 
@@ -324,7 +324,7 @@ impl Fetchable for VolumeProfileSpotConfig {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for EconomicCalendarConfig {
+impl Fetchable for EconomicCalendarQuery {
     type Response = EconomicCalendarResponse;
     type Request = EconomicCalendarRequest;
 

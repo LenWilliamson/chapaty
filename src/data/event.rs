@@ -11,13 +11,13 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::{
     data::{
+        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
         common::{ProfileAggregation, ProfileBinStats},
         domain::{
             CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
             EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth, LiquiditySide,
             MarketType, Period, Price, Quantity, Symbol, TradeId, Volume,
         },
-        indicator::{EmaWindow, RsiWindow, SmaWindow},
     },
     error::{ChapatyError, ChapatyResult, DataError},
     gym::trading::types::TradeType,
@@ -167,6 +167,23 @@ impl Ohlcv {
         } else {
             CandleDirection::Doji
         }
+    }
+}
+
+/// A wrapper around an OHLCV candle that includes its absolute index in the stream.
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedOhlcv {
+    pub candle: Ohlcv,
+    pub index: usize,
+}
+
+impl MarketEvent for IndexedOhlcv {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.candle.point_in_time()
+    }
+
+    fn opened_at(&self) -> DateTime<Utc> {
+        self.candle.opened_at()
     }
 }
 
