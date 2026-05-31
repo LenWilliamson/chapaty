@@ -447,6 +447,7 @@ impl StreamingIndicator for StreamingFairValueGap {
         self.expired_gaps.clear();
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

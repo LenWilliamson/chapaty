@@ -432,23 +432,25 @@ impl StreamingHhll {
         let candidate_price = pivot_type.extract_price(candidate.candle, self.price_source);
 
         // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
-        let (strict_left, strict_right) = match self.tiebreaker {
-            ExtremeTiebreaker::Earliest => (true, false),
-            ExtremeTiebreaker::Latest => (false, true),
+        let (left_inequality, right_inequality) = match self.tiebreaker {
+            ExtremeTiebreaker::Earliest => (Inequality::Strict, Inequality::Inclusive),
+            ExtremeTiebreaker::Latest => (Inequality::Inclusive, Inequality::Strict),
         };
 
-        let is_valid = |neighbor: IndexedOhlcv, strict: bool| -> bool {
+        let is_valid = |neighbor: IndexedOhlcv, inequality: Inequality| -> bool {
             let neighbor_price = pivot_type.extract_price(neighbor.candle, self.price_source);
-            match (pivot_type, strict) {
-                (PivotType::High, true) => candidate_price > neighbor_price,
-                (PivotType::High, false) => candidate_price >= neighbor_price,
-                (PivotType::Low, true) => candidate_price < neighbor_price,
-                (PivotType::Low, false) => candidate_price <= neighbor_price,
+            match (pivot_type, inequality) {
+                (PivotType::High, Inequality::Strict) => candidate_price > neighbor_price,
+                (PivotType::High, Inequality::Inclusive) => candidate_price >= neighbor_price,
+                (PivotType::Low, Inequality::Strict) => candidate_price < neighbor_price,
+                (PivotType::Low, Inequality::Inclusive) => candidate_price <= neighbor_price,
             }
         };
 
-        self.left_partition().all(|c| is_valid(c, strict_left))
-            && self.right_partition().all(|c| is_valid(c, strict_right))
+        self.left_partition().all(|c| is_valid(c, left_inequality))
+            && self
+                .right_partition()
+                .all(|c| is_valid(c, right_inequality))
     }
 
     #[tracing::instrument(skip(self), fields(ts = %self.candidate().candle.close_timestamp))]
@@ -705,11 +707,18 @@ impl StreamingIndicator for StreamingHhll {
             self.buffer.pop_front();
         }
 
-        let is_swing_high = self.check_extremum(PivotType::High);
-        let is_swing_low = self.check_extremum(PivotType::Low);
+        let swing_state = match (
+            self.check_extremum(PivotType::High),
+            self.check_extremum(PivotType::Low),
+        ) {
+            (true, true) => SwingState::Both,
+            (true, false) => SwingState::High,
+            (false, true) => SwingState::Low,
+            (false, false) => SwingState::None,
+        };
 
-        match (is_swing_high, is_swing_low) {
-            (true, true) => {
+        match swing_state {
+            SwingState::Both => {
                 // The candidate is BOTH a Swing High and a Swing Low (Mega Bar).
                 let candidate = self.candidate();
                 match candidate.candle.direction() {
@@ -725,9 +734,9 @@ impl StreamingIndicator for StreamingHhll {
                     }
                 }
             }
-            (true, false) => self.process_high(),
-            (false, true) => self.process_low(),
-            (false, false) => None,
+            SwingState::High => self.process_high(),
+            SwingState::Low => self.process_low(),
+            SwingState::None => None,
         }
     }
 
@@ -753,6 +762,28 @@ enum CandidateResolution {
     ReplaceActive,
     /// The candidate respects alternation. Lock the active pivot into history.
     ConfirmActive,
+}
+
+/// Defines the strictness of the inequality when comparing prices for extremes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Inequality {
+    /// Requires the candidate to be strictly greater/less than its neighbor.
+    Strict,
+    /// Allows the candidate to be equal to its neighbor.
+    Inclusive,
+}
+
+/// Represents the detected swing extremum classification for a candidate bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SwingState {
+    /// The candidate is BOTH a Swing High and a Swing Low (e.g., an outside bar).
+    Both,
+    /// The candidate is only a Swing High.
+    High,
+    /// The candidate is only a Swing Low.
+    Low,
+    /// The candidate is neither a Swing High nor a Swing Low.
+    None,
 }
 
 #[cfg(test)]

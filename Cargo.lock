@@ -474,7 +474,6 @@ dependencies = [
  "blake3",
  "bytes",
  "chrono",
- "chrono-tz",
  "crossbeam",
  "dirs",
  "futures",
