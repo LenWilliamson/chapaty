@@ -11,6 +11,7 @@ use crate::{
 };
 
 const LHS: usize = 0;
+const MID: usize = 1;
 const RHS: usize = 2;
 const PATTERN_LENGTH: usize = 3;
 
@@ -125,6 +126,7 @@ pub struct FairValueGap<S: FairValueGapState> {
     creation_index: usize,
     top: Price,
     bottom: Price,
+    window: [Ohlcv; 3],
     state: S,
 }
 
@@ -181,6 +183,86 @@ impl<S: FairValueGapState> FairValueGap<S> {
         (self.top.0 - self.bottom.0).abs()
     }
 
+    /// The three candles that formed this gap, chronological `[first, displacement, last]`.
+    pub fn window(&self) -> &[Ohlcv; 3] {
+        &self.window
+    }
+
+    /// The first (left) candle. Its extreme forms the near edge of the gap.
+    pub fn first(&self) -> Ohlcv {
+        self.window[LHS]
+    }
+
+    /// The middle candle. The impulse/displacement bar whose move opened the gap.
+    pub fn displacement(&self) -> Ohlcv {
+        self.window[MID]
+    }
+
+    /// The last (right) candle. Its extreme forms the far edge of the gap and
+    /// carries the creation index/time.
+    pub fn last(&self) -> Ohlcv {
+        self.window[RHS]
+    }
+
+    /// The high of the displacement candle.
+    ///
+    /// This is the breakout extreme under the displacement reading of a bullish
+    /// setup, where only the impulse bar counts and the surrounding candles are
+    /// ignored. Equivalent to `self.displacement().high`.
+    pub fn displacement_high(&self) -> Price {
+        self.displacement().high
+    }
+
+    /// The low of the displacement candle.
+    ///
+    /// This is the breakout extreme under the displacement reading of a bearish
+    /// setup. Equivalent to `self.displacement().low`.
+    pub fn displacement_low(&self) -> Price {
+        self.displacement().low
+    }
+
+    /// The highest high across all three candles of the window.
+    ///
+    /// This is the breakout extreme under the whole movement reading of a bullish
+    /// setup, where the entire three candle leg is considered rather than the
+    /// displacement bar alone. It is always greater than or equal to
+    /// [`Self::displacement_high`].
+    pub fn movement_high(&self) -> Price {
+        let candles = self.window();
+        Price(
+            candles[LHS]
+                .high
+                .0
+                .max(candles[MID].high.0)
+                .max(candles[RHS].high.0),
+        )
+    }
+
+    /// The lowest low across all three candles of the window.
+    ///
+    /// This is the breakout extreme under the whole movement reading of a bearish
+    /// setup. It is always less than or equal to [`Self::displacement_low`].
+    pub fn movement_low(&self) -> Price {
+        let candles = self.window();
+        Price(
+            candles[LHS]
+                .low
+                .0
+                .min(candles[MID].low.0)
+                .min(candles[RHS].low.0),
+        )
+    }
+
+    /// The open of the first candle. The start of the movement.
+    pub fn movement_open(&self) -> Price {
+        self.first().open
+    }
+
+    /// The close of the last candle. The end of the movement.
+    pub fn movement_close(&self) -> Price {
+        self.last().close
+    }
+
     pub fn map<NewState: FairValueGapState, F>(self, f: F) -> FairValueGap<NewState>
     where
         F: FnOnce(S) -> NewState,
@@ -191,6 +273,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
             creation_index: self.creation_index,
             top: self.top,
             bottom: self.bottom,
+            window: self.window,
             state: f(self.state),
         }
     }
@@ -368,8 +451,9 @@ impl StreamingFairValueGap {
             return None;
         }
 
-        let lhs = &self.buffer[LHS].candle;
-        let rhs = &self.buffer[RHS].candle;
+        let lhs = self.buffer[LHS].candle;
+        let mid = self.buffer[MID].candle;
+        let rhs = self.buffer[RHS].candle;
         let rhs_index = self.buffer[RHS].index;
 
         let gap_up = rhs.low.0 - lhs.high.0;
@@ -395,6 +479,7 @@ impl StreamingFairValueGap {
             creation_index: rhs_index,
             top,
             bottom,
+            window: [lhs, mid, rhs],
             state: OpenState::default(),
         })
     }
@@ -1233,77 +1318,265 @@ mod tests {
 
     #[test]
     fn gap_interaction_evaluates_overlap_and_fills_correctly() {
-        // --- 1. Bullish Gap Setup (Top=15.0, Bottom=10.0) ---
+        // === 1. Bullish Gap Setup (Top=15.0, Bottom=10.0) ===
+        // Window indices must be the contiguous triple ending at creation_index.
+        // creation_index = 2 => window = [0, 1, 2]. The candles form a real bullish
+        // gap: rhs.low (15) > lhs.high (10), with bottom = lhs.high, top = rhs.low.
         let bullish_gap = FairValueGap {
             direction: FairValueGapDirection::Bullish,
-            creation_time: ts("2026-05-24T10:00:00Z"),
-            creation_index: 0,
+            creation_time: ts("2026-05-24T10:02:00Z"),
+            creation_index: 2,
             top: Price(15.0),
             bottom: Price(10.0),
+            window: [
+                candle(0, "2026-05-24T10:00:00Z", 8., 10., 5., 9.).candle, // lhs: high = 10 (gap bottom)
+                candle(1, "2026-05-24T10:01:00Z", 9., 14., 9., 13.).candle, // mid: displacement impulse
+                candle(2, "2026-05-24T10:02:00Z", 15., 18., 15., 16.).candle, // rhs: low = 15 (gap top)
+            ],
             state: OpenState::default(),
         };
 
         // A. Bullish Miss (Price stays entirely above the gap)
-        let miss_above = candle(1, "2026-05-24T10:01:00Z", 20., 25., 15.0, 22.).candle;
+        let miss_above = candle(3, "2026-05-24T10:03:00Z", 20., 25., 15.0, 22.).candle;
         let interaction = bullish_gap.evaluate_interaction(&miss_above);
         assert_eq!(interaction, GapInteraction::Miss);
         assert!(!interaction.is_touch());
 
         // B. Bullish Breakaway Miss (Price teleports completely below the gap)
-        let breakaway_below = candle(2, "2026-05-24T10:02:00Z", 5., 8., 2., 6.).candle;
+        let breakaway_below = candle(4, "2026-05-24T10:04:00Z", 5., 8., 2., 6.).candle;
         let interaction = bullish_gap.evaluate_interaction(&breakaway_below);
         assert_eq!(interaction, GapInteraction::Miss);
 
         // C. Bullish Touch (Wick enters the gap: low is 12.0)
-        let touch_candle = candle(3, "2026-05-24T10:03:00Z", 18., 18., 12., 15.).candle;
+        let touch_candle = candle(5, "2026-05-24T10:05:00Z", 18., 18., 12., 15.).candle;
         let interaction = bullish_gap.evaluate_interaction(&touch_candle);
         assert_eq!(interaction, GapInteraction::Touch);
         assert!(interaction.is_touch());
         assert!(!interaction.is_fill());
 
         // D. Bullish Fill (Wick drops below the bottom of 10.0)
-        let fill_candle = candle(4, "2026-05-24T10:04:00Z", 18., 18., 9., 15.).candle;
+        let fill_candle = candle(6, "2026-05-24T10:06:00Z", 18., 18., 9., 15.).candle;
         let interaction = bullish_gap.evaluate_interaction(&fill_candle);
         assert_eq!(interaction, GapInteraction::Fill);
         assert!(interaction.is_touch()); // A fill MUST register as a touch
         assert!(interaction.is_fill());
 
-        // --- 2. Bearish Gap Setup (Top=20.0, Bottom=15.0) ---
+        // === 2. Bearish Gap Setup (Top=20.0, Bottom=15.0) ===
+        // creation_index = 2 => window = [0, 1, 2]. Real bearish gap:
+        // lhs.low (20) > rhs.high (15), with top = lhs.low, bottom = rhs.high.
         let bearish_gap = FairValueGap {
             direction: FairValueGapDirection::Bearish,
-            creation_time: ts("2026-05-24T10:00:00Z"),
-            creation_index: 0,
+            creation_time: ts("2026-05-24T10:02:00Z"),
+            creation_index: 2,
             top: Price(20.0),
             bottom: Price(15.0),
+            window: [
+                candle(0, "2026-05-24T10:00:00Z", 22., 25., 20., 21.).candle, // lhs: low = 20 (gap top)
+                candle(1, "2026-05-24T10:01:00Z", 21., 22., 16., 17.).candle, // mid: displacement impulse
+                candle(2, "2026-05-24T10:02:00Z", 14., 15., 10., 11.).candle, // rhs: high = 15 (gap bottom)
+            ],
             state: OpenState::default(),
         };
 
         // A. Bearish Miss (Price stays entirely below the gap)
-        let miss_below = candle(5, "2026-05-24T10:01:00Z", 10., 15.0, 5., 12.).candle;
+        let miss_below = candle(3, "2026-05-24T10:03:00Z", 10., 15.0, 5., 12.).candle;
         assert_eq!(
             bearish_gap.evaluate_interaction(&miss_below),
             GapInteraction::Miss
         );
 
         // B. Bearish Breakaway Miss (Price teleports completely above the gap)
-        let breakaway_above = candle(6, "2026-05-24T10:02:00Z", 25., 30., 22., 28.).candle;
+        let breakaway_above = candle(4, "2026-05-24T10:04:00Z", 25., 30., 22., 28.).candle;
         assert_eq!(
             bearish_gap.evaluate_interaction(&breakaway_above),
             GapInteraction::Miss
         );
 
         // C. Bearish Touch (Wick enters the gap: high is 18.0)
-        let touch_bear = candle(7, "2026-05-24T10:03:00Z", 10., 18., 10., 12.).candle;
+        let touch_bear = candle(5, "2026-05-24T10:05:00Z", 10., 18., 10., 12.).candle;
         assert_eq!(
             bearish_gap.evaluate_interaction(&touch_bear),
             GapInteraction::Touch
         );
 
         // D. Bearish Fill (Wick spikes above the top of 20.0)
-        let fill_bear = candle(8, "2026-05-24T10:04:00Z", 10., 21., 10., 12.).candle;
+        let fill_bear = candle(6, "2026-05-24T10:06:00Z", 10., 21., 10., 12.).candle;
         let interaction = bearish_gap.evaluate_interaction(&fill_bear);
         assert_eq!(interaction, GapInteraction::Fill);
         assert!(interaction.is_touch());
         assert!(interaction.is_fill());
+    }
+
+    // ==========================================
+    // === 7. Breakout Window (Movement Candles) ===
+    // ==========================================
+
+    #[test]
+    fn window_captures_three_candles_in_chronological_order() {
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 5., 8.)); // first (lhs)
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 18., 9., 17.)); // displacement (mid)
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.)); // last (rhs)
+
+        assert_eq!(indicator.active_gaps().len(), 1);
+        let gap = indicator.active_gaps()[0];
+
+        assert_eq!(gap.first().close_timestamp, ts("2026-05-24T10:00:00Z"));
+        assert_eq!(
+            gap.displacement().close_timestamp,
+            ts("2026-05-24T10:01:00Z")
+        );
+        assert_eq!(gap.last().close_timestamp, ts("2026-05-24T10:02:00Z"));
+
+        // window() exposes the same three candles by index.
+        assert_eq!(gap.window()[0].close_timestamp, gap.first().close_timestamp);
+        assert_eq!(
+            gap.window()[1].close_timestamp,
+            gap.displacement().close_timestamp
+        );
+        assert_eq!(gap.window()[2].close_timestamp, gap.last().close_timestamp);
+
+        // The last candle is the gap's creation candle.
+        assert_eq!(gap.last().close_timestamp, gap.creation_time());
+    }
+
+    #[test]
+    fn window_displacement_differs_from_movement_bullish() {
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 18., 9., 17.)); // mid: high 18
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.)); // rhs pushes high to 20
+
+        let gap = indicator.active_gaps()[0];
+        assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
+
+        // Displacement reading == the middle candle only.
+        assert_f64_eq(gap.displacement().high.0, 18.0);
+        assert_f64_eq(gap.displacement().low.0, 9.0);
+
+        // Whole-movement reading is genuinely different.
+        let movement_high = gap
+            .window()
+            .iter()
+            .map(|c| c.high.0)
+            .fold(f64::MIN, f64::max);
+        assert_f64_eq(movement_high, 20.0);
+        assert!(movement_high > gap.displacement().high.0);
+    }
+
+    #[test]
+    fn window_displacement_differs_from_movement_bearish() {
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 22., 25., 20., 21.)); // lhs low 20 (gap top)
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 21., 22., 12., 13.)); // mid impulse low 12
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 14., 15., 10., 11.)); // rhs high 15 (gap bottom), low 10
+
+        let gap = indicator.active_gaps()[0];
+        assert_eq!(gap.direction(), FairValueGapDirection::Bearish);
+
+        assert_f64_eq(gap.displacement().low.0, 12.0);
+
+        let movement_low = gap
+            .window()
+            .iter()
+            .map(|c| c.low.0)
+            .fold(f64::MAX, f64::min);
+        assert_f64_eq(movement_low, 10.0);
+        assert!(movement_low < gap.displacement().low.0);
+    }
+
+    #[test]
+    fn window_survives_state_transitions() {
+        // The window is fixed at creation and must be carried verbatim through
+        // partial fills (active) and full fills (closed) via FairValueGap::map.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 5., 8.));
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 18., 9., 17.));
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.));
+
+        let disp_high = indicator.active_gaps()[0].displacement().high.0;
+        let disp_ts = indicator.active_gaps()[0].displacement().close_timestamp;
+
+        // Partial fill (wick to 12.5) -> still active, window intact.
+        indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 12.5, 17.));
+        assert_eq!(indicator.active_gaps().len(), 1);
+        assert_f64_eq(indicator.active_gaps()[0].displacement_high().0, disp_high);
+        assert_eq!(
+            indicator.active_gaps()[0].displacement().close_timestamp,
+            disp_ts
+        );
+
+        // Full fill (wick below bottom 10.0) -> migrates to closed; map() must carry the window.
+        indicator.update(candle(5, "2026-05-24T10:04:00Z", 18., 18., 9., 14.));
+        assert_eq!(indicator.closed_gaps().len(), 1);
+        assert_f64_eq(indicator.closed_gaps()[0].displacement_high().0, disp_high);
+        assert_eq!(
+            indicator.closed_gaps()[0].displacement().close_timestamp,
+            disp_ts
+        );
+    }
+
+    #[test]
+    fn window_displacement_equals_movement_when_mid_is_extreme() {
+        // Boundary case complementary to the two "differs" tests. When the
+        // displacement candle is itself the most extreme bar of the window, the
+        // displacement reading and the whole movement reading must coincide
+        // exactly. This guards against movement_high/movement_low drifting away
+        // from displacement under a future refactor, and confirms the max/min
+        // fold returns the displacement bar's own value rather than perturbing it.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        // mid carries both the window high (25) and the window low (9). lhs and
+        // rhs stay strictly inside that range, so neither can win the max or min.
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 10., 10., 9.5, 9.8)); // lhs: high 10 (gap bottom), low 9.5
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 25., 9., 24.)); // mid: high 25, low 9 (window extremes)
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.)); // rhs: low 15 (gap top), within mid range
+
+        let gap = indicator.active_gaps()[0];
+        assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
+
+        // High: displacement is the window maximum, so both readings agree.
+        assert_f64_eq(gap.displacement_high().0, 25.0);
+        assert_f64_eq(gap.movement_high().0, 25.0);
+        assert_f64_eq(gap.displacement_high().0, gap.movement_high().0);
+
+        // Low: displacement is also the window minimum, so both readings agree.
+        assert_f64_eq(gap.displacement_low().0, 9.0);
+        assert_f64_eq(gap.movement_low().0, 9.0);
+        assert_f64_eq(gap.displacement_low().0, gap.movement_low().0);
+    }
+
+    #[test]
+    fn window_movement_open_and_close_span_the_leg() {
+        // movement_open is the open of the first candle and movement_close is the
+        // close of the last candle, together bounding the leg from its start to
+        // its end. This is the only test that reads these two accessors, so it
+        // also guards their wiring to first()/last() through state transitions.
+        let mut indicator = StreamingFairValueGap::default().with_min_gap_size(1.0);
+
+        indicator.update(candle(1, "2026-05-24T10:00:00Z", 7., 10., 5., 8.)); // lhs: open 7
+        indicator.update(candle(2, "2026-05-24T10:01:00Z", 10., 18., 9., 17.)); // mid
+        indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.)); // rhs: close 19
+
+        let gap = indicator.active_gaps()[0];
+        assert_f64_eq(gap.movement_open().0, 7.0); // lhs.open
+        assert_f64_eq(gap.movement_close().0, 19.0); // rhs.close
+
+        // They must equal the open/close of the named boundary candles.
+        assert_f64_eq(gap.movement_open().0, gap.first().open.0);
+        assert_f64_eq(gap.movement_close().0, gap.last().close.0);
+
+        // And they must survive migration to closed, like the rest of the window.
+        let open_before = gap.movement_open().0;
+        let close_before = gap.movement_close().0;
+
+        indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 9., 14.)); // full fill, wick below bottom 10.0
+        assert_eq!(indicator.closed_gaps().len(), 1);
+        assert_f64_eq(indicator.closed_gaps()[0].movement_open().0, open_before);
+        assert_f64_eq(indicator.closed_gaps()[0].movement_close().0, close_before);
     }
 }
