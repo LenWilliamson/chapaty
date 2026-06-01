@@ -1,6 +1,6 @@
 [package]
 name = "chapaty"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 authors = ["Len Williamson <lencewa13@gmail.com>"]
 description = "An event-driven Rust engine for building and evaluating quantitative trading agents. Features a Gym-style API for algorithmic backtesting and reinforcement learning."
@@ -35,7 +35,6 @@ async-channel = "2.5"
 blake3 = "1.8"
 bytes = "1.11"
 chrono = "0.4"
-chrono-tz = "0.10"
 crossbeam = "0.8"
 futures = "0.3"
 hf-hub = "0.5.0"
@@ -75,7 +74,6 @@ regex = "1.12"
 rust_decimal = "1.42"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = { version = "3.20", features = ["chrono"] }
 smallvec = { version = "1.15", features = ["serde"] }
 strum = { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"
