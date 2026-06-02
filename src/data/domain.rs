@@ -487,12 +487,6 @@ pub enum MarketType {
 
 impl From<Symbol> for MarketType {
     fn from(value: Symbol) -> Self {
-        (&value).into()
-    }
-}
-
-impl From<&Symbol> for MarketType {
-    fn from(value: &Symbol) -> Self {
         match value {
             Symbol::Future(_) => Self::Future,
             Symbol::Spot(_) => Self::Spot,
@@ -537,7 +531,7 @@ impl FromStr for Symbol {
 
 impl Symbol {
     pub fn market_type(&self) -> MarketType {
-        self.into()
+        (*self).into()
     }
 }
 

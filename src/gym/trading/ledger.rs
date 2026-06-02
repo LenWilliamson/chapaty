@@ -629,7 +629,7 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
 
     fn try_from(log_entry: LedgerEntry<'a>) -> ChapatyResult<Self> {
         let market_id = log_entry.market_id;
-        let symbol = &market_id.symbol;
+        let symbol = market_id.symbol;
         let state = log_entry.state;
 
         Ok(JournalEntry {

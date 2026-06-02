@@ -72,7 +72,7 @@ pub trait StreamId: Ord + Copy + Debug {
 }
 
 pub trait SymbolProvider {
-    fn symbol(&self) -> &Symbol;
+    fn symbol(&self) -> Symbol;
 }
 
 // ================================================================================================
@@ -150,8 +150,8 @@ impl StreamId for OhlcvId {
 }
 
 impl SymbolProvider for OhlcvId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
@@ -252,8 +252,8 @@ impl MarketEvent for TradeEvent {
 }
 
 impl SymbolProvider for TradesId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
@@ -391,8 +391,8 @@ pub struct TpoBin {
 }
 
 impl SymbolProvider for TpoId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
@@ -579,8 +579,8 @@ pub struct VolumeProfileBin {
 }
 
 impl SymbolProvider for VolumeProfileId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 impl MarketEvent for VolumeProfile {
@@ -749,7 +749,7 @@ impl StreamId for EmaId {
 }
 
 impl SymbolProvider for EmaId {
-    fn symbol(&self) -> &Symbol {
+    fn symbol(&self) -> Symbol {
         self.parent.symbol()
     }
 }
@@ -796,7 +796,7 @@ impl StreamId for RsiId {
 }
 
 impl SymbolProvider for RsiId {
-    fn symbol(&self) -> &Symbol {
+    fn symbol(&self) -> Symbol {
         self.parent.symbol()
     }
 }
@@ -844,7 +844,7 @@ impl StreamId for SmaId {
 }
 
 impl SymbolProvider for SmaId {
-    fn symbol(&self) -> &Symbol {
+    fn symbol(&self) -> Symbol {
         self.parent.symbol()
     }
 }
@@ -948,8 +948,8 @@ pub struct MarketId {
 }
 
 impl SymbolProvider for MarketId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 

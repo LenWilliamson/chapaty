@@ -189,8 +189,10 @@ impl<S: TradeState> Trade<S> {
     pub fn state(&self) -> &S {
         &self.state
     }
+}
 
-    pub fn map<NewState: TradeState, F>(self, f: F) -> Trade<NewState>
+impl<S: TradeState> Trade<S> {
+    fn map<NewState: TradeState, F>(self, f: F) -> Trade<NewState>
     where
         F: FnOnce(S) -> NewState,
     {
@@ -205,20 +207,15 @@ impl<S: TradeState> Trade<S> {
         }
     }
 
-    pub fn try_map<NewState: TradeState, E, F>(self, f: F) -> Result<Trade<NewState>, E>
-    where
-        F: FnOnce(S) -> Result<NewState, E>,
-    {
-        let new_state = f(self.state)?;
-        Ok(Trade {
-            uid: self.uid,
-            agent_id: self.agent_id,
-            trade_type: self.trade_type,
-            quantity: self.quantity,
-            stop_loss: self.stop_loss,
-            take_profit: self.take_profit,
-            state: new_state,
-        })
+    fn with_take_profit(self, take_profit: Option<Price>) -> Self {
+        Self {
+            take_profit,
+            ..self
+        }
+    }
+
+    fn with_stop_loss(self, stop_loss: Option<Price>) -> Self {
+        Self { stop_loss, ..self }
     }
 }
 
@@ -359,7 +356,7 @@ impl State {
     }
 
     /// Calculates the expected loss in Ticks based on the Stop Loss.
-    pub fn expected_loss_in_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
         let diff = self.trade_type().price_diff(ref_price, sl);
         // Result is usually negative for a Stop Loss; we want magnitude (absolute ticks).
@@ -367,14 +364,14 @@ impl State {
     }
 
     /// Calculates the expected profit in Ticks based on the Take Profit.
-    pub fn expected_profit_in_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    pub fn expected_profit_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, tp) = self.get_reward_params()?;
         let diff = self.trade_type().price_diff(ref_price, tp);
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
     /// Calculates the expected loss in USD (Absolute Value) based on Stop Loss.
-    pub fn expected_loss_in_usd(&self, symbol: &Symbol) -> Option<f64> {
+    pub fn expected_loss_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, sl) = self.get_risk_params()?;
         let qty = self.quantity(); // Uses the helper we defined earlier
 
@@ -384,7 +381,7 @@ impl State {
     }
 
     /// Calculates the expected profit in USD (Absolute Value) based on Take Profit.
-    pub fn expected_profit_in_usd(&self, symbol: &Symbol) -> Option<f64> {
+    pub fn expected_profit_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, tp) = self.get_reward_params()?;
         let qty = self.quantity();
 
@@ -393,7 +390,7 @@ impl State {
     }
 
     /// Computes the Risk-Reward Ratio based on SL/TP settings.
-    pub fn risk_reward_ratio(&self, symbol: &Symbol) -> Option<RiskRewardRatio> {
+    pub fn risk_reward_ratio(&self, symbol: Symbol) -> Option<RiskRewardRatio> {
         // We need both parameters to exist to calculate a ratio
         let risk = self.expected_loss_in_usd(symbol)?;
         let reward = self.expected_profit_in_usd(symbol)?;
@@ -419,7 +416,7 @@ impl State {
     /// We re-calculate this on the fly because `Active` state stores USD, not Ticks.
     /// However, because `entry` and `current/exit` are **Guaranteed Clean** (snapped to grid),
     /// this calculation is strictly deterministic and free of artifacts.
-    pub fn pnl_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    pub fn pnl_ticks(&self, symbol: Symbol) -> Option<Tick> {
         match self {
             State::Active(t) => {
                 // Use your existing helper
@@ -499,9 +496,15 @@ impl State {
 }
 
 impl State {
-    // ========================================================================
-    // Internal Helpers to Extract Params
-    // ========================================================================
+    /// Restores the original Stop Loss and Take Profit values across any valid state.
+    fn with_restored_triggers(self, sl: Option<Price>, tp: Option<Price>) -> Self {
+        match self {
+            State::Pending(t) => State::Pending(t.with_stop_loss(sl).with_take_profit(tp)),
+            State::Active(t) => State::Active(t.with_stop_loss(sl).with_take_profit(tp)),
+            State::Closed(c) => State::Closed(c.with_stop_loss(sl).with_take_profit(tp)),
+            State::Canceled(c) => State::Canceled(c.with_stop_loss(sl).with_take_profit(tp)),
+        }
+    }
 
     /// Extracts (Entry/Limit Price, Stop Loss Price) if SL exists.
     fn get_risk_params(&self) -> Option<(Price, Price)> {
@@ -767,7 +770,7 @@ impl States {
         }
 
         let ts = market.current_timestamp();
-        let symbol = &market_id.symbol;
+        let symbol = market_id.symbol;
 
         let state = if let Some(limit_price) = cmd.entry_price {
             // Case A: Limit Order -> Pending
@@ -788,14 +791,14 @@ impl States {
 
         self.modify_state_at(m_id, loc, |state| match state {
             State::Active(mut t) => {
-                t.modify(&cmd, &m_id.symbol)?;
+                t.modify(&cmd, m_id.symbol)?;
                 Ok(Transition {
                     new_state: State::Active(t),
                     output: (),
                 })
             }
             State::Pending(mut t) => {
-                t.modify(&cmd, &m_id.symbol)?;
+                t.modify(&cmd, m_id.symbol)?;
                 Ok(Transition {
                     new_state: State::Pending(t),
                     output: (),
@@ -815,10 +818,9 @@ impl States {
     ) -> ChapatyResult<()> {
         let (m_id, loc) = self.get_index(&cmd.trade_id)?;
         let ts = market.current_timestamp();
-        let symbol = &m_id.symbol;
+        let symbol = m_id.symbol;
         let exit_price = market.try_resolved_close_price(symbol)?;
 
-        // Output tuple: (Reward, Option<TradeToArchive>)
         let (reward, trade_to_archive) = self.modify_state_at(m_id, loc, |state| {
             let t: Trade<Active> = state.try_into()?;
             let (outcome, reward) = t.market_close(&cmd, Price(exit_price.0), ts, symbol)?;
@@ -874,19 +876,16 @@ impl States {
     /// Returns an iterator over ALL states (Live + Archived) coupled with their MarketId.
     /// Useful for reporting, logging, or serialization of the entire state.
     pub(super) fn flattened(&self) -> impl Iterator<Item = (&MarketId, &State)> {
-        // 1. Iterator for Hot Path
         let active_iter = self
             .live
             .iter()
             .flat_map(|(m_id, list)| list.iter().map(move |s| (m_id, s)));
 
-        // 2. Iterator for Cold Path
         let archive_iter = self
             .archive
             .iter()
             .flat_map(|(m_id, list)| list.iter().map(move |s| (m_id, s)));
 
-        // 3. Chain them together
         active_iter.chain(archive_iter)
     }
 }
@@ -1138,7 +1137,7 @@ impl<'a> Drop for StateGuard<'a> {
 // Helper Functions
 // ================================================================================================
 
-fn sanitize_price(symbol: &Symbol, original: f64, field_name: &str) -> f64 {
+fn sanitize_price(symbol: Symbol, original: f64, field_name: &str) -> f64 {
     let sanitized = symbol.normalize_price(original);
 
     if (original - sanitized).abs() > f64::EPSILON * 100.0 {

@@ -67,7 +67,7 @@ pub trait PriceCheckableView {
     /// Checks if any *new* event (since `since_ts`) matching `target_symbol` hit the `price`.
     fn reached_price_since(
         &self,
-        target_symbol: &Symbol,
+        target_symbol: Symbol,
         price: Price,
         direction: TradeType,
         since_ts: DateTime<Utc>,
@@ -77,7 +77,7 @@ pub trait PriceCheckableView {
 /// Trait for Views that contain events capable of providing a close price.
 pub trait ClosePriceView {
     /// Finds the timestamp and price of the most recent event for the target symbol.
-    fn latest_price_for_symbol(&self, target_symbol: &Symbol) -> Option<(DateTime<Utc>, Price)>;
+    fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)>;
 }
 
 /// A strictly typed view into a slice of simulation data.
@@ -111,7 +111,7 @@ where
 {
     fn reached_price_since(
         &self,
-        target_symbol: &Symbol,
+        target_symbol: Symbol,
         price: Price,
         direction: TradeType,
         since_ts: DateTime<Utc>,
@@ -139,7 +139,7 @@ where
     S: StreamId + SymbolProvider,
     S::Event: ClosePriceProvider,
 {
-    fn latest_price_for_symbol(&self, target_symbol: &Symbol) -> Option<(DateTime<Utc>, Price)> {
+    fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)> {
         self.data
             .iter()
             .filter(|(id, _)| id.symbol() == target_symbol)
@@ -215,7 +215,7 @@ impl<'env> MarketView<'env> {
     pub fn reached_price(
         &self,
         price: Price,
-        target_symbol: &Symbol,
+        target_symbol: Symbol,
         direction: TradeType,
     ) -> bool {
         let prev = self.previous_timestamp();
@@ -225,7 +225,7 @@ impl<'env> MarketView<'env> {
     }
 
     /// Resolves the most recent, non-leaky close price.
-    pub fn try_resolved_close_price(&self, target_symbol: &Symbol) -> ChapatyResult<Price> {
+    pub fn try_resolved_close_price(&self, target_symbol: Symbol) -> ChapatyResult<Price> {
         let best_price = self
             .close_price_views()
             .into_iter()
@@ -440,23 +440,23 @@ mod test {
         );
 
         assert!(
-            market_view.reached_price(Price(110.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(110.0), symbol, TradeType::Long),
             "High (110.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(90.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(90.0), symbol, TradeType::Long),
             "Low (90.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(100.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(100.0), symbol, TradeType::Long),
             "Price in range (100.0) should be reached"
         );
         assert!(
-            !market_view.reached_price(Price(120.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(120.0), symbol, TradeType::Long),
             "Price above high (120.0) should NOT be reached"
         );
         assert!(
-            !market_view.reached_price(Price(80.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(80.0), symbol, TradeType::Long),
             "Price below low (80.0) should NOT be reached"
         );
     }
@@ -502,11 +502,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(150.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(150.0), symbol, TradeType::Long),
             "Price 150 is in OLD candle (<=previous_ts), should be IGNORED"
         );
         assert!(
-            market_view.reached_price(Price(115.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(115.0), symbol, TradeType::Long),
             "Price 115 is in NEW candle, should be reached"
         );
     }
@@ -572,11 +572,11 @@ mod test {
 
         // Both candles are "new" (point_in_time > previous_ts), so both should be checked
         assert!(
-            market_view.reached_price(Price(500.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(500.0), symbol, TradeType::Long),
             "3m candle (new) contains 500, should be reached"
         );
         assert!(
-            market_view.reached_price(Price(200.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(200.0), symbol, TradeType::Long),
             "5m candle (new) contains 200, should be reached"
         );
     }
@@ -624,11 +624,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(111.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(111.0), symbol, TradeType::Long),
             "Price 111 is in candle at EXACTLY previous_ts, should be EXCLUDED (not > since_ts)"
         );
         assert!(
-            market_view.reached_price(Price(222.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(222.0), symbol, TradeType::Long),
             "Price 222 is in candle 1 second after previous_ts, should be INCLUDED"
         );
     }
@@ -676,7 +676,7 @@ mod test {
             ts("2025-05-01T09:59:00Z"),
         );
 
-        let price = market_view.try_resolved_close_price(&symbol).unwrap();
+        let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
             price,
             Price(1000.0),
@@ -734,7 +734,7 @@ mod test {
             ts("2025-06-01T09:59:00Z"),
         );
 
-        let price = market_view.try_resolved_close_price(&symbol).unwrap();
+        let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
             price,
             Price(300.0),
@@ -754,7 +754,7 @@ mod test {
         );
 
         assert!(
-            market_view.try_resolved_close_price(&symbol).is_err(),
+            market_view.try_resolved_close_price(symbol).is_err(),
             "Should error when no data available for the symbol"
         );
     }

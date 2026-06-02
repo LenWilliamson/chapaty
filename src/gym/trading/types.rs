@@ -111,7 +111,7 @@ impl TradeType {
     ///
     /// This method guarantees that the result is a multiple of the tick value.
     /// It eliminates floating point drift by routing through discrete Ticks.
-    pub fn calculate_pnl(&self, entry: Price, exit: Price, qty: Quantity, symbol: &Symbol) -> f64 {
+    pub fn calculate_pnl(&self, entry: Price, exit: Price, qty: Quantity, symbol: Symbol) -> f64 {
         let price_dist = self.price_diff(entry, exit);
 
         // 2. Snap to Grid (Price -> Ticks)
@@ -499,7 +499,7 @@ mod tests {
         // CASE 1: Dirty Long Exit (Price is slightly too high: 1.10050 + 0.00000001)
         let dirty_exit = Price(1.10050001);
 
-        let pnl = TradeType::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), &eur);
+        let pnl = TradeType::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), eur);
 
         // Without grid snapping, this would result in ~$62.50125
         // With snapping, it must be exactly 62.5
@@ -511,7 +511,7 @@ mod tests {
         let clean_exit = Price(1.09900);
 
         let pnl_short =
-            TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), &eur);
+            TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
 
         assert_eq!(
             pnl_short, 62.5,

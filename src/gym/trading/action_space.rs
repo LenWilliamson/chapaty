@@ -111,7 +111,7 @@ impl<'env> ActionSpace<'env> {
                 if self.rng.random_bool(0.20) {
                     // A. Get Current Price
                     if let Ok(current_price_struct) =
-                        self.view.try_resolved_close_price(&market_id.symbol)
+                        self.view.try_resolved_close_price(market_id.symbol)
                     {
                         let current_price = current_price_struct.0;
 

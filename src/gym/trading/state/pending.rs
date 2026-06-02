@@ -19,7 +19,7 @@ impl Trade<Pending> {
         cmd: OpenCmd,
         limit_price: Price,
         ts: DateTime<Utc>,
-        symbol: &Symbol,
+        symbol: Symbol,
     ) -> ChapatyResult<Self> {
         // 1. Sanitize
         let clean_limit_val = sanitize_price(symbol, limit_price.0, "limit");
@@ -51,7 +51,7 @@ impl Trade<Pending> {
         })
     }
 
-    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
+    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<()> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".into(),
@@ -123,17 +123,16 @@ pub(super) fn update(
     let limit_price = trade.state.limit_price;
     let hit_entry = ctx
         .market
-        .reached_price(limit_price, &m_id.symbol, trade.trade_type);
+        .reached_price(limit_price, m_id.symbol, trade.trade_type);
 
     if !hit_entry {
         return Ok((State::Pending(trade), 0.0));
     }
 
-    // 2. Construct Transient Active State
+    // 2. Activate Trade
     // We assume it entered exactly at the limit price.
     let ts = ctx.market.current_timestamp();
-
-    let mut transient_active = trade.map(|s| Active {
+    let active_trade = trade.map(|s| Active {
         entry_ts: ts,
         entry_price: s.limit_price,
         current_ts: ts,
@@ -141,40 +140,30 @@ pub(super) fn update(
         unrealized_pnl: 0.0,
     });
 
-    // 3. Apply "God Candle" Bias Logic
+    // 3. Construct Transient Active State to apply "God Candle" Bias Logic
     // Store originals to restore later
-    let original_tp = transient_active.take_profit;
-    let original_sl = transient_active.stop_loss;
-
-    match ctx.bias {
+    let original_tp = active_trade.take_profit;
+    let original_sl = active_trade.stop_loss;
+    let transient_active = match ctx.bias {
         ExecutionBias::Pessimistic => {
             // Pessimistic: We assume we missed the TP (happened before Entry).
             // Blind the TP so active::update checks SL only.
-            transient_active.take_profit = None;
+            active_trade.with_take_profit(None)
         }
         ExecutionBias::Optimistic => {
             // Optimistic: We assume we avoided the SL (happened before Entry).
             // Blind the SL so active::update checks TP only.
-            transient_active.stop_loss = None;
+            active_trade.with_stop_loss(None)
         }
-    }
+    };
 
     // 4. Delegate to Active Logic
-    let (new_state, reward_delta) = active::update(transient_active, m_id, ctx)?;
+    let (new_transient_state, reward_delta) = active::update(transient_active, m_id, ctx)?;
 
-    // 5. Post-Process (Restore Logic)
-    match new_state {
-        State::Active(mut t) => {
-            // The trade survived the candle.
-            // Restore whatever we blinded so the state is correct for the next tick.
-            match ctx.bias {
-                ExecutionBias::Pessimistic => t.take_profit = original_tp,
-                ExecutionBias::Optimistic => t.stop_loss = original_sl,
-            }
-            Ok((State::Active(t), reward_delta))
-        }
-        other => Ok((other, reward_delta)),
-    }
+    // 5. Post-Process (Restore original SL/TP)
+    let new_state = new_transient_state.with_restored_triggers(original_sl, original_tp);
+
+    Ok((new_state, reward_delta))
 }
 
 #[cfg(test)]
@@ -287,7 +276,7 @@ mod test {
             },
             Price(limit_price),
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration")
     }
@@ -306,7 +295,7 @@ mod test {
             },
             Price(limit_price),
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration")
     }
@@ -535,6 +524,77 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_god_candle_restores_blinded_tp_on_pessimistic_close() {
+        // Setup: Long @ 1.09500, SL @ 1.09000, TP @ 1.10000
+        let trade = create_long_pending(1.09500, Some(1.09000), Some(1.10000));
+        let m_id: MarketId = ohlcv_id().into();
+
+        // The candle triggers Entry, TP, and SL.
+        let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.09000, 1.10000, 1.09200);
+        let view = fixture.view();
+        let ctx = UpdateCtx {
+            market: &view,
+            bias: ExecutionBias::Pessimistic, // Will blind TP temporarily
+        };
+
+        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+
+        // The bug: TP was left as None because it fell through to the `other` match arm.
+        // Expectation: Trade is Closed on SL, but TP is successfully restored.
+        match new_state {
+            State::Closed(c) => {
+                assert_eq!(c.state.termination_reason, TerminationReason::StopLoss);
+                assert_eq!(
+                    c.stop_loss,
+                    Some(Price(1.09000)),
+                    "SL should remain untouched"
+                );
+                assert_eq!(
+                    c.take_profit,
+                    Some(Price(1.10000)),
+                    "CRITICAL: Take Profit was not restored after pessimistic instant stop-out!"
+                );
+            }
+            _ => panic!("Expected Closed state"),
+        }
+    }
+
+    #[test]
+    fn test_god_candle_restores_blinded_sl_on_optimistic_close() {
+        // Setup: Long @ 1.09500, SL @ 1.09000, TP @ 1.10000
+        let trade = create_long_pending(1.09500, Some(1.09000), Some(1.10000));
+        let m_id: MarketId = ohlcv_id().into();
+
+        // The candle triggers Entry, TP, and SL.
+        let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.09000, 1.10000, 1.09800);
+        let view = fixture.view();
+        let ctx = UpdateCtx {
+            market: &view,
+            bias: ExecutionBias::Optimistic, // Will blind SL temporarily
+        };
+
+        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+
+        // Expectation: Trade is Closed on TP, but SL is successfully restored.
+        match new_state {
+            State::Closed(c) => {
+                assert_eq!(c.state.termination_reason, TerminationReason::TakeProfit);
+                assert_eq!(
+                    c.take_profit,
+                    Some(Price(1.10000)),
+                    "TP should remain untouched"
+                );
+                assert_eq!(
+                    c.stop_loss,
+                    Some(Price(1.09000)),
+                    "CRITICAL: Stop Loss was not restored after optimistic instant take-profit!"
+                );
+            }
+            _ => panic!("Expected Closed state"),
+        }
+    }
+
     // ============================================================================
     // Part 4: Modify Tests
     // ============================================================================
@@ -552,7 +612,7 @@ mod test {
             new_take_profit: Some(Price(1.09700)),
         };
 
-        trade.modify(&cmd, &symbol).unwrap();
+        trade.modify(&cmd, symbol).unwrap();
 
         assert_eq!(trade.state.limit_price, Price(1.09200));
         assert_eq!(trade.stop_loss, Some(Price(1.08800)));
@@ -573,7 +633,7 @@ mod test {
             new_take_profit: Some(Price(1.09800)),
         };
 
-        trade.modify(&cmd, &symbol).unwrap();
+        trade.modify(&cmd, symbol).unwrap();
 
         // Only TP should change
         assert_eq!(trade.state.limit_price, Price(1.09000));
@@ -595,7 +655,7 @@ mod test {
             new_take_profit: None,
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.modify(&cmd, symbol);
         assert!(result.is_err(), "Should reject SL below entry for short");
     }
 
@@ -657,7 +717,7 @@ mod test {
             },
             Price(1.090789),
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration");
 
@@ -803,7 +863,7 @@ mod test {
             new_take_profit: Some(Price(1.09500)), // Valid
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.modify(&cmd, symbol);
         assert!(result.is_err(), "Should reject invalid SL");
 
         // Verify state unchanged (transactional)
@@ -839,7 +899,7 @@ mod test {
             },
             Price(1.10000),
             Utc::now(),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration");
 
@@ -853,7 +913,7 @@ mod test {
             new_take_profit: Some(Price(1.12000)), // Valid
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.modify(&cmd, symbol);
 
         // 1. Assert Error
         assert!(
