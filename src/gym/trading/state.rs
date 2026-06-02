@@ -790,17 +790,17 @@ impl States {
         let (m_id, loc) = self.get_index(&cmd.trade_id)?;
 
         self.modify_state_at(m_id, loc, |state| match state {
-            State::Active(mut t) => {
-                t.modify(&cmd, m_id.symbol)?;
+            State::Active(t) => {
+                let modifed_trade = t.modify(&cmd, m_id.symbol)?;
                 Ok(Transition {
-                    new_state: State::Active(t),
+                    new_state: State::Active(modifed_trade),
                     output: (),
                 })
             }
-            State::Pending(mut t) => {
-                t.modify(&cmd, m_id.symbol)?;
+            State::Pending(t) => {
+                let modifed_trade = t.modify(&cmd, m_id.symbol)?;
                 Ok(Transition {
-                    new_state: State::Pending(t),
+                    new_state: State::Pending(modifed_trade),
                     output: (),
                 })
             }
@@ -960,8 +960,8 @@ impl States {
         let (reward, exit) = self.modify_state_at(m_id, idx, |state| {
             // 1. Delegate Logic
             let (new_state, r) = match state {
-                State::Active(t) => active::update(t, &m_id, ctx)?,
-                State::Pending(t) => pending::update(t, &m_id, ctx)?,
+                State::Active(t) => t.update(&m_id, ctx)?,
+                State::Pending(t) => t.update(&m_id, ctx)?,
                 other => {
                     // This branch implies data corruption (Cold trade in Hot vec)
                     warn!(

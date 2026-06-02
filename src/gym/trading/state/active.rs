@@ -64,7 +64,12 @@ impl Trade<Active> {
         })
     }
 
-    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<()> {
+    /// Adjusts the stop-loss / take-profit of an Active trade.
+    ///
+    /// Consumes the trade and returns a fresh one with the new protective
+    /// orders applied. Validation runs against the candidate (SL, entry, TP)
+    /// ordering before anything is committed.
+    pub(super) fn modify(self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<Trade<Active>> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".to_string(),
@@ -102,11 +107,11 @@ impl Trade<Active> {
             candidate_tp,
         )?;
 
-        // 3. Commit Changes (Only reached if validation passes)
-        self.stop_loss = candidate_sl;
-        self.take_profit = candidate_tp;
-
-        Ok(())
+        // 3. Commit (only reached if validation passed): a fresh trade with the
+        // new protective orders, every other field carried over unchanged.
+        Ok(self
+            .with_stop_loss(candidate_sl)
+            .with_take_profit(candidate_tp))
     }
 
     pub(super) fn market_close(
@@ -124,19 +129,24 @@ impl Trade<Active> {
             return Err(AgentError::InvalidInput("Close qty > Open qty".to_string()).into());
         }
 
-        let booked_unrealized = self.state.unrealized_pnl;
-        self.execute_close(
+        self.execute_close(CloseParams {
             qty,
             exit_price,
             ts,
-            TerminationReason::MarketClose,
+            reason: TerminationReason::MarketClose,
             symbol,
-            booked_unrealized,
-        )
+        })
     }
 }
 
 impl Trade<Active> {
+    /// Closes all (or part) of the position and reports the **reward increment**.
+    ///
+    /// The reward is a _delta against the trade's last recorded mark_, not the
+    /// absolute realized PnL. Every reward emitted is the "change since the
+    /// previous mark", and a close is just a final mark at the exit price. The
+    /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
+    /// still stores the _absolute_ realized PnL for the journal.
     fn execute_close(self, close_params: CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
         let CloseParams {
             qty,
@@ -144,16 +154,13 @@ impl Trade<Active> {
             ts,
             reason,
             symbol,
-            last_marked_unrealized_pnl,
         } = close_params;
         let clean_exit_price = Price(sanitize_price(symbol, exit_price.0, "exit"));
+        let last_marked_unrealized_pnl = self.state.unrealized_pnl;
 
-        // Absolute realized PnL for the closed quantity — this is what Closed.realized_pnl
-        // (and therefore the journal) needs. Unchanged from before.
         let realized_pnl =
             self.trade_type
                 .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
-
         let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
 
         if is_full_close {
@@ -171,33 +178,35 @@ impl Trade<Active> {
             Ok((CloseOutcome::FullyClosed(closed), step_delta))
         } else {
             // Split the booked unrealized between the closed slice and the survivor,
-            // proportional to quantity (calculate_pnl is linear in qty).
+            // proportional to quantity.
             let closed_fraction = qty.0 / self.quantity.0;
             let closed_booked_unrealized = last_marked_unrealized_pnl * closed_fraction;
             let remaining_booked_unrealized = last_marked_unrealized_pnl - closed_booked_unrealized;
 
-            // The closed slice only adds, on the curve, what it gained beyond its
-            // already-booked share.
+            // The closed slice only adds, what it gained beyond its already-booked share.
             let step_delta = realized_pnl - closed_booked_unrealized;
 
-            let mut remaining = Trade {
+            let remaining = Trade {
                 quantity: self.quantity - qty,
+                state: Active {
+                    // The survivor must carry only its share of the unrealized PnL.
+                    unrealized_pnl: remaining_booked_unrealized,
+                    ..self.state.clone()
+                },
                 ..self.clone()
             };
-            // THE PARTIAL-CLOSE FIX: the survivor must carry only ITS share of the
-            // unrealized. The old `..self.clone()` copied the full-position figure,
-            // leaving a stale baseline that corrupted the survivor's next mark.
-            remaining.state.unrealized_pnl = remaining_booked_unrealized;
 
-            let mut closed = self.map(|s| Closed {
-                entry_ts: s.entry_ts,
-                entry_price: s.entry_price,
-                exit_ts: ts,
-                exit_price: clean_exit_price,
-                termination_reason: reason,
-                realized_pnl,
-            });
-            closed.quantity = qty;
+            let closed = Trade {
+                quantity: qty,
+                ..self.map(|s| Closed {
+                    entry_ts: s.entry_ts,
+                    entry_price: s.entry_price,
+                    exit_ts: ts,
+                    exit_price: clean_exit_price,
+                    termination_reason: reason,
+                    realized_pnl,
+                })
+            };
 
             Ok((
                 CloseOutcome::PartiallyClosed { closed, remaining },
@@ -205,77 +214,91 @@ impl Trade<Active> {
             ))
         }
     }
-}
 
-pub(super) fn update(
-    mut trade: Trade<Active>,
-    m_id: &MarketId,
-    ctx: &UpdateCtx,
-) -> ChapatyResult<(State, f64)> {
-    let symbol = m_id.symbol;
+    /// Advances an Active trade by one market step.
+    ///
+    /// Consumes the trade and returns its next state plus the **reward increment**
+    /// for this step (change in PnL since the previous mark):
+    /// - No exit: a fresh `Active` clone marked to the current price.
+    /// - SL/TP hit: the resulting `Closed` trade.
+    ///
+    /// On an exit we intentionally do **not** re-mark first: the trade fills at the
+    /// SL/TP price, not the bar close, so `self.state.unrealized_pnl` is left at the
+    /// previous mark and `execute_close` reads it as the baseline. The current-bar
+    /// mark is only meaningful (and only applied) when the trade survives.
+    pub(super) fn update(self, m_id: &MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
+        let symbol = m_id.symbol;
 
-    // 1. Capture START Value
-    let prev_unrealized_pnl = trade.state.unrealized_pnl;
+        // 1. Capture START value.
+        let prev_unrealized_pnl = self.state.unrealized_pnl;
 
-    // 2. Mark to Market
-    let raw_price = ctx.market.try_resolved_close_price(symbol)?.0;
-    let current_price = Price(sanitize_price(symbol, raw_price, "mark_price"));
-    let ts = ctx.market.current_timestamp();
+        // 2. Resolve this bar's mark price / timestamp.
+        let raw_price = ctx.market.try_resolved_close_price(symbol)?.0;
+        let current_price = Price(sanitize_price(symbol, raw_price, "mark_price"));
+        let ts = ctx.market.current_timestamp();
 
-    trade.state.current_price = current_price;
-    trade.state.current_ts = ts;
+        // Clean (tick-multiple) unrealized PnL at the current price. Used only on
+        // the survival branch; on an exit the trade fills at the SL/TP price instead.
+        let current_unrealized_pnl = self.trade_type.calculate_pnl(
+            self.state.entry_price,
+            current_price,
+            self.quantity,
+            symbol,
+        );
 
-    // Clean Unrealized PnL
-    let current_unrealized_pnl = trade.trade_type.calculate_pnl(
-        trade.state.entry_price,
-        current_price,
-        trade.quantity,
-        symbol,
-    );
-    trade.state.unrealized_pnl = current_unrealized_pnl;
+        // 3. Check Triggers.
+        let tp_exit = self
+            .take_profit
+            .filter(|&tp| ctx.market.reached_price(tp, symbol, self.trade_type))
+            .map(|tp| (TerminationReason::TakeProfit, tp.0));
 
-    // 3. Check Triggers
-    // A. Detect Triggers (Independent Checks)
-    let tp_exit = trade
-        .take_profit
-        .filter(|&tp| ctx.market.reached_price(tp, symbol, trade.trade_type))
-        .map(|tp| (TerminationReason::TakeProfit, tp.0));
+        let sl_exit = self
+            .stop_loss
+            .filter(|&sl| ctx.market.reached_price(sl, symbol, self.trade_type))
+            .map(|sl| (TerminationReason::StopLoss, sl.0));
 
-    let sl_exit = trade
-        .stop_loss
-        .filter(|&sl| ctx.market.reached_price(sl, symbol, trade.trade_type))
-        .map(|sl| (TerminationReason::StopLoss, sl.0));
+        // Resolve conflict (priority by execution bias).
+        let exit = match ctx.bias {
+            // Pessimistic: StopLoss wins if both trigger.
+            ExecutionBias::Pessimistic => sl_exit.or(tp_exit),
+            // Optimistic: TakeProfit wins if both trigger.
+            ExecutionBias::Optimistic => tp_exit.or(sl_exit),
+        };
 
-    // B. Resolve Conflict (Priority Logic)
-    let exit = match ctx.bias {
-        // Pessimistic: StopLoss triggers first (overrides TP if both occur)
-        // If SL didn't trigger, we check if TP triggered.
-        ExecutionBias::Pessimistic => sl_exit.or(tp_exit),
+        // 4. Execute exit if triggered.
+        if let Some((reason, raw_exit_price)) = exit {
+            let exit_price = Price(sanitize_price(symbol, raw_exit_price, "exit_price"));
+            let qty = self.quantity;
 
-        // Optimistic: TakeProfit triggers first (overrides SL if both occur)
-        // If TP didn't trigger, we check if SL triggered.
-        ExecutionBias::Optimistic => tp_exit.or(sl_exit),
-    };
+            // `self.state.unrealized_pnl` is still `prev` (we never re-marked), so
+            // `execute_close` reads the correct baseline off the trade itself.
+            let (outcome, step_delta) = self.execute_close(CloseParams {
+                qty,
+                exit_price,
+                ts,
+                reason,
+                symbol,
+            })?;
 
-    // 4. Execute Exit if triggered
-    if let Some((reason, raw_exit_price)) = exit {
-        let exit_price = Price(sanitize_price(symbol, raw_exit_price, "exit_price"));
-        let qty = trade.quantity;
-
-        // Baseline already in cumulative is prev (this step's mark isn't recorded on exit).
-        let (outcome, step_delta) =
-            trade.execute_close(qty, exit_price, ts, reason, symbol, prev_unrealized_pnl)?;
-
-        match outcome {
-            CloseOutcome::FullyClosed(c) => Ok((State::Closed(c), step_delta)),
-            _ => Err(SystemError::InvariantViolation(
-                "execute_close(full_qty) returned Partial. Logic Error.".to_string(),
-            )
-            .into()),
+            match outcome {
+                CloseOutcome::FullyClosed(c) => Ok((State::Closed(c), step_delta)),
+                _ => Err(SystemError::InvariantViolation(
+                    "execute_close(full_qty) returned Partial. Logic Error.".to_string(),
+                )
+                .into()),
+            }
+        } else {
+            // Survives: produce a fresh marked clone (Active -> Active) via the
+            // functor map, carrying the new mark.
+            let marked = self.map(|s| Active {
+                current_ts: ts,
+                current_price,
+                unrealized_pnl: current_unrealized_pnl,
+                ..s
+            });
+            let step_delta = current_unrealized_pnl - prev_unrealized_pnl;
+            Ok((State::Active(marked), step_delta))
         }
-    } else {
-        let step_delta = current_unrealized_pnl - prev_unrealized_pnl;
-        Ok((State::Active(trade), step_delta))
     }
 }
 
@@ -298,20 +321,9 @@ struct CloseParams {
     /// Why the trade is closing.
     reason: TerminationReason,
 
-    /// The instrument's symbol.
+    /// The instrument's symbol, used for tick-grid price sanitization and for the
+    /// discrete, tick-multiple PnL computation in `calculate_pnl`.
     symbol: Symbol,
-
-    /// The trade's mark-to-market unrealized PnL as of its **last `update`**,
-    /// i.e. the value currently held in `self.state.unrealized_pnl` for the
-    /// whole position.
-    ///
-    /// A close emits its reward as a _delta against this baseline_,
-    /// (`realized − last_marked_unrealized_pnl`), not as the absolute realized
-    /// PnL. The caller owns this number: `update` passes the pre-mark value it
-    /// captured at the start of the step; `market_close` passes the position's
-    /// current `unrealized_pnl`. See `execute_close` for why the two callers
-    /// supply different baselines.
-    last_marked_unrealized_pnl: f64,
 }
 
 #[cfg(test)]

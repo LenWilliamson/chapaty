@@ -9,7 +9,7 @@ use crate::{
     gym::trading::{
         action::{CancelCmd, ModifyCmd, OpenCmd},
         config::ExecutionBias,
-        state::{Active, Canceled, Pending, State, Trade, UpdateCtx, active, sanitize_price},
+        state::{Active, Canceled, Pending, State, Trade, UpdateCtx, sanitize_price},
     },
 };
 
@@ -158,7 +158,7 @@ pub(super) fn update(
     };
 
     // 4. Delegate to Active Logic
-    let (new_transient_state, reward_delta) = active::update(transient_active, m_id, ctx)?;
+    let (new_transient_state, reward_delta) = transient_active.update(m_id, ctx)?;
 
     // 5. Post-Process (Restore original SL/TP)
     let new_state = new_transient_state.with_restored_triggers(original_sl, original_tp);
