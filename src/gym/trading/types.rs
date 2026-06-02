@@ -510,8 +510,7 @@ mod tests {
         let dirty_entry = Price(1.09949999); // Target 10 ticks below is ~1.09900
         let clean_exit = Price(1.09900);
 
-        let pnl_short =
-            TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
+        let pnl_short = TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
 
         assert_eq!(
             pnl_short, 62.5,

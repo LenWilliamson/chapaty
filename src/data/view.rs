@@ -212,12 +212,7 @@ impl<'env> MarketView<'env> {
     }
 
     /// Returns `true` if `price` was reached by any *new* event since the last step.
-    pub fn reached_price(
-        &self,
-        price: Price,
-        target_symbol: Symbol,
-        direction: TradeType,
-    ) -> bool {
+    pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeType) -> bool {
         let prev = self.previous_timestamp();
         self.all_price_checkable_views()
             .into_iter()
