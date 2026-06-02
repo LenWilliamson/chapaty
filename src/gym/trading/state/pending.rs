@@ -51,7 +51,7 @@ impl Trade<Pending> {
         })
     }
 
-    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<()> {
+    pub(super) fn modify(self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<Self> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".into(),
@@ -88,11 +88,13 @@ impl Trade<Pending> {
         )?;
 
         // 3. Commit Changes
-        self.state.limit_price = candidate_entry;
-        self.stop_loss = candidate_sl;
-        self.take_profit = candidate_tp;
-
-        Ok(())
+        Ok(self
+            .map(|state| Pending {
+                limit_price: candidate_entry,
+                ..state
+            })
+            .with_stop_loss(candidate_sl)
+            .with_take_profit(candidate_tp))
     }
 
     pub(super) fn cancel(
@@ -112,58 +114,53 @@ impl Trade<Pending> {
             limit_price: s.limit_price,
         }))
     }
-}
 
-/// Updates a Pending trade. Checks for Limit activation.
-pub(super) fn update(
-    trade: Trade<Pending>,
-    m_id: &MarketId,
-    ctx: &UpdateCtx,
-) -> ChapatyResult<(State, f64)> {
-    let limit_price = trade.state.limit_price;
-    let hit_entry = ctx
-        .market
-        .reached_price(limit_price, m_id.symbol, trade.trade_type);
+    /// Updates a Pending trade. Checks for Limit activation.
+    pub(super) fn update(self, m_id: &MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
+        let limit_price = self.state.limit_price;
+        let hit_entry = ctx
+            .market
+            .reached_price(limit_price, m_id.symbol, self.trade_type);
 
-    if !hit_entry {
-        return Ok((State::Pending(trade), 0.0));
+        if !hit_entry {
+            return Ok((State::Pending(self), 0.0));
+        }
+
+        // 2. Activate Trade
+        // We assume it entered exactly at the limit price.
+        let ts = ctx.market.current_timestamp();
+        let active_trade = self.map(|s| Active {
+            entry_ts: ts,
+            entry_price: s.limit_price,
+            current_ts: ts,
+            current_price: s.limit_price,
+            unrealized_pnl: 0.0,
+        });
+
+        // 3. Construct Transient Active State to apply "God Candle" Bias Logic
+        // Store originals to restore later
+        let original_tp = active_trade.take_profit;
+        let original_sl = active_trade.stop_loss;
+        let transient_active = match ctx.bias {
+            ExecutionBias::Pessimistic => {
+                // Pessimistic: We assume we missed the TP (happened before Entry).
+                // Blind the TP so active::update checks SL only.
+                active_trade.with_take_profit(None)
+            }
+            ExecutionBias::Optimistic => {
+                // Optimistic: We assume we avoided the SL (happened before Entry).
+                // Blind the SL so active::update checks TP only.
+                active_trade.with_stop_loss(None)
+            }
+        };
+        // 4. Delegate to Active Logic
+        let (new_transient_state, reward_delta) = transient_active.update(m_id, ctx)?;
+
+        // 5. Post-Process (Restore original SL/TP)
+        let new_state = new_transient_state.with_restored_triggers(original_sl, original_tp);
+
+        Ok((new_state, reward_delta))
     }
-
-    // 2. Activate Trade
-    // We assume it entered exactly at the limit price.
-    let ts = ctx.market.current_timestamp();
-    let active_trade = trade.map(|s| Active {
-        entry_ts: ts,
-        entry_price: s.limit_price,
-        current_ts: ts,
-        current_price: s.limit_price,
-        unrealized_pnl: 0.0,
-    });
-
-    // 3. Construct Transient Active State to apply "God Candle" Bias Logic
-    // Store originals to restore later
-    let original_tp = active_trade.take_profit;
-    let original_sl = active_trade.stop_loss;
-    let transient_active = match ctx.bias {
-        ExecutionBias::Pessimistic => {
-            // Pessimistic: We assume we missed the TP (happened before Entry).
-            // Blind the TP so active::update checks SL only.
-            active_trade.with_take_profit(None)
-        }
-        ExecutionBias::Optimistic => {
-            // Optimistic: We assume we avoided the SL (happened before Entry).
-            // Blind the SL so active::update checks TP only.
-            active_trade.with_stop_loss(None)
-        }
-    };
-
-    // 4. Delegate to Active Logic
-    let (new_transient_state, reward_delta) = transient_active.update(m_id, ctx)?;
-
-    // 5. Post-Process (Restore original SL/TP)
-    let new_state = new_transient_state.with_restored_triggers(original_sl, original_tp);
-
-    Ok((new_state, reward_delta))
 }
 
 #[cfg(test)]

@@ -69,7 +69,7 @@ impl Trade<Active> {
     /// Consumes the trade and returns a fresh one with the new protective
     /// orders applied. Validation runs against the candidate (SL, entry, TP)
     /// ordering before anything is committed.
-    pub(super) fn modify(self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<Trade<Active>> {
+    pub(super) fn modify(self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<Self> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".to_string(),
@@ -136,83 +136,6 @@ impl Trade<Active> {
             reason: TerminationReason::MarketClose,
             symbol,
         })
-    }
-}
-
-impl Trade<Active> {
-    /// Closes all (or part) of the position and reports the **reward increment**.
-    ///
-    /// The reward is a _delta against the trade's last recorded mark_, not the
-    /// absolute realized PnL. Every reward emitted is the "change since the
-    /// previous mark", and a close is just a final mark at the exit price. The
-    /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
-    /// still stores the _absolute_ realized PnL for the journal.
-    fn execute_close(self, close_params: CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
-        let CloseParams {
-            qty,
-            exit_price,
-            ts,
-            reason,
-            symbol,
-        } = close_params;
-        let clean_exit_price = Price(sanitize_price(symbol, exit_price.0, "exit"));
-        let last_marked_unrealized_pnl = self.state.unrealized_pnl;
-
-        let realized_pnl =
-            self.trade_type
-                .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
-        let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
-
-        if is_full_close {
-            // The whole booked unrealized belongs to this close.
-            let step_delta = realized_pnl - last_marked_unrealized_pnl;
-
-            let closed = self.map(|s| Closed {
-                entry_ts: s.entry_ts,
-                entry_price: s.entry_price,
-                exit_ts: ts,
-                exit_price: clean_exit_price,
-                termination_reason: reason,
-                realized_pnl,
-            });
-            Ok((CloseOutcome::FullyClosed(closed), step_delta))
-        } else {
-            // Split the booked unrealized between the closed slice and the survivor,
-            // proportional to quantity.
-            let closed_fraction = qty.0 / self.quantity.0;
-            let closed_booked_unrealized = last_marked_unrealized_pnl * closed_fraction;
-            let remaining_booked_unrealized = last_marked_unrealized_pnl - closed_booked_unrealized;
-
-            // The closed slice only adds, what it gained beyond its already-booked share.
-            let step_delta = realized_pnl - closed_booked_unrealized;
-
-            let remaining = Trade {
-                quantity: self.quantity - qty,
-                state: Active {
-                    // The survivor must carry only its share of the unrealized PnL.
-                    unrealized_pnl: remaining_booked_unrealized,
-                    ..self.state.clone()
-                },
-                ..self.clone()
-            };
-
-            let closed = Trade {
-                quantity: qty,
-                ..self.map(|s| Closed {
-                    entry_ts: s.entry_ts,
-                    entry_price: s.entry_price,
-                    exit_ts: ts,
-                    exit_price: clean_exit_price,
-                    termination_reason: reason,
-                    realized_pnl,
-                })
-            };
-
-            Ok((
-                CloseOutcome::PartiallyClosed { closed, remaining },
-                step_delta,
-            ))
-        }
     }
 
     /// Advances an Active trade by one market step.
@@ -298,6 +221,83 @@ impl Trade<Active> {
             });
             let step_delta = current_unrealized_pnl - prev_unrealized_pnl;
             Ok((State::Active(marked), step_delta))
+        }
+    }
+}
+
+impl Trade<Active> {
+    /// Closes all (or part) of the position and reports the **reward increment**.
+    ///
+    /// The reward is a _delta against the trade's last recorded mark_, not the
+    /// absolute realized PnL. Every reward emitted is the "change since the
+    /// previous mark", and a close is just a final mark at the exit price. The
+    /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
+    /// still stores the _absolute_ realized PnL for the journal.
+    fn execute_close(self, close_params: CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
+        let CloseParams {
+            qty,
+            exit_price,
+            ts,
+            reason,
+            symbol,
+        } = close_params;
+        let clean_exit_price = Price(sanitize_price(symbol, exit_price.0, "exit"));
+        let last_marked_unrealized_pnl = self.state.unrealized_pnl;
+
+        let realized_pnl =
+            self.trade_type
+                .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
+        let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
+
+        if is_full_close {
+            // The whole booked unrealized belongs to this close.
+            let step_delta = realized_pnl - last_marked_unrealized_pnl;
+
+            let closed = self.map(|s| Closed {
+                entry_ts: s.entry_ts,
+                entry_price: s.entry_price,
+                exit_ts: ts,
+                exit_price: clean_exit_price,
+                termination_reason: reason,
+                realized_pnl,
+            });
+            Ok((CloseOutcome::FullyClosed(closed), step_delta))
+        } else {
+            // Split the booked unrealized between the closed slice and the survivor,
+            // proportional to quantity.
+            let closed_fraction = qty.0 / self.quantity.0;
+            let closed_booked_unrealized = last_marked_unrealized_pnl * closed_fraction;
+            let remaining_booked_unrealized = last_marked_unrealized_pnl - closed_booked_unrealized;
+
+            // The closed slice only adds, what it gained beyond its already-booked share.
+            let step_delta = realized_pnl - closed_booked_unrealized;
+
+            let remaining = Trade {
+                quantity: self.quantity - qty,
+                state: Active {
+                    // The survivor must carry only its share of the unrealized PnL.
+                    unrealized_pnl: remaining_booked_unrealized,
+                    ..self.state.clone()
+                },
+                ..self.clone()
+            };
+
+            let closed = Trade {
+                quantity: qty,
+                ..self.map(|s| Closed {
+                    entry_ts: s.entry_ts,
+                    entry_price: s.entry_price,
+                    exit_ts: ts,
+                    exit_price: clean_exit_price,
+                    termination_reason: reason,
+                    realized_pnl,
+                })
+            };
+
+            Ok((
+                CloseOutcome::PartiallyClosed { closed, remaining },
+                step_delta,
+            ))
         }
     }
 }
