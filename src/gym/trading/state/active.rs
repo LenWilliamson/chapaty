@@ -479,7 +479,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade.clone(), &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         // Extract new trade
         let updated = match new_state {
@@ -514,7 +514,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -544,7 +544,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -574,7 +574,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -604,7 +604,7 @@ mod tests {
             market: &view1,
             bias: ExecutionBias::Optimistic,
         };
-        let (state1, delta1) = super::update(trade, &m_id, &ctx1).unwrap();
+        let (state1, delta1) = trade.update(&m_id, &ctx1).unwrap();
 
         let trade1 = match state1 {
             State::Active(t) => t,
@@ -619,7 +619,7 @@ mod tests {
             market: &view2,
             bias: ExecutionBias::Optimistic,
         };
-        let (state2, delta2) = super::update(trade1, &m_id, &ctx2).unwrap();
+        let (state2, delta2) = trade1.update(&m_id, &ctx2).unwrap();
 
         let trade2 = match state2 {
             State::Active(t) => t,
@@ -650,7 +650,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         // Must close with StopLoss
         match new_state {
@@ -676,7 +676,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(&m_id, &ctx).unwrap();
 
         // Must close with TakeProfit
         match new_state {
@@ -701,7 +701,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -723,7 +723,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -745,7 +745,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_cannot_change_entry() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         let cmd = ModifyCmd {
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_valid_sl_tp() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         let cmd = ModifyCmd {
@@ -830,7 +830,7 @@ mod tests {
             new_take_profit: Some(Price(1.11)),
         };
 
-        trade.modify(&cmd, symbol).unwrap();
+        let trade = trade.modify(&cmd, symbol).unwrap();
 
         assert_eq!(trade.stop_loss, Some(Price(1.098)));
         assert_eq!(trade.take_profit, Some(Price(1.11)));
@@ -932,7 +932,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_invalid_ordering() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         // Try to set SL above entry (invalid for long)
@@ -944,7 +944,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result = trade.modify(&cmd, symbol);
+        let result = trade.clone().modify(&cmd, symbol);
         assert!(result.is_err(), "Should reject invalid SL ordering");
 
         // Verify state unchanged (transactional)
@@ -960,7 +960,7 @@ mod tests {
         });
 
         // Setup: Long Pending Trade @ 1.1, SL @ 1.09000
-        let mut trade = Trade::<Active>::new(
+        let trade = Trade::<Active>::new(
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
@@ -986,7 +986,7 @@ mod tests {
             new_take_profit: Some(Price(1.12000)), // Valid
         };
 
-        let result = trade.modify(&cmd, symbol);
+        let result = trade.clone().modify(&cmd, symbol);
 
         // 1. Assert Error
         assert!(
@@ -1023,7 +1023,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (state, mark_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (state, mark_delta) = trade.update(&m_id, &ctx).unwrap();
         let marked = match state {
             State::Active(t) => t,
             _ => panic!("Expected Active after marking"),
@@ -1066,7 +1066,7 @@ mod tests {
             market: &v1,
             bias: ExecutionBias::Optimistic,
         };
-        let (s1, d1) = super::update(trade, &m_id, &c1).unwrap();
+        let (s1, d1) = trade.update(&m_id, &c1).unwrap();
         let marked = match s1 {
             State::Active(t) => t,
             _ => panic!("Expected Active"),
@@ -1104,7 +1104,7 @@ mod tests {
             market: &v2,
             bias: ExecutionBias::Optimistic,
         };
-        let (s2, d2) = super::update(remaining, &m_id, &c2).unwrap();
+        let (s2, d2) = remaining.update(&m_id, &c2).unwrap();
         let marked2 = match s2 {
             State::Active(t) => t,
             _ => panic!("Expected Active"),

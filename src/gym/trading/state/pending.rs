@@ -313,7 +313,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Pending(t) => {
@@ -341,7 +341,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -372,7 +372,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -405,7 +405,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -430,7 +430,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         // UPDATED EXPECTATION:
         // Optimistic bias assumes SL happened *before* Entry (or we got lucky).
@@ -458,7 +458,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         // EXPECTATION:
         // Pessimistic bias assumes Entry happened -> Then Price fell to SL.
@@ -487,7 +487,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         // Should close on SL (TP was "missed")
         match new_state {
@@ -511,7 +511,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -535,7 +535,7 @@ mod test {
             bias: ExecutionBias::Pessimistic, // Will blind TP temporarily
         };
 
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         // The bug: TP was left as None because it fell through to the `other` match arm.
         // Expectation: Trade is Closed on SL, but TP is successfully restored.
@@ -571,7 +571,7 @@ mod test {
             bias: ExecutionBias::Optimistic, // Will blind SL temporarily
         };
 
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         // Expectation: Trade is Closed on TP, but SL is successfully restored.
         match new_state {
@@ -598,7 +598,7 @@ mod test {
 
     #[test]
     fn test_modify_pending_all_fields() {
-        let mut trade = create_long_pending(1.09000, Some(1.08500), Some(1.09500));
+        let trade = create_long_pending(1.09000, Some(1.08500), Some(1.09500));
         let symbol = ohlcv_id().symbol;
 
         let cmd = ModifyCmd {
@@ -609,7 +609,7 @@ mod test {
             new_take_profit: Some(Price(1.09700)),
         };
 
-        trade.modify(&cmd, symbol).unwrap();
+        let trade = trade.modify(&cmd, symbol).unwrap();
 
         assert_eq!(trade.state.limit_price, Price(1.09200));
         assert_eq!(trade.stop_loss, Some(Price(1.08800)));
@@ -618,7 +618,7 @@ mod test {
 
     #[test]
     fn test_modify_pending_partial_update() {
-        let mut trade = create_long_pending(1.09000, Some(1.08500), Some(1.09500));
+        let trade = create_long_pending(1.09000, Some(1.08500), Some(1.09500));
         let symbol = ohlcv_id().symbol;
 
         // Only modify TP
@@ -630,7 +630,7 @@ mod test {
             new_take_profit: Some(Price(1.09800)),
         };
 
-        trade.modify(&cmd, symbol).unwrap();
+        let trade = trade.modify(&cmd, symbol).unwrap();
 
         // Only TP should change
         assert_eq!(trade.state.limit_price, Price(1.09000));
@@ -640,7 +640,7 @@ mod test {
 
     #[test]
     fn test_modify_pending_invalid_ordering_short() {
-        let mut trade = create_short_pending(1.10000, Some(1.10500), Some(1.09500));
+        let trade = create_short_pending(1.10000, Some(1.10500), Some(1.09500));
         let symbol = ohlcv_id().symbol;
 
         // Try to set SL below entry (invalid for short)
@@ -744,7 +744,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -769,7 +769,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -793,7 +793,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -816,7 +816,7 @@ mod test {
             market: &view1,
             bias: ExecutionBias::Optimistic,
         };
-        let (state1, reward1) = super::update(trade, &m_id, &ctx1).unwrap();
+        let (state1, reward1) = trade.update(&m_id, &ctx1).unwrap();
 
         let trade1 = match state1 {
             State::Pending(t) => t,
@@ -831,7 +831,7 @@ mod test {
             market: &view2,
             bias: ExecutionBias::Optimistic,
         };
-        let (state2, reward2) = super::update(trade1, &m_id, &ctx2).unwrap();
+        let (state2, reward2) = trade1.update(&m_id, &ctx2).unwrap();
 
         match state2 {
             State::Pending(t) => {
@@ -848,7 +848,7 @@ mod test {
 
     #[test]
     fn test_modify_pending_transactional() {
-        let mut trade = create_long_pending(1.09000, Some(1.08500), None);
+        let trade = create_long_pending(1.09000, Some(1.08500), None);
         let symbol = ohlcv_id().symbol;
 
         // Try to set invalid SL (above entry)
@@ -860,7 +860,7 @@ mod test {
             new_take_profit: Some(Price(1.09500)), // Valid
         };
 
-        let result = trade.modify(&cmd, symbol);
+        let result = trade.clone().modify(&cmd, symbol);
         assert!(result.is_err(), "Should reject invalid SL");
 
         // Verify state unchanged (transactional)
@@ -884,7 +884,7 @@ mod test {
         });
 
         // Setup: Long Pending Trade @ 1.10000, SL @ 1.09000
-        let mut trade = Trade::<Pending>::new(
+        let trade = Trade::<Pending>::new(
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
@@ -910,7 +910,7 @@ mod test {
             new_take_profit: Some(Price(1.12000)), // Valid
         };
 
-        let result = trade.modify(&cmd, symbol);
+        let result = trade.clone().modify(&cmd, symbol);
 
         // 1. Assert Error
         assert!(
