@@ -99,7 +99,7 @@ impl TryFrom<&Journal> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().is_empty() {
+        if j.as_df().shape_has_zero() {
             return Ok(TradeStatistics::default());
         }
 
@@ -107,7 +107,7 @@ impl TryFrom<&Journal> for TradeStatistics {
             .as_df()
             .clone()
             .lazy()
-            .select(exprs())
+            .select(exprs()?)
             .collect()
             .map_err(convert_err)?;
 
@@ -119,7 +119,7 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().is_empty() {
+        if gj.source().as_df().shape_has_zero() {
             return Ok(Self::default());
         }
 
@@ -131,7 +131,7 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
                 for k in &keys {
                     selection.push(col(k).first());
                 }
-                selection.extend(exprs());
+                selection.extend(exprs()?);
 
                 let lf = df
                     .lazy()
@@ -160,12 +160,12 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
     }
 }
 
-fn exprs() -> Vec<Expr> {
+fn exprs() -> ChapatyResult<Vec<Expr>> {
     let return_col = JournalCol::RealizedReturnInTicks;
     let trade_state_col = JournalCol::TradeState;
     let trade_type_col = JournalCol::TradeType;
 
-    vec![
+    let exprs = vec![
         // === Trade counts ===
         winning_trade_count_expr(return_col)
             .alias(TradeStatCol::WinningTradeCount)
@@ -177,16 +177,16 @@ fn exprs() -> Vec<Expr> {
             .alias(TradeStatCol::TotalTradeCount)
             .cast(DataType::UInt32),
         // === Trade streaks ===
-        max_consecutive_wins_expr(return_col)
+        max_consecutive_wins_expr(return_col)?
             .alias(TradeStatCol::MaxConsecutiveWins)
             .cast(DataType::UInt32),
-        max_consecutive_losses_expr(return_col)
+        max_consecutive_losses_expr(return_col)?
             .alias(TradeStatCol::MaxConsecutiveLosses)
             .cast(DataType::UInt32),
-        max_consecutive_unrealized_wins_expr(trade_state_col, return_col)
+        max_consecutive_unrealized_wins_expr(trade_state_col, return_col)?
             .alias(TradeStatCol::MaxConsecutiveUnrealizedWins)
             .cast(DataType::UInt32),
-        max_consecutive_unrealized_losses_expr(trade_state_col, return_col)
+        max_consecutive_unrealized_losses_expr(trade_state_col, return_col)?
             .alias(TradeStatCol::MaxConsecutiveUnrealizedLosses)
             .cast(DataType::UInt32),
         // === Trade durations ===
@@ -247,7 +247,7 @@ fn exprs() -> Vec<Expr> {
         pending_count_expr(trade_state_col)
             .alias(TradeStatCol::PendingCount)
             .cast(DataType::UInt32),
-        longest_pending_streak_expr(trade_state_col)
+        longest_pending_streak_expr(trade_state_col)?
             .alias(TradeStatCol::LongestPendingStreak)
             .cast(DataType::UInt32),
         long_trade_count_expr(trade_type_col)
@@ -256,7 +256,8 @@ fn exprs() -> Vec<Expr> {
         short_trade_count_expr(trade_type_col)
             .alias(TradeStatCol::ShortTradeCount)
             .cast(DataType::UInt32),
-    ]
+    ];
+    Ok(exprs)
 }
 
 // ================================================================================================
@@ -284,12 +285,12 @@ pub(super) fn executed_trade_count_expr(trade_state_col: JournalCol) -> Expr {
 // ================================================================================================
 // === Trade streaks ===
 // ================================================================================================
-fn max_consecutive_wins_expr(return_col: JournalCol) -> Expr {
+fn max_consecutive_wins_expr(return_col: JournalCol) -> ChapatyResult<Expr> {
     let predicate = col(return_col).gt(lit(0));
     max_consecutive_streak_expr(predicate)
 }
 
-fn max_consecutive_losses_expr(return_col: JournalCol) -> Expr {
+fn max_consecutive_losses_expr(return_col: JournalCol) -> ChapatyResult<Expr> {
     let predicate = col(return_col).lt_eq(lit(0));
     max_consecutive_streak_expr(predicate)
 }
@@ -297,7 +298,7 @@ fn max_consecutive_losses_expr(return_col: JournalCol) -> Expr {
 fn max_consecutive_unrealized_wins_expr(
     trade_state_col: JournalCol,
     return_col: JournalCol,
-) -> Expr {
+) -> ChapatyResult<Expr> {
     let predicate = col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).gt(lit(0)));
@@ -308,7 +309,7 @@ fn max_consecutive_unrealized_wins_expr(
 fn max_consecutive_unrealized_losses_expr(
     trade_state_col: JournalCol,
     return_col: JournalCol,
-) -> Expr {
+) -> ChapatyResult<Expr> {
     let predicate = col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).lt_eq(lit(0)));
@@ -420,7 +421,7 @@ fn pending_count_expr(trade_state_col: JournalCol) -> Expr {
         .sum()
 }
 
-fn longest_pending_streak_expr(trade_state_col: JournalCol) -> Expr {
+fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Expr> {
     let predicate = col(trade_state_col).eq(lit(StateKind::Pending.as_str()));
     max_consecutive_streak_expr(predicate)
 }
@@ -446,11 +447,12 @@ fn short_trade_count_expr(trade_type_col: JournalCol) -> Expr {
 /// in a boolean predicate expression, often used to identify streaks in a column.
 ///
 /// Reference: <https://stackoverflow.com/a/75405310>
-fn max_consecutive_streak_expr(predicate: Expr) -> Expr {
+fn max_consecutive_streak_expr(predicate: Expr) -> ChapatyResult<Expr> {
     let rle = predicate.clone().rle_id();
-    let streak_len = len().over([rle]);
-
-    when(predicate).then(streak_len).otherwise(lit(0)).max()
+    len()
+        .over([rle])
+        .map(|streak_len| when(predicate).then(streak_len).otherwise(lit(0)).max())
+        .map_err(convert_err)
 }
 
 /// Returns the trade duration as a Polars `Duration(Microseconds)` column.
@@ -571,7 +573,7 @@ impl TradeStatCol {
 mod tests {
     use std::{collections::HashSet, path::PathBuf};
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath, SchemaExt};
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
 
     use crate::data::common::RiskMetricsConfig;
 
@@ -593,7 +595,7 @@ mod tests {
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),

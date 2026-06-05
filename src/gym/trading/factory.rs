@@ -180,7 +180,7 @@ impl BuildCtx {
         let (ohlcv_spot, ohlcv_future, trade_spot, tpo_spot, tpo_future, vp_spot, news) = tokio::try_join!(
             fetch_groups(self.env_cfg.ohlcv_spot(), years.clone()),
             fetch_groups(self.env_cfg.ohlcv_future(), years.clone()),
-            fetch_groups(self.env_cfg.trade_spot(), years.clone()),
+            fetch_groups(self.env_cfg.trades_spot(), years.clone()),
             fetch_groups(self.env_cfg.tpo_spot(), years.clone()),
             fetch_groups(self.env_cfg.tpo_future(), years.clone()),
             fetch_groups(self.env_cfg.volume_profile_spot(), years.clone()),
@@ -795,34 +795,34 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     // Optional numeric fields with iterators
     let qav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let nt_iter: Box<dyn Iterator<Item = Option<i64>>> = df
         .i64_ca(CanonicalCol::NumberOfTrades)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<i64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<i64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let tbbav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::TakerBuyBaseAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let tbqav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::TakerBuyQuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let mut events = Vec::with_capacity(len);
 
     for (o_ts, ts, o, h, l, c, v, qav, nt, tbbav, tbqav) in izip!(
-        open_ts_ca.into_iter(),
-        ts_ca.into_iter(),
-        open_ca.into_iter(),
-        high_ca.into_iter(),
-        low_ca.into_iter(),
-        close_ca.into_iter(),
-        vol_ca.into_iter(),
+        open_ts_ca.iter(),
+        ts_ca.iter(),
+        open_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        close_ca.iter(),
+        vol_ca.iter(),
         qav_iter,
         nt_iter,
         tbbav_iter,
@@ -882,30 +882,30 @@ fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     // Optional numeric fields with iterators
     let trade_id_iter: Box<dyn Iterator<Item = Option<i64>>> = df
         .i64_ca(CanonicalCol::TradeId)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<i64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<i64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let quote_vol_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let is_maker_iter: Box<dyn Iterator<Item = Option<bool>>> = df
         .bool_ca(CanonicalCol::IsBuyerMaker)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<bool>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<bool>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let is_best_iter: Box<dyn Iterator<Item = Option<bool>>> = df
         .bool_ca(CanonicalCol::IsBestMatch)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<bool>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<bool>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let mut events = Vec::with_capacity(len);
 
     for (ts, price, vol, trade_id, quote_vol, is_maker, is_best) in izip!(
-        ts_ca.into_iter(),
-        price_ca.into_iter(),
-        vol_ca.into_iter(),
+        ts_ca.iter(),
+        price_ca.iter(),
+        vol_ca.iter(),
         trade_id_iter,
         quote_vol_iter,
         is_maker_iter,
@@ -953,38 +953,38 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     // Optional string fields with iterators
     let news_type_iter: Box<dyn Iterator<Item = Option<&str>>> = df
         .str_ca(CanonicalCol::NewsType)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let news_src_iter: Box<dyn Iterator<Item = Option<&str>>> = df
         .str_ca(CanonicalCol::NewsTypeSource)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let period_iter: Box<dyn Iterator<Item = Option<&str>>> = df
         .str_ca(CanonicalCol::Period)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     // Optional numeric fields with iterators
     let conf_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::NewsTypeConfidence)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let actual_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::Actual)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let forecast_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::Forecast)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let prev_iter: Box<dyn Iterator<Item = Option<f64>>> = df
         .f64_ca(CanonicalCol::Previous)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
+        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
         .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
 
     let mut events = Vec::with_capacity(len);
@@ -1005,13 +1005,13 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
         forecast,
         prev,
     ) in izip!(
-        ts_ca.into_iter(),
-        source_ca.into_iter(),
-        cat_ca.into_iter(),
-        name_ca.into_iter(),
-        country_ca.into_iter(),
-        currency_ca.into_iter(),
-        impact_ca.into_iter(),
+        ts_ca.iter(),
+        source_ca.iter(),
+        cat_ca.iter(),
+        name_ca.iter(),
+        country_ca.iter(),
+        currency_ca.iter(),
+        impact_ca.iter(),
         news_type_iter,
         news_src_iter,
         period_iter,
@@ -1096,11 +1096,11 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     let va_rule = cfg.value_area_rule.unwrap_or_default();
 
     for (ts_open, ts_close, p_start, p_end, count) in izip!(
-        ts_open_ca.into_iter(),
-        ts_close_ca.into_iter(),
-        p_start_ca.into_iter(),
-        p_end_ca.into_iter(),
-        count_ca.into_iter()
+        ts_open_ca.iter(),
+        ts_close_ca.iter(),
+        p_start_ca.iter(),
+        p_end_ca.iter(),
+        count_ca.iter()
     ) {
         let ts_open_val =
             ts_open.ok_or(DataError::DataFrame("Missing TPO Open Timestamp".into()))?;
@@ -1197,7 +1197,7 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
     let get_opt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<f64>>> {
         if let Ok(ca) = sorted_df.f64_ca(col) {
-            Box::new(ca.into_iter())
+            Box::new(ca.iter())
         } else {
             Box::new(std::iter::repeat_n(None, len))
         }
@@ -1205,7 +1205,7 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
     let get_cnt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<i64>>> {
         if let Ok(ca) = sorted_df.i64_ca(col) {
-            Box::new(ca.into_iter())
+            Box::new(ca.iter())
         } else {
             Box::new(std::iter::repeat_n(None, len))
         }
@@ -1245,11 +1245,11 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
         n_buy,
         n_sell,
     ) in izip!(
-        ts_open_ca.into_iter(),
-        ts_close_ca.into_iter(),
-        p_start_ca.into_iter(),
-        p_end_ca.into_iter(),
-        vol_ca.into_iter(),
+        ts_open_ca.iter(),
+        ts_close_ca.iter(),
+        p_start_ca.iter(),
+        p_end_ca.iter(),
+        vol_ca.iter(),
         tb_base_iter,
         ts_base_iter,
         q_vol_iter,
@@ -1361,7 +1361,7 @@ where
 
     let mut events = Vec::with_capacity(len);
 
-    for (ts_opt, price_opt) in izip!(ts_ca.into_iter(), price_ca.into_iter()) {
+    for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
         let ts_val = ts_opt.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
         let price_val = match price_opt {
             Some(v) => v,
@@ -1602,7 +1602,7 @@ mod test {
     use chrono::{TimeZone, Timelike};
     use polars::{
         df,
-        prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlPath, TimeUnit},
+        prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit},
     };
     use std::path::PathBuf;
 
@@ -1619,7 +1619,7 @@ mod test {
     fn load_ohlcv_fixture(filename: &str) -> LazyFrame {
         let path = fixtures_path().join("input").join(filename);
 
-        LazyCsvReader::new(PlPath::new(path.as_os_str().to_str().expect("filepath")))
+        LazyCsvReader::new(PlRefPath::new(path.as_os_str().to_str().expect("filepath")))
             .with_has_header(true)
             .finish()
             .expect("Failed to parse fixture CSV")
@@ -1655,7 +1655,7 @@ mod test {
     fn load_calendar_fixture(filename: &str) -> LazyFrame {
         let path = fixtures_path().join("input").join(filename);
 
-        LazyCsvReader::new(PlPath::new(path.as_os_str().to_str().expect("filepath")))
+        LazyCsvReader::new(PlRefPath::new(path.as_os_str().to_str().expect("filepath")))
             .with_has_header(true)
             .finish()
             .expect("Failed to parse calendar CSV")
@@ -1725,7 +1725,7 @@ mod test {
             let result_df = result_lf.collect().unwrap();
 
             let expected_file = fixtures_path().join("expected").join(case.expected_file);
-            let expected_df = LazyCsvReader::new(PlPath::new(
+            let expected_df = LazyCsvReader::new(PlRefPath::new(
                 expected_file.as_os_str().to_str().expect("filepath"),
             ))
             .with_has_header(true)
@@ -1830,7 +1830,7 @@ mod test {
             let result_df = result_lf.collect().unwrap();
 
             let expected_file = fixtures_path().join("expected").join(case.expected_file);
-            let expected_df = LazyCsvReader::new(PlPath::new(
+            let expected_df = LazyCsvReader::new(PlRefPath::new(
                 expected_file.as_os_str().to_str().expect("filepath"),
             ))
             .with_has_header(true)

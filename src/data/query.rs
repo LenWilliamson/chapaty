@@ -82,7 +82,7 @@ pub struct OhlcvFutureQuery {
 /// Trade data represents individual trades or price updates at the finest granularity,
 /// capturing every market transaction with microsecond precision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TradeSpotQuery {
+pub struct TradesSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
@@ -304,7 +304,7 @@ impl QueryId for OhlcvFutureQuery {
     }
 }
 
-impl QueryId for TradeSpotQuery {
+impl QueryId for TradesSpotQuery {
     type Id = TradesId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {

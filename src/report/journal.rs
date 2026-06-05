@@ -308,7 +308,7 @@ impl ToSchema for Journal {
 mod test {
     use std::path::PathBuf;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath};
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath};
 
     use super::*;
 
@@ -316,7 +316,7 @@ mod test {
     fn test_journal_creation_and_schema_validation() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlPath::new(
+        let path = PlRefPath::new(
             pb.as_os_str()
                 .to_str()
                 .expect("Failed to convert input file path to string"),

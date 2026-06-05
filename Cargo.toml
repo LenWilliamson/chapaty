@@ -35,16 +35,17 @@ async-channel = "2.5"
 blake3 = "1.8"
 bytes = "1.11"
 chrono = "0.4"
+chrono-tz = { version = "0.10", features = ["serde"] }
 crossbeam = "0.8"
 futures = "0.3"
 hf-hub = "0.5.0"
 humantime = "2.3.0"
-indicatif = {version ="0.18", features = ["rayon"]}
+indicatif = { version = "0.18", features = ["rayon"] }
 itertools = "0.14"
 ndarray = "0.17"
-object_store = "0.12.5"
+object_store = "0.13.2"
 ordered-float = { version = "5.3", features = ["serde"] }
-polars = { version = "0.52", features = [
+polars = { version = "0.54.4", features = [
     "abs",
     "aws",
     "azure",

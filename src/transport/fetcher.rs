@@ -1,7 +1,7 @@
 use crate::{
     data::query::{
         EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, QueryId, TpoFutureQuery,
-        TpoSpotQuery, TradeSpotQuery, VolumeProfileSpotQuery,
+        TpoSpotQuery, TradesSpotQuery, VolumeProfileSpotQuery,
     },
     error::ChapatyResult,
     generated::chapaty::{
@@ -128,7 +128,7 @@ impl Fetchable for OhlcvFutureQuery {
 // ================================================================================================
 
 #[async_trait]
-impl Fetchable for TradeSpotQuery {
+impl Fetchable for TradesSpotQuery {
     type Response = TradesSpotResponse;
     type Request = TradesSpotRequest;
 

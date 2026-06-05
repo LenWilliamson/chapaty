@@ -1224,14 +1224,14 @@ mod test {
         assert_eq!(df.height(), 3, "Should have 3 rows");
 
         // Verify episode distribution
-        let episodes: Vec<u32> = df
+        let episodes = df
             .column(JournalCol::EpisodeId.as_str())
             .unwrap()
             .u32()
             .unwrap()
-            .into_iter()
+            .iter()
             .flatten()
-            .collect();
+            .collect::<Vec<_>>();
         assert_eq!(episodes.iter().filter(|&&e| e == 0).count(), 2);
         assert_eq!(episodes.iter().filter(|&&e| e == 1).count(), 1);
     }
@@ -1294,7 +1294,12 @@ mod test {
         let row_id_col = df
             .column(JournalCol::RowId.as_str())
             .expect("RowId column missing");
-        let row_ids: Vec<u32> = row_id_col.u32().unwrap().into_iter().flatten().collect();
+        let row_ids = row_id_col
+            .u32()
+            .unwrap()
+            .iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         assert_eq!(
             row_ids,
@@ -1997,14 +2002,14 @@ mod test {
 
         assert_eq!(df.height(), 4, "Should have 4 trades");
 
-        let states: HashSet<_> = df
+        let states = df
             .column(JournalCol::TradeState.as_str())
             .unwrap()
             .str()
             .unwrap()
-            .into_iter()
+            .iter()
             .flatten()
-            .collect();
+            .collect::<HashSet<_>>();
 
         assert!(states.contains("closed"));
         assert!(states.contains("active"));

@@ -126,7 +126,7 @@ fn fmt_duration_udf(c: Column) -> PolarsResult<Column> {
 
     let out = ca
         .physical()
-        .into_iter()
+        .iter()
         .map(|opt_val| {
             opt_val.and_then(|v| {
                 let val = u64::try_from(v).ok()?;

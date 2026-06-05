@@ -830,7 +830,7 @@ mod tests {
             .unwrap()
             .str()
             .unwrap()
-            .into_no_null_iter()
+            .no_null_iter()
             .collect::<Vec<_>>();
 
         // Verify JSON can be parsed and contains correct id

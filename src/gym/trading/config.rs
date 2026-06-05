@@ -20,7 +20,7 @@ use crate::{
         filter::{EconomicCalendarPolicy, FilterConfig},
         query::{
             EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, TpoFutureQuery, TpoSpotQuery,
-            TradeSpotQuery, VolumeProfileSpotQuery,
+            TradesSpotQuery, VolumeProfileSpotQuery,
         },
     },
     error::{ChapatyResult, EnvError},
@@ -892,7 +892,7 @@ pub struct EnvConfig {
     ohlcv_future: Vec<SourceGroup<OhlcvFutureQuery>>,
 
     /// Trade-level trade execution data.
-    trade_spot: Vec<SourceGroup<TradeSpotQuery>>,
+    trades_spot: Vec<SourceGroup<TradesSpotQuery>>,
 
     // ========================================================================
     // Profile Data (External RPC)
@@ -940,7 +940,7 @@ impl Default for EnvConfig {
         Self {
             ohlcv_spot: Vec::new(),
             ohlcv_future: Vec::new(),
-            trade_spot: Vec::new(),
+            trades_spot: Vec::new(),
             tpo_spot: Vec::new(),
             tpo_future: Vec::new(),
             volume_profile_spot: Vec::new(),
@@ -977,9 +977,9 @@ impl EnvConfig {
     }
 
     /// Adds trade-level spot market data from a specific source.
-    pub fn add_trade_spot(self, source: DataSource, config: TradeSpotQuery) -> Self {
+    pub fn add_trades_spot(self, source: DataSource, config: TradesSpotQuery) -> Self {
         Self {
-            trade_spot: update_source_group(self.trade_spot, source, config),
+            trades_spot: update_source_group(self.trades_spot, source, config),
             ..self
         }
     }
@@ -1092,8 +1092,8 @@ impl EnvConfig {
         &self.ohlcv_future
     }
 
-    pub fn trade_spot(&self) -> &[SourceGroup<TradeSpotQuery>] {
-        &self.trade_spot
+    pub fn trades_spot(&self) -> &[SourceGroup<TradesSpotQuery>] {
+        &self.trades_spot
     }
 
     pub fn tpo_spot(&self) -> &[SourceGroup<TpoSpotQuery>] {
@@ -1204,6 +1204,6 @@ impl EnvConfig {
 
     /// Validates that at least one market data source is configured.
     pub fn is_valid(&self) -> bool {
-        !self.ohlcv_spot.is_empty() || !self.ohlcv_future.is_empty() || !self.trade_spot.is_empty()
+        !self.ohlcv_spot.is_empty() || !self.ohlcv_future.is_empty() || !self.trades_spot.is_empty()
     }
 }

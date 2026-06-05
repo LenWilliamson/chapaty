@@ -1,11 +1,11 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use polars::{
     frame::DataFrame,
     io::cloud::CloudOptions,
     prelude::{
-        CsvWriterOptions, IntoLazy, LazyFrame, ParquetWriteOptions, PlPath, SchemaRef, SinkOptions,
-        SinkTarget,
+        CsvWriterOptions, FileWriteFormat, IntoLazy, LazyFrame, ParquetWriteOptions, PlRefPath,
+        SchemaRef, SinkDestination, SinkTarget, UnifiedSinkArgs,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -17,10 +17,6 @@ use crate::{
     error::{ChapatyError, ChapatyResult, DataError, IoError, SystemError},
     report::polars_ext::{DataFrameExt, LazyFrameExt},
 };
-
-// ================================================================================================
-// Core Types & Configurations
-// ================================================================================================
 
 /// Defines the target export format and holds specific Polars writing options.
 #[derive(Debug, Clone)]
@@ -41,7 +37,7 @@ pub struct FileConfig<'a> {
     pub dir: &'a Path,
     pub file_stem: Option<String>,
     pub format: ExportFormat,
-    pub sink_opts: SinkOptions,
+    pub sink_opts: UnifiedSinkArgs,
 }
 
 impl Default for FileConfig<'_> {
@@ -50,7 +46,7 @@ impl Default for FileConfig<'_> {
             dir: Path::new("./chapaty/reports"),
             file_stem: None,
             format: ExportFormat::default(),
-            sink_opts: SinkOptions::default(),
+            sink_opts: default_unified_sink_args(),
         }
     }
 }
@@ -71,7 +67,7 @@ impl<'a> FileConfig<'a> {
         Self { format, ..self }
     }
 
-    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+    pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
 }
@@ -87,7 +83,7 @@ pub struct CloudConfig<'a> {
     pub uri: &'a str,
     pub format: ExportFormat,
     pub cloud_opts: CloudOptions,
-    pub sink_opts: SinkOptions,
+    pub sink_opts: UnifiedSinkArgs,
 }
 
 impl<'a> CloudConfig<'a> {
@@ -97,7 +93,7 @@ impl<'a> CloudConfig<'a> {
             uri,
             format: ExportFormat::default(),
             cloud_opts: CloudOptions::default(),
-            sink_opts: SinkOptions::default(),
+            sink_opts: default_unified_sink_args(),
         }
     }
 
@@ -109,7 +105,7 @@ impl<'a> CloudConfig<'a> {
         Self { cloud_opts, ..self }
     }
 
-    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+    pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
 }
@@ -219,16 +215,24 @@ where
             ))
         })?;
 
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let sink_opts = &config.sink_opts;
+        let target = SinkTarget::Path(PlRefPath::new(uri));
         let lf = self.as_formatted_lf();
+        let unified_args = config.sink_opts.clone();
 
         let sink_plan = match &config.format {
             ExportFormat::Csv(opts) => lf
-                .sink_csv(target, opts.clone(), None, sink_opts.clone())
+                .sink(
+                    SinkDestination::File { target },
+                    FileWriteFormat::Csv(opts.clone()),
+                    unified_args,
+                )
                 .map_err(|e| DataError::DataFrame(format!("Failed to build CSV sink plan: {e}"))),
             ExportFormat::Parquet(opts) => lf
-                .sink_parquet(target, opts.clone(), None, sink_opts.clone())
+                .sink(
+                    SinkDestination::File { target },
+                    FileWriteFormat::Parquet(Arc::new(opts.clone())),
+                    unified_args,
+                )
                 .map_err(|e| {
                     DataError::DataFrame(format!("Failed to build Parquet sink plan: {e}"))
                 }),
@@ -252,24 +256,33 @@ where
 {
     async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()> {
         let lf = self.as_formatted_lf();
-        let target = SinkTarget::Path(PlPath::new(config.uri));
-        let cloud_opts = config.cloud_opts;
-        let sink_opts = config.sink_opts;
+        let target = SinkTarget::Path(PlRefPath::new(config.uri));
         let format = config.format;
 
         // Clone URI to move into the blocking task safely
         let uri_string = config.uri.to_string();
 
+        let mut unified_args = config.sink_opts.clone();
+        unified_args.cloud_options = Some(Arc::new(config.cloud_opts.clone()));
+
         tokio::task::spawn_blocking(move || {
             let sink_plan = match format {
                 ExportFormat::Csv(opts) => lf
-                    .sink_csv(target, opts, Some(cloud_opts), sink_opts)
+                    .sink(
+                        SinkDestination::File { target },
+                        FileWriteFormat::Csv(opts),
+                        unified_args,
+                    )
                     .map_err(|e| {
                         DataError::DataFrame(format!("Failed to build Cloud CSV plan: {e}"))
                     }),
                 ExportFormat::Parquet(opts) => lf
-                    .with_new_streaming(true)
-                    .sink_parquet(target, opts, Some(cloud_opts), sink_opts)
+                    .with_streaming(true)
+                    .sink(
+                        SinkDestination::File { target },
+                        FileWriteFormat::Parquet(Arc::new(opts)),
+                        unified_args,
+                    )
                     .map_err(|e| {
                         DataError::DataFrame(format!("Failed to build Cloud Parquet plan: {e}"))
                     }),
@@ -289,6 +302,17 @@ where
 // ================================================================================================
 // Helpers
 // ================================================================================================
+
+/// Provides reasonable default arguments for the unified sink API since it lacks a direct `Default` implementation.
+fn default_unified_sink_args() -> UnifiedSinkArgs {
+    UnifiedSinkArgs {
+        mkdir: true,
+        maintain_order: true,
+        sync_on_close: Default::default(),
+        cloud_options: None,
+        sinked_paths_callback: None,
+    }
+}
 
 #[derive(
     Debug,
@@ -408,7 +432,7 @@ mod tests {
     fn test_to_json_rows() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlPath::new(
+        let path = PlRefPath::new(
             pb.as_os_str()
                 .to_str()
                 .expect("failed to convert input file path to string"),

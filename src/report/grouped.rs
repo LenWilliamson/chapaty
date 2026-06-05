@@ -222,7 +222,7 @@ impl GroupCol {
 #[cfg(test)]
 mod tests {
     use polars::prelude::{
-        LazyCsvReader, LazyFileListReader, PlPath, StrptimeOptions, TimeUnit, TimeZone, df, lit,
+        LazyCsvReader, LazyFileListReader, PlRefPath, StrptimeOptions, TimeUnit, TimeZone, df, lit,
     };
 
     use super::*;
@@ -342,7 +342,7 @@ mod tests {
 
         // Load with strict schema enforcement
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),

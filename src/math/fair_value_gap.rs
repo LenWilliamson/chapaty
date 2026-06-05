@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::{
     data::{
-        domain::Price,
+        domain::{Price, PriceSource},
         event::{IndexedOhlcv, MarketEvent, Ohlcv},
     },
     math::StreamingIndicator,
@@ -16,15 +16,20 @@ const RHS: usize = 2;
 const PATTERN_LENGTH: usize = 3;
 
 /// Defines the time to live (ttl) condition under which a Fair Value Gap expires.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TtlPolicy {
     /// Expires after a specific number of bars have passed since creation.
     Bars(usize),
     /// Expires after a specific time duration has passed since creation.
     Time(Duration),
     /// Never expires automatically. Stays open until completely filled.
-    #[default]
-    Filled,
+    Filled(PriceSource),
+}
+
+impl Default for TtlPolicy {
+    fn default() -> Self {
+        Self::Filled(PriceSource::HighLow)
+    }
 }
 
 pub trait FairValueGapState: Debug + Clone + Send + Sync + 'static {}

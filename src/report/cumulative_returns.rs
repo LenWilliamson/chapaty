@@ -90,7 +90,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().is_empty() {
+        if j.as_df().shape_has_zero() {
             return Ok(Self::default());
         }
 
@@ -111,7 +111,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().is_empty() {
+        if gj.source().as_df().shape_has_zero() {
             return Ok(Self::default());
         }
 
@@ -380,7 +380,7 @@ mod tests {
     use crate::data::common::RiskMetricsConfig;
 
     use super::*;
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath, SchemaExt};
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
     use strum::IntoEnumIterator;
 
     // ========================================================================
@@ -399,7 +399,7 @@ mod tests {
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),
