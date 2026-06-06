@@ -29,8 +29,6 @@ pub enum LookbackWindow {
 
 impl LookbackWindow {
     /// Create a time-based window in seconds.
-    ///
-    /// Panics if the duration exceeds the Chrono limit.
     pub fn seconds(secs: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(secs))
@@ -39,8 +37,6 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in minutes.
-    ///
-    /// Panics if the duration exceeds the Chrono limit.
     pub fn minutes(mins: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(mins * 60))
@@ -49,8 +45,6 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in hours.
-    ///
-    /// Panics if the duration exceeds the Chrono limit.
     pub fn hours(hours: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(hours))
@@ -59,10 +53,6 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in days.
-    ///
-    /// This is equivalent to `hours(days * 24)`.
-    ///
-    /// Panics if the duration exceeds the Chrono limit.
     pub fn days(days: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(days * 24))
@@ -81,20 +71,22 @@ struct HistoricalBuffer {
 
 impl HistoricalBuffer {
     fn new(window: LookbackWindow) -> Self {
+        // Adding +2 prevents reallocation because we push BEFORE we pop in the update loop.
         let capacity = match window {
             LookbackWindow::Bars(n) => n + 2,
-            // Convert time window to capacity in minutes, rounded up to nearest minute. Worst case for minute based OHLCV data.
+            // Convert time window to capacity in minutes, rounded up to nearest minute.
+            // Worst case for minute based OHLCV data.
             LookbackWindow::Time(d) => ((d.num_seconds() / 60) + 2) as usize,
         };
 
         Self {
             window,
-            buffer: VecDeque::with_capacity(capacity),
+            buffer: VecDeque::with_capacity(capacity + 1),
         }
     }
 
     /// Pushes the new value into the buffer, drops stale values, and returns the reference value (C_n).
-    fn push(&mut self, current: MomentumInput) -> Option<MomentumInput> {
+    fn update(&mut self, current: MomentumInput) -> Option<MomentumInput> {
         self.buffer.push_back(current);
 
         match self.window {
@@ -133,15 +125,22 @@ impl HistoricalBuffer {
     }
 }
 
-/// Momentum Indicator.
-/// Measures the absolute change in price over a specific lookback window.
-/// Formula: Momentum = Close_{current} - Close_{n}
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct MomentumOutput {
+    /// The absolute point change: $Close_{current} - Close_{current - n}$
+    pub absolute: f64,
+    /// The percentage rate of change: $((Close_{current} - Close_{current - n}) / Close_{current - n}) \times 100$
+    pub roc: f64,
+}
+
+/// Momentum & Rate of Change (ROC) Indicator.
+/// Measures the absolute and percentage change in price over a specific lookback window.
 #[derive(Debug, Clone)]
-pub struct StreamingMomentum {
+pub struct StreamingRateOfChange {
     buffer: HistoricalBuffer,
 }
 
-impl StreamingMomentum {
+impl StreamingRateOfChange {
     pub fn new(window: LookbackWindow) -> Self {
         Self {
             buffer: HistoricalBuffer::new(window),
@@ -149,14 +148,20 @@ impl StreamingMomentum {
     }
 }
 
-impl StreamingIndicator for StreamingMomentum {
+impl StreamingIndicator for StreamingRateOfChange {
     type Input = MomentumInput;
-    type Output<'a> = Option<f64>;
+    type Output<'a> = Option<MomentumOutput>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        if let Some(historical) = self.buffer.push(current) {
-            // Absolute difference
-            Some(current.value - historical.value)
+        if let Some(historical) = self.buffer.update(current) {
+            if historical.value.abs() < f64::EPSILON {
+                return None;
+            }
+
+            let absolute = current.value - historical.value;
+            let roc = (absolute / historical.value) * 100.0;
+
+            Some(MomentumOutput { absolute, roc })
         } else {
             None
         }
@@ -164,5 +169,112 @@ impl StreamingIndicator for StreamingMomentum {
 
     fn reset(&mut self) {
         self.buffer.reset();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn ts(seconds: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(seconds, 0).single().unwrap()
+    }
+
+    fn input(seconds: i64, value: f64) -> MomentumInput {
+        MomentumInput {
+            timestamp: ts(seconds),
+            value,
+        }
+    }
+
+    #[test]
+    fn historical_buffer_bars_capacity_and_off_by_one_edge_cases() {
+        // Lookback = 1 means we compare CURRENT against PREVIOUS.
+        // Needs exactly 2 elements in the buffer. The +2 capacity guarantees
+        // pushing the 3rd element won't trigger a reallocation before the pop.
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::Bars(1));
+
+        // T=0: Push 10. Len=1. Returns None.
+        assert_eq!(buffer.update(input(0, 10.0)), None);
+        assert_eq!(buffer.buffer.len(), 1);
+
+        // T=1: Push 15. Len=2. Returns 10 (the n=1 history).
+        assert_eq!(buffer.update(input(1, 15.0)), Some(input(0, 10.0)));
+        assert_eq!(buffer.buffer.len(), 2);
+
+        // T=2: Push 20. Queue temporarily holds 3, immediately pops index 0.
+        // Returns 15. Proves we strictly bound to n+1 elements long-term.
+        assert_eq!(buffer.update(input(2, 20.0)), Some(input(1, 15.0)));
+        assert_eq!(buffer.buffer.len(), 2);
+    }
+
+    #[test]
+    fn historical_buffer_time_strict_boundary_retention() {
+        // Lookback = 60s. We MUST retain an element if diff == 60 exactly.
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(60));
+
+        // Start
+        buffer.update(input(0, 100.0));
+
+        // 60s Later: diff is exactly 60. Should NOT be popped.
+        assert_eq!(buffer.update(input(60, 110.0)), Some(input(0, 100.0)));
+        assert_eq!(buffer.buffer.len(), 2);
+
+        // 61s Later: diff is 61. The 0s tick MUST be popped.
+        // Returns the 60s tick as the new reference.
+        assert_eq!(buffer.update(input(61, 120.0)), Some(input(60, 110.0)));
+        assert_eq!(buffer.buffer.len(), 2);
+    }
+
+    #[test]
+    fn merged_momentum_and_roc_calculates_correctly() {
+        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1));
+
+        assert_eq!(momentum.update(input(0, 50.0)), None);
+
+        // 50 to 75
+        // Absolute: 75 - 50 = +25.0
+        // ROC: (25 / 50) * 100 = +50.0%
+        assert_eq!(
+            momentum.update(input(1, 75.0)),
+            Some(MomentumOutput {
+                absolute: 25.0,
+                roc: 50.0
+            })
+        );
+
+        // 75 to 60
+        // Absolute: 60 - 75 = -15.0
+        // ROC: (-15 / 75) * 100 = -20.0%
+        assert_eq!(
+            momentum.update(input(2, 60.0)),
+            Some(MomentumOutput {
+                absolute: -15.0,
+                roc: -20.0
+            })
+        );
+    }
+
+    #[test]
+    fn merged_indicator_safely_handles_division_by_zero() {
+        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1));
+
+        // Simulate an asset or synthetic spread priced at exactly 0.0
+        assert_eq!(momentum.update(input(0, 0.0)), None);
+
+        // Next input arrives. Math would normally divide by 0.0, but guard catches it.
+        // Should return None gracefully instead of panicking or outputting NaN.
+        assert_eq!(momentum.update(input(1, 10.0)), None);
+
+        // Next input arrives. Reference point is now 10.0.
+        // Absolute = 10.0. ROC = 100%. State machine recovers flawlessly.
+        assert_eq!(
+            momentum.update(input(2, 20.0)),
+            Some(MomentumOutput {
+                absolute: 10.0,
+                roc: 100.0
+            })
+        );
     }
 }
