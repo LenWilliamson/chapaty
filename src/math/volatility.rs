@@ -1,21 +1,20 @@
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::Price,
-        event::{ClosePriceProvider, Ohlcv, TradeEvent},
+        domain::{Price, Volume},
+        event::{Ohlcv, TradeEvent},
     },
-    math::StreamingIndicator,
+    math::{
+        StreamingIndicator,
+        moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+    },
 };
 
 // ================================================================================================
 // ATR
-// ================================================================================================
-
-// ================================================================================================
-// Configuration & Degrees of Freedom
 // ================================================================================================
 
 /// Defines the smoothing algorithm used to average the True Range.
@@ -27,18 +26,12 @@ pub enum AtrSmoothingType {
     /// Formula: alpha = 1 / window_size
     #[default]
     Wilders,
-    /// Simple Moving Average (SMA). Gives equal weight to all TRs in the window.
+    /// Simple Moving Average (SMA).
     Sma,
-    /// Exponential Moving Average (EMA). Faster reaction to recent volatility spikes.
+    /// Exponential Moving Average (EMA).
     Ema,
 }
 
-// ================================================================================================
-// Internal Smoother State Machine
-// ================================================================================================
-
-/// An internal wrapper to cleanly dispatch the update calls to the
-/// selected moving average implementation without using dynamic dispatch (`Box<dyn>`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AtrSmoother {
     Wilders(StreamingEwm),
@@ -67,31 +60,38 @@ impl StreamingIndicator for AtrSmoother {
     }
 }
 
-// ================================================================================================
-// ATR: Average True Range
-// ================================================================================================
-
 /// Average True Range (ATR) indicator.
-/// Measures market volatility by decomposing the entire range of an asset price for that period.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingAtr {
     window_size: u16,
-    smoothing_type: AtrSmoothingType,
     smoother: AtrSmoother,
-    prev_close: Option<f64>,
+    prev_close: Option<Price>,
+}
+
+impl Default for StreamingAtr {
+    fn default() -> Self {
+        let window_size = 14;
+        let alpha = 1.0 / (window_size as f64);
+        let smoother = AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize));
+        Self {
+            window_size,
+            smoother,
+            prev_close: None,
+        }
+    }
 }
 
 impl StreamingAtr {
-    /// Creates a new ATR indicator using the industry standard: Wilder's Smoothing.
-    pub fn new(window_size: u16) -> Self {
-        Self::with_smoothing(window_size, AtrSmoothingType::default())
-    }
-
-    /// Creates a new ATR indicator with a custom smoothing type.
-    pub fn with_smoothing(window_size: u16, smoothing_type: AtrSmoothingType) -> Self {
+    /// Creates a new ATR indicator.
+    ///
+    /// Panics if `window_size` is not strictly positive (i.e., `window_size` must be > 0).
+    pub fn new(window_size: u16, smoothing_type: AtrSmoothingType) -> Self {
+        assert!(
+            window_size > 0,
+            "window_size must be > 0, but got {window_size} <= 0"
+        );
         let smoother = match smoothing_type {
             AtrSmoothingType::Wilders => {
-                // Wilder's original formula is an Exponential Weighted Mean with alpha = 1 / N
                 let alpha = 1.0 / (window_size as f64);
                 AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize))
             }
@@ -101,27 +101,28 @@ impl StreamingAtr {
 
         Self {
             window_size,
-            smoothing_type,
             smoother,
-            prev_close: None,
+            ..Default::default()
         }
     }
+}
 
+impl StreamingAtr {
     /// Helper to isolate the True Range (TR) math.
-    fn calculate_true_range(&self, current: &AtrInput) -> f64 {
-        let hl_range = current.high - current.low;
+    fn calculate_true_range(&self, ohlcv: Ohlcv) -> f64 {
+        let hl_range = ohlcv.high - ohlcv.low;
 
         match self.prev_close {
             Some(prev_c) => {
-                let hc_range = (current.high - prev_c).abs();
-                let lc_range = (current.low - prev_c).abs();
+                let hc_range = (ohlcv.high - prev_c).abs();
+                let lc_range = (ohlcv.low - prev_c).abs();
 
                 // TR = max(H - L, |H - C_prev|, |L - C_prev|)
-                hl_range.max(hc_range).max(lc_range)
+                hl_range.max(hc_range).max(lc_range).0
             }
             None => {
                 // First candle: we don't have a previous close, so TR is just the High-Low range.
-                hl_range
+                hl_range.0
             }
         }
     }
@@ -133,9 +134,9 @@ impl StreamingIndicator for StreamingAtr {
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
         // 1. Calculate the True Range for the current period
-        let true_range = self.calculate_true_range(&current);
+        let true_range = self.calculate_true_range(current);
 
-        // 2. Advance the state (remember the close for the next tick)
+        // 2. Advance the state
         self.prev_close = Some(current.close);
 
         // 3. Smooth the True Range
@@ -170,35 +171,32 @@ pub enum VwapPriceSource {
     Close,
 }
 
-// ================================================================================================
-// Indicator: VWAP (Volume Weighted Average Price)
-// ================================================================================================
-
-/// Shared accumulator for the `Σ(price·volume) / Σ(volume)` core.
+/// Shared accumulator for the `sum(price * volume) / sum(volume)` core.
 ///
-/// Both VWAP variants compose one of these; the only thing they differ on is
-/// how they derive the `(price, volume)` pair they feed in.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// VWAP variants only differ on how they derive the `(price, volume)` pair they feed in.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 struct VwapAccumulator {
     sum_price_x_volume: f64,
-    sum_volume: f64,
+    sum_volume: Volume,
 }
 
 impl VwapAccumulator {
     /// Folds one observation into the running totals.
     ///
-    /// Non-positive volume is skipped: it contributes nothing and a zero-volume
-    /// bar must not pull the average or risk a 0/0 once it's the only input.
-    fn add(&mut self, price: f64, volume: f64) {
-        if volume > 0.0 {
-            self.sum_price_x_volume += price * volume;
-            self.sum_volume += volume;
+    /// Non-positive or non-finite volume is skipped: it contributes nothing and a zero-volume
+    /// bar must not pull the average or risk a zero-division once it's the only input.
+    fn add(&mut self, price: Price, volume: Volume) {
+        if !volume.0.is_finite() || volume.0 <= 0.0 {
+            return;
         }
+
+        self.sum_price_x_volume += price.0 * volume.0;
+        self.sum_volume += volume.0;
     }
 
     /// Current VWAP, or `None` before any positive-volume input has arrived.
     fn value(&self) -> Option<f64> {
-        (self.sum_volume > 0.0).then(|| self.sum_price_x_volume / self.sum_volume)
+        (self.sum_volume.0 > 0.0).then(|| self.sum_price_x_volume / self.sum_volume.0)
     }
 
     fn reset(&mut self) {
@@ -206,19 +204,15 @@ impl VwapAccumulator {
     }
 }
 
-/// A streaming, *anchored* Volume-Weighted Average Price over [`Ohlcv`] bars.
+/// A streaming Volume-Weighted Average Price over [`Ohlcv`] bars.
 ///
 /// Accumulates `price * volume` and `volume` from the anchor onward and never
-/// discards past data, so — unlike a moving average — it has no fixed lookback
-/// window. The anchor is (re)set by [`reset`](StreamingIndicator::reset), which
-/// the caller (e.g. a session manager) invokes at each new anchor, typically
-/// the RTH open at 09:30 NY.
+/// discards past data. The anchor is reset by [`reset`](StreamingIndicator::reset).
 ///
 /// The per-bar price fed into the average is chosen via [`VwapPriceSource`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingOhlcvVwap {
     source: VwapPriceSource,
-    // later: volume_source: OhlcvVolumeSource (volume vs taker_buy_base vs quote)
     acc: VwapAccumulator,
 }
 
@@ -235,12 +229,14 @@ impl StreamingOhlcvVwap {
         self.acc.value()
     }
 
-    fn weighting_price(&self, c: &Ohlcv) -> f64 {
+    fn weighting_price(&self, ohlcv: Ohlcv) -> Price {
         match self.source {
-            VwapPriceSource::Hlc3 => (c.high.0 + c.low.0 + c.close.0) / 3.0,
-            VwapPriceSource::Hl2 => (c.high.0 + c.low.0) / 2.0,
-            VwapPriceSource::Ohlc4 => (c.open.0 + c.high.0 + c.low.0 + c.close.0) / 4.0,
-            VwapPriceSource::Close => c.close.0,
+            VwapPriceSource::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
+            VwapPriceSource::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
+            VwapPriceSource::Ohlc4 => {
+                Price((ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close).0 / 4.0)
+            }
+            VwapPriceSource::Close => ohlcv.close,
         }
     }
 }
@@ -253,14 +249,11 @@ impl Default for StreamingOhlcvVwap {
 
 impl StreamingIndicator for StreamingOhlcvVwap {
     type Input = Ohlcv;
-    type Output<'a>
-        = Option<f64>
-    where
-        Self::Input: 'a;
+    type Output<'a> = Option<f64>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        let price = self.weighting_price(&current);
-        self.acc.add(price, current.volume.0);
+        let price = self.weighting_price(current);
+        self.acc.add(price, current.volume);
         self.acc.value()
     }
 
@@ -269,14 +262,13 @@ impl StreamingIndicator for StreamingOhlcvVwap {
     }
 }
 
-/// A streaming, *anchored* Volume-Weighted Average Price over [`TradeEvent`]s.
+/// A streaming, Volume-Weighted Average Price over [`TradeEvent`]s.
 ///
 /// Same accumulation semantics and anchoring as [`StreamingOhlcvVwap`], but a
 /// trade carries a single execution price, so there is no [`VwapPriceSource`]
 /// to configure. The trade's `quantity` is the volume.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct StreamingTradesVwap {
-    // later: side filter / split buy-sell accumulators derived from is_buyer_maker
     acc: VwapAccumulator,
 }
 
@@ -293,17 +285,157 @@ impl StreamingTradesVwap {
 
 impl StreamingIndicator for StreamingTradesVwap {
     type Input = TradeEvent;
-    type Output<'a>
-        = Option<f64>
-    where
-        Self::Input: 'a;
+    type Output<'a> = Option<f64>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        self.acc.add(current.price.0, current.quantity.0);
+        self.acc.add(current.price, current.quantity);
         self.acc.value()
     }
 
     fn reset(&mut self) {
         self.acc.reset();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::domain::Quantity;
+
+    use super::*;
+    use chrono::{DateTime, Utc};
+
+    fn mock_candle(open: f64, high: f64, low: f64, close: f64, vol: f64) -> Ohlcv {
+        Ohlcv {
+            open_timestamp: DateTime::<Utc>::MIN_UTC,
+            close_timestamp: DateTime::<Utc>::MIN_UTC,
+            open: Price(open),
+            high: Price(high),
+            low: Price(low),
+            close: Price(close),
+            volume: Quantity(vol),
+            quote_asset_volume: None,
+            number_of_trades: None,
+            taker_buy_base_asset_volume: None,
+            taker_buy_quote_asset_volume: None,
+        }
+    }
+
+    fn mock_trade(price: f64, qty: f64) -> TradeEvent {
+        TradeEvent {
+            timestamp: DateTime::<Utc>::MIN_UTC,
+            price: Price(price),
+            quantity: Quantity(qty),
+            trade_id: None,
+            quote_asset_volume: None,
+            is_buyer_maker: None,
+            is_best_match: None,
+        }
+    }
+
+    // ============================================================================================
+    // ATR TESTS
+    // ============================================================================================
+
+    #[test]
+    fn atr_calculates_true_range_correctly_across_edge_cases() {
+        // By using an SMA of length 1, the smoother just outputs the exact True Range of the current candle.
+        // This isolates the TR math from the smoothing math.
+        let mut atr = StreamingAtr::new(1, AtrSmoothingType::Sma);
+
+        // 1. First Candle: No previous close. TR should be High - Low (15.0 - 5.0 = 10.0)
+        let candle1 = mock_candle(10., 15., 5., 12., 100.);
+        assert_eq!(atr.update(candle1), Some(10.0));
+
+        // 2. Normal Inside/Regular Candle: High/Low range is completely contained or slightly overlaps.
+        // Prev Close = 12.0. High = 14.0, Low = 10.0.
+        // TR = max(14 - 10, |14 - 12|, |10 - 12|) = max(4, 2, 2) = 4.0
+        let candle2 = mock_candle(12., 14., 10., 13., 100.);
+        assert_eq!(atr.update(candle2), Some(4.0));
+
+        // 3. Massive Gap Up: Prev Close is significantly lower than current Low.
+        // Prev Close = 13.0. High = 25.0, Low = 20.0.
+        // TR = max(25 - 20, |25 - 13|, |20 - 13|) = max(5, 12, 7) = 12.0
+        let candle3 = mock_candle(20., 25., 20., 24., 100.);
+        assert_eq!(atr.update(candle3), Some(12.0));
+
+        // 4. Massive Gap Down: Prev Close is significantly higher than current High.
+        // Prev Close = 24.0. High = 10.0, Low = 5.0.
+        // TR = max(10 - 5, |10 - 24|, |5 - 24|) = max(5, 14, 19) = 19.0
+        let candle4 = mock_candle(10., 10., 5., 8., 100.);
+        assert_eq!(atr.update(candle4), Some(19.0));
+    }
+
+    // ============================================================================================
+    // VWAP TESTS
+    // ============================================================================================
+
+    #[test]
+    fn ohlcv_vwap_accumulates_and_ignores_bad_volume() {
+        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+
+        // 1. VWAP should be None before any data is fed
+        assert_eq!(vwap.value(), None);
+
+        // 2. First candle: H=10, L=8, C=9 => Hlc3 = 9.0
+        // Volume = 100. VWAP = 9.0
+        let c1 = mock_candle(0., 10., 8., 9., 100.);
+        assert_eq!(vwap.update(c1), Some(9.0));
+
+        // 3. Second candle: H=20, L=10, C=15 => Hlc3 = 15.0
+        // Volume = 200. Total Vol = 300.
+        // Sum(Price * Vol) = (9 * 100) + (15 * 200) = 900 + 3000 = 3900.
+        // VWAP = 3900 / 300 = 13.0
+        let c2 = mock_candle(0., 20., 10., 15., 200.);
+        assert_eq!(vwap.update(c2), Some(13.0));
+
+        // 4. Zero Volume: Should NOT affect the VWAP or cause division by zero.
+        let c3 = mock_candle(0., 50., 40., 45., 0.);
+        assert_eq!(vwap.update(c3), Some(13.0));
+
+        // 5. Negative Volume: Should be discarded safely.
+        let c4 = mock_candle(0., 50., 40., 45., -50.);
+        assert_eq!(vwap.update(c4), Some(13.0));
+    }
+
+    #[test]
+    fn ohlcv_vwap_respects_price_sources() {
+        let candle = mock_candle(10., 20., 10., 18., 100.); // O=10, H=20, L=10, C=18
+
+        let mut vwap_hlc3 = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        assert_eq!(vwap_hlc3.update(candle), Some((20. + 10. + 18.) / 3.0)); // 16.0
+
+        let mut vwap_hl2 = StreamingOhlcvVwap::new(VwapPriceSource::Hl2);
+        assert_eq!(vwap_hl2.update(candle), Some((20. + 10.) / 2.0)); // 15.0
+
+        let mut vwap_ohlc4 = StreamingOhlcvVwap::new(VwapPriceSource::Ohlc4);
+        assert_eq!(
+            vwap_ohlc4.update(candle),
+            Some((10. + 20. + 10. + 18.) / 4.0)
+        ); // 14.5
+
+        let mut vwap_close = StreamingOhlcvVwap::new(VwapPriceSource::Close);
+        assert_eq!(vwap_close.update(candle), Some(18.0)); // 18.0
+    }
+
+    #[test]
+    fn trades_vwap_accumulates_correctly() {
+        let mut vwap = StreamingTradesVwap::new();
+
+        // 1. Feed a trade: Price = 100, Qty = 2
+        // VWAP = 100
+        assert_eq!(vwap.update(mock_trade(100.0, 2.0)), Some(100.0));
+
+        // 2. Feed a second trade: Price = 110, Qty = 8
+        // Total Volume = 10.
+        // Sum(Price * Vol) = (100 * 2) + (110 * 8) = 200 + 880 = 1080.
+        // VWAP = 1080 / 10 = 108.0
+        assert_eq!(vwap.update(mock_trade(110.0, 8.0)), Some(108.0));
+
+        // 3. Reset behavior
+        vwap.reset();
+        assert_eq!(vwap.value(), None);
+
+        // Ensure standard behavior resumes cleanly after reset
+        assert_eq!(vwap.update(mock_trade(50.0, 10.0)), Some(50.0));
     }
 }

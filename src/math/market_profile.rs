@@ -65,7 +65,6 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
                     .min_by(|&&a, &&b| {
                         let diff_a = (a as f64 - avg_idx).abs();
                         let diff_b = (b as f64 - avg_idx).abs();
-                        // f64::total_cmp provides a total ordering where NaN is > Infinity
                         diff_a.total_cmp(&diff_b)
                     })
                     .ok_or_else(|| {

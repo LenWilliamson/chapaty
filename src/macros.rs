@@ -101,3 +101,21 @@ macro_rules! impl_neg_primitive {
         }
     };
 }
+
+/// Macro to implement `min` and `max` methods for newtype wrappers around numeric types.
+#[macro_export]
+macro_rules! impl_min_max_primitive {
+    ($wrapper:ident, $primitive:ty) => {
+        impl $wrapper {
+            /// Returns the minimum of `self` and `other`.
+            pub fn min(self, other: Self) -> Self {
+                Self(self.0.min(other.0))
+            }
+
+            /// Returns the maximum of `self` and `other`.
+            pub fn max(self, other: Self) -> Self {
+                Self(self.0.max(other.0))
+            }
+        }
+    };
+}

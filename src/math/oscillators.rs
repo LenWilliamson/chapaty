@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::math::{StreamingIndicator, moving_averages::StreamingEwm};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingRsi {
     prev_price: Option<f64>,
     avg_gain: StreamingEwm,
@@ -12,7 +12,6 @@ pub struct StreamingRsi {
 impl StreamingRsi {
     pub fn new(window_size: u16) -> Self {
         // Wilder's Smoothing Alpha = 1 / N
-        // This differs from standard EMA!
         let alpha = 1.0 / (window_size as f64);
         let win = window_size as usize;
 

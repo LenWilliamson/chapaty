@@ -9,7 +9,7 @@ use crate::math::StreamingIndicator;
 // ================================================================================================
 
 /// Internal helper for EMA-like calculations (Standard EMA and Wilder's Smoothing).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct StreamingEwm {
     alpha: f64,
     current_mean: Option<f64>,
@@ -75,7 +75,7 @@ impl StreamingSma {
         let size = window_size as usize;
         Self {
             window_size: size,
-            buffer: VecDeque::with_capacity(size),
+            buffer: VecDeque::with_capacity(size + 1),
             sum: 0.0,
         }
     }
@@ -112,7 +112,7 @@ impl StreamingIndicator for StreamingSma {
 // EMA: Exponential Moving Average
 // ================================================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingEma {
     inner: StreamingEwm,
 }

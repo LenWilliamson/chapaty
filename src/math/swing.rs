@@ -333,7 +333,7 @@ impl Default for StreamingHhll {
             price_source: PriceSource::default(),
             tiebreaker: ExtremeTiebreaker::default(),
             alternation_mode: AlternationMode::default(),
-            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size() + 1),
             active_pivot: None,
             anchor_high: None,
             anchor_low: None,
@@ -346,7 +346,7 @@ impl StreamingHhll {
     pub fn with_zig_zag_period(self, zig_zag_period: ZigZagPeriod) -> Self {
         Self {
             zig_zag_period,
-            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size()),
+            buffer: VecDeque::with_capacity(zig_zag_period.buffer_size() + 1),
             ..self
         }
     }

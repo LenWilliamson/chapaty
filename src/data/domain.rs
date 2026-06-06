@@ -6,11 +6,13 @@ use strum_macros::EnumString;
 use crate::{
     error::{ChapatyError, DataError, TransportError},
     generated::chapaty::{
-        bq_exporter::v1::EconomicCategory as RpcEconomicCategory,
-        bq_exporter::v1::EconomicImportance as RpcEconomicImportance,
+        bq_exporter::v1::{
+            EconomicCategory as RpcEconomicCategory, EconomicImportance as RpcEconomicImportance,
+        },
         data::v1::DataBroker as RpcDataBroker,
     },
-    impl_abs_primitive, impl_add_sub_mul_div_primitive, impl_from_primitive, impl_neg_primitive,
+    impl_abs_primitive, impl_add_sub_mul_div_primitive, impl_from_primitive,
+    impl_min_max_primitive, impl_neg_primitive,
 };
 
 // ================================================================================================
@@ -26,9 +28,10 @@ impl_from_primitive!(Price, f64);
 impl_add_sub_mul_div_primitive!(Price, f64);
 impl_neg_primitive!(Price, f64);
 impl_abs_primitive!(Price, f64);
+impl_min_max_primitive!(Price, f64);
 
 /// Represents the smallest discrete movement of an asset.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Tick(pub i64);
 impl_from_primitive!(Tick, i64);
 impl_add_sub_mul_div_primitive!(Tick, i64);
@@ -49,6 +52,7 @@ impl_abs_primitive!(Tick, i64);
 pub struct Quantity(pub f64);
 impl_from_primitive!(Quantity, f64);
 impl_add_sub_mul_div_primitive!(Quantity, f64);
+impl_min_max_primitive!(Quantity, f64);
 
 /// Semantic alias for `Quantity` when referring to aggregated market activity.
 ///
@@ -78,6 +82,7 @@ impl_from_primitive!(TimeframeIdx, u32);
 pub struct EconomicValue(pub f64);
 impl_from_primitive!(EconomicValue, f64);
 impl_add_sub_mul_div_primitive!(EconomicValue, f64);
+impl_min_max_primitive!(EconomicValue, f64);
 
 /// Represents the directional outcome of a candlestick,
 /// based on the relationship between its open and close prices.

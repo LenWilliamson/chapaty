@@ -16,20 +16,15 @@ const RHS: usize = 2;
 const PATTERN_LENGTH: usize = 3;
 
 /// Defines the time to live (ttl) condition under which a Fair Value Gap expires.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TtlPolicy {
     /// Expires after a specific number of bars have passed since creation.
     Bars(usize),
     /// Expires after a specific time duration has passed since creation.
     Time(Duration),
     /// Never expires automatically. Stays open until completely filled.
-    Filled(PriceSource),
-}
-
-impl Default for TtlPolicy {
-    fn default() -> Self {
-        Self::Filled(PriceSource::HighLow)
-    }
+    #[default]
+    Filled,
 }
 
 pub trait FairValueGapState: Debug + Clone + Send + Sync + 'static {}
@@ -267,8 +262,10 @@ impl<S: FairValueGapState> FairValueGap<S> {
     pub fn movement_close(&self) -> Price {
         self.last().close
     }
+}
 
-    pub fn map<NewState: FairValueGapState, F>(self, f: F) -> FairValueGap<NewState>
+impl<S: FairValueGapState> FairValueGap<S> {
+    fn map<NewState: FairValueGapState, F>(self, f: F) -> FairValueGap<NewState>
     where
         F: FnOnce(S) -> NewState,
     {
@@ -304,16 +301,22 @@ impl<S: FairValueGapState> FairValueGap<S> {
     /// "below" the gap. But because `candle.high (8.0)` is NOT `> gap.bottom (10.0)`,
     /// the overlap check correctly identifies that the market teleported _over_ the
     /// zone without ever actually trading inside it. It remains an untouched Miss.
-    pub fn evaluate_interaction(&self, candle: &Ohlcv) -> GapInteraction {
+    fn evaluate_interaction(&self, candle: &Ohlcv, price_source: PriceSource) -> GapInteraction {
         let overlaps = candle.low < self.top && candle.high > self.bottom;
 
         if !overlaps {
             return GapInteraction::Miss;
         }
 
-        let is_filled = match self.direction {
-            FairValueGapDirection::Bullish => candle.low <= self.bottom,
-            FairValueGapDirection::Bearish => candle.high >= self.top,
+        let is_filled = match (self.direction, price_source) {
+            (FairValueGapDirection::Bullish, PriceSource::HighLow) => candle.low <= self.bottom,
+            (FairValueGapDirection::Bearish, PriceSource::HighLow) => candle.high >= self.top,
+            (FairValueGapDirection::Bullish, PriceSource::OpenClose) => {
+                candle.open.min(candle.close) <= self.bottom
+            }
+            (FairValueGapDirection::Bearish, PriceSource::OpenClose) => {
+                candle.open.max(candle.close) >= self.top
+            }
         };
 
         if is_filled {
@@ -326,11 +329,16 @@ impl<S: FairValueGapState> FairValueGap<S> {
 
 impl FairValueGap<OpenState> {
     /// Evaluates the incoming indexed candle against the open gap, considering TTL.
-    fn process_candle(self, indexed_candle: &IndexedOhlcv, ttl: TtlPolicy) -> FairValueGapStatus {
+    fn process_candle(
+        self,
+        indexed_candle: &IndexedOhlcv,
+        ttl: TtlPolicy,
+        price_source: PriceSource,
+    ) -> FairValueGapStatus {
         let candle = &indexed_candle.candle;
 
         // 1. Evaluate Price Action First via the interaction helper
-        let updated_gap = match self.evaluate_interaction(candle) {
+        let updated_gap = match self.evaluate_interaction(candle, price_source) {
             GapInteraction::Fill => {
                 // Early return: If it fully fills, it closes immediately before TTL checks.
                 return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
@@ -398,6 +406,7 @@ impl FairValueGap<OpenState> {
 pub struct StreamingFairValueGap {
     min_gap_size: f64,
     ttl_policy: TtlPolicy,
+    price_source: PriceSource,
     buffer: VecDeque<IndexedOhlcv>,
     active_gaps: Vec<FairValueGap<OpenState>>,
     closed_gaps: Vec<FairValueGap<ClosedState>>,
@@ -409,7 +418,8 @@ impl Default for StreamingFairValueGap {
         Self {
             min_gap_size: f64::EPSILON,
             ttl_policy: TtlPolicy::default(),
-            buffer: VecDeque::with_capacity(PATTERN_LENGTH),
+            price_source: PriceSource::default(),
+            buffer: VecDeque::with_capacity(PATTERN_LENGTH + 1),
             active_gaps: Vec::new(),
             closed_gaps: Vec::new(),
             expired_gaps: Vec::new(),
@@ -438,6 +448,13 @@ impl StreamingFairValueGap {
 
     pub fn with_ttl_policy(self, ttl_policy: TtlPolicy) -> Self {
         Self { ttl_policy, ..self }
+    }
+
+    pub fn with_price_source(self, price_source: PriceSource) -> Self {
+        Self {
+            price_source,
+            ..self
+        }
     }
 
     // Accessors for agent state inspection...
@@ -499,9 +516,10 @@ impl StreamingIndicator for StreamingFairValueGap {
         let ttl = self.ttl_policy;
         let closed_gaps = &mut self.closed_gaps;
         let expired_gaps = &mut self.expired_gaps;
+        let price_source = self.price_source;
 
         self.active_gaps.retain_mut(|gap_ref| {
-            match gap_ref.process_candle(&indexed_candle, ttl) {
+            match gap_ref.process_candle(&indexed_candle, ttl, price_source) {
                 FairValueGapStatus::Open(updated_gap) => {
                     *gap_ref = updated_gap;
                     true // Keep in active
@@ -1322,7 +1340,7 @@ mod tests {
     }
 
     #[test]
-    fn gap_interaction_evaluates_overlap_and_fills_correctly() {
+    fn gap_interaction_evaluates_high_low_overlap_and_fills_correctly() {
         // === 1. Bullish Gap Setup (Top=15.0, Bottom=10.0) ===
         // Window indices must be the contiguous triple ending at creation_index.
         // creation_index = 2 => window = [0, 1, 2]. The candles form a real bullish
@@ -1343,25 +1361,25 @@ mod tests {
 
         // A. Bullish Miss (Price stays entirely above the gap)
         let miss_above = candle(3, "2026-05-24T10:03:00Z", 20., 25., 15.0, 22.).candle;
-        let interaction = bullish_gap.evaluate_interaction(&miss_above);
+        let interaction = bullish_gap.evaluate_interaction(&miss_above, PriceSource::HighLow);
         assert_eq!(interaction, GapInteraction::Miss);
         assert!(!interaction.is_touch());
 
-        // B. Bullish Breakaway Miss (Price teleports completely below the gap)
+        // B. Bullish Breakaway Miss (Price teleports completely below the gap without overlapping)
         let breakaway_below = candle(4, "2026-05-24T10:04:00Z", 5., 8., 2., 6.).candle;
-        let interaction = bullish_gap.evaluate_interaction(&breakaway_below);
+        let interaction = bullish_gap.evaluate_interaction(&breakaway_below, PriceSource::HighLow);
         assert_eq!(interaction, GapInteraction::Miss);
 
         // C. Bullish Touch (Wick enters the gap: low is 12.0)
         let touch_candle = candle(5, "2026-05-24T10:05:00Z", 18., 18., 12., 15.).candle;
-        let interaction = bullish_gap.evaluate_interaction(&touch_candle);
+        let interaction = bullish_gap.evaluate_interaction(&touch_candle, PriceSource::HighLow);
         assert_eq!(interaction, GapInteraction::Touch);
         assert!(interaction.is_touch());
         assert!(!interaction.is_fill());
 
         // D. Bullish Fill (Wick drops below the bottom of 10.0)
         let fill_candle = candle(6, "2026-05-24T10:06:00Z", 18., 18., 9., 15.).candle;
-        let interaction = bullish_gap.evaluate_interaction(&fill_candle);
+        let interaction = bullish_gap.evaluate_interaction(&fill_candle, PriceSource::HighLow);
         assert_eq!(interaction, GapInteraction::Fill);
         assert!(interaction.is_touch()); // A fill MUST register as a touch
         assert!(interaction.is_fill());
@@ -1386,30 +1404,124 @@ mod tests {
         // A. Bearish Miss (Price stays entirely below the gap)
         let miss_below = candle(3, "2026-05-24T10:03:00Z", 10., 15.0, 5., 12.).candle;
         assert_eq!(
-            bearish_gap.evaluate_interaction(&miss_below),
+            bearish_gap.evaluate_interaction(&miss_below, PriceSource::HighLow),
             GapInteraction::Miss
         );
 
-        // B. Bearish Breakaway Miss (Price teleports completely above the gap)
+        // B. Bearish Breakaway Miss (Price teleports completely above the gap without overlapping)
         let breakaway_above = candle(4, "2026-05-24T10:04:00Z", 25., 30., 22., 28.).candle;
         assert_eq!(
-            bearish_gap.evaluate_interaction(&breakaway_above),
+            bearish_gap.evaluate_interaction(&breakaway_above, PriceSource::HighLow),
             GapInteraction::Miss
         );
 
         // C. Bearish Touch (Wick enters the gap: high is 18.0)
         let touch_bear = candle(5, "2026-05-24T10:05:00Z", 10., 18., 10., 12.).candle;
         assert_eq!(
-            bearish_gap.evaluate_interaction(&touch_bear),
+            bearish_gap.evaluate_interaction(&touch_bear, PriceSource::HighLow),
             GapInteraction::Touch
         );
 
         // D. Bearish Fill (Wick spikes above the top of 20.0)
         let fill_bear = candle(6, "2026-05-24T10:06:00Z", 10., 21., 10., 12.).candle;
-        let interaction = bearish_gap.evaluate_interaction(&fill_bear);
+        let interaction = bearish_gap.evaluate_interaction(&fill_bear, PriceSource::HighLow);
         assert_eq!(interaction, GapInteraction::Fill);
         assert!(interaction.is_touch());
         assert!(interaction.is_fill());
+    }
+
+    #[test]
+    fn gap_interaction_evaluates_open_close_fills_correctly() {
+        // === 1. Bullish Gap Setup (Top=15.0, Bottom=10.0) ===
+        let bullish_gap = FairValueGap {
+            direction: FairValueGapDirection::Bullish,
+            creation_time: ts("2026-05-24T10:02:00Z"),
+            creation_index: 2,
+            top: Price(15.0),
+            bottom: Price(10.0),
+            window: [
+                candle(0, "2026-05-24T10:00:00Z", 8., 10., 5., 9.).candle,
+                candle(1, "2026-05-24T10:01:00Z", 9., 14., 9., 13.).candle,
+                candle(2, "2026-05-24T10:02:00Z", 15., 18., 15., 16.).candle,
+            ],
+            state: OpenState::default(),
+        };
+
+        // A. Wick Fill, but Body Touch (Price wicks below 10.0, but body closes inside at 11.0)
+        let wick_fill_body_touch = candle(3, "2026-05-24T10:03:00Z", 14., 14., 8., 11.).candle;
+
+        assert_eq!(
+            bullish_gap.evaluate_interaction(&wick_fill_body_touch, PriceSource::OpenClose),
+            GapInteraction::Touch,
+            "Wick filled, but body stayed above bottom; under OpenClose this is a Touch"
+        );
+        assert_eq!(
+            bullish_gap.evaluate_interaction(&wick_fill_body_touch, PriceSource::HighLow),
+            GapInteraction::Fill,
+            "Same candle: wick fills under HighLow even though body only touches"
+        );
+
+        // B. Body Fill via Bearish Candle (Opens inside gap at 12.0, closes below at 9.0)
+        let body_fill_bearish = candle(4, "2026-05-24T10:04:00Z", 12., 13., 8., 9.).candle;
+        assert_eq!(
+            bullish_gap.evaluate_interaction(&body_fill_bearish, PriceSource::OpenClose),
+            GapInteraction::Fill,
+            "Bearish body closed below bottom; should be Fill"
+        );
+
+        // C. Body Fill via Bullish Candle (Opens below gap at 9.0, closes inside at 12.0)
+        let body_fill_bullish = candle(5, "2026-05-24T10:05:00Z", 9., 13., 8., 12.).candle;
+        assert_eq!(
+            bullish_gap.evaluate_interaction(&body_fill_bullish, PriceSource::OpenClose),
+            GapInteraction::Fill,
+            "Bullish body opened below bottom; should be Fill"
+        );
+
+        // === 2. Bearish Gap Setup (Top=20.0, Bottom=15.0) ===
+        let bearish_gap = FairValueGap {
+            direction: FairValueGapDirection::Bearish,
+            creation_time: ts("2026-05-24T10:02:00Z"),
+            creation_index: 2,
+            top: Price(20.0),
+            bottom: Price(15.0),
+            window: [
+                candle(0, "2026-05-24T10:00:00Z", 22., 25., 20., 21.).candle,
+                candle(1, "2026-05-24T10:01:00Z", 21., 22., 16., 17.).candle,
+                candle(2, "2026-05-24T10:02:00Z", 14., 15., 10., 11.).candle,
+            ],
+            state: OpenState::default(),
+        };
+
+        // A. Wick Fill, but Body Touch (Price wicks above 20.0, but body closes inside at 19.0)
+        let wick_fill_body_touch_bear =
+            candle(3, "2026-05-24T10:03:00Z", 16., 22., 15., 19.).candle;
+
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&wick_fill_body_touch_bear, PriceSource::OpenClose),
+            GapInteraction::Touch,
+            "Wick filled, but body stayed below top; under OpenClose this is a Touch"
+        );
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&wick_fill_body_touch_bear, PriceSource::HighLow),
+            GapInteraction::Fill,
+            "Same candle: wick fills under HighLow even though body only touches"
+        );
+
+        // B. Body Fill via Bullish Candle (Opens inside gap at 18.0, closes above at 21.0)
+        let body_fill_bullish_bear = candle(4, "2026-05-24T10:04:00Z", 18., 22., 17., 21.).candle;
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&body_fill_bullish_bear, PriceSource::OpenClose),
+            GapInteraction::Fill,
+            "Bullish body closed above top; should be Fill"
+        );
+
+        // C. Body Fill via Bearish Candle (Opens above gap at 21.0, closes inside at 18.0)
+        let body_fill_bearish_bear = candle(5, "2026-05-24T10:05:00Z", 21., 22., 17., 18.).candle;
+        assert_eq!(
+            bearish_gap.evaluate_interaction(&body_fill_bearish_bear, PriceSource::OpenClose),
+            GapInteraction::Fill,
+            "Bearish body opened above top; should be Fill"
+        );
     }
 
     // ==========================================

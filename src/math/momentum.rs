@@ -85,7 +85,7 @@ impl HistoricalBuffer {
         }
     }
 
-    /// Pushes the new value into the buffer, drops stale values, and returns the reference value (C_n).
+    /// Pushes the new value into the buffer, drops stale values, and returns the reference value (Input_{current - n}).
     fn update(&mut self, current: MomentumInput) -> Option<MomentumInput> {
         self.buffer.push_back(current);
 
@@ -133,8 +133,8 @@ pub struct MomentumOutput {
     pub roc: f64,
 }
 
-/// Momentum & Rate of Change (ROC) Indicator.
-/// Measures the absolute and percentage change in price over a specific lookback window.
+/// Streaming Rate of Change (ROC) Indicator.
+/// Measures both the absolute and percentage change in price over a specific lookback window.
 #[derive(Debug, Clone)]
 pub struct StreamingRateOfChange {
     buffer: HistoricalBuffer,
