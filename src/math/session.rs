@@ -42,7 +42,7 @@ enum WindowKind {
 /// window (e.g., 18:00 -> 09:30), the evening leg and the following morning leg
 /// share a single anchor: the date on which the window opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct SessionDate(NaiveDate);
+pub struct SessionDate(pub NaiveDate);
 
 /// A timezone-aware accumulation window defined by a local start and end time-of-day.
 #[derive(Debug, Clone, Copy)]
@@ -162,6 +162,7 @@ impl SessionWindow {
 /// Frozen overnight/session range built from [`Ohlcv`] bars.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OvernightRangeOhlcvData {
+    session: SessionDate,
     high: Price,
     low: Price,
     highest_close: Price,
@@ -171,6 +172,11 @@ pub struct OvernightRangeOhlcvData {
 }
 
 impl OvernightRangeOhlcvData {
+    /// Date anchoring this session.
+    pub fn session(&self) -> SessionDate {
+        self.session
+    }
+
     /// Highest bar high over the window.
     pub fn high(&self) -> Price {
         self.high
@@ -203,21 +209,18 @@ impl OvernightRangeOhlcvData {
 }
 
 impl OvernightRangeOhlcvData {
-    fn fold(self, mut streaming_ohlcv_vwap: StreamingOhlcvVwap, bar: Ohlcv) -> Self {
-        let high = self.high.max(bar.high);
-        let low = self.low.min(bar.low);
-        let highest_close = self.highest_close.max(bar.close);
-        let lowest_close = self.lowest_close.min(bar.close);
-        let volume = self.volume + bar.volume.0;
-        let vwap = streaming_ohlcv_vwap.update(bar).map(Price);
-        Self {
-            high,
-            low,
-            highest_close,
-            lowest_close,
-            volume,
+    fn fold(self, mut vwap_acc: StreamingOhlcvVwap, bar: Ohlcv) -> (Self, StreamingOhlcvVwap) {
+        let vwap = vwap_acc.update(bar).map(Price);
+        let new_self = Self {
+            session: self.session,
+            high: self.high.max(bar.high),
+            low: self.low.min(bar.low),
+            highest_close: self.highest_close.max(bar.close),
+            lowest_close: self.lowest_close.min(bar.close),
+            volume: self.volume + bar.volume.0,
             vwap,
-        }
+        };
+        (new_self, vwap_acc)
     }
 }
 
@@ -230,7 +233,6 @@ impl OhlcvRangeState for Awaiting {}
 
 #[derive(Debug, Clone, Copy)]
 struct Building {
-    session: SessionDate,
     range: OvernightRangeOhlcvData,
     streaming_ohlcv_vwap: StreamingOhlcvVwap,
 }
@@ -239,7 +241,6 @@ impl OhlcvRangeState for Building {}
 
 #[derive(Debug, Clone, Copy)]
 struct Closed {
-    session: SessionDate,
     range: OvernightRangeOhlcvData,
 }
 
@@ -272,6 +273,25 @@ impl<S: OhlcvRangeState> OvernightOhlcvRange<S> {
     fn reset(self) -> OvernightOhlcvRange<Awaiting> {
         self.map(|_| Awaiting)
     }
+
+    fn into_building(self, session: SessionDate, bar: Ohlcv) -> OvernightOhlcvRange<Building> {
+        self.map(|_| {
+            let mut vwap_acc = StreamingOhlcvVwap::new(self.vwap_source);
+            let vwap = vwap_acc.update(bar).map(Price);
+            Building {
+                range: OvernightRangeOhlcvData {
+                    session,
+                    high: bar.high,
+                    low: bar.low,
+                    highest_close: bar.close,
+                    lowest_close: bar.close,
+                    volume: bar.volume,
+                    vwap,
+                },
+                streaming_ohlcv_vwap: vwap_acc,
+            }
+        })
+    }
 }
 
 impl OvernightOhlcvRange<Awaiting> {
@@ -283,30 +303,10 @@ impl OvernightOhlcvRange<Awaiting> {
         }
     }
 
-    fn open(self, new_session: SessionDate, ohlcv: Ohlcv) -> OvernightOhlcvRange<Building> {
-        self.map(|_| {
-            let mut streaming_ohlcv_vwap = StreamingOhlcvVwap::new(self.vwap_source);
-            let vwap = streaming_ohlcv_vwap.update(ohlcv).map(Price);
-            Building {
-                session: new_session,
-                range: OvernightRangeOhlcvData {
-                    high: ohlcv.high,
-                    low: ohlcv.low,
-                    highest_close: ohlcv.close,
-                    lowest_close: ohlcv.close,
-                    volume: ohlcv.volume,
-                    vwap,
-                },
-                streaming_ohlcv_vwap,
-            }
-        })
-    }
-
     fn update(self, ohlcv: Ohlcv) -> OvernightOhlcvRangeStatus {
         match self.window.classify(ohlcv.point_in_time()) {
             WindowPosition::Within(session) => {
-                let building = self.open(session, ohlcv);
-                OvernightOhlcvRangeStatus::Building(building)
+                OvernightOhlcvRangeStatus::Building(self.into_building(session, ohlcv))
             }
             WindowPosition::Outside => OvernightOhlcvRangeStatus::Awaiting(self),
         }
@@ -314,30 +314,10 @@ impl OvernightOhlcvRange<Awaiting> {
 }
 
 impl OvernightOhlcvRange<Closed> {
-    fn open(self, new_session: SessionDate, bar: Ohlcv) -> OvernightOhlcvRange<Building> {
-        self.map(|_| {
-            let mut streaming_ohlcv_vwap = StreamingOhlcvVwap::new(self.vwap_source);
-            let vwap = streaming_ohlcv_vwap.update(bar).map(Price);
-            Building {
-                session: new_session,
-                range: OvernightRangeOhlcvData {
-                    high: bar.high,
-                    low: bar.low,
-                    highest_close: bar.close,
-                    lowest_close: bar.close,
-                    volume: bar.volume,
-                    vwap,
-                },
-                streaming_ohlcv_vwap,
-            }
-        })
-    }
-
     fn update(self, ohlcv: Ohlcv) -> OvernightOhlcvRangeStatus {
         match self.window.classify(ohlcv.point_in_time()) {
             WindowPosition::Within(session) => {
-                let building = self.open(session, ohlcv);
-                OvernightOhlcvRangeStatus::Building(building)
+                OvernightOhlcvRangeStatus::Building(self.into_building(session, ohlcv))
             }
             WindowPosition::Outside => OvernightOhlcvRangeStatus::Closed(self),
         }
@@ -346,20 +326,27 @@ impl OvernightOhlcvRange<Closed> {
 
 impl OvernightOhlcvRange<Building> {
     fn close(self) -> OvernightOhlcvRange<Closed> {
-        self.map(|s| Closed {
-            session: s.session,
-            range: s.range,
-        })
+        self.map(|s| Closed { range: s.range })
     }
+
     fn update(self, ohlcv: Ohlcv) -> OvernightOhlcvRangeStatus {
         match self.window.classify(ohlcv.point_in_time()) {
-            WindowPosition::Within(_) => {
-                let new_range = self.map(|s| Building {
-                    range: s.range.fold(s.streaming_ohlcv_vwap, ohlcv),
-                    streaming_ohlcv_vwap: s.streaming_ohlcv_vwap,
-                    ..s
-                });
-                OvernightOhlcvRangeStatus::Building(new_range)
+            WindowPosition::Within(current_session) => {
+                if current_session == self.state.range.session {
+                    // Same session -> Fold
+                    let (new_range, new_vwap_acc) = self
+                        .state
+                        .range
+                        .fold(self.state.streaming_ohlcv_vwap, ohlcv);
+                    let new_state = self.map(|_| Building {
+                        range: new_range,
+                        streaming_ohlcv_vwap: new_vwap_acc,
+                    });
+                    OvernightOhlcvRangeStatus::Building(new_state)
+                } else {
+                    // Back-to-back sessions (no 'Outside' gap) -> Hard reset to new session
+                    OvernightOhlcvRangeStatus::Building(self.into_building(current_session, ohlcv))
+                }
             }
             WindowPosition::Outside => OvernightOhlcvRangeStatus::Closed(self.close()),
         }
