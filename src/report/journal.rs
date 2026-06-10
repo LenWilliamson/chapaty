@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use polars::{
-    frame::DataFrame,
     prelude::{
-        DataType, Field, PlSmallStr, Schema, SchemaRef, SortMultipleOptions, TimeUnit, TimeZone,
+        DataFrame, DataType, Expr, Field, PlSmallStr, Schema, SchemaRef, SortMultipleOptions,
+        TimeUnit, TimeZone, col, lit,
     },
     series::IsSorted,
 };
@@ -13,6 +13,7 @@ use strum::{Display, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 use crate::{
     data::common::RiskMetricsConfig,
     error::{ChapatyError, ChapatyResult, DataError},
+    gym::trading::StateKind,
     report::{
         cumulative_returns::CumulativeReturns,
         grouped::{GroupCol, GroupedJournal},
@@ -304,36 +305,59 @@ impl ToSchema for Journal {
     }
 }
 
+// ================================================================================================
+// Helper
+// ================================================================================================
+
+/// Evaluates to true if the trade state is Active or Closed.
+/// Filtering by this expression ensures pending or canceled trades do not skew aggregated metrics.
+pub(super) fn is_executed_expr(trade_state_col: JournalCol) -> Expr {
+    let col_expr = col(trade_state_col);
+    col_expr
+        .clone()
+        .eq(lit(StateKind::Active.as_str()))
+        .or(col_expr.eq(lit(StateKind::Closed.as_str())))
+}
+
 #[cfg(test)]
 mod test {
     use std::path::PathBuf;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath};
+    use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath};
 
     use super::*;
 
-    #[test]
-    fn test_journal_creation_and_schema_validation() {
+    fn load_journal_fixture() -> Journal {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlRefPath::new(
-            pb.as_os_str()
-                .to_str()
-                .expect("Failed to convert input file path to string"),
+        let fixture_path =
+            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
+
+        assert!(
+            fixture_path.exists(),
+            "Test fixture missing: {}",
+            fixture_path.display()
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(path)
-            .with_has_header(true)
-            .with_schema(Some(schema.clone()))
-            .with_try_parse_dates(true)
-            .finish()
-            .expect("Failed to create LazyFrame from CSV")
-            .collect()
-            .expect("Failed to collect DataFrame from LazyFrame");
+        let df = LazyCsvReader::new(PlRefPath::new(
+            fixture_path
+                .to_str()
+                .expect("Invalid UTF-8 in fixture path"),
+        ))
+        .with_has_header(true)
+        .with_schema(Some(schema))
+        .with_try_parse_dates(true)
+        .finish()
+        .expect("Failed to create LazyFrame")
+        .collect()
+        .expect("Failed to collect DataFrame");
 
-        let journal = Journal::new(df, RiskMetricsConfig::default())
-            .expect("Failed to create Journal from DataFrame");
+        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+    }
+
+    #[test]
+    fn test_journal_creation_and_schema_validation() {
+        let journal = load_journal_fixture();
         let df = &journal.as_df();
 
         let current_schema = df.schema();
@@ -353,6 +377,44 @@ mod test {
                 name,
                 expected_dtype,
                 actual_dtype.unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_executed_expr_filters_correctly() {
+        let journal = load_journal_fixture();
+
+        // Apply the filter logic
+        let filtered_df = journal
+            .as_df()
+            .clone()
+            .lazy()
+            .filter(is_executed_expr(JournalCol::TradeState))
+            .collect()
+            .expect("Failed to apply is_executed_expr filter");
+
+        // The fixture has 8 rows: 5 closed, 1 active, 1 pending, 1 canceled.
+        // Exactly 6 rows should remain.
+        assert_eq!(
+            filtered_df.height(),
+            6,
+            "is_executed_expr should retain exactly 6 rows (Active/Closed) from the fixture, dropping Pending/Canceled."
+        );
+
+        // Explicitly verify the values left in the TradeState column
+        let states = filtered_df
+            .column(JournalCol::TradeState.as_str())
+            .expect("Missing TradeState column")
+            .str()
+            .expect("TradeState column is not of type String");
+
+        for state_opt in states.iter() {
+            let state = state_opt.expect("Encountered null state");
+            assert!(
+                state == StateKind::Active.as_str() || state == StateKind::Closed.as_str(),
+                "Found unexecuted state in filtered results: {}",
+                state
             );
         }
     }

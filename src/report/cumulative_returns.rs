@@ -16,7 +16,7 @@ use crate::{
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
-        journal::{Journal, JournalCol},
+        journal::{Journal, JournalCol, is_executed_expr},
         polars_ext::{ExprExt, polars_to_chapaty_error},
     },
 };
@@ -99,6 +99,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
             .as_df()
             .clone()
             .lazy()
+            .filter(is_executed_expr(JournalCol::TradeState))
             .select(exprs(init_val))
             .collect()
             .map_err(convert_err)?;
@@ -129,6 +130,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 
                 let lf = df
                     .lazy()
+                    .filter(is_executed_expr(JournalCol::TradeState))
                     .sort(
                         [JournalCol::EntryTimestamp.as_str()],
                         SortMultipleOptions::default(),

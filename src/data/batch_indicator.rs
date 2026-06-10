@@ -1,6 +1,7 @@
 pub mod ohlcv;
 pub mod trades;
 
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ChapatyError, DataError};
@@ -10,10 +11,9 @@ use crate::error::{ChapatyError, DataError};
 pub struct VwapConfig;
 
 /// Configuration for extracting session ranges natively in Polars.
-/// Timezone is stored as a String (e.g., "America/New_York") for easy Polars interop.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionConfig {
-    pub timezone: String,
+    pub timezone: Tz,
     pub start_h: u8,
     pub start_m: u8,
     pub end_h: u8,
