@@ -162,7 +162,7 @@ enum TransitionOutcome<Status, R> {
 /// first event and how to fold subsequent in-session events in. Everything else
 /// (timing, transitions, completion, caching, reset) is the shared.
 trait Range: Debug + Copy + Send + Sync {
-    type Indicator: StreamingIndicator;
+    type Indicator: StreamingIndicator + Clone;
     type Event: MarketEvent;
 
     fn session_date(&self) -> SessionDate;
@@ -180,7 +180,7 @@ trait Range: Debug + Copy + Send + Sync {
 // Generic Finite State Machine
 // ================================================================================================
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct OvernightRange<R: Range, S: RangeState> {
     window: SessionWindow,
     indicator: R::Indicator,
@@ -302,7 +302,7 @@ impl<R: Range> OvernightRange<R, Building<R>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum OvernightRangeStatus<R: Range> {
     Awaiting(OvernightRange<R, Awaiting>),
     Building(OvernightRange<R, Building<R>>),
@@ -327,13 +327,9 @@ impl<R: Range> OvernightRangeStatus<R> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StreamingOvernightRange<R: Range> {
-    /// Always `Some` between calls. Wrapped in `Option` so the by-value typestate
-    /// transition can be moved out from behind `&mut self` via `take()` — this is
-    /// what replaces the old reliance on `Copy` now that the indicator may not be.
-    status: Option<OvernightRangeStatus<R>>,
-    /// Caches the most recently completed session so it isn't lost in 24/7 markets.
+    status: OvernightRangeStatus<R>,
     last_completed_session: Option<R>,
 }
 
@@ -351,18 +347,13 @@ impl<R: Range> StreamingIndicator for StreamingOvernightRange<R> {
         R: 'a;
 
     fn update(&mut self, event: Self::Input) -> Self::Output<'_> {
-        let status = self
-            .status
-            .take()
-            .expect("status is always present between update calls");
-
-        match status.update(event) {
-            TransitionOutcome::Progress(next) => self.status = Some(next),
+        match self.status.clone().update(event) {
+            TransitionOutcome::Progress(next) => self.status = next,
             TransitionOutcome::Completed {
                 next_status,
                 completed_range,
             } => {
-                self.status = Some(next_status);
+                self.status = next_status;
                 self.last_completed_session = Some(completed_range);
             }
         }
@@ -370,11 +361,7 @@ impl<R: Range> StreamingIndicator for StreamingOvernightRange<R> {
     }
 
     fn reset(&mut self) {
-        let status = self
-            .status
-            .take()
-            .expect("status is always present between update calls");
-        self.status = Some(status.reset());
+        self.status = self.status.clone().reset();
         self.last_completed_session = None;
     }
 }
@@ -388,9 +375,7 @@ pub type StreamingOvernightOhlcvRange = StreamingOvernightRange<OhlcvSessionData
 impl StreamingOvernightOhlcvRange {
     pub fn new(window: SessionWindow, indicator: StreamingOhlcvVwap) -> Self {
         Self {
-            status: Some(OvernightRangeStatus::Awaiting(OvernightRange::new(
-                window, indicator,
-            ))),
+            status: OvernightRangeStatus::Awaiting(OvernightRange::new(window, indicator)),
             last_completed_session: None,
         }
     }
@@ -489,9 +474,7 @@ pub type StreamingOvernightTradesRange = StreamingOvernightRange<TradesSessionDa
 impl StreamingOvernightTradesRange {
     pub fn new(window: SessionWindow, indicator: StreamingTradesVwap) -> Self {
         Self {
-            status: Some(OvernightRangeStatus::Awaiting(OvernightRange::new(
-                window, indicator,
-            ))),
+            status: OvernightRangeStatus::Awaiting(OvernightRange::new(window, indicator)),
             last_completed_session: None,
         }
     }
@@ -688,5 +671,357 @@ mod tests {
         let next_expected_session = WindowPosition::Within(SessionDate(next_anchor));
         let restart = local_to_utc(New_York, 2026, 6, 11, 17, 0, 0);
         assert_eq!(session.classify(restart), next_expected_session);
+    }
+
+    // ============================================================================================
+    // Finite State Machine Test Harness
+    // ============================================================================================
+
+    /// Counts how many times it was updated / reset.
+    #[derive(Debug, Clone, Default)]
+    struct CountingIndicator {
+        updates: u32,
+        resets: u32,
+        seen: Vec<i64>,
+    }
+
+    impl StreamingIndicator for CountingIndicator {
+        type Input = FakeEvent;
+        type Output<'a> = Option<u32>;
+
+        fn update(&mut self, input: Self::Input) -> Self::Output<'_> {
+            self.updates += 1;
+            self.seen.push(input.value);
+            Some(self.updates)
+        }
+
+        fn reset(&mut self) {
+            self.updates = 0;
+            self.resets += 1;
+            self.seen.clear();
+        }
+    }
+
+    /// Smallest possible event: a timestamp + an integer payload.
+    #[derive(Debug, Clone, Copy)]
+    struct FakeEvent {
+        ts: DateTime<Utc>,
+        value: i64,
+    }
+
+    impl MarketEvent for FakeEvent {
+        fn point_in_time(&self) -> DateTime<Utc> {
+            self.ts
+        }
+    }
+
+    /// Whether the indicator handed to [`Range::open`] had been reset before use.
+    ///
+    /// The machine's contract is that `open` always receives a fresh indicator.
+    /// [`OvernightRange::into_building`] calls `reset` immediately before delegating
+    /// to `open`. This enum lets the mock range record which case it actually saw,
+    /// so tests can assert the machine upholds that contract rather than assuming it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum IndicatorFreshness {
+        /// The indicator had zero accumulated updates: the machine reset it first.
+        Fresh,
+        /// The indicator still carried state from a prior session: reset was skipped.
+        Carried,
+    }
+
+    impl IndicatorFreshness {
+        /// Derives freshness from the number of updates an indicator has accumulated.
+        fn from_update_count(updates: u32) -> Self {
+            if updates == 0 {
+                Self::Fresh
+            } else {
+                Self::Carried
+            }
+        }
+
+        /// True if the indicator was reset before `open` (zero accumulated updates).
+        fn is_fresh(&self) -> bool {
+            matches!(self, Self::Fresh)
+        }
+
+        /// True if the indicator still carried prior-session state into `open`.
+        fn is_carried(&self) -> bool {
+            matches!(self, Self::Carried)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct FakeRange {
+        session: SessionDate,
+        sum: i64,
+        folds: u32,
+        /// Records the freshness of the indicator that [`Range::open`] received,
+        /// so tests can verify the machine reset it before opening a session.
+        opened: IndicatorFreshness,
+    }
+
+    impl Range for FakeRange {
+        type Indicator = CountingIndicator;
+        type Event = FakeEvent;
+
+        fn session_date(&self) -> SessionDate {
+            self.session
+        }
+
+        fn open(
+            session: SessionDate,
+            mut indicator: Self::Indicator,
+            event: Self::Event,
+        ) -> (Self::Indicator, Self) {
+            // The machine should have reset the indicator before handing it over.
+            let opened = IndicatorFreshness::from_update_count(indicator.updates);
+            indicator.update(event);
+            let range = FakeRange {
+                session,
+                sum: event.value,
+                folds: 0,
+                opened,
+            };
+            (indicator, range)
+        }
+
+        fn fold(
+            self,
+            mut indicator: Self::Indicator,
+            event: Self::Event,
+        ) -> (Self::Indicator, Self) {
+            indicator.update(event);
+            let range = FakeRange {
+                session: self.session,
+                sum: self.sum + event.value,
+                folds: self.folds + 1,
+                opened: self.opened,
+            };
+            (indicator, range)
+        }
+    }
+
+    /// Build a finite state machine over the mock range with a fresh counting indicator.
+    fn fsm(window: SessionWindow) -> StreamingOvernightRange<FakeRange> {
+        StreamingOvernightRange {
+            status: OvernightRangeStatus::Awaiting(OvernightRange::new(
+                window,
+                CountingIndicator::default(),
+            )),
+            last_completed_session: None,
+        }
+    }
+
+    /// 24h window (start == end) — never `Outside`, so the ONLY way a range
+    /// completes is a session rollover. This is the path the cache exists for.
+    fn fsm_24h() -> StreamingOvernightRange<FakeRange> {
+        fsm(SessionWindow::new(New_York, hm(17, 0), hm(17, 0)))
+    }
+
+    /// Year is fixed to 2026 to keep call sites short: `ev(6, 10, 18, 0, 5)`.
+    fn ev(month: u32, day: u32, hour: u32, min: u32, value: i64) -> FakeEvent {
+        FakeEvent {
+            ts: local_to_utc(New_York, 2026, month, day, hour, min, 0),
+            value,
+        }
+    }
+
+    fn sess(month: u32, day: u32) -> SessionDate {
+        SessionDate(date(2026, month, day))
+    }
+
+    fn status_name(m: &StreamingOvernightRange<FakeRange>) -> &'static str {
+        match m.status.clone() {
+            OvernightRangeStatus::Awaiting(_) => "awaiting",
+            OvernightRangeStatus::Building(_) => "building",
+            OvernightRangeStatus::Closed(_) => "closed",
+        }
+    }
+
+    /// Peek the live, in-progress range without completing it.
+    fn building_range(m: &StreamingOvernightRange<FakeRange>) -> FakeRange {
+        match m.status.clone() {
+            OvernightRangeStatus::Building(r) => r.state.range,
+            other => panic!("expected Building, got {:?}", other),
+        }
+    }
+
+    // ============================================================================================
+    // Finite State Machine Transition Test
+    // ============================================================================================
+
+    #[test]
+    fn awaiting_ignores_events_before_any_session_opens() {
+        let mut m = fsm(SessionWindow::us_core_session()); // 09:30–16:00 ET
+
+        // 08:00 and 09:00 are before the window: stay Awaiting, complete nothing.
+        assert_eq!(m.update(ev(6, 10, 8, 0, 1)), None);
+        assert_eq!(status_name(&m), "awaiting");
+        assert_eq!(m.update(ev(6, 10, 9, 0, 1)), None);
+        assert_eq!(status_name(&m), "awaiting");
+    }
+
+    #[test]
+    fn opens_on_first_in_session_event_then_folds() {
+        let mut m = fsm(SessionWindow::us_core_session());
+
+        // First in-window event opens the session; nothing completed yet.
+        assert_eq!(m.update(ev(6, 10, 10, 0, 5)), None);
+        assert_eq!(status_name(&m), "building");
+        let r = building_range(&m);
+        assert_eq!(r.session, sess(6, 10));
+        assert_eq!(r.sum, 5);
+        assert_eq!(r.folds, 0);
+        assert!(
+            r.opened.is_fresh(),
+            "indicator should be reset when the first session opens"
+        );
+
+        // Same session: fold in place.
+        assert_eq!(m.update(ev(6, 10, 11, 0, 3)), None);
+        assert_eq!(status_name(&m), "building");
+        let r = building_range(&m);
+        assert_eq!(r.sum, 8);
+        assert_eq!(r.folds, 1);
+    }
+
+    #[test]
+    fn completes_when_leaving_the_window_and_caches_result() {
+        let mut m = fsm(SessionWindow::us_core_session());
+
+        m.update(ev(6, 10, 10, 0, 5));
+        m.update(ev(6, 10, 11, 0, 3)); // sum = 8, folds = 1
+
+        // Leaving the window completes the range and returns the frozen copy.
+        let completed = m
+            .update(ev(6, 10, 17, 0, 99))
+            .expect("should complete on exit");
+        assert_eq!(
+            completed,
+            FakeRange {
+                session: sess(6, 10),
+                sum: 8,
+                folds: 1,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
+        assert_eq!(status_name(&m), "closed");
+
+        // Still outside: stays Closed, cache persists, and the 99 was NOT folded in.
+        let again = m
+            .update(ev(6, 10, 18, 0, 99))
+            .expect("cache should persist");
+        assert_eq!(again.sum, 8);
+        assert_eq!(status_name(&m), "closed");
+    }
+
+    #[test]
+    fn closed_reopens_a_new_session_next_day_without_losing_the_cache() {
+        let mut m = fsm(SessionWindow::us_core_session());
+
+        m.update(ev(6, 10, 10, 0, 5));
+        m.update(ev(6, 10, 17, 0, 99)); // complete 6/10, now Closed, cache = sum 5
+        assert_eq!(status_name(&m), "closed");
+
+        // Next day, in-window: opening a new session is Progress, not Completed,
+        // so the returned cache is still the *previous* completed session (6/10).
+        let out = m
+            .update(ev(6, 11, 10, 0, 7))
+            .expect("cache survives reopen");
+        assert_eq!(out.session, sess(6, 10));
+        assert_eq!(status_name(&m), "building");
+
+        let r = building_range(&m);
+        assert_eq!(r.session, sess(6, 11));
+        assert_eq!(r.sum, 7);
+        assert!(
+            r.opened.is_fresh(),
+            "indicator must be reset when reopening into a new session"
+        );
+    }
+
+    #[test]
+    fn rolls_straight_into_next_session_on_a_24h_window() {
+        // No `Outside` ever fires here, so a session change is the only completer.
+        let mut m = fsm_24h();
+
+        m.update(ev(6, 10, 18, 0, 5)); // opens anchor 6/10 (18:00 >= 17:00)
+        // 16:00 next day is still anchor 6/10 (morning leg, < 17:00 end).
+        assert_eq!(m.update(ev(6, 11, 16, 0, 3)), None);
+        assert_eq!(status_name(&m), "building");
+
+        // 17:00 the next day rolls the anchor to 6/11: completes 6/10, opens 6/11.
+        let completed = m
+            .update(ev(6, 11, 17, 0, 9))
+            .expect("rollover completes prior session");
+        assert_eq!(completed.session, sess(6, 10));
+        assert_eq!(completed.sum, 8);
+        assert_eq!(completed.folds, 1);
+
+        // The next session is already building (no Awaiting gap).
+        assert_eq!(status_name(&m), "building");
+        assert_eq!(building_range(&m).session, sess(6, 11));
+    }
+
+    #[test]
+    fn indicator_is_reset_between_sessions() {
+        // Build up several updates in session A, then confirm session B opens fresh.
+        let mut m = fsm_24h();
+
+        m.update(ev(6, 10, 18, 0, 5)); // open A
+        m.update(ev(6, 10, 20, 0, 7)); // fold A
+        m.update(ev(6, 11, 10, 0, 9)); // fold A (still 6/10 anchor) -> 3 indicator updates
+
+        let a = m
+            .update(ev(6, 11, 17, 0, 1))
+            .expect("A completes when B opens");
+        assert_eq!(a.session, sess(6, 10));
+        assert_eq!(a.folds, 2);
+
+        // If the machine had failed to reset the indicator, B would have inherited
+        // A's 3 updates and would be Carried, not Fresh.
+        let b = building_range(&m);
+        assert_eq!(b.session, sess(6, 11));
+        assert_eq!(b.folds, 0);
+        assert!(
+            b.opened.is_fresh(),
+            "a new session must start from a reset indicator"
+        );
+    }
+
+    #[test]
+    fn reset_clears_both_status_and_cache() {
+        let mut m = fsm(SessionWindow::us_core_session());
+
+        m.update(ev(6, 10, 10, 0, 5));
+        m.update(ev(6, 10, 17, 0, 99)); // complete one -> Closed, cache populated
+
+        m.reset();
+        assert_eq!(status_name(&m), "awaiting");
+
+        // Cache is gone: an out-of-window event returns None, not the stale range.
+        assert_eq!(m.update(ev(6, 10, 8, 0, 1)), None);
+    }
+
+    #[test]
+    fn open_reports_carried_when_indicator_was_not_reset() {
+        // Negative contract: this gives the positive `is_fresh()` assertions teeth.
+        //
+        // The positive tests claim "the machine resets the indicator, so `open` sees
+        // Fresh." That claim is only meaningful if `open` is *capable* of reporting
+        // Carried — otherwise `is_fresh()` would pass even from a machine that never
+        // resets, testing nothing. Here we bypass the machine and hand `open` a dirty
+        // indicator directly: it must report Carried. Together with the positive
+        // tests this brackets the behavior (dirty -> Carried, reset -> Fresh), proving
+        // `IndicatorFreshness` actually discriminates on reset state.
+        let mut dirty = CountingIndicator::default();
+        dirty.update(ev(6, 10, 9, 0, 1)); // accumulate state; updates > 0, no reset
+
+        let (_indicator, range) = FakeRange::open(sess(6, 10), dirty, ev(6, 10, 10, 0, 5));
+
+        assert!(
+            range.opened.is_carried(),
+            "open must report Carried when handed an un-reset indicator"
+        );
     }
 }
