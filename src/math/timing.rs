@@ -92,19 +92,30 @@ pub struct StreamingTdXSequential {
 
 impl StreamingTdXSequential {
     pub fn new(lookback: usize, target_count: usize) -> Self {
+        assert!(
+            target_count > 0,
+            "TD setup target_count must be strictly greater than 0"
+        );
         Self {
             target_count,
-            buffer: RingBuffer::new(lookback), // Capacity is exactly N
+            buffer: RingBuffer::new(lookback),
             state: InternalSetupState::default(),
             last_cmp: PriceRelationship::default(),
         }
     }
 
+    /// The canonical TD Sequential **Setup**: nine closes, each beyond the close
+    /// four bars earlier. This is the standard. Prefer it unless you specifically
+    /// want a non-standard variant.
     pub fn td9() -> Self {
-        Self::new(4, 9)
+        Self::td(9)
     }
-    pub fn td13() -> Self {
-        Self::new(4, 13)
+
+    /// A TD **Setup** with a custom completion count, keeping the canonical 4-bar
+    /// lookback. `td(9)` is the standard. Other counts are deliberate variations
+    /// and are *not* the TD Countdown (which is a separate, unmodeled phase).
+    pub fn td(target_count: usize) -> Self {
+        Self::new(4, target_count)
     }
 }
 
@@ -171,13 +182,262 @@ impl StreamingIndicator for StreamingTdXSequential {
     }
 }
 
+// ================================================================================================
+// Indicator: TD Sequential (Setup + Countdown)
+// ================================================================================================
+
+/// Standard number of qualifying bars that complete a TD Countdown.
+const COUNTDOWN_TARGET_STANDARD: usize = 13;
+
+/// The Countdown compares the close to the low/high this many bars earlier.
+const COUNTDOWN_LOOKBACK: usize = 2;
+
+/// The Countdown's final bar is validated against the close of this earlier count
+/// (DeMark's "8th bar" rule). Inert for targets at or below this value.
+const COUNTDOWN_QUALIFIER_BAR: usize = 8;
+
+/// Selects which bar the Countdown (phase 2) starts counting on, once a Setup
+/// (phase 1) completes.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub enum CountdownStart {
+    /// Inclusive convention (the default): The Setup-completion bar is itself
+    /// eligible as Countdown bar 1. If that bar's close already satisfies the
+    /// Countdown comparison, it is counted immediately. The bar still emits
+    /// [`TdSignal::Setup`]. The Countdown completion can only land on a later bar.
+    #[default]
+    SetupBar,
+    /// Exclusive convention: the Countdown begins on the bar **after** the Setup
+    /// completes. The completion bar emits only [`TdSignal::Setup`] and is never
+    /// counted toward the Countdown.
+    NextBar,
+}
+
+/// The signal emitted by [`StreamingTdSequential`], identifying which phase of
+/// the two-phase sequence just completed.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+enum TdSignal {
+    /// Phase 1 complete: a TD Setup of this direction finished (the classic "9").
+    /// A Countdown of the same direction begins immediately afterwards.
+    Setup(TdDirection),
+    /// Phase 2 complete: a TD Countdown of this direction finished (the classic
+    /// "13"). This is the terminal, high-conviction exhaustion signal.
+    Countdown(TdDirection),
+}
+
+/// Internal state for an in-progress Countdown (phase 2).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+struct Countdown {
+    direction: TdDirection,
+    count: usize,
+    /// Close of the qualifier bar (the 8th counted bar), referenced by the final bar.
+    qualifier_close: Option<f64>,
+}
+
+impl Countdown {
+    fn new(direction: TdDirection) -> Self {
+        Self {
+            direction,
+            count: 0,
+            qualifier_close: None,
+        }
+    }
+
+    /// Evaluates the current bar against the Countdown rules, advancing the count
+    /// when the bar qualifies. Qualifying bars need NOT be consecutive.
+    /// Bars that do not qualify are simply skipped.
+    ///
+    /// Returns `Some(direction)` only on the bar that completes the Countdown.
+    fn evaluate(
+        &mut self,
+        target: usize,
+        close: f64,
+        low: f64,
+        high: f64,
+        low_n_back: Option<f64>,
+        high_n_back: Option<f64>,
+    ) -> Option<TdDirection> {
+        let qualifies = match self.direction {
+            // Buy Countdown: close at or below the low `COUNTDOWN_LOOKBACK` bars earlier.
+            TdDirection::BullishReversal => matches!(low_n_back, Some(l) if close <= l),
+            // Sell Countdown: close at or above the high `COUNTDOWN_LOOKBACK` bars earlier.
+            TdDirection::BearishReversal => matches!(high_n_back, Some(h) if close >= h),
+        };
+        if !qualifies {
+            return None;
+        }
+
+        let tentative = self.count + 1;
+
+        // Not the final bar yet: advance, remembering the qualifier-bar close.
+        if tentative < target {
+            self.count = tentative;
+            if self.count == COUNTDOWN_QUALIFIER_BAR {
+                self.qualifier_close = Some(close);
+            }
+            return None;
+        }
+
+        // Final bar: DeMark requires it to also resolve against the qualifier bar
+        // (low <= close[8] for buys, high >= close[8] for sells). For targets at
+        // or below `COUNTDOWN_QUALIFIER_BAR` no qualifier was recorded and the
+        // rule is inert.
+        let is_final_ok = match (self.direction, self.qualifier_close) {
+            (TdDirection::BullishReversal, Some(c8)) => low <= c8,
+            (TdDirection::BearishReversal, Some(c8)) => high >= c8,
+            (_, None) => true,
+        };
+
+        if is_final_ok {
+            self.count = target;
+            Some(self.direction)
+        } else {
+            // Defer: stay one short and wait for a fully-qualifying bar.
+            None
+        }
+    }
+}
+
+/// Full two-phase **TD Sequential**: a TD Setup (phase 1) followed by a TD
+/// Countdown (phase 2).
+///
+/// Phase 1 is delegated to a [`StreamingTdXSequential`] so the canonical "9" and
+/// any non-standard setup length share one verified engine. Phase 2 is the
+/// DeMark Countdown: up to thirteen bars (which need not be consecutive) whose
+/// close is at or beyond the low/high two bars earlier, with the standard 8th-bar
+/// qualifier on the final bar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingTdSequential {
+    setup: StreamingTdXSequential,
+    countdown_target: usize,
+    countdown_start: CountdownStart,
+    low_buf: RingBuffer<f64>,
+    high_buf: RingBuffer<f64>,
+    countdown: Option<Countdown>,
+}
+
+impl StreamingTdSequential {
+    /// Composes a phase-1 `setup` detector with a `countdown_target`, using the
+    /// canonical 2-bar low/high comparison for phase 2 and the default
+    /// [`CountdownStart`]. The result is non-standard unless `setup` is
+    /// [`StreamingTdXSequential::td9`] and `countdown_target` is 13 (see
+    /// [`Self::td9_13`]). Override the start convention with
+    /// [`Self::with_countdown_start`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `countdown_target` is 0.
+    pub fn new(setup: StreamingTdXSequential, countdown_target: usize) -> Self {
+        assert!(
+            countdown_target > 0,
+            "TD countdown_target must be strictly greater than 0"
+        );
+        Self {
+            setup,
+            countdown_target,
+            countdown_start: CountdownStart::default(),
+            low_buf: RingBuffer::new(COUNTDOWN_LOOKBACK),
+            high_buf: RingBuffer::new(COUNTDOWN_LOOKBACK),
+            countdown: None,
+        }
+    }
+
+    /// Sets the [`CountdownStart`] convention (builder style).
+    pub fn with_countdown_start(self, start: CountdownStart) -> Self {
+        Self {
+            countdown_start: start,
+            ..self
+        }
+    }
+
+    /// The configured [`CountdownStart`] convention.
+    pub fn countdown_start(&self) -> CountdownStart {
+        self.countdown_start
+    }
+
+    /// The canonical TD Sequential: a 9-bar Setup followed by a 13-bar Countdown.
+    /// This is the standard configuration traders expect on TradingView, and the
+    /// constructor to reach for unless you have a specific reason not to.
+    pub fn td9_13() -> Self {
+        Self::new(StreamingTdXSequential::td9(), COUNTDOWN_TARGET_STANDARD)
+    }
+
+    /// The current Countdown count, if a Countdown (phase 2) is in progress.
+    pub fn countdown_progress(&self) -> Option<usize> {
+        self.countdown.as_ref().map(|c| c.count)
+    }
+}
+
+impl StreamingIndicator for StreamingTdSequential {
+    type Input = Ohlcv;
+    type Output<'a> = Option<TdSignal>;
+
+    fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
+        let close = candle.close.0;
+        let low = candle.low.0;
+        let high = candle.high.0;
+
+        // Phase 1 runs on every bar so a new (or opposite) setup is detected even
+        // while a countdown is already in progress.
+        let setup_signal = self.setup.update(candle);
+
+        // Maintain the rolling low/high reference `COUNTDOWN_LOOKBACK` bars back.
+        let low_n_back = self.low_buf.push(low);
+        let high_n_back = self.high_buf.push(high);
+
+        // A completed setup either opens a countdown, or—if it is the opposite
+        // direction—cancels the running one and opens a fresh countdown.
+        let mut setup_event = None;
+        if let Some(direction) = setup_signal {
+            let opens_new = match &self.countdown {
+                None => true,
+                Some(active) => active.direction != direction,
+            };
+            if opens_new {
+                self.countdown = Some(Countdown::new(direction));
+                setup_event = Some(TdSignal::Setup(direction));
+
+                // `NextBar`: the completion bar is not counted—emit the setup now
+                // and begin counting next bar. `SetupBar`: fall through so this
+                // same bar is evaluated as the potential first countdown bar.
+                if self.countdown_start == CountdownStart::NextBar {
+                    return setup_event;
+                }
+            }
+            // Same-direction setup recycle: ignore and let the countdown continue.
+        }
+
+        // Phase 2: advance the active countdown. Under `SetupBar` this also runs
+        // on the bar that just opened it; under `NextBar` that bar returned above.
+        let target = self.countdown_target;
+        if let Some(active) = self.countdown.as_mut() {
+            if let Some(direction) =
+                active.evaluate(target, close, low, high, low_n_back, high_n_back)
+            {
+                self.countdown = None;
+                // If a setup also completed on this very bar (SetupBar mode), the
+                // setup signal still takes precedence over the countdown's.
+                return setup_event.or(Some(TdSignal::Countdown(direction)));
+            }
+        }
+
+        setup_event
+    }
+
+    fn reset(&mut self) {
+        self.setup.reset();
+        self.low_buf.clear();
+        self.high_buf.clear();
+        self.countdown = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};
 
-use crate::data::domain::{Price, Quantity};
+    use crate::data::domain::{Price, Quantity};
 
-use super::*;
+    use super::*;
 
     /// Parse RFC3339 timestamp string to DateTime<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
@@ -202,8 +462,31 @@ use super::*;
         }
     }
 
+    /// Like [`candle`] but with explicit high/low, for Countdown tests that need
+    /// the close compared against prior lows/highs.
+    fn candle_hlc(high: f64, low: f64, close: f64) -> Ohlcv {
+        Ohlcv {
+            open_timestamp: ts("2026-06-11T17:30:00Z"),
+            close_timestamp: ts("2026-06-11T17:31:00Z"),
+            open: Price(close),
+            high: Price(high),
+            low: Price(low),
+            close: Price(close),
+            volume: Quantity(0.0),
+            quote_asset_volume: None,
+            number_of_trades: None,
+            taker_buy_base_asset_volume: None,
+            taker_buy_quote_asset_volume: None,
+        }
+    }
+
     /// Feeds a slice of closes and collects the emitted signal per bar.
     fn feed(td: &mut StreamingTdXSequential, closes: &[f64]) -> Vec<Option<TdDirection>> {
+        closes.iter().map(|&c| td.update(candle(c))).collect()
+    }
+
+    /// Feeds a slice of closes into the two-phase indicator (flat candles).
+    fn run(td: &mut StreamingTdSequential, closes: &[f64]) -> Vec<Option<TdSignal>> {
         closes.iter().map(|&c| td.update(candle(c))).collect()
     }
 
@@ -328,6 +611,179 @@ use super::*;
         assert_eq!(td.state, InternalSetupState::Neutral);
         assert_eq!(td.last_cmp, PriceRelationship::Flat);
         // Buffer empty again: the next candle is just a warm-up bar.
+        assert_eq!(td.update(candle(5.0)), None);
+    }
+
+    // ============================================================================================
+    // Two-phase TD Sequential (Setup + Countdown)
+    // ============================================================================================
+
+    /// A buy setup completes (phase 1), then four qualifying down-bars complete a
+    /// (shortened) countdown (phase 2). Uses a tiny setup/countdown so the whole
+    /// two-phase life cycle fits in nine bars. `NextBar` convention: the countdown
+    /// starts counting the bar after the setup completes.
+    #[test]
+    fn two_phase_completes_setup_then_countdown_bullish() {
+        // setup: lookback 1, target 3; countdown target 4 (below the 8th-bar rule).
+        let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
+            .with_countdown_start(CountdownStart::NextBar);
+        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+
+        let mut expected = vec![None; 9];
+        expected[4] = Some(TdSignal::Setup(TdDirection::BullishReversal));
+        expected[8] = Some(TdSignal::Countdown(TdDirection::BullishReversal));
+        assert_eq!(out, expected);
+        assert_eq!(td.countdown_progress(), None); // consumed on completion
+    }
+
+    /// Same input under the `SetupBar` convention: the setup-completion bar (idx 4)
+    /// is itself counted as countdown bar 1, so completion lands one bar earlier.
+    #[test]
+    fn two_phase_setup_bar_convention_counts_completion_bar() {
+        let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
+            .with_countdown_start(CountdownStart::SetupBar);
+        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+
+        let mut expected = vec![None; 9];
+        expected[4] = Some(TdSignal::Setup(TdDirection::BullishReversal));
+        expected[7] = Some(TdSignal::Countdown(TdDirection::BullishReversal));
+        assert_eq!(out, expected);
+    }
+
+    /// The default convention is `SetupBar`, and `td9_13` inherits it.
+    #[test]
+    fn default_countdown_start_is_setup_bar() {
+        assert_eq!(CountdownStart::default(), CountdownStart::SetupBar);
+        assert_eq!(
+            StreamingTdSequential::td9_13().countdown_start(),
+            CountdownStart::SetupBar
+        );
+    }
+
+    /// The two conventions are otherwise identical: on the same input the
+    /// countdown completes exactly one bar earlier under `SetupBar`.
+    #[test]
+    fn setup_bar_completes_one_bar_before_next_bar() {
+        let series = [10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0];
+        let find_countdown = |start| {
+            let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
+                .with_countdown_start(start);
+            run(&mut td, &series)
+                .iter()
+                .position(|o| matches!(o, Some(TdSignal::Countdown(_))))
+                .unwrap()
+        };
+        let inclusive = find_countdown(CountdownStart::SetupBar);
+        let exclusive = find_countdown(CountdownStart::NextBar);
+        assert_eq!(exclusive, inclusive + 1);
+    }
+
+    /// Symmetric sell-side path: sell setup then four qualifying up-bars
+    /// (`NextBar` convention).
+    #[test]
+    fn two_phase_completes_setup_then_countdown_bearish() {
+        let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
+            .with_countdown_start(CountdownStart::NextBar);
+        let out = run(
+            &mut td,
+            &[10.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+        );
+
+        let mut expected = vec![None; 9];
+        expected[4] = Some(TdSignal::Setup(TdDirection::BearishReversal));
+        expected[8] = Some(TdSignal::Countdown(TdDirection::BearishReversal));
+        assert_eq!(out, expected);
+    }
+
+    /// An opposite setup completing mid-countdown cancels the running countdown
+    /// and emits the new setup instead — the buy countdown never reaches 13.
+    #[test]
+    fn opposite_setup_cancels_active_countdown() {
+        let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 13)
+            .with_countdown_start(CountdownStart::NextBar);
+        // Buy setup completes at idx 4; then three rising closes complete a sell
+        // setup at idx 7 while the buy countdown is still far from 13.
+        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 20.0, 21.0, 22.0]);
+
+        assert_eq!(out[4], Some(TdSignal::Setup(TdDirection::BullishReversal)));
+        assert_eq!(out[7], Some(TdSignal::Setup(TdDirection::BearishReversal)));
+        // No countdown ever fired.
+        assert!(
+            out.iter()
+                .all(|o| !matches!(o, Some(TdSignal::Countdown(_))))
+        );
+        // The active countdown is now the freshly-opened bearish one.
+        assert_eq!(td.countdown_progress(), Some(0));
+    }
+
+    /// The standard config emits nothing during warm-up.
+    #[test]
+    fn td9_13_silent_during_warmup() {
+        let mut td = StreamingTdSequential::td9_13();
+        let out = run(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
+        assert!(out.iter().all(|o| o.is_none()));
+        assert_eq!(td.countdown_progress(), None);
+    }
+
+    /// Unit-level check of the Countdown's non-consecutive rule: a bar that does
+    /// not qualify must not advance the count.
+    #[test]
+    fn countdown_skips_non_qualifying_bars() {
+        let mut cd = Countdown::new(TdDirection::BullishReversal);
+        // close 100 > low_n_back 10 -> does not qualify.
+        assert_eq!(cd.evaluate(13, 100.0, 100.0, 100.0, Some(10.0), None), None);
+        assert_eq!(cd.count, 0);
+        // close 5 <= 10 -> qualifies.
+        assert_eq!(cd.evaluate(13, 5.0, 5.0, 5.0, Some(10.0), None), None);
+        assert_eq!(cd.count, 1);
+    }
+
+    /// Unit-level check of the 8th-bar deferral: a would-be 13th bar whose low is
+    /// above the close of bar 8 is deferred until a fully-qualifying bar arrives.
+    #[test]
+    fn countdown_defers_thirteenth_until_qualifier_met() {
+        let mut cd = Countdown::new(TdDirection::BullishReversal);
+        let always = Some(1000.0); // low_n_back high enough that close always qualifies
+
+        // Counts 1..=7.
+        for _ in 0..7 {
+            assert_eq!(cd.evaluate(13, 0.0, 0.0, 0.0, always, None), None);
+        }
+        assert_eq!(cd.count, 7);
+
+        // Count 8 records the qualifier close (50.0).
+        assert_eq!(cd.evaluate(13, 50.0, 0.0, 0.0, always, None), None);
+        assert_eq!(cd.count, 8);
+        assert_eq!(cd.qualifier_close, Some(50.0));
+
+        // Counts 9..=12.
+        for _ in 0..4 {
+            assert_eq!(cd.evaluate(13, 0.0, 0.0, 0.0, always, None), None);
+        }
+        assert_eq!(cd.count, 12);
+
+        // 13th attempt: qualifies on close, but low 60 > qualifier 50 -> deferred.
+        assert_eq!(cd.evaluate(13, 0.0, 60.0, 0.0, always, None), None);
+        assert_eq!(cd.count, 12, "deferred bar must not advance the count");
+
+        // 13th attempt: low 40 <= qualifier 50 -> completes.
+        assert_eq!(
+            cd.evaluate(13, 0.0, 40.0, 0.0, always, None),
+            Some(TdDirection::BullishReversal)
+        );
+        assert_eq!(cd.count, 13);
+    }
+
+    /// `reset` clears both phases.
+    #[test]
+    fn two_phase_reset_clears_everything() {
+        let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4);
+        run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0]); // setup done, countdown counting
+        assert!(td.countdown_progress().is_some());
+
+        td.reset();
+        assert_eq!(td.countdown_progress(), None);
+        // Warm-up restarts: the next candle cannot emit anything.
         assert_eq!(td.update(candle(5.0)), None);
     }
 }

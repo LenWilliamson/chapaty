@@ -1,8 +1,8 @@
 use chrono::Duration;
 use polars::{
+    lazy::dsl::max_horizontal,
     prelude::{
-        EWMOptions, Expr, LazyFrame, RollingOptionsFixedWindow, SortMultipleOptions, col, lit,
-        max_horizontal, when,
+        EWMOptions, Expr, LazyFrame, RollingOptionsFixedWindow, SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
 };

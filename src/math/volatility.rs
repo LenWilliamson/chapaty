@@ -8,7 +8,9 @@ use crate::{
         event::{Ohlcv, TradeEvent},
     },
     math::{
-        StreamingIndicator, accumulators::KahanSum, moving_averages::{StreamingEma, StreamingEwm, StreamingSma}
+        StreamingIndicator,
+        accumulators::KahanSum,
+        moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
     },
 };
 
@@ -375,6 +377,58 @@ mod tests {
         assert_eq!(atr.update(candle4), Some(19.0));
     }
 
+    /// With a constant True Range, every smoothing type must converge to (and stay
+    /// at) that exact value — a smoother-agnostic sanity check that the dispatch is
+    /// wired correctly and nothing drifts. Each bar here has H-L = 2 and no gap
+    /// large enough to exceed it, so TR == 2 on every bar including the first.
+    #[test]
+    fn atr_constant_true_range_is_stable_for_all_smoothers() {
+        for smoothing in [
+            AtrSmoothingType::Wilders,
+            AtrSmoothingType::Sma,
+            AtrSmoothingType::Ema,
+        ] {
+            let mut atr = StreamingAtr::new(3, smoothing);
+            let mut last = None;
+            for _ in 0..6 {
+                last = atr.update(mock_candle(10., 11., 9., 10., 100.));
+            }
+            assert_eq!(
+                last,
+                Some(2.0),
+                "smoother {smoothing:?} should settle at TR"
+            );
+        }
+    }
+
+    /// `reset` must clear `prev_close` so the next bar is treated as a fresh first
+    /// bar (TR = High - Low), not as a gap from the stale close.
+    #[test]
+    fn atr_reset_clears_previous_close() {
+        let mut atr = StreamingAtr::new(1, AtrSmoothingType::Sma);
+        atr.update(mock_candle(10., 15., 5., 12., 100.)); // prev_close becomes 12
+
+        atr.reset();
+
+        // Without the reset, TR would be max(5, |25-12|, |20-12|) = 13.
+        let after = atr.update(mock_candle(20., 25., 20., 24., 100.));
+        assert_eq!(after, Some(5.0)); // 25 - 20, treated as a first bar
+    }
+
+    #[test]
+    #[should_panic(expected = "window_size must be > 0")]
+    fn atr_new_panics_on_zero_window() {
+        let _ = StreamingAtr::new(0, AtrSmoothingType::Wilders);
+    }
+
+    /// The documented default is a 14-period Wilder's ATR.
+    #[test]
+    fn atr_default_is_wilders_window_14() {
+        let atr = StreamingAtr::default();
+        assert_eq!(atr.window_size, 14);
+        assert!(matches!(atr.smoother, AtrSmoother::Wilders(_)));
+    }
+
     // ============================================================================================
     // VWAP TESTS
     // ============================================================================================
@@ -427,6 +481,32 @@ mod tests {
         assert_eq!(vwap_close.update(candle), Some(18.0)); // 18.0
     }
 
+    /// Before any positive-volume bar arrives, the VWAP is undefined (`None`), even
+    /// after zero/negative-volume bars have been fed.
+    #[test]
+    fn ohlcv_vwap_is_none_until_positive_volume() {
+        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        assert_eq!(vwap.update(mock_candle(0., 10., 8., 9., 0.)), None);
+        assert_eq!(vwap.update(mock_candle(0., 10., 8., 9., -5.)), None);
+        // First valid bar establishes the average.
+        assert_eq!(vwap.update(mock_candle(0., 10., 8., 9., 100.)), Some(9.0));
+    }
+
+    /// `reset` re-anchors the average: prior accumulation is dropped entirely.
+    #[test]
+    fn ohlcv_vwap_reset_re_anchors() {
+        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        vwap.update(mock_candle(0., 10., 8., 9., 100.));
+        vwap.update(mock_candle(0., 20., 10., 15., 200.));
+        assert_eq!(vwap.value(), Some(13.0));
+
+        vwap.reset();
+        assert_eq!(vwap.value(), None);
+
+        // Fresh anchor: only the post-reset bar counts.
+        assert_eq!(vwap.update(mock_candle(0., 20., 10., 15., 50.)), Some(15.0));
+    }
+
     #[test]
     fn trades_vwap_accumulates_correctly() {
         let mut vwap = StreamingTradesVwap::new();
@@ -447,5 +527,42 @@ mod tests {
 
         // Ensure standard behavior resumes cleanly after reset
         assert_eq!(vwap.update(mock_trade(50.0, 10.0)), Some(50.0));
+    }
+
+    /// Trades carry their own quantity as volume; non-positive quantities are
+    /// discarded just like bar volumes are.
+    #[test]
+    fn trades_vwap_ignores_non_positive_quantity() {
+        let mut vwap = StreamingTradesVwap::new();
+        assert_eq!(vwap.update(mock_trade(100.0, 0.0)), None);
+        assert_eq!(vwap.update(mock_trade(100.0, -3.0)), None);
+        assert_eq!(vwap.update(mock_trade(100.0, 2.0)), Some(100.0));
+        // A later zero-quantity trade leaves the average untouched.
+        assert_eq!(vwap.update(mock_trade(999.0, 0.0)), Some(100.0));
+    }
+
+    /// The Kahan core recovers low-order bits that naive `f64` summation drops
+    /// when a long tail of tiny terms is added to a larger running sum. (This
+    /// really belongs beside `KahanSum` in the accumulators module; included here
+    /// as it underpins VWAP precision.)
+    #[test]
+    fn kahan_sum_recovers_precision_lost_by_naive_summation() {
+        use crate::math::accumulators::KahanSum;
+
+        // A leading 1.0 followed by many terms below its ULP: naive addition drops
+        // each one, Kahan accumulates them.
+        let mut values = vec![1.0];
+        values.extend(std::iter::repeat(1e-16).take(100));
+        let truth = 1.0 + 100.0 * 1e-16;
+
+        let kahan = values
+            .iter()
+            .fold(KahanSum::new(), |acc, &v| acc.add(v))
+            .value();
+        let naive: f64 = values.iter().sum();
+
+        assert_eq!(kahan, truth); // exact
+        assert_eq!(naive, 1.0); // every tiny term lost
+        assert!((kahan - truth).abs() < (naive - truth).abs());
     }
 }
