@@ -173,64 +173,93 @@ impl StreamingIndicator for StreamingTdXSequential {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use chrono::{DateTime, Utc};
 
+use crate::data::domain::{Price, Quantity};
+
+use super::*;
+
+    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    fn ts(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    /// Builds a flat OHLCV candle whose only meaningful field for this indicator
+    /// is `close`. Timestamps are fixed at 2026-06-11 ~17:30 UTC.
+    fn candle(close: f64) -> Ohlcv {
+        Ohlcv {
+            open_timestamp: ts("2026-06-11T17:30:00Z"),
+            close_timestamp: ts("2026-06-11T17:31:00Z"),
+            open: Price(close),
+            high: Price(close),
+            low: Price(close),
+            close: Price(close),
+            volume: Quantity(0.0),
+            quote_asset_volume: None,
+            number_of_trades: None,
+            taker_buy_base_asset_volume: None,
+            taker_buy_quote_asset_volume: None,
+        }
+    }
+
+    /// Feeds a slice of closes and collects the emitted signal per bar.
+    fn feed(td: &mut StreamingTdXSequential, closes: &[f64]) -> Vec<Option<TdDirection>> {
+        closes.iter().map(|&c| td.update(candle(c))).collect()
+    }
+
+    /// A pure decline never produces a bearish price flip, so per DeMark no buy
+    /// setup ever begins. (Lookback 1 used so each bar compares to the prior close.)
     #[test]
-    fn td9_requires_minimum_buffer_before_counting() {
-        let mut td = StreamingTdXSequential::td9(); // Lookback 4, Target 9
+    fn monotonic_decline_without_flip_emits_nothing() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        let out = feed(&mut td, &[50.0, 40.0, 30.0, 20.0, 10.0]);
+        assert!(out.iter().all(|o| o.is_none()));
+        assert_eq!(td.state, InternalSetupState::Neutral);
+    }
 
-        // Feed 4 bars (Not enough to compare C_current to C_current-4)
-        assert_eq!(td.update(10.0), None);
-        assert_eq!(td.update(10.0), None);
-        assert_eq!(td.update(10.0), None);
-        assert_eq!(td.update(10.0), None);
-
-        // 5th bar triggers the first comparison.
-        assert_eq!(td.update(11.0), None);
-
-        // State should now internally be tracking BearishReversal with count 1
+    /// A higher close followed by a lower close is the bearish flip that opens a
+    /// buy setup at count 1.
+    #[test]
+    fn bearish_flip_starts_buy_setup() {
+        let mut td = StreamingTdXSequential::new(1, 9);
+        feed(&mut td, &[10.0, 20.0, 19.0]); // up, then the first lower close = flip
         assert_eq!(
             td.state,
             InternalSetupState::Tracking {
-                direction: TdDirection::BearishReversal,
+                direction: TdDirection::BullishReversal,
                 count: 1
             }
         );
     }
 
+    /// Flip + two more consecutive lower closes reaches target 3 and emits.
     #[test]
-    fn td9_completes_bullish_reversal_setup() {
-        // We use a small target count (3) for an easier test setup
-        let mut td = StreamingTdXSequential::new(2, 3);
-
-        // Fill historical buffer: T0, T1
-        assert_eq!(td.update(100.0), None);
-        assert_eq!(td.update(95.0), None);
-
-        // Setup 1: 90.0 < 100.0 (T0)
-        assert_eq!(td.update(90.0), None);
-        // Setup 2: 85.0 < 95.0 (T1)
-        assert_eq!(td.update(85.0), None);
-        // Setup 3 (Target Hit): 80.0 < 90.0 (T2) -> Emits Signal!
-        assert_eq!(td.update(80.0), Some(TdDirection::BullishReversal));
-
-        // Setup 4: 75.0 < 85.0 (T3) -> Continues tracking internally, but no signal emitted
-        assert_eq!(td.update(75.0), None);
+    fn completes_buy_setup_and_emits_bullish() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        let out = feed(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0]);
+        assert_eq!(
+            out,
+            vec![None, None, None, None, Some(TdDirection::BullishReversal)]
+        );
     }
 
+    /// Symmetric sell-setup case: a bullish flip then rising closes.
     #[test]
-    fn td9_resets_sequence_on_flip() {
-        let mut td = StreamingTdXSequential::new(2, 3);
+    fn completes_sell_setup_and_emits_bearish() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        let out = feed(&mut td, &[20.0, 10.0, 11.0, 12.0, 13.0]);
+        assert_eq!(
+            out,
+            vec![None, None, None, None, Some(TdDirection::BearishReversal)]
+        );
+    }
 
-        // T0, T1
-        td.update(100.0);
-        td.update(95.0);
-
-        // Bullish 1
-        td.update(90.0);
-        // Bullish 2
-        td.update(85.0);
-
+    /// A flip in the opposite direction destroys the in-progress setup and starts
+    /// the other side at count 1.
+    #[test]
+    fn opposite_flip_resets_to_other_direction() {
+        let mut td = StreamingTdXSequential::new(1, 5);
+        feed(&mut td, &[10.0, 20.0, 19.0, 18.0]); // bullish, count 2
         assert_eq!(
             td.state,
             InternalSetupState::Tracking {
@@ -239,10 +268,8 @@ mod tests {
             }
         );
 
-        // Flip: Price suddenly spikes above T2 (90.0).
-        // 95.0 > 90.0 -> Bearish 1. The Bullish setup is destroyed.
-        assert_eq!(td.update(95.0), None);
-
+        // 25.0 > 18.0 (higher) right after a lower close = bullish flip -> sell setup.
+        assert_eq!(td.update(candle(25.0)), None);
         assert_eq!(
             td.state,
             InternalSetupState::Tracking {
@@ -252,19 +279,55 @@ mod tests {
         );
     }
 
+    /// An exactly-equal close fails the strict comparison and breaks the run.
     #[test]
-    fn td9_breaks_sequence_on_flat_price() {
-        let mut td = StreamingTdXSequential::new(2, 3);
-
-        td.update(100.0);
-        td.update(100.0);
-
-        // Bullish 1
-        td.update(90.0);
-
-        // Exact same price as T1 (100.0 == 100.0) -> Sequence Broken
-        assert_eq!(td.update(100.0), None);
-
+    fn flat_close_breaks_sequence() {
+        let mut td = StreamingTdXSequential::new(1, 5);
+        feed(&mut td, &[10.0, 20.0, 19.0]); // bullish, count 1
+        assert_eq!(td.update(candle(19.0)), None); // 19 == 19 -> Flat
         assert_eq!(td.state, InternalSetupState::Neutral);
+    }
+
+    /// The `count % target == 0` rule re-emits on each multiple ("Setup Recycling").
+    #[test]
+    fn recycles_and_re_emits_at_second_multiple() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        let out = feed(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0]);
+        let signal_count = out.iter().filter(|o| o.is_some()).count();
+        assert_eq!(signal_count, 2);
+        assert_eq!(out[4], Some(TdDirection::BullishReversal)); // count 3
+        assert_eq!(out[7], Some(TdDirection::BullishReversal)); // count 6
+    }
+
+    /// Until the ring buffer is full there is no historical close to compare to,
+    /// and the very first comparison has no prior relationship to flip from.
+    #[test]
+    fn warmup_blocks_comparison_until_buffer_full() {
+        let mut td = StreamingTdXSequential::td9(); // lookback 4
+        let out = feed(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
+        assert!(out.iter().all(|o| o.is_none()));
+        assert_eq!(td.state, InternalSetupState::Neutral);
+    }
+
+    /// A `NaN` close compares as `None` -> `Flat`; it must not panic and must
+    /// break any active sequence.
+    #[test]
+    fn nan_close_is_treated_as_flat_and_does_not_panic() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        let out = feed(&mut td, &[10.0, 20.0, f64::NAN]);
+        assert_eq!(out, vec![None, None, None]);
+        assert_eq!(td.state, InternalSetupState::Neutral);
+    }
+
+    /// `reset` clears the buffer (so warm-up restarts) and the state machine.
+    #[test]
+    fn reset_restores_warmup_and_neutral_state() {
+        let mut td = StreamingTdXSequential::new(1, 3);
+        feed(&mut td, &[10.0, 20.0, 19.0, 18.0]);
+        td.reset();
+        assert_eq!(td.state, InternalSetupState::Neutral);
+        assert_eq!(td.last_cmp, PriceRelationship::Flat);
+        // Buffer empty again: the next candle is just a warm-up bar.
+        assert_eq!(td.update(candle(5.0)), None);
     }
 }

@@ -1,3 +1,22 @@
+//! A sorted map optimized for small collections.
+//!
+//! This module provides [`SortedVecMap`], a map backed by a sorted `SmallVec`.
+//! It keeps keys in deterministic sorted order, making iteration predictable and
+//! stable while remaining efficient for small datasets.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use chapaty::sorted_vec_map::SortedVecMap;
+//!
+//! let mut map = SortedVecMap::new();
+//! map.insert("zebra", 3);
+//! map.insert("apple", 1);
+//!
+//! let keys = map.keys().copied().collect::<Vec<_>>();
+//! assert_eq!(keys, vec!["apple", "zebra"]);
+//! ```
+
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
