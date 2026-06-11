@@ -9,14 +9,14 @@ use super::{SessionConfig, VwapConfig};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchTradesIndicator {
     Vwap(VwapConfig),
-    Session(SessionConfig),
+    OvernightRange(SessionConfig),
 }
 
 impl BatchTradesIndicator {
     pub fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
             BatchTradesIndicator::Vwap(vwap) => vwap.pre_compute_vwap(lf),
-            BatchTradesIndicator::Session(session) => session.pre_compute_session(lf),
+            BatchTradesIndicator::OvernightRange(session) => session.pre_compute_session(lf),
         }
     }
 }

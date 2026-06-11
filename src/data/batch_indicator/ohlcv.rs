@@ -37,7 +37,7 @@ pub enum BatchOhlcvIndicator {
     Atr(AtrWindow),
     RateOfChange(RateOfChangeWindow),
     Vwap(VwapConfig),
-    Session(SessionConfig),
+    OvernightRange(SessionConfig),
 }
 
 impl BatchOhlcvIndicator {
@@ -49,7 +49,7 @@ impl BatchOhlcvIndicator {
             BatchOhlcvIndicator::Atr(atr) => atr.pre_compute_atr(lf),
             BatchOhlcvIndicator::RateOfChange(roc) => roc.pre_compute_roc(lf),
             BatchOhlcvIndicator::Vwap(vwap) => vwap.pre_compute_vwap(lf),
-            BatchOhlcvIndicator::Session(session) => session.pre_compute_session(lf),
+            BatchOhlcvIndicator::OvernightRange(session) => session.pre_compute_session(lf),
         }
     }
 }
