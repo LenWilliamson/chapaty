@@ -1,6 +1,6 @@
 use crate::{
     data::{
-        batch_indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
+        batch_indicator::ohlcv::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         common::ProfileAggregation,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
@@ -197,12 +197,12 @@ impl BuildCtx {
         self.vp_spot_map = Some(vp_spot);
         self.economic_calendar_map = Some(news);
 
-        Ok(StateFn::Next(|ctx| ctx.compute_indicators()))
+        Ok(StateFn::Next(|ctx| ctx.compute_batch_ohlcv_indicators()))
     }
 
     #[tracing::instrument(skip_all)]
-    fn compute_indicators<'a>(&mut self) -> NextState<'a, Self> {
-        tracing::info!("Computing derived technical indicators");
+    fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
+        tracing::info!("Computing derived batch technical ohlcv indicators");
 
         // 1. Initialize Indicator Maps
         let mut ema_map = HashMap::new();
@@ -286,6 +286,15 @@ impl BuildCtx {
         self.ema_map = Some(ema_map);
         self.sma_map = Some(sma_map);
         self.rsi_map = Some(rsi_map);
+
+        Ok(StateFn::Next(|ctx: &mut BuildCtx| {
+            ctx.compute_batch_trades_indicators()
+        }))
+    }
+
+    #[tracing::instrument(skip_all)]
+    fn compute_batch_trades_indicators<'a>(&mut self) -> NextState<'a, Self> {
+        tracing::info!("Computing derived batch technical trades indicators");
 
         Ok(StateFn::Next(|ctx: &mut BuildCtx| {
             ctx.overlay_economic_calendar_policy()

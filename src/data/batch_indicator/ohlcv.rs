@@ -27,7 +27,7 @@ pub struct RsiWindow(pub u16);
 pub struct AtrWindow(pub u16);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RocWindow(pub u16);
+pub struct RateOfChangeWindow(pub u16);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchOhlcvIndicator {
@@ -35,7 +35,7 @@ pub enum BatchOhlcvIndicator {
     Sma(SmaWindow),
     Rsi(RsiWindow),
     Atr(AtrWindow),
-    Roc(RocWindow),
+    RateOfChange(RateOfChangeWindow),
     Vwap(VwapConfig),
     Session(SessionConfig),
 }
@@ -47,7 +47,7 @@ impl BatchOhlcvIndicator {
             BatchOhlcvIndicator::Sma(sma) => sma.pre_compute_sma(lf),
             BatchOhlcvIndicator::Rsi(rsi) => rsi.pre_compute_rsi(lf),
             BatchOhlcvIndicator::Atr(atr) => atr.pre_compute_atr(lf),
-            BatchOhlcvIndicator::Roc(roc) => roc.pre_compute_roc(lf),
+            BatchOhlcvIndicator::RateOfChange(roc) => roc.pre_compute_roc(lf),
             BatchOhlcvIndicator::Vwap(vwap) => vwap.pre_compute_vwap(lf),
             BatchOhlcvIndicator::Session(session) => session.pre_compute_session(lf),
         }
@@ -170,7 +170,7 @@ impl AtrWindow {
     }
 }
 
-impl RocWindow {
+impl RateOfChangeWindow {
     fn pre_compute_roc(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         let window = self.0;
         let roc_expr = ((col(CanonicalCol::Close) - col(CanonicalCol::Close).shift(lit(window)))

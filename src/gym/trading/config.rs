@@ -10,7 +10,7 @@ use strum::{Display, EnumCount, EnumIter, EnumString, IntoStaticStr};
 use crate::{
     ApiKey, EndpointUrl, SelfHostedApi,
     data::{
-        batch_indicator::{BatchOhlcvIndicator, SmaWindow},
+        batch_indicator::ohlcv::{BatchOhlcvIndicator, SmaWindow},
         common::{ProfileAggregation, RiskMetricsConfig},
         domain::{
             ContractMonth, ContractYear, CountryCode, DataBroker, EconomicCategory,

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
+        batch_indicator::{WithBatchIndicators, ohlcv::BatchOhlcvIndicator},
         common::ProfileAggregation,
         domain::{
             CountryCode, DataBroker, EconomicCategory, EconomicDataSource, EconomicEventImpact,

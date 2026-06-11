@@ -11,7 +11,7 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::{
     data::{
-        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
+        batch_indicator::ohlcv::{EmaWindow, RsiWindow, SmaWindow},
         common::{ProfileAggregation, ProfileBinStats},
         domain::{
             CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
