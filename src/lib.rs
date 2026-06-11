@@ -26,5 +26,6 @@ pub use crate::transport::source::{
 
 // === Convenience ===
 // pub mod prelude;
+pub mod ring_buffer;
 pub mod sorted_vec_map;
 pub use crate::gym::trading::factory::{load, make};

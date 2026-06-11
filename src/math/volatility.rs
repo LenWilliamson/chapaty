@@ -8,8 +8,7 @@ use crate::{
         event::{Ohlcv, TradeEvent},
     },
     math::{
-        StreamingIndicator,
-        moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+        StreamingIndicator, accumulators::KahanSum, moving_averages::{StreamingEma, StreamingEwm, StreamingSma}
     },
 };
 
@@ -174,35 +173,42 @@ pub enum VwapPriceSource {
 /// Shared accumulator for the `sum(price * volume) / sum(volume)` core.
 ///
 /// VWAP variants only differ on how they derive the `(price, volume)` pair they feed in.
+/// Now implemented using Kahan summation for precision lossless high-frequency accumulation.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-struct VwapAccumulator {
-    sum_price_x_volume: f64,
-    sum_volume: Volume,
+struct KahanAccumulator {
+    sum_price_x_volume: KahanSum,
+    sum_volume: KahanSum,
 }
 
-impl VwapAccumulator {
-    /// Folds one observation into the running totals.
+impl KahanAccumulator {
+    /// Folds one observation into the running totals using move semantics.
     ///
     /// Non-positive or non-finite volume is skipped: it contributes nothing and a zero-volume
     /// bar must not pull the average or risk a zero-division once it's the only input.
-    fn add(&mut self, price: Price, volume: Volume) {
-        if !volume.0.is_finite() || volume.0 <= 0.0 {
-            return;
+    #[inline]
+    fn add(self, price: Price, volume: Volume) -> Self {
+        let v = volume.0;
+        if !v.is_finite() || v <= 0.0 {
+            return self;
         }
 
-        self.sum_price_x_volume += price.0 * volume.0;
-        self.sum_volume += volume.0;
+        Self {
+            sum_price_x_volume: self.sum_price_x_volume.add(price.0 * v),
+            sum_volume: self.sum_volume.add(v),
+        }
     }
 
     /// Current VWAP, or `None` before any positive-volume input has arrived.
-    fn value(&self) -> Option<f64> {
-        (self.sum_volume.0 > 0.0).then(|| self.sum_price_x_volume / self.sum_volume.0)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
+    #[inline]
+    fn value(self) -> Option<f64> {
+        let total_v = self.sum_volume.value();
+        (total_v > 0.0).then(|| self.sum_price_x_volume.value() / total_v)
     }
 }
+
+// ================================================================================================
+// VWAP: OHLCV
+// ================================================================================================
 
 /// A streaming Volume-Weighted Average Price over [`Ohlcv`] bars.
 ///
@@ -213,14 +219,14 @@ impl VwapAccumulator {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingOhlcvVwap {
     source: VwapPriceSource,
-    acc: VwapAccumulator,
+    acc: KahanAccumulator,
 }
 
 impl StreamingOhlcvVwap {
     pub fn new(source: VwapPriceSource) -> Self {
         Self {
             source,
-            acc: VwapAccumulator::default(),
+            acc: KahanAccumulator::default(),
         }
     }
 
@@ -253,14 +259,18 @@ impl StreamingIndicator for StreamingOhlcvVwap {
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
         let price = self.weighting_price(current);
-        self.acc.add(price, current.volume);
+        self.acc = self.acc.add(price, current.volume);
         self.acc.value()
     }
 
     fn reset(&mut self) {
-        self.acc.reset();
+        self.acc = KahanAccumulator::default();
     }
 }
+
+// ================================================================================================
+// VWAP: Trades
+// ================================================================================================
 
 /// A streaming, Volume-Weighted Average Price over [`TradeEvent`]s.
 ///
@@ -269,7 +279,7 @@ impl StreamingIndicator for StreamingOhlcvVwap {
 /// to configure. The trade's `quantity` is the volume.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct StreamingTradesVwap {
-    acc: VwapAccumulator,
+    acc: KahanAccumulator,
 }
 
 impl StreamingTradesVwap {
@@ -288,12 +298,12 @@ impl StreamingIndicator for StreamingTradesVwap {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        self.acc.add(current.price, current.quantity);
+        self.acc = self.acc.add(current.price, current.quantity);
         self.acc.value()
     }
 
     fn reset(&mut self) {
-        self.acc.reset();
+        self.acc = KahanAccumulator::default();
     }
 }
 

@@ -76,12 +76,12 @@ impl HistoricalBuffer {
             LookbackWindow::Bars(n) => n + 2,
             // Convert time window to capacity in minutes, rounded up to nearest minute.
             // Worst case for minute based OHLCV data.
-            LookbackWindow::Time(d) => ((d.num_seconds() / 60) + 2) as usize,
+            LookbackWindow::Time(d) => ((d.num_seconds() / 60) + 1 + 2) as usize,
         };
 
         Self {
             window,
-            buffer: VecDeque::with_capacity(capacity + 1),
+            buffer: VecDeque::with_capacity(capacity),
         }
     }
 
@@ -111,10 +111,14 @@ impl HistoricalBuffer {
                     }
                 }
 
-                if self.buffer.len() >= 2 {
-                    self.buffer.front().copied()
-                } else {
-                    None
+                match self.buffer.front() {
+                    Some(front)
+                        if current.timestamp.signed_duration_since(front.timestamp)
+                            >= time_limit =>
+                    {
+                        Some(*front)
+                    }
+                    _ => None,
                 }
             }
         }
@@ -211,20 +215,87 @@ mod tests {
 
     #[test]
     fn historical_buffer_time_strict_boundary_retention() {
-        // Lookback = 60s. We MUST retain an element if diff == 60 exactly.
+        // Lookback = 60s. A point exactly 60s old is a valid reference and is both
+        // retained and returned. A point only 1s old is NOT a 60s lookback, so once
+        // the 60s-old point falls out of range the result is None rather than a
+        // too-recent (and wrongly labelled) reference.
         let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(60));
 
         // Start
         buffer.update(input(0, 100.0));
 
-        // 60s Later: diff is exactly 60. Should NOT be popped.
+        // 60s later: diff is exactly 60. Retained and returned.
         assert_eq!(buffer.update(input(60, 110.0)), Some(input(0, 100.0)));
         assert_eq!(buffer.buffer.len(), 2);
 
-        // 61s Later: diff is 61. The 0s tick MUST be popped.
-        // Returns the 60s tick as the new reference.
-        assert_eq!(buffer.update(input(61, 120.0)), Some(input(60, 110.0)));
-        assert_eq!(buffer.buffer.len(), 2);
+        // 61s later: the 0s tick is now 61s old and is evicted. The remaining 60s
+        // tick is only 1s back — not a 60s lookback — so the result is None.
+        assert_eq!(buffer.update(input(61, 120.0)), None);
+    }
+
+    /// Drives one gap-free sequence through a `Bars(n)` buffer and a
+    /// `Time(n * period)` buffer and asserts they return the identical reference at
+    /// every step. This is the core invariant: on regularly spaced bars a bar-count
+    /// window and the equivalent time window must look back to the same point.
+    fn assert_bars_matches_time(n: usize, period_secs: i64, points: &[(i64, f64)]) {
+        let secs = (n as u64) * (period_secs as u64);
+        let mut bars = HistoricalBuffer::new(LookbackWindow::Bars(n));
+        let mut time = HistoricalBuffer::new(LookbackWindow::seconds(secs));
+
+        for &(t, value) in points {
+            let inp = input(t, value);
+            assert_eq!(
+                bars.update(inp),
+                time.update(inp),
+                "bars and time disagreed at t={t}"
+            );
+        }
+    }
+
+    #[test]
+    fn bars_and_time_match_on_regular_one_minute_bars() {
+        // 60s bars: a 1-bar lookback must equal a 60s window at every step.
+        assert_bars_matches_time(
+            1,
+            60,
+            &[
+                (0, 100.0),
+                (60, 110.0),
+                (120, 90.0),
+                (180, 95.0),
+                (240, 105.0),
+            ],
+        );
+    }
+
+    #[test]
+    fn bars_and_time_match_for_multi_bar_lookback() {
+        // 60s bars, lookback of 3 bars == 180s window. Exercises warmup: both must
+        // return None until a point exactly 180s back exists, then agree thereafter.
+        assert_bars_matches_time(
+            3,
+            60,
+            &[
+                (0, 10.0),
+                (60, 11.0),
+                (120, 12.0),
+                (180, 13.0),
+                (240, 14.0),
+                (300, 15.0),
+            ],
+        );
+    }
+
+    #[test]
+    fn time_window_does_not_emit_during_warmup() {
+        // A 120s window on 60s bars must NOT return a reference until a point is
+        // actually 120s old. The 60s-old point at t=60 is too recent to be a 120s
+        // lookback, so the result is None — matching Bars(2) warmup. This is the
+        // exact case the old `len >= 2` guard got wrong (it returned the t=0 point).
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(120));
+        assert_eq!(buffer.update(input(0, 100.0)), None);
+        assert_eq!(buffer.update(input(60, 110.0)), None);
+        assert_eq!(buffer.update(input(120, 120.0)), Some(input(0, 100.0)));
     }
 
     #[test]

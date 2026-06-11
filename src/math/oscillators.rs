@@ -74,3 +74,102 @@ impl StreamingIndicator for StreamingRsi {
         self.avg_loss.reset();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_value_only_seeds_and_returns_none() {
+        // The first price has no predecessor, so there's no delta to score yet.
+        let mut rsi = StreamingRsi::new(3);
+        assert_eq!(rsi.update(100.0), None);
+    }
+
+    #[test]
+    fn warmup_takes_window_plus_one_prices() {
+        // Price 1 seeds prev_price. Prices 2..=N+1 each produce one delta, and the
+        // inner EWMs need `window_size` deltas before they emit. So with window 3:
+        // 1 seed + 3 deltas = 4 prices before the first RSI value.
+        let mut rsi = StreamingRsi::new(3);
+        assert_eq!(rsi.update(10.0), None); // seed
+        assert_eq!(rsi.update(11.0), None); // delta 1
+        assert_eq!(rsi.update(12.0), None); // delta 2
+        assert!(rsi.update(13.0).is_some()); // delta 3 -> first output
+    }
+
+    #[test]
+    fn pure_uptrend_gives_100() {
+        // Every delta is a gain, avg_loss stays 0 -> the "pure gain" branch -> 100.
+        let mut rsi = StreamingRsi::new(3);
+        let mut last = None;
+        for p in [1.0, 2.0, 3.0, 4.0, 5.0] {
+            last = rsi.update(p);
+        }
+        assert_eq!(last, Some(100.0));
+    }
+
+    #[test]
+    fn pure_downtrend_gives_0() {
+        // Every delta is a loss, avg_gain stays 0 -> rs = 0 -> 100 - 100/1 = 0.
+        let mut rsi = StreamingRsi::new(3);
+        let mut last = None;
+        for p in [5.0, 4.0, 3.0, 2.0, 1.0] {
+            last = rsi.update(p);
+        }
+        assert_eq!(last, Some(0.0));
+    }
+
+    #[test]
+    fn flat_line_gives_50() {
+        // No movement: both averages 0 -> the explicit flat-line branch -> 50.
+        let mut rsi = StreamingRsi::new(3);
+        let mut last = None;
+        for _ in 0..5 {
+            last = rsi.update(100.0);
+        }
+        assert_eq!(last, Some(50.0));
+    }
+
+    #[test]
+    fn balanced_gain_and_loss_gives_50() {
+        // Symmetric up/down moves of equal size make avg_gain == avg_loss,
+        // so rs = 1 and RSI = 100 - 100/2 = 50.
+        let mut rsi = StreamingRsi::new(2);
+        // deltas: +2, -2, +2, -2, ... equal magnitude gains and losses.
+        let mut last = None;
+        for p in [10.0, 12.0, 10.0, 12.0, 10.0, 12.0] {
+            last = rsi.update(p);
+        }
+        assert!(
+            (last.unwrap() - 50.0).abs() < f64::EPSILON,
+            "expected 50, got {last:?}"
+        );
+    }
+
+    #[test]
+    fn output_stays_within_bounds() {
+        // Whatever the input, RSI must land in [0, 100].
+        let mut rsi = StreamingRsi::new(4);
+        let prices = [10.0, 12.0, 11.0, 15.0, 9.0, 20.0, 8.0, 13.0, 14.0, 7.0];
+        for p in prices {
+            if let Some(v) = rsi.update(p) {
+                assert!((0.0..=100.0).contains(&v), "RSI {v} out of bounds");
+            }
+        }
+    }
+
+    #[test]
+    fn reset_clears_state() {
+        let mut rsi = StreamingRsi::new(2);
+        // Drive it to a pure-uptrend reading.
+        for p in [1.0, 2.0, 3.0, 4.0] {
+            rsi.update(p);
+        }
+        rsi.reset();
+        // After reset the next price only re-seeds: no leftover prev_price or averages.
+        assert_eq!(rsi.update(50.0), None); // seed again
+        assert_eq!(rsi.update(49.0), None); // delta 1, EWM not yet full (window 2)
+        assert!(rsi.update(48.0).is_some()); // delta 2 -> emits, uninfluenced by old data
+    }
+}

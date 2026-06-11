@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::VecDeque};
+use std::cmp::Ordering;
 
-use crate::math::StreamingIndicator;
+use crate::{data::event::Ohlcv, math::StreamingIndicator, ring_buffer::RingBuffer};
 
 // ================================================================================================
-// Output Type
+// TD X Sequential
 // ================================================================================================
 
-/// Represents the direction of the expected reversal upon a completed TD Setup.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TdDirection {
     /// "Buy Setup": Triggered when a sequence of lower closes completes. Expect a bounce.
@@ -16,14 +15,31 @@ pub enum TdDirection {
     BearishReversal,
 }
 
-// ================================================================================================
-// Internal State Machine
-// ================================================================================================
+/// Represents the relationship between the current close and the historical close $N$ bars ago.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub enum PriceRelationship {
+    /// The current close is strictly higher than the historical close.
+    /// Acts as a Bearish Price Flip, which is required to begin tracking a `BullishReversal` (Buy Setup).
+    Higher,
+    /// The current close is strictly lower than the historical close.
+    /// Acts as a Bullish Price Flip, which is required to begin tracking a `BearishReversal` (Sell Setup).
+    Lower,
+    /// The close is perfectly equal, or the indicator has just been initialized (neutral state).
+    /// If an invalid float (`NaN`) is encountered, it gracefully defaults to this state.
+    #[default]
+    Flat,
+}
 
-/// Internal state tracking for the TD Sequential.
-///
-/// By using a private enum, we avoid disjointed fields (like `count` and `Option<direction>`)
-/// and make invalid states strictly unrepresentable.
+impl From<Option<Ordering>> for PriceRelationship {
+    fn from(cmp: Option<Ordering>) -> Self {
+        match cmp {
+            Some(Ordering::Less) => PriceRelationship::Lower,
+            Some(Ordering::Greater) => PriceRelationship::Higher,
+            Some(Ordering::Equal) | None => PriceRelationship::Flat,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 enum InternalSetupState {
     /// No active sequence is being tracked (e.g., price is flat or sequence broken).
@@ -36,111 +52,111 @@ enum InternalSetupState {
     },
 }
 
-// ================================================================================================
-// Indicator: TD Sequential Setup (Variable X)
-// ================================================================================================
-
-/// TD X Sequential (Setup Phase).
-///
-/// This indicator counts consecutive bars where the close is strictly higher or lower
-/// than the close $N$ bars ago ($Close_{current} > Close_{current - n}$).
-///
-/// A completed setup (traditionally 9) suggests exhaustion of the current trend
-/// and a high probability of a price reversal or significant pullback.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamingTdXSequential {
-    lookback: usize,
-    target_count: usize,
-    buffer: VecDeque<f64>,
-    state: InternalSetupState,
-}
-
-impl StreamingTdXSequential {
-    /// Creates a custom TD Sequential indicator.
-    pub fn new(lookback: usize, target_count: usize) -> Self {
-        Self {
-            lookback,
-            target_count,
-            // +2 capacity prevents O(N) reallocation because we push BEFORE we pop in update()
-            buffer: VecDeque::with_capacity(lookback + 2),
-            state: InternalSetupState::default(),
+impl InternalSetupState {
+    fn new_bullish() -> Self {
+        Self::Tracking {
+            direction: TdDirection::BullishReversal,
+            count: 1,
         }
     }
 
-    /// Industry standard TD 9 Setup.
-    /// Compares the current close to the close 4 bars ago, targeting a count of 9.
+    fn new_bearish() -> Self {
+        Self::Tracking {
+            direction: TdDirection::BearishReversal,
+            count: 1,
+        }
+    }
+
+    fn increment(self) -> Self {
+        match self {
+            Self::Tracking { direction, count } => Self::Tracking {
+                direction,
+                count: count + 1,
+            },
+            Self::Neutral => Self::Neutral,
+        }
+    }
+}
+
+// ================================================================================================
+// Indicator: TD Sequential Setup
+// ================================================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingTdXSequential {
+    target_count: usize,
+    buffer: RingBuffer<f64>,
+    state: InternalSetupState,
+    last_cmp: PriceRelationship,
+}
+
+impl StreamingTdXSequential {
+    pub fn new(lookback: usize, target_count: usize) -> Self {
+        Self {
+            target_count,
+            buffer: RingBuffer::new(lookback), // Capacity is exactly N
+            state: InternalSetupState::default(),
+            last_cmp: PriceRelationship::default(),
+        }
+    }
+
     pub fn td9() -> Self {
         Self::new(4, 9)
     }
-
-    /// Advanced alternative: Some traders use a 13-count setup for longer timeframes.
     pub fn td13() -> Self {
         Self::new(4, 13)
     }
 }
 
+impl StreamingTdXSequential {
+    /// Evaluates if the current sequence count constitutes a completed TD Setup.
+    ///
+    /// In standard TD methodology, a setup completes at exactly `target_count` (e.g., 9).
+    /// By checking exact multiples (e.g., 18, 27), we seamlessly handle "Setup Recycling",
+    /// ensuring extreme trend breakouts continue to emit valid exhaustion signals
+    /// rather than being silently ignored.
+    fn is_setup_completion(&self, count: usize) -> bool {
+        count > 0 && count % self.target_count == 0
+    }
+}
+
 impl StreamingIndicator for StreamingTdXSequential {
-    type Input = f64; // The Close price
+    type Input = Ohlcv;
     type Output<'a> = Option<TdDirection>;
 
-    /// Evaluates the close price.
-    ///
-    /// Returns `None` while the sequence is building or broken.
-    /// Returns `Some(TdDirection)` exactly on the bar the setup count reaches the target.
-    fn update(&mut self, close: Self::Input) -> Self::Output<'_> {
-        self.buffer.push_back(close);
-
-        // Keep buffer size strictly at `lookback + 1` (Current + N historical bars)
-        if self.buffer.len() > self.lookback + 1 {
-            self.buffer.pop_front();
-        }
-
-        // Implicit check: We can't start counting until we have enough historical data
-        if self.buffer.len() < self.lookback + 1 {
+    fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
+        let close = candle.close.0;
+        let Some(historical_close) = self.buffer.push(close) else {
             return None;
-        }
+        };
+        let current_cmp = PriceRelationship::from(close.partial_cmp(&historical_close));
 
-        let historical_close = *self.buffer.front().expect("Buffer length validated above");
-
-        // Evaluate state transition using idiomatic float comparison
-        self.state = match close.partial_cmp(&historical_close) {
-            Some(Ordering::Less) => {
-                // Price dropping -> Bullish Reversal Setup
-                let next_count = match self.state {
-                    InternalSetupState::Tracking {
-                        direction: TdDirection::BullishReversal,
-                        count,
-                    } => count + 1,
-                    _ => 1, // Reset or start fresh
-                };
+        self.state = match current_cmp {
+            PriceRelationship::Lower => match self.state {
                 InternalSetupState::Tracking {
                     direction: TdDirection::BullishReversal,
-                    count: next_count,
+                    ..
+                } => self.state.increment(),
+                _ if self.last_cmp == PriceRelationship::Higher => {
+                    InternalSetupState::new_bullish()
                 }
-            }
-            Some(Ordering::Greater) => {
-                // Price rising -> Bearish Reversal Setup
-                let next_count = match self.state {
-                    InternalSetupState::Tracking {
-                        direction: TdDirection::BearishReversal,
-                        count,
-                    } => count + 1,
-                    _ => 1, // Reset or start fresh
-                };
+                _ => InternalSetupState::Neutral,
+            },
+            PriceRelationship::Higher => match self.state {
                 InternalSetupState::Tracking {
                     direction: TdDirection::BearishReversal,
-                    count: next_count,
-                }
-            }
-            _ => {
-                // Exact same close or NaN -> Sequence broken
-                InternalSetupState::Neutral
-            }
+                    ..
+                } => self.state.increment(),
+                _ if self.last_cmp == PriceRelationship::Lower => InternalSetupState::new_bearish(),
+                _ => InternalSetupState::Neutral,
+            },
+            PriceRelationship::Flat => InternalSetupState::Neutral,
         };
 
-        // Output exactly and only when the target count is hit
+        self.last_cmp = current_cmp;
+
         if let InternalSetupState::Tracking { direction, count } = self.state {
-            if count == self.target_count {
+            if self.is_setup_completion(count) {
                 return Some(direction);
             }
         }
@@ -151,12 +167,9 @@ impl StreamingIndicator for StreamingTdXSequential {
     fn reset(&mut self) {
         self.buffer.clear();
         self.state = InternalSetupState::default();
+        self.last_cmp = PriceRelationship::default();
     }
 }
-
-// ================================================================================================
-// Unit Tests
-// ================================================================================================
 
 #[cfg(test)]
 mod tests {

@@ -812,13 +812,13 @@ mod tests {
         }
     }
 
-    /// 24h window (start == end) — never `Outside`, so the ONLY way a range
-    /// completes is a session rollover. This is the path the cache exists for.
+    /// 24h window (start == end)is never `Outside`, so the ONLY way a range
+    /// completes is a session rollover.
     fn fsm_24h() -> StreamingOvernightRange<FakeRange> {
         fsm(SessionWindow::new(New_York, hm(17, 0), hm(17, 0)))
     }
 
-    /// Year is fixed to 2026 to keep call sites short: `ev(6, 10, 18, 0, 5)`.
+    /// Year is fixed to 2026.
     fn ev(month: u32, day: u32, hour: u32, min: u32, value: i64) -> FakeEvent {
         FakeEvent {
             ts: local_to_utc(New_York, 2026, month, day, hour, min, 0),
@@ -826,12 +826,12 @@ mod tests {
         }
     }
 
-    fn sess(month: u32, day: u32) -> SessionDate {
+    fn session(month: u32, day: u32) -> SessionDate {
         SessionDate(date(2026, month, day))
     }
 
     fn status_name(m: &StreamingOvernightRange<FakeRange>) -> &'static str {
-        match m.status.clone() {
+        match m.status {
             OvernightRangeStatus::Awaiting(_) => "awaiting",
             OvernightRangeStatus::Building(_) => "building",
             OvernightRangeStatus::Closed(_) => "closed",
@@ -842,8 +842,24 @@ mod tests {
     fn building_range(m: &StreamingOvernightRange<FakeRange>) -> FakeRange {
         match m.status.clone() {
             OvernightRangeStatus::Building(r) => r.state.range,
-            other => panic!("expected Building, got {:?}", other),
+            other => panic!("expected Building, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn open_reports_carried_when_indicator_was_not_reset() {
+        // Check that open() reports Carried when given an indicator that still has
+        // state. This confirms is_fresh()/is_carried() actually distinguish the two
+        // cases, so the Fresh checks in the other tests aren't passing for free.
+        let mut dirty = CountingIndicator::default();
+        dirty.update(ev(6, 10, 9, 0, 1)); // give it some state, don't reset it
+
+        let (_indicator, range) = FakeRange::open(session(6, 10), dirty, ev(6, 10, 10, 0, 5));
+
+        assert!(
+            range.opened.is_carried(),
+            "open must report Carried when handed an un-reset indicator"
+        );
     }
 
     // ============================================================================================
@@ -869,7 +885,7 @@ mod tests {
         assert_eq!(m.update(ev(6, 10, 10, 0, 5)), None);
         assert_eq!(status_name(&m), "building");
         let r = building_range(&m);
-        assert_eq!(r.session, sess(6, 10));
+        assert_eq!(r.session, session(6, 10));
         assert_eq!(r.sum, 5);
         assert_eq!(r.folds, 0);
         assert!(
@@ -883,6 +899,10 @@ mod tests {
         let r = building_range(&m);
         assert_eq!(r.sum, 8);
         assert_eq!(r.folds, 1);
+        assert!(
+            r.opened.is_fresh(),
+            "freshness is set once at open and must persist across folds"
+        );
     }
 
     #[test]
@@ -899,7 +919,7 @@ mod tests {
         assert_eq!(
             completed,
             FakeRange {
-                session: sess(6, 10),
+                session: session(6, 10),
                 sum: 8,
                 folds: 1,
                 opened: IndicatorFreshness::Fresh,
@@ -907,11 +927,20 @@ mod tests {
         );
         assert_eq!(status_name(&m), "closed");
 
-        // Still outside: stays Closed, cache persists, and the 99 was NOT folded in.
+        // Still outside: the cached range is returned verbatim — nothing re-opened,
+        // re-folded, or mutated. Assert the whole value, not just one field.
         let again = m
             .update(ev(6, 10, 18, 0, 99))
             .expect("cache should persist");
-        assert_eq!(again.sum, 8);
+        assert_eq!(
+            again,
+            FakeRange {
+                session: session(6, 10),
+                sum: 8,
+                folds: 1,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
         assert_eq!(status_name(&m), "closed");
     }
 
@@ -924,16 +953,33 @@ mod tests {
         assert_eq!(status_name(&m), "closed");
 
         // Next day, in-window: opening a new session is Progress, not Completed,
-        // so the returned cache is still the *previous* completed session (6/10).
+        // so the returned cache is still the previous completed session (6/10),
+        // returned verbatim — assert the whole frozen value, not just its date.
         let out = m
             .update(ev(6, 11, 10, 0, 7))
             .expect("cache survives reopen");
-        assert_eq!(out.session, sess(6, 10));
+        assert_eq!(
+            out,
+            FakeRange {
+                session: session(6, 10),
+                sum: 5,
+                folds: 0,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
         assert_eq!(status_name(&m), "building");
 
+        // The newly opened session is fresh and independent of the cached one.
         let r = building_range(&m);
-        assert_eq!(r.session, sess(6, 11));
-        assert_eq!(r.sum, 7);
+        assert_eq!(
+            r,
+            FakeRange {
+                session: session(6, 11),
+                sum: 7,
+                folds: 0,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
         assert!(
             r.opened.is_fresh(),
             "indicator must be reset when reopening into a new session"
@@ -954,13 +1000,33 @@ mod tests {
         let completed = m
             .update(ev(6, 11, 17, 0, 9))
             .expect("rollover completes prior session");
-        assert_eq!(completed.session, sess(6, 10));
-        assert_eq!(completed.sum, 8);
-        assert_eq!(completed.folds, 1);
+        assert_eq!(
+            completed,
+            FakeRange {
+                session: session(6, 10),
+                sum: 8,
+                folds: 1,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
 
-        // The next session is already building (no Awaiting gap).
+        // The next session is already building (no Awaiting gap), and the rollover
+        // event (9) opened it fresh. It must NOT carry the completed session's state.
         assert_eq!(status_name(&m), "building");
-        assert_eq!(building_range(&m).session, sess(6, 11));
+        let next = building_range(&m);
+        assert_eq!(
+            next,
+            FakeRange {
+                session: session(6, 11),
+                sum: 9,
+                folds: 0,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
+        assert!(
+            next.opened.is_fresh(),
+            "the session opened by a rollover must start from a reset indicator"
+        );
     }
 
     #[test]
@@ -975,14 +1041,28 @@ mod tests {
         let a = m
             .update(ev(6, 11, 17, 0, 1))
             .expect("A completes when B opens");
-        assert_eq!(a.session, sess(6, 10));
-        assert_eq!(a.folds, 2);
+        assert_eq!(
+            a,
+            FakeRange {
+                session: session(6, 10),
+                sum: 21, // 5 + 7 + 9
+                folds: 2,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
 
         // If the machine had failed to reset the indicator, B would have inherited
         // A's 3 updates and would be Carried, not Fresh.
         let b = building_range(&m);
-        assert_eq!(b.session, sess(6, 11));
-        assert_eq!(b.folds, 0);
+        assert_eq!(
+            b,
+            FakeRange {
+                session: session(6, 11),
+                sum: 1, // only the rollover event (value 1)
+                folds: 0,
+                opened: IndicatorFreshness::Fresh,
+            }
+        );
         assert!(
             b.opened.is_fresh(),
             "a new session must start from a reset indicator"
@@ -1001,27 +1081,5 @@ mod tests {
 
         // Cache is gone: an out-of-window event returns None, not the stale range.
         assert_eq!(m.update(ev(6, 10, 8, 0, 1)), None);
-    }
-
-    #[test]
-    fn open_reports_carried_when_indicator_was_not_reset() {
-        // Negative contract: this gives the positive `is_fresh()` assertions teeth.
-        //
-        // The positive tests claim "the machine resets the indicator, so `open` sees
-        // Fresh." That claim is only meaningful if `open` is *capable* of reporting
-        // Carried — otherwise `is_fresh()` would pass even from a machine that never
-        // resets, testing nothing. Here we bypass the machine and hand `open` a dirty
-        // indicator directly: it must report Carried. Together with the positive
-        // tests this brackets the behavior (dirty -> Carried, reset -> Fresh), proving
-        // `IndicatorFreshness` actually discriminates on reset state.
-        let mut dirty = CountingIndicator::default();
-        dirty.update(ev(6, 10, 9, 0, 1)); // accumulate state; updates > 0, no reset
-
-        let (_indicator, range) = FakeRange::open(sess(6, 10), dirty, ev(6, 10, 10, 0, 5));
-
-        assert!(
-            range.opened.is_carried(),
-            "open must report Carried when handed an un-reset indicator"
-        );
     }
 }

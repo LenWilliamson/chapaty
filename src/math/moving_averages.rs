@@ -139,3 +139,138 @@ impl StreamingIndicator for StreamingEma {
         self.inner.reset();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Compare two floats with a small tolerance (EMA math isn't exact).
+    fn approx(a: f64, b: f64) {
+        assert!((a - b).abs() < 1e-9, "expected {b}, got {a}");
+    }
+
+    // ==========================================
+    // SMA: Simple Moving Average
+    // ==========================================
+
+    #[test]
+    fn sma_returns_none_until_window_is_full() {
+        let mut sma = StreamingSma::new(3);
+        assert_eq!(sma.update(1.0), None); // 1 value
+        assert_eq!(sma.update(2.0), None); // 2 values
+        assert_eq!(sma.update(3.0), Some(2.0)); // full: (1+2+3)/3
+    }
+
+    #[test]
+    fn sma_slides_the_window() {
+        let mut sma = StreamingSma::new(3);
+        sma.update(1.0);
+        sma.update(2.0);
+        sma.update(3.0); // [1,2,3] -> 2.0
+        assert_eq!(sma.update(4.0), Some(3.0)); // [2,3,4] -> 3.0
+        assert_eq!(sma.update(5.0), Some(4.0)); // [3,4,5] -> 4.0
+    }
+
+    #[test]
+    fn sma_window_of_one_returns_each_value() {
+        let mut sma = StreamingSma::new(1);
+        assert_eq!(sma.update(7.0), Some(7.0));
+        assert_eq!(sma.update(9.0), Some(9.0));
+    }
+
+    #[test]
+    fn sma_reset_clears_state() {
+        let mut sma = StreamingSma::new(2);
+        sma.update(10.0);
+        sma.update(20.0); // Some(15.0)
+        sma.reset();
+        // Back to needing a full window again, and old values are gone.
+        assert_eq!(sma.update(1.0), None);
+        assert_eq!(sma.update(3.0), Some(2.0)); // (1+3)/2, not influenced by 10/20
+    }
+
+    // ==========================================
+    // EMA: Exponential Moving Average
+    // ==========================================
+
+    #[test]
+    fn ema_returns_none_until_window_is_reached() {
+        let mut ema = StreamingEma::new(3);
+        assert_eq!(ema.update(1.0), None);
+        assert_eq!(ema.update(2.0), None);
+        assert!(ema.update(3.0).is_some()); // count >= window_size
+    }
+
+    #[test]
+    fn ema_seeds_with_first_value() {
+        // window 1 emits immediately; the first output is just the first input.
+        let mut ema = StreamingEma::new(1);
+        assert_eq!(ema.update(5.0), Some(5.0));
+    }
+
+    #[test]
+    fn ema_applies_alpha_recursively() {
+        // alpha = 2 / (2 + 1) = 0.666...
+        // v1=10 seeds mean=10 (no output yet, count 1 < 2)
+        // v2=20 -> 0.6667*20 + 0.3333*10 = 16.6667 (count 2 >= 2 -> emitted)
+        let mut ema = StreamingEma::new(2);
+        let alpha = 2.0 / 3.0;
+        assert_eq!(ema.update(10.0), None);
+        let expected = alpha * 20.0 + (1.0 - alpha) * 10.0;
+        approx(ema.update(20.0).unwrap(), expected);
+    }
+
+    #[test]
+    fn ema_constant_input_converges_to_that_constant() {
+        // Feeding the same value forever keeps the mean at that value.
+        let mut ema = StreamingEma::new(5);
+        let mut last = None;
+        for _ in 0..20 {
+            last = ema.update(42.0);
+        }
+        approx(last.unwrap(), 42.0);
+    }
+
+    #[test]
+    fn ema_reset_clears_state() {
+        let mut ema = StreamingEma::new(2);
+        ema.update(100.0);
+        ema.update(200.0); // emits something
+        ema.reset();
+        // After reset, the next value re-seeds from scratch.
+        assert_eq!(ema.update(1.0), None); // count 1 < 2 again
+        approx(
+            ema.update(3.0).unwrap(),
+            (2.0 / 3.0) * 3.0 + (1.0 / 3.0) * 1.0,
+        );
+    }
+
+    // ==========================================
+    // EWM (shared core)
+    // ==========================================
+
+    #[test]
+    fn ewm_with_alpha_one_tracks_latest_value() {
+        // alpha = 1 means "no memory": output is always the newest input.
+        let mut ewm = StreamingEwm::new(1.0, 1);
+        assert_eq!(ewm.update(5.0), Some(5.0));
+        assert_eq!(ewm.update(9.0), Some(9.0));
+        assert_eq!(ewm.update(2.0), Some(2.0));
+    }
+
+    #[test]
+    fn ewm_with_alpha_zero_holds_first_value() {
+        // alpha = 0 means "all memory": mean stays at the seed forever.
+        let mut ewm = StreamingEwm::new(0.0, 1);
+        assert_eq!(ewm.update(7.0), Some(7.0));
+        assert_eq!(ewm.update(100.0), Some(7.0));
+    }
+
+    #[test]
+    fn ewm_respects_window_warmup() {
+        let mut ewm = StreamingEwm::new(0.5, 3);
+        assert_eq!(ewm.update(1.0), None);
+        assert_eq!(ewm.update(2.0), None);
+        assert!(ewm.update(3.0).is_some());
+    }
+}
