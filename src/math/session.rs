@@ -144,10 +144,8 @@ struct Building<R> {
 impl<R: Range> RangeState for Building<R> {}
 
 #[derive(Debug, Clone, Copy)]
-struct Closed<R> {
-    range: R,
-}
-impl<R: Range> RangeState for Closed<R> {}
+struct Closed;
+impl RangeState for Closed {}
 
 /// Deterministic outcome of processing one event.
 enum TransitionOutcome<Status, R> {
@@ -161,7 +159,7 @@ enum TransitionOutcome<Status, R> {
 /// The one thing each event family must supply: how to open a session from its
 /// first event and how to fold subsequent in-session events in. Everything else
 /// (timing, transitions, completion, caching, reset) is the shared.
-trait Range: Debug + Copy + Send + Sync {
+pub trait Range: Debug + Copy + Send + Sync {
     type Indicator: StreamingIndicator + Clone;
     type Event: MarketEvent;
 
@@ -247,7 +245,7 @@ impl<R: Range> OvernightRange<R, Awaiting> {
     }
 }
 
-impl<R: Range> OvernightRange<R, Closed<R>> {
+impl<R: Range> OvernightRange<R, Closed> {
     fn update(self, event: R::Event) -> TransitionOutcome<OvernightRangeStatus<R>, R> {
         match self.window.classify(event.point_in_time()) {
             WindowPosition::Within(session) => TransitionOutcome::Progress(
@@ -261,8 +259,8 @@ impl<R: Range> OvernightRange<R, Closed<R>> {
 }
 
 impl<R: Range> OvernightRange<R, Building<R>> {
-    fn close(self) -> OvernightRange<R, Closed<R>> {
-        self.map(|s| Closed { range: s.range })
+    fn close(self) -> OvernightRange<R, Closed> {
+        self.map(|_| Closed)
     }
 
     fn update(self, event: R::Event) -> TransitionOutcome<OvernightRangeStatus<R>, R> {
@@ -306,7 +304,7 @@ impl<R: Range> OvernightRange<R, Building<R>> {
 enum OvernightRangeStatus<R: Range> {
     Awaiting(OvernightRange<R, Awaiting>),
     Building(OvernightRange<R, Building<R>>),
-    Closed(OvernightRange<R, Closed<R>>),
+    Closed(OvernightRange<R, Closed>),
 }
 
 impl<R: Range> OvernightRangeStatus<R> {
@@ -328,7 +326,7 @@ impl<R: Range> OvernightRangeStatus<R> {
 }
 
 #[derive(Debug, Clone)]
-struct StreamingOvernightRange<R: Range> {
+pub struct StreamingOvernightRange<R: Range> {
     status: OvernightRangeStatus<R>,
     last_completed_session: Option<R>,
 }
