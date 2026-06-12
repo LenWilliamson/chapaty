@@ -23,13 +23,22 @@ pub use crate::data::filter::*;
 pub use crate::data::query::*;
 
 // 6. Technical Indicators
-pub use crate::data::batch_indicator::*;
+// 6.a Batch Indicators
+pub use crate::data::batch_indicator::config::*;
+pub use crate::data::batch_indicator::ohlcv::*;
+pub use crate::data::batch_indicator::trades::*;
+// 6.b. Streaming Indicators
+pub use crate::math::accumulators::*;
 pub use crate::math::fair_value_gap::*;
 pub use crate::math::market_profile::*;
+pub use crate::math::momentum::*;
 pub use crate::math::moving_averages::*;
 pub use crate::math::oscillators::*;
+pub use crate::math::session::*;
 pub use crate::math::swing::*;
+pub use crate::math::timing::*;
 pub use crate::math::traits::*;
+pub use crate::math::volatility::*;
 
 // 7. Errors
 pub use crate::error::*;

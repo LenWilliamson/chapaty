@@ -209,6 +209,22 @@ impl From<LiquiditySide> for bool {
     }
 }
 
+/// Selects which aggregated price of a bar is used for calculations.
+///
+/// Only meaningful for bar-like data that spans a range (e.g. [`Ohlcv`]).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
+pub enum AggregatedPrice {
+    /// `(High + Low + Close) / 3`. The industry-standard typical price.
+    #[default]
+    Hlc3,
+    /// `(High + Low) / 2`. Weights the bar by its extremes only (Median price).
+    Hl2,
+    /// `(Open + High + Low + Close) / 4`. Equal weight to all four prices.
+    Ohlc4,
+    /// `Close` only. Ignores intra-bar movement entirely.
+    Close,
+}
+
 /// Indicates the depth of the Order Book where the trade execution occurred.
 ///
 /// This provides insight into the "aggressiveness" of the trade and the

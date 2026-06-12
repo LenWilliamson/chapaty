@@ -1,36 +1,35 @@
+use polars::prelude::{Expr, LazyFrame, SortMultipleOptions, col};
+
+use crate::{
+    error::{ChapatyError, DataError},
+    transport::schema::CanonicalCol,
+};
+
+pub mod config;
 pub mod ohlcv;
 pub mod trades;
 
-use chrono_tz::Tz;
-use serde::{Deserialize, Serialize};
-
-use crate::error::{ChapatyError, DataError};
-
-/// Stateless cumulative Volume-Weighted Average Price
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct VwapConfig;
-
-/// Configuration for extracting session ranges natively in Polars.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionConfig {
-    pub timezone: Tz,
-    pub start_h: u8,
-    pub start_m: u8,
-    pub end_h: u8,
-    pub end_m: u8,
+trait BatchCompute {
+    fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame>;
 }
 
-/// A trait enabling builder-pattern injection of batch indicators.
-pub trait WithBatchIndicators: Sized {
-    type BatchIndicator: Clone;
-
-    fn with_indicator(self, kind: Self::BatchIndicator) -> Self;
-
-    fn with_indicators(self, kinds: &[Self::BatchIndicator]) -> Self {
-        kinds
-            .iter()
-            .fold(self, |acc, kind| acc.with_indicator(kind.clone()))
-    }
+/// Projects a single-value indicator into the canonical `[Timestamp, Price]` shape
+/// consumed by the technical-indicator pipeline.
+///
+/// The frame is sorted by timestamp (so windowed/recursive expressions evaluate in
+/// order), the indicator value is placed in `Price`, and warm-up rows where the
+/// value is still null are dropped. This mirrors the `{ timestamp, price }` output
+/// structs of the streaming indicators (`Ema`, `Sma`, `Rsi`, ...).
+fn finalize_scalar(lf: LazyFrame, value: Expr) -> LazyFrame {
+    lf.sort(
+        [CanonicalCol::Timestamp],
+        SortMultipleOptions::default().with_maintain_order(false),
+    )
+    .select([
+        col(CanonicalCol::Timestamp),
+        value.alias(CanonicalCol::Price),
+    ])
+    .filter(col(CanonicalCol::Price).is_not_null())
 }
 
 fn convert_err(e: polars::error::PolarsError) -> ChapatyError {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::{Price, Volume},
+        domain::{AggregatedPrice, Price, Volume},
         event::{Ohlcv, TradeEvent},
     },
     math::{
@@ -154,24 +154,6 @@ impl StreamingIndicator for StreamingAtr {
 // VWAP
 // ================================================================================================
 
-/// Selects which price of a bar feeds into the volume-weighted average.
-///
-/// Only meaningful for bar-like data that spans a range (e.g. [`Ohlcv`]).
-/// Point-like data such as a [`TradeEvent`] has a single execution price and
-/// does not use this setting.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub enum VwapPriceSource {
-    /// `(High + Low + Close) / 3`. The industry-standard VWAP price.
-    #[default]
-    Hlc3,
-    /// `(High + Low) / 2`. Weights the bar by its extremes only.
-    Hl2,
-    /// `(Open + High + Low + Close) / 4`. Equal weight to all four prices.
-    Ohlc4,
-    /// `Close` only. Ignores intra-bar movement entirely.
-    Close,
-}
-
 /// Shared accumulator for the `sum(price * volume) / sum(volume)` core.
 ///
 /// VWAP variants only differ on how they derive the `(price, volume)` pair they feed in.
@@ -220,12 +202,12 @@ impl KahanAccumulator {
 /// The per-bar price fed into the average is chosen via [`VwapPriceSource`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingOhlcvVwap {
-    source: VwapPriceSource,
+    source: AggregatedPrice,
     acc: KahanAccumulator,
 }
 
 impl StreamingOhlcvVwap {
-    pub fn new(source: VwapPriceSource) -> Self {
+    pub fn new(source: AggregatedPrice) -> Self {
         Self {
             source,
             acc: KahanAccumulator::default(),
@@ -239,19 +221,19 @@ impl StreamingOhlcvVwap {
 
     fn weighting_price(&self, ohlcv: Ohlcv) -> Price {
         match self.source {
-            VwapPriceSource::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
-            VwapPriceSource::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
-            VwapPriceSource::Ohlc4 => {
+            AggregatedPrice::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
+            AggregatedPrice::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
+            AggregatedPrice::Ohlc4 => {
                 Price((ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close).0 / 4.0)
             }
-            VwapPriceSource::Close => ohlcv.close,
+            AggregatedPrice::Close => ohlcv.close,
         }
     }
 }
 
 impl Default for StreamingOhlcvVwap {
     fn default() -> Self {
-        Self::new(VwapPriceSource::default())
+        Self::new(AggregatedPrice::default())
     }
 }
 
@@ -435,7 +417,7 @@ mod tests {
 
     #[test]
     fn ohlcv_vwap_accumulates_and_ignores_bad_volume() {
-        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        let mut vwap = StreamingOhlcvVwap::new(AggregatedPrice::Hlc3);
 
         // 1. VWAP should be None before any data is fed
         assert_eq!(vwap.value(), None);
@@ -465,19 +447,19 @@ mod tests {
     fn ohlcv_vwap_respects_price_sources() {
         let candle = mock_candle(10., 20., 10., 18., 100.); // O=10, H=20, L=10, C=18
 
-        let mut vwap_hlc3 = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        let mut vwap_hlc3 = StreamingOhlcvVwap::new(AggregatedPrice::Hlc3);
         assert_eq!(vwap_hlc3.update(candle), Some((20. + 10. + 18.) / 3.0)); // 16.0
 
-        let mut vwap_hl2 = StreamingOhlcvVwap::new(VwapPriceSource::Hl2);
+        let mut vwap_hl2 = StreamingOhlcvVwap::new(AggregatedPrice::Hl2);
         assert_eq!(vwap_hl2.update(candle), Some((20. + 10.) / 2.0)); // 15.0
 
-        let mut vwap_ohlc4 = StreamingOhlcvVwap::new(VwapPriceSource::Ohlc4);
+        let mut vwap_ohlc4 = StreamingOhlcvVwap::new(AggregatedPrice::Ohlc4);
         assert_eq!(
             vwap_ohlc4.update(candle),
             Some((10. + 20. + 10. + 18.) / 4.0)
         ); // 14.5
 
-        let mut vwap_close = StreamingOhlcvVwap::new(VwapPriceSource::Close);
+        let mut vwap_close = StreamingOhlcvVwap::new(AggregatedPrice::Close);
         assert_eq!(vwap_close.update(candle), Some(18.0)); // 18.0
     }
 
@@ -485,7 +467,7 @@ mod tests {
     /// after zero/negative-volume bars have been fed.
     #[test]
     fn ohlcv_vwap_is_none_until_positive_volume() {
-        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        let mut vwap = StreamingOhlcvVwap::new(AggregatedPrice::Hlc3);
         assert_eq!(vwap.update(mock_candle(0., 10., 8., 9., 0.)), None);
         assert_eq!(vwap.update(mock_candle(0., 10., 8., 9., -5.)), None);
         // First valid bar establishes the average.
@@ -495,7 +477,7 @@ mod tests {
     /// `reset` re-anchors the average: prior accumulation is dropped entirely.
     #[test]
     fn ohlcv_vwap_reset_re_anchors() {
-        let mut vwap = StreamingOhlcvVwap::new(VwapPriceSource::Hlc3);
+        let mut vwap = StreamingOhlcvVwap::new(AggregatedPrice::Hlc3);
         vwap.update(mock_candle(0., 10., 8., 9., 100.));
         vwap.update(mock_candle(0., 20., 10., 15., 200.));
         assert_eq!(vwap.value(), Some(13.0));

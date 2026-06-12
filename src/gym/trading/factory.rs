@@ -245,6 +245,14 @@ impl BuildCtx {
                         };
                         rsi_map.insert(id, (schema.clone(), lf_result));
                     }
+                    // ATR / RateOfChange / VWAP / OvernightRange have working
+                    // `pre_compute` transforms but no dedicated downstream id-map yet,
+                    // so they are not registered here. Wiring them follows the same
+                    // pattern as the moving averages above.
+                    BatchOhlcvIndicator::Atr(_)
+                    | BatchOhlcvIndicator::RateOfChange(_)
+                    | BatchOhlcvIndicator::Vwap(_)
+                    | BatchOhlcvIndicator::OvernightRange(_) => {}
                 }
             }
             Ok(())

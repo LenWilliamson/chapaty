@@ -108,6 +108,35 @@ pub enum CanonicalCol {
     Forecast,
     /// The value from the previous period.
     Previous,
+
+    // ========================================================================
+    // Derived Technical Indicators
+    // ========================================================================
+    //
+    // Single-value indicators (EMA, SMA, RSI, ATR, VWAP) are emitted in the
+    // canonical `[Timestamp, Price]` shape — their value lives in `Price`, matching
+    // the `{ timestamp, price }` streaming output structs. Only multi-value
+    // indicators need their own columns.
+    /// Rate of Change, expressed as a percentage.
+    Roc,
+    /// Absolute price change over the Rate of Change lookback.
+    RocAbsolute,
+
+    // === Session / Overnight Range ===
+    /// Anchor date identifying the session a row belongs to (null when outside any session).
+    SessionDate,
+    /// Running session high.
+    SessionHigh,
+    /// Running session low.
+    SessionLow,
+    /// Running session highest close.
+    SessionHighestClose,
+    /// Running session lowest close.
+    SessionLowestClose,
+    /// Running session cumulative volume.
+    SessionVolume,
+    /// Running session VWAP.
+    SessionVwap,
 }
 
 impl From<CanonicalCol> for PlSmallStr {
@@ -162,7 +191,18 @@ impl CanonicalCol {
             | Self::Actual
             | Self::Forecast
             | Self::Previous
-            | Self::NewsTypeConfidence => DataType::Float64,
+            | Self::NewsTypeConfidence
+            | Self::Roc
+            | Self::RocAbsolute
+            | Self::SessionHigh
+            | Self::SessionLow
+            | Self::SessionHighestClose
+            | Self::SessionLowestClose
+            | Self::SessionVolume
+            | Self::SessionVwap => DataType::Float64,
+
+            // Date (calendar day, no time component)
+            Self::SessionDate => DataType::Date,
 
             // Time
             Self::Timestamp | Self::OpenTimestamp => {

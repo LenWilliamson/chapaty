@@ -50,7 +50,8 @@ impl RingState {
 /// # Examples
 ///
 /// ```rust
-/// # use chapaty::ring_buffer::RingBuffer;
+/// use chapaty::ring_buffer::RingBuffer;
+///
 /// let mut buffer = RingBuffer::new(2);
 /// assert_eq!(buffer.push("a"), None);
 /// assert_eq!(buffer.push("b"), None);
@@ -86,7 +87,7 @@ impl<T> RingBuffer<T> {
     pub fn new(capacity: usize) -> Self {
         assert!(
             capacity > 0,
-            "RingBuffer capacity must be strictly greater than 0"
+            "RingBuffer capacity must be strictly greater than 0. Got {capacity} <= 0."
         );
         Self {
             capacity,
@@ -153,7 +154,7 @@ impl<T> RingBuffer<T> {
     ///
     /// While the buffer is still filling, `value` is appended and [`None`] is
     /// returned. Once the buffer is full, `value` overwrites the oldest element
-    /// and that element is returned as [`Some`]. Runs in *O*(1) and never
+    /// and that element is returned as [`Some`]. Runs in _O_(1) and never
     /// allocates.
     ///
     /// # Examples
