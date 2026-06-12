@@ -521,8 +521,8 @@ mod tests {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    /// Builds a flat OHLCV candle whose only meaningful field for this indicator
-    /// is `close`. Timestamps are fixed at 2026-06-11 ~17:30 UTC.
+    /// Builds a flat OHLCV candle whose only meaningful field for this indicator is `close`.
+    /// Timestamps are fixed.
     fn candle(close: f64) -> Ohlcv {
         Ohlcv {
             open_timestamp: ts("2026-06-11T17:30:00Z"),
@@ -557,14 +557,44 @@ mod tests {
         }
     }
 
-    /// Feeds a slice of closes and collects the emitted signal per bar.
-    fn feed(td: &mut StreamingTdXSequential, closes: &[f64]) -> Vec<Option<TdDirection>> {
+    fn feed_tdx(td: &mut StreamingTdXSequential, closes: &[f64]) -> Vec<Option<TdDirection>> {
         closes.iter().map(|&c| td.update(candle(c))).collect()
     }
 
-    /// Feeds a slice of closes into the two-phase indicator (flat candles).
-    fn run(td: &mut StreamingTdSequential, closes: &[f64]) -> Vec<Option<TdSignal>> {
+    fn feed_td(td: &mut StreamingTdSequential, closes: &[f64]) -> Vec<Option<TdSignal>> {
         closes.iter().map(|&c| td.update(candle(c))).collect()
+    }
+
+    /// A test helper that evaluates one bar against a Countdown.
+    /// It asserts that the Countdown is still running (Pending) and returns the
+    /// updated Countdown state.
+    fn step(cd: Countdown, ctx: CountdownEvalContext) -> Countdown {
+        match cd.evaluate(ctx) {
+            CountdownResult::Pending(next) => next,
+            CountdownResult::Completed(dir) => panic!("unexpected completion: {dir:?}"),
+        }
+    }
+
+    /// A buy-side [`CountdownEvalContext`]. `high` is irrelevant to buy logic, so
+    /// it mirrors the close.
+    fn buy_ctx(target: usize, close: f64, low: f64, low_n_back: f64) -> CountdownEvalContext {
+        CountdownEvalContext {
+            target,
+            candle: candle_hlc(close, low, close),
+            low_n_back: Some(low_n_back),
+            high_n_back: None,
+        }
+    }
+
+    /// A sell-side [`CountdownEvalContext`]. `low` is irrelevant to sell logic, so
+    /// it mirrors the close.
+    fn sell_ctx(target: usize, close: f64, high: f64, high_n_back: f64) -> CountdownEvalContext {
+        CountdownEvalContext {
+            target,
+            candle: candle_hlc(high, close, close),
+            low_n_back: None,
+            high_n_back: Some(high_n_back),
+        }
     }
 
     /// A pure decline never produces a bearish price flip, so per DeMark no buy
@@ -572,7 +602,7 @@ mod tests {
     #[test]
     fn monotonic_decline_without_flip_emits_nothing() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        let out = feed(&mut td, &[50.0, 40.0, 30.0, 20.0, 10.0]);
+        let out = feed_tdx(&mut td, &[50.0, 40.0, 30.0, 20.0, 10.0]);
         assert!(out.iter().all(|o| o.is_none()));
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
@@ -582,7 +612,7 @@ mod tests {
     #[test]
     fn bearish_flip_starts_buy_setup() {
         let mut td = StreamingTdXSequential::new(1, 9);
-        feed(&mut td, &[10.0, 20.0, 19.0]); // up, then the first lower close = flip
+        feed_tdx(&mut td, &[10.0, 20.0, 19.0]); // up, then the first lower close = flip
         assert_eq!(
             td.state,
             InternalSetupState::Tracking {
@@ -596,7 +626,7 @@ mod tests {
     #[test]
     fn completes_buy_setup_and_emits_bullish() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        let out = feed(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0]);
+        let out = feed_tdx(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0]);
         assert_eq!(
             out,
             vec![None, None, None, None, Some(TdDirection::BullishReversal)]
@@ -607,7 +637,7 @@ mod tests {
     #[test]
     fn completes_sell_setup_and_emits_bearish() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        let out = feed(&mut td, &[20.0, 10.0, 11.0, 12.0, 13.0]);
+        let out = feed_tdx(&mut td, &[20.0, 10.0, 11.0, 12.0, 13.0]);
         assert_eq!(
             out,
             vec![None, None, None, None, Some(TdDirection::BearishReversal)]
@@ -619,7 +649,7 @@ mod tests {
     #[test]
     fn opposite_flip_resets_to_other_direction() {
         let mut td = StreamingTdXSequential::new(1, 5);
-        feed(&mut td, &[10.0, 20.0, 19.0, 18.0]); // bullish, count 2
+        feed_tdx(&mut td, &[10.0, 20.0, 19.0, 18.0]); // bullish, count 2
         assert_eq!(
             td.state,
             InternalSetupState::Tracking {
@@ -643,7 +673,7 @@ mod tests {
     #[test]
     fn flat_close_breaks_sequence() {
         let mut td = StreamingTdXSequential::new(1, 5);
-        feed(&mut td, &[10.0, 20.0, 19.0]); // bullish, count 1
+        feed_tdx(&mut td, &[10.0, 20.0, 19.0]); // bullish, count 1
         assert_eq!(td.update(candle(19.0)), None); // 19 == 19 -> Flat
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
@@ -652,7 +682,7 @@ mod tests {
     #[test]
     fn recycles_and_re_emits_at_second_multiple() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        let out = feed(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0]);
+        let out = feed_tdx(&mut td, &[10.0, 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0]);
         let signal_count = out.iter().filter(|o| o.is_some()).count();
         assert_eq!(signal_count, 2);
         assert_eq!(out[4], Some(TdDirection::BullishReversal)); // count 3
@@ -664,7 +694,7 @@ mod tests {
     #[test]
     fn warmup_blocks_comparison_until_buffer_full() {
         let mut td = StreamingTdXSequential::td9(); // lookback 4
-        let out = feed(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
+        let out = feed_tdx(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
         assert!(out.iter().all(|o| o.is_none()));
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
@@ -674,7 +704,7 @@ mod tests {
     #[test]
     fn nan_close_is_treated_as_flat_and_does_not_panic() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        let out = feed(&mut td, &[10.0, 20.0, f64::NAN]);
+        let out = feed_tdx(&mut td, &[10.0, 20.0, f64::NAN]);
         assert_eq!(out, vec![None, None, None]);
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
@@ -683,7 +713,7 @@ mod tests {
     #[test]
     fn reset_restores_warmup_and_neutral_state() {
         let mut td = StreamingTdXSequential::new(1, 3);
-        feed(&mut td, &[10.0, 20.0, 19.0, 18.0]);
+        feed_tdx(&mut td, &[10.0, 20.0, 19.0, 18.0]);
         td.reset();
         assert_eq!(td.state, InternalSetupState::Neutral);
         assert_eq!(td.last_cmp, PriceRelationship::Flat);
@@ -704,7 +734,7 @@ mod tests {
         // setup: lookback 1, target 3; countdown target 4 (below the 8th-bar rule).
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
             .with_countdown_start(CountdownStart::NextBar);
-        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+        let out = feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
 
         let mut expected = vec![None; 9];
         expected[4] = Some(TdSignal::Setup(TdDirection::BullishReversal));
@@ -719,7 +749,7 @@ mod tests {
     fn two_phase_setup_bar_convention_counts_completion_bar() {
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
             .with_countdown_start(CountdownStart::SetupBar);
-        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
+        let out = feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
 
         let mut expected = vec![None; 9];
         expected[4] = Some(TdSignal::Setup(TdDirection::BullishReversal));
@@ -745,7 +775,7 @@ mod tests {
         let find_countdown = |start| {
             let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
                 .with_countdown_start(start);
-            run(&mut td, &series)
+            feed_td(&mut td, &series)
                 .iter()
                 .position(|o| matches!(o, Some(TdSignal::Countdown(_))))
                 .unwrap()
@@ -761,7 +791,7 @@ mod tests {
     fn two_phase_completes_setup_then_countdown_bearish() {
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
             .with_countdown_start(CountdownStart::NextBar);
-        let out = run(
+        let out = feed_td(
             &mut td,
             &[10.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
         );
@@ -780,7 +810,7 @@ mod tests {
             .with_countdown_start(CountdownStart::NextBar);
         // Buy setup completes at idx 4; then three rising closes complete a sell
         // setup at idx 7 while the buy countdown is still far from 13.
-        let out = run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 20.0, 21.0, 22.0]);
+        let out = feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 20.0, 21.0, 22.0]);
 
         assert_eq!(out[4], Some(TdSignal::Setup(TdDirection::BullishReversal)));
         assert_eq!(out[7], Some(TdSignal::Setup(TdDirection::BearishReversal)));
@@ -797,65 +827,159 @@ mod tests {
     #[test]
     fn td9_13_silent_during_warmup() {
         let mut td = StreamingTdSequential::td9_13();
-        let out = run(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
+        let out = feed_td(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
         assert!(out.iter().all(|o| o.is_none()));
         assert_eq!(td.countdown_progress(), None);
     }
 
-    /// Unit-level check of the Countdown's non-consecutive rule: a bar that does
-    /// not qualify must not advance the count.
+    /// The Countdown's non-consecutive rule: a bar that does not qualify leaves
+    /// the state untouched; a qualifying one advances the count by one.
     #[test]
     fn countdown_skips_non_qualifying_bars() {
-        let mut cd = Countdown::new(TdDirection::BullishReversal);
-        // close 100 > low_n_back 10 -> does not qualify.
-        assert_eq!(cd.evaluate(13, 100.0, 100.0, 100.0, Some(10.0), None), None);
+        let cd = Countdown::new(TdDirection::BullishReversal);
+
+        // close 100 > low_n_back 10 -> does not qualify; count stays 0.
+        let cd = step(cd, buy_ctx(13, 100.0, 100.0, 10.0));
         assert_eq!(cd.count, 0);
-        // close 5 <= 10 -> qualifies.
-        assert_eq!(cd.evaluate(13, 5.0, 5.0, 5.0, Some(10.0), None), None);
+
+        // close 5 <= low_n_back 10 -> qualifies; count advances to 1.
+        let cd = step(cd, buy_ctx(13, 5.0, 5.0, 10.0));
         assert_eq!(cd.count, 1);
     }
 
-    /// Unit-level check of the 8th-bar deferral: a would-be 13th bar whose low is
-    /// above the close of bar 8 is deferred until a fully-qualifying bar arrives.
+    /// The qualifier close is recorded exactly when the count reaches bar 8.
+    /// Not before, not after. Guards the `tentative == COUNTDOWN_QUALIFIER_BAR`
+    /// condition against off-by-one refactors.
+    #[test]
+    fn countdown_records_qualifier_close_exactly_at_bar_eight() {
+        let mut cd = Countdown::new(TdDirection::BullishReversal);
+
+        // Counts 1..=7 carry distinct closes, but the qualifier must stay unset.
+        for count in 1..=7u64 {
+            cd = step(cd, buy_ctx(13, count as f64, 0.0, 1000.0));
+            assert_eq!(cd.count as u64, count);
+            assert_eq!(cd.qualifier_close, None, "qualifier set before bar 8");
+        }
+
+        // The 8th qualifying bar records its close — and only it.
+        cd = step(cd, buy_ctx(13, 42.0, 0.0, 1000.0));
+        assert_eq!(cd.count, 8);
+        assert_eq!(cd.qualifier_close, Some(42.0));
+    }
+
+    /// Regression guard for the `..self` carry-over in `evaluate`: once the
+    /// qualifier close is recorded at bar 8, every later advance (and every
+    /// skipped bar) must preserve it. A refactor that drops the struct spread or
+    /// resets the field on non-qualifier bars would be caught here.
+    #[test]
+    fn countdown_preserves_qualifier_close_after_it_is_set() {
+        let mut cd = Countdown::new(TdDirection::BullishReversal);
+        for _ in 0..7 {
+            cd = step(cd, buy_ctx(13, 0.0, 0.0, 1000.0));
+        }
+        cd = step(cd, buy_ctx(13, 42.0, 0.0, 1000.0)); // bar 8 records qualifier = 42
+        assert_eq!(cd.qualifier_close, Some(42.0));
+
+        // Advancing bars 9..=12 (closes deliberately != 42) must carry it unchanged.
+        for expected in 9..=12 {
+            cd = step(cd, buy_ctx(13, 7.0, 0.0, 1000.0));
+            assert_eq!(cd.count, expected);
+            assert_eq!(
+                cd.qualifier_close,
+                Some(42.0),
+                "qualifier_close must persist after bar 8"
+            );
+        }
+
+        // A non-qualifying bar (no advance) must also keep it.
+        let cd = step(cd, buy_ctx(13, 999.0, 0.0, 10.0)); // close 999 > 10 -> skipped
+        assert_eq!(cd.count, 12);
+        assert_eq!(cd.qualifier_close, Some(42.0));
+    }
+
+    /// The 8th-bar deferral: a would-be final bar whose low is above the close of
+    /// bar 8 is deferred (state unchanged) until a fully-qualifying bar arrives.
     #[test]
     fn countdown_defers_thirteenth_until_qualifier_met() {
         let mut cd = Countdown::new(TdDirection::BullishReversal);
-        let always = Some(1000.0); // low_n_back high enough that close always qualifies
 
-        // Counts 1..=7.
+        // Counts 1..=7 (low_n_back high enough that the close always qualifies).
         for _ in 0..7 {
-            assert_eq!(cd.evaluate(13, 0.0, 0.0, 0.0, always, None), None);
+            cd = step(cd, buy_ctx(13, 0.0, 0.0, 1000.0));
         }
         assert_eq!(cd.count, 7);
 
         // Count 8 records the qualifier close (50.0).
-        assert_eq!(cd.evaluate(13, 50.0, 0.0, 0.0, always, None), None);
+        cd = step(cd, buy_ctx(13, 50.0, 0.0, 1000.0));
         assert_eq!(cd.count, 8);
         assert_eq!(cd.qualifier_close, Some(50.0));
 
         // Counts 9..=12.
         for _ in 0..4 {
-            assert_eq!(cd.evaluate(13, 0.0, 0.0, 0.0, always, None), None);
+            cd = step(cd, buy_ctx(13, 0.0, 0.0, 1000.0));
         }
         assert_eq!(cd.count, 12);
 
-        // 13th attempt: qualifies on close, but low 60 > qualifier 50 -> deferred.
-        assert_eq!(cd.evaluate(13, 0.0, 60.0, 0.0, always, None), None);
-        assert_eq!(cd.count, 12, "deferred bar must not advance the count");
+        // 13th attempt: close qualifies, but low 60 > qualifier 50 -> deferred.
+        let deferred = cd.evaluate(buy_ctx(13, 0.0, 60.0, 1000.0));
+        assert_eq!(
+            deferred,
+            CountdownResult::Pending(cd),
+            "deferral must not advance"
+        );
 
         // 13th attempt: low 40 <= qualifier 50 -> completes.
+        let completed = cd.evaluate(buy_ctx(13, 0.0, 40.0, 1000.0));
         assert_eq!(
-            cd.evaluate(13, 0.0, 40.0, 0.0, always, None),
-            Some(TdDirection::BullishReversal)
+            completed,
+            CountdownResult::Completed(TdDirection::BullishReversal)
         );
-        assert_eq!(cd.count, 13);
+    }
+
+    /// Sell-side qualification (`close >= high_n_back`) and completion with a
+    /// sub-8 target (the qualifier rule is inert).
+    #[test]
+    fn countdown_completes_sell_side() {
+        let mut cd = Countdown::new(TdDirection::BearishReversal);
+
+        // target 4: counts 1..=3 pending, then the 4th qualifying bar completes.
+        for _ in 0..3 {
+            cd = step(cd, sell_ctx(4, 100.0, 100.0, 10.0));
+        }
+        assert_eq!(cd.count, 3);
+        assert_eq!(
+            cd.evaluate(sell_ctx(4, 100.0, 100.0, 10.0)),
+            CountdownResult::Completed(TdDirection::BearishReversal)
+        );
+    }
+
+    /// Sell-side final-bar rule (`high >= close[8]`), exercised by constructing the
+    /// pre-final state directly so the test stays compact.
+    #[test]
+    fn countdown_final_bar_respects_qualifier_for_sell() {
+        let cd = Countdown {
+            direction: TdDirection::BearishReversal,
+            count: 12,
+            qualifier_close: Some(50.0),
+        };
+
+        // high 45 < qualifier 50 -> deferred (state unchanged).
+        let deferred = cd.evaluate(sell_ctx(13, 100.0, 45.0, 10.0));
+        assert_eq!(deferred, CountdownResult::Pending(cd));
+
+        // high 55 >= qualifier 50 -> completes.
+        let completed = cd.evaluate(sell_ctx(13, 100.0, 55.0, 10.0));
+        assert_eq!(
+            completed,
+            CountdownResult::Completed(TdDirection::BearishReversal)
+        );
     }
 
     /// `reset` clears both phases.
     #[test]
     fn two_phase_reset_clears_everything() {
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4);
-        run(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0]); // setup done, countdown counting
+        feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0]); // setup done, countdown counting
         assert!(td.countdown_progress().is_some());
 
         td.reset();
