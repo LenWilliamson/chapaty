@@ -15,14 +15,12 @@ pub enum TdDirection {
     BearishReversal,
 }
 
-/// Represents the relationship between the current close and the historical close $N$ bars ago.
+/// Represents the relationship between the current close and the historical close N bars ago.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub enum PriceRelationship {
     /// The current close is strictly higher than the historical close.
-    /// Acts as a Bearish Price Flip, which is required to begin tracking a `BullishReversal` (Buy Setup).
     Higher,
     /// The current close is strictly lower than the historical close.
-    /// Acts as a Bullish Price Flip, which is required to begin tracking a `BearishReversal` (Sell Setup).
     Lower,
     /// The close is perfectly equal, or the indicator has just been initialized (neutral state).
     /// If an invalid float (`NaN`) is encountered, it gracefully defaults to this state.
@@ -42,7 +40,7 @@ impl From<Option<Ordering>> for PriceRelationship {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 enum InternalSetupState {
-    /// No active sequence is being tracked (e.g., price is flat or sequence broken).
+    /// No active sequence is being tracked.
     #[default]
     Neutral,
     /// Actively tracking a sequence of higher or lower closes.
@@ -79,7 +77,7 @@ impl InternalSetupState {
 }
 
 // ================================================================================================
-// Indicator: TD Sequential Setup
+// Indicator: TD X Sequential Setup
 // ================================================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +86,12 @@ pub struct StreamingTdXSequential {
     buffer: RingBuffer<f64>,
     state: InternalSetupState,
     last_cmp: PriceRelationship,
+}
+
+impl Default for StreamingTdXSequential {
+    fn default() -> Self {
+        Self::td9()
+    }
 }
 
 impl StreamingTdXSequential {
@@ -104,14 +108,14 @@ impl StreamingTdXSequential {
         }
     }
 
-    /// The canonical TD Sequential **Setup**: nine closes, each beyond the close
+    /// The canonical TD Sequential Setup: nine closes, each beyond the close
     /// four bars earlier. This is the standard. Prefer it unless you specifically
     /// want a non-standard variant.
     pub fn td9() -> Self {
         Self::td(9)
     }
 
-    /// A TD **Setup** with a custom completion count, keeping the canonical 4-bar
+    /// A TD Setup with a custom completion count, keeping the canonical 4-bar
     /// lookback. `td(9)` is the standard. Other counts are deliberate variations
     /// and are *not* the TD Countdown (which is a separate, unmodeled phase).
     pub fn td(target_count: usize) -> Self {
@@ -123,7 +127,7 @@ impl StreamingTdXSequential {
     /// Evaluates if the current sequence count constitutes a completed TD Setup.
     ///
     /// In standard TD methodology, a setup completes at exactly `target_count` (e.g., 9).
-    /// By checking exact multiples (e.g., 18, 27), we seamlessly handle "Setup Recycling",
+    /// By checking exact multiples (e.g., 18, 27), we handle "Setup Recycling",
     /// ensuring extreme trend breakouts continue to emit valid exhaustion signals
     /// rather than being silently ignored.
     fn is_setup_completion(&self, count: usize) -> bool {
@@ -193,7 +197,7 @@ const COUNTDOWN_TARGET_STANDARD: usize = 13;
 const COUNTDOWN_LOOKBACK: usize = 2;
 
 /// The Countdown's final bar is validated against the close of this earlier count
-/// (DeMark's "8th bar" rule). Inert for targets at or below this value.
+/// (DeMark's "8th bar" rule). Ignored for targets at or below this value.
 const COUNTDOWN_QUALIFIER_BAR: usize = 8;
 
 /// Selects which bar the Countdown (phase 2) starts counting on, once a Setup
@@ -212,15 +216,21 @@ pub enum CountdownStart {
     NextBar,
 }
 
+impl CountdownStart {
+    pub fn is_next_bar(&self) -> bool {
+        matches!(self, CountdownStart::NextBar)
+    }
+}
+
 /// The signal emitted by [`StreamingTdSequential`], identifying which phase of
 /// the two-phase sequence just completed.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-enum TdSignal {
+pub enum TdSignal {
     /// Phase 1 complete: a TD Setup of this direction finished (the classic "9").
     /// A Countdown of the same direction begins immediately afterwards.
     Setup(TdDirection),
-    /// Phase 2 complete: a TD Countdown of this direction finished (the classic
-    /// "13"). This is the terminal, high-conviction exhaustion signal.
+    /// Phase 2 complete: a TD Countdown of this direction finished (the classic "13").
+    /// This is the terminal, high-conviction exhaustion signal.
     Countdown(TdDirection),
 }
 
@@ -231,6 +241,28 @@ struct Countdown {
     count: usize,
     /// Close of the qualifier bar (the 8th counted bar), referenced by the final bar.
     qualifier_close: Option<f64>,
+}
+
+/// Represents the outcome of evaluating a bar against a running Countdown.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CountdownResult {
+    /// The countdown is still in progress. Returns the updated state.
+    Pending(Countdown),
+    /// The countdown has reached its target and completed, yielding the final signal.
+    Completed(TdDirection),
+}
+
+/// Context containing all necessary price data and targets to evaluate a bar against a running Countdown.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CountdownEvalContext {
+    /// The target number of qualifying bars required to complete the Countdown (standard is 13).
+    target: usize,
+    /// The current evaluated OHLCV bar.
+    candle: Ohlcv,
+    /// The lowest price from `COUNTDOWN_LOOKBACK` bars prior. Evaluated against the current `close` for bullish signals.
+    low_n_back: Option<f64>,
+    /// The highest price from `COUNTDOWN_LOOKBACK` bars prior. Evaluated against the current `close` for bearish signals.
+    high_n_back: Option<f64>,
 }
 
 impl Countdown {
@@ -246,41 +278,56 @@ impl Countdown {
     /// when the bar qualifies. Qualifying bars need NOT be consecutive.
     /// Bars that do not qualify are simply skipped.
     ///
-    /// Returns `Some(direction)` only on the bar that completes the Countdown.
-    fn evaluate(
-        &mut self,
-        target: usize,
-        close: f64,
-        low: f64,
-        high: f64,
-        low_n_back: Option<f64>,
-        high_n_back: Option<f64>,
-    ) -> Option<TdDirection> {
+    /// Consumes the current state by value and yields back either a newly constructed,
+    /// advanced state or the final completion signal.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`CountdownResult`]. If the countdown completes on this bar, returns
+    /// `Completed(TdDirection)`. Otherwise, returns `Pending(Countdown)` yielding a
+    /// new instance with the potentially updated state.
+    fn evaluate(self, ctx: CountdownEvalContext) -> CountdownResult {
+        let CountdownEvalContext {
+            target,
+            candle,
+            low_n_back,
+            high_n_back,
+        } = ctx;
+        let close = candle.close.0;
+        let low = candle.low.0;
+        let high = candle.high.0;
+
         let qualifies = match self.direction {
             // Buy Countdown: close at or below the low `COUNTDOWN_LOOKBACK` bars earlier.
             TdDirection::BullishReversal => matches!(low_n_back, Some(l) if close <= l),
             // Sell Countdown: close at or above the high `COUNTDOWN_LOOKBACK` bars earlier.
             TdDirection::BearishReversal => matches!(high_n_back, Some(h) if close >= h),
         };
+
         if !qualifies {
-            return None;
+            return CountdownResult::Pending(self);
         }
 
         let tentative = self.count + 1;
 
         // Not the final bar yet: advance, remembering the qualifier-bar close.
         if tentative < target {
-            self.count = tentative;
-            if self.count == COUNTDOWN_QUALIFIER_BAR {
-                self.qualifier_close = Some(close);
-            }
-            return None;
+            let new_qualifier = if tentative == COUNTDOWN_QUALIFIER_BAR {
+                Some(close)
+            } else {
+                self.qualifier_close
+            };
+
+            return CountdownResult::Pending(Countdown {
+                count: tentative,
+                qualifier_close: new_qualifier,
+                ..self
+            });
         }
 
-        // Final bar: DeMark requires it to also resolve against the qualifier bar
-        // (low <= close[8] for buys, high >= close[8] for sells). For targets at
-        // or below `COUNTDOWN_QUALIFIER_BAR` no qualifier was recorded and the
-        // rule is inert.
+        // Final bar check: DeMark requires the final bar's extreme to exceed the
+        // 8th bar's close. If the target is smaller than 8 (no qualifier recorded),
+        // this rule is safely bypassed.
         let is_final_ok = match (self.direction, self.qualifier_close) {
             (TdDirection::BullishReversal, Some(c8)) => low <= c8,
             (TdDirection::BearishReversal, Some(c8)) => high >= c8,
@@ -288,23 +335,15 @@ impl Countdown {
         };
 
         if is_final_ok {
-            self.count = target;
-            Some(self.direction)
+            CountdownResult::Completed(self.direction)
         } else {
             // Defer: stay one short and wait for a fully-qualifying bar.
-            None
+            CountdownResult::Pending(self)
         }
     }
 }
 
-/// Full two-phase **TD Sequential**: a TD Setup (phase 1) followed by a TD
-/// Countdown (phase 2).
-///
-/// Phase 1 is delegated to a [`StreamingTdXSequential`] so the canonical "9" and
-/// any non-standard setup length share one verified engine. Phase 2 is the
-/// DeMark Countdown: up to thirteen bars (which need not be consecutive) whose
-/// close is at or beyond the low/high two bars earlier, with the standard 8th-bar
-/// qualifier on the final bar.
+/// Full two-phase **TD Sequential**: a TD Setup (phase 1) followed by a TD Countdown (phase 2).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingTdSequential {
     setup: StreamingTdXSequential,
@@ -315,21 +354,26 @@ pub struct StreamingTdSequential {
     countdown: Option<Countdown>,
 }
 
+impl Default for StreamingTdSequential {
+    fn default() -> Self {
+        Self::td9_13()
+    }
+}
+
 impl StreamingTdSequential {
     /// Composes a phase-1 `setup` detector with a `countdown_target`, using the
-    /// canonical 2-bar low/high comparison for phase 2 and the default
-    /// [`CountdownStart`]. The result is non-standard unless `setup` is
-    /// [`StreamingTdXSequential::td9`] and `countdown_target` is 13 (see
-    /// [`Self::td9_13`]). Override the start convention with
-    /// [`Self::with_countdown_start`].
+    /// canonical 2-bar low/high comparison for phase 2 and the default [`CountdownStart`].
+    ///
+    /// The result is non-standard unless `setup` is [`StreamingTdXSequential::td9`] and `countdown_target` is 13
+    /// (see [`Self::td9_13`]). Override the start convention with [`Self::with_countdown_start`].
     ///
     /// # Panics
     ///
-    /// Panics if `countdown_target` is 0.
+    /// Panics if `countdown_target` is <= 0.
     pub fn new(setup: StreamingTdXSequential, countdown_target: usize) -> Self {
         assert!(
             countdown_target > 0,
-            "TD countdown_target must be strictly greater than 0"
+            "TD countdown_target must be strictly greater than 0. Got {countdown_target} <= 0."
         );
         Self {
             setup,
@@ -341,7 +385,7 @@ impl StreamingTdSequential {
         }
     }
 
-    /// Sets the [`CountdownStart`] convention (builder style).
+    /// Sets the [`CountdownStart`] convention.
     pub fn with_countdown_start(self, start: CountdownStart) -> Self {
         Self {
             countdown_start: start,
@@ -363,7 +407,69 @@ impl StreamingTdSequential {
 
     /// The current Countdown count, if a Countdown (phase 2) is in progress.
     pub fn countdown_progress(&self) -> Option<usize> {
-        self.countdown.as_ref().map(|c| c.count)
+        self.countdown.map(|c| c.count)
+    }
+}
+
+impl StreamingTdSequential {
+    /// Executes Phase 1: TD Setup.
+    ///
+    /// Analyzes the td9 setup signal. If a setup completes that contradicts the
+    /// currently running countdown (or if no countdown is active), it establishes
+    /// a new trend, resets the Phase 2 engine, and emits the Setup signal.
+    ///
+    /// Setup completions in the same direction ("recycles") are ignored.
+    fn process_phase_1(&mut self, td9_setup_signal: Option<TdDirection>) -> Option<TdSignal> {
+        td9_setup_signal.and_then(|direction| {
+            let is_new_trend = self
+                .countdown
+                .as_ref()
+                .map_or(true, |active| active.direction != direction);
+
+            if is_new_trend {
+                // Initialize a fresh Phase 2 engine for the new trend.
+                self.countdown = Some(Countdown::new(direction));
+                Some(TdSignal::Setup(direction))
+            } else {
+                // Recycle: Setup direction matches running countdown. Ignore it.
+                None
+            }
+        })
+    }
+
+    /// Executes Phase 2: TD Countdown.
+    ///
+    /// Advances the active countdown using the rolling lookback buffers.
+    /// Returns the terminal Countdown signal if the target is reached on this bar.
+    fn process_phase_2(
+        &mut self,
+        candle: Ohlcv,
+        low_n_back: Option<f64>,
+        high_n_back: Option<f64>,
+    ) -> Option<TdSignal> {
+        match self.countdown.take() {
+            Some(active) => {
+                let ctx = CountdownEvalContext {
+                    target: self.countdown_target,
+                    candle,
+                    low_n_back,
+                    high_n_back,
+                };
+
+                match active.evaluate(ctx) {
+                    CountdownResult::Completed(direction) => {
+                        // Countdown is exhausted. Emit the climax signal.
+                        Some(TdSignal::Countdown(direction))
+                    }
+                    CountdownResult::Pending(updated_countdown) => {
+                        // Still counting. Put the updated state back into the struct.
+                        self.countdown = Some(updated_countdown);
+                        None
+                    }
+                }
+            }
+            None => None,
+        }
     }
 }
 
@@ -372,55 +478,26 @@ impl StreamingIndicator for StreamingTdSequential {
     type Output<'a> = Option<TdSignal>;
 
     fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
-        let close = candle.close.0;
-        let low = candle.low.0;
-        let high = candle.high.0;
+        // 1. Maintain the macro state
+        let td9_setup_signal = self.setup.update(candle);
+        let low_n_back = self.low_buf.push(candle.low.0);
+        let high_n_back = self.high_buf.push(candle.high.0);
 
-        // Phase 1 runs on every bar so a new (or opposite) setup is detected even
-        // while a countdown is already in progress.
-        let setup_signal = self.setup.update(candle);
+        // 2. Evaluate Phase 1
+        let new_setup_signal = self.process_phase_1(td9_setup_signal);
 
-        // Maintain the rolling low/high reference `COUNTDOWN_LOOKBACK` bars back.
-        let low_n_back = self.low_buf.push(low);
-        let high_n_back = self.high_buf.push(high);
-
-        // A completed setup either opens a countdown, or—if it is the opposite
-        // direction—cancels the running one and opens a fresh countdown.
-        let mut setup_event = None;
-        if let Some(direction) = setup_signal {
-            let opens_new = match &self.countdown {
-                None => true,
-                Some(active) => active.direction != direction,
-            };
-            if opens_new {
-                self.countdown = Some(Countdown::new(direction));
-                setup_event = Some(TdSignal::Setup(direction));
-
-                // `NextBar`: the completion bar is not counted—emit the setup now
-                // and begin counting next bar. `SetupBar`: fall through so this
-                // same bar is evaluated as the potential first countdown bar.
-                if self.countdown_start == CountdownStart::NextBar {
-                    return setup_event;
-                }
-            }
-            // Same-direction setup recycle: ignore and let the countdown continue.
+        // 3. Early exit if configured to wait a bar before starting Phase 2
+        if new_setup_signal.is_some() && self.countdown_start.is_next_bar() {
+            return new_setup_signal;
         }
 
-        // Phase 2: advance the active countdown. Under `SetupBar` this also runs
-        // on the bar that just opened it; under `NextBar` that bar returned above.
-        let target = self.countdown_target;
-        if let Some(active) = self.countdown.as_mut() {
-            if let Some(direction) =
-                active.evaluate(target, close, low, high, low_n_back, high_n_back)
-            {
-                self.countdown = None;
-                // If a setup also completed on this very bar (SetupBar mode), the
-                // setup signal still takes precedence over the countdown's.
-                return setup_event.or(Some(TdSignal::Countdown(direction)));
-            }
-        }
+        // 4. Evaluate Phase 2
+        let countdown_signal = self.process_phase_2(candle, low_n_back, high_n_back);
 
-        setup_event
+        // 5. Tie-breaker and Signal resolution
+        // If a new setup occurred, emit it.
+        // Otherwise, emit the countdown signal (which will be None if still pending).
+        new_setup_signal.or(countdown_signal)
     }
 
     fn reset(&mut self) {
