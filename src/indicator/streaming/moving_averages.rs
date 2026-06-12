@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-use crate::math::StreamingIndicator;
+use crate::indicator::streaming::StreamingIndicator;
 
 // ================================================================================================
 // SHARED: Exponential Weighted Mean (Base Logic)

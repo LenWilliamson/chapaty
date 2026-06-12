@@ -5,6 +5,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod data;
 pub mod error;
 pub mod gym;
+pub mod indicator;
 pub mod math;
 pub mod report;
 
@@ -29,3 +30,4 @@ pub use crate::transport::source::{
 pub mod ring_buffer;
 pub mod sorted_vec_map;
 pub use crate::gym::trading::factory::{load, make};
+pub use crate::indicator::streaming::StreamingIndicator;

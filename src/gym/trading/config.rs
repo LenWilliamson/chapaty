@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumCount, EnumIter, EnumString, IntoStaticStr};
 
 use crate::{
-    ApiKey, EndpointUrl, SelfHostedApi,
-    data::{
-        batch_indicator::ohlcv::{BatchOhlcvIndicator, SmaWindow},
+    ApiKey, EndpointUrl, SelfHostedApi, data::{
         common::{ProfileAggregation, RiskMetricsConfig},
         domain::{
             ContractMonth, ContractYear, CountryCode, DataBroker, EconomicCategory,
@@ -22,10 +20,7 @@ use crate::{
             EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, TpoFutureQuery, TpoSpotQuery,
             TradesSpotQuery, VolumeProfileSpotQuery,
         },
-    },
-    error::{ChapatyResult, EnvError},
-    gym::InvalidActionPenalty,
-    transport::source::{DataSource, SourceGroup},
+    }, error::{ChapatyResult, EnvError}, gym::InvalidActionPenalty, indicator::{batch::ohlcv::BatchOhlcvIndicator, config::SmaWindow}, transport::source::{DataSource, SourceGroup}
 };
 
 // ================================================================================================

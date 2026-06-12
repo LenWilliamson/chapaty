@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        batch_indicator::{config::WithBatchIndicators, ohlcv::BatchOhlcvIndicator},
         common::ProfileAggregation,
         domain::{
             CountryCode, DataBroker, EconomicCategory, EconomicDataSource, EconomicEventImpact,
@@ -13,6 +12,7 @@ use crate::{
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
     },
     error::ChapatyResult,
+    indicator::batch::{WithBatchIndicators, ohlcv::BatchOhlcvIndicator},
 };
 
 // ================================================================================================

@@ -5,13 +5,13 @@ use crate::{
     data::{
         domain::{Price, Symbol},
         event::{
-            ClosePriceProvider, EconomicCalendarId, EmaId, MarketEvent, MarketId, Ohlcv, OhlcvId,
-            PriceReachable, RsiId, SmaId, StreamId, SymbolProvider, TpoId, TradesId,
-            VolumeProfileId,
+            ClosePriceProvider, EconomicCalendarId, MarketEvent, MarketId, Ohlcv, OhlcvId,
+            PriceReachable, StreamId, SymbolProvider, TpoId, TradesId, VolumeProfileId,
         },
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
     gym::trading::types::TradeType,
+    indicator::batch::event::{EmaId, RsiId, SmaId},
     sim::{
         cursor::{Cursor, StreamEntity},
         cursor_group::CursorGroup,

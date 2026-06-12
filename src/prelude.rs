@@ -22,23 +22,28 @@ pub use crate::data::common::*;
 pub use crate::data::filter::*;
 pub use crate::data::query::*;
 
-// 6. Technical Indicators
-// 6.a Batch Indicators
-pub use crate::data::batch_indicator::config::*;
-pub use crate::data::batch_indicator::ohlcv::*;
-pub use crate::data::batch_indicator::trades::*;
-// 6.b. Streaming Indicators
+// 6. Math & Algorithms (Domain-Agnostic)
 pub use crate::math::accumulators::*;
-pub use crate::math::fair_value_gap::*;
 pub use crate::math::market_profile::*;
-pub use crate::math::momentum::*;
-pub use crate::math::moving_averages::*;
-pub use crate::math::oscillators::*;
-pub use crate::math::session::*;
-pub use crate::math::swing::*;
-pub use crate::math::timing::*;
-pub use crate::math::traits::*;
-pub use crate::math::volatility::*;
 
-// 7. Errors
+// 7. Technical Indicators (Business Logic)
+// 7.a Shared Blueprints / Configs
+pub use crate::indicator::config::*;
+
+// 7.b Batch Indicators (Polars / O(1))
+pub use crate::indicator::batch::WithBatchIndicators;
+pub use crate::indicator::batch::ohlcv::*;
+pub use crate::indicator::batch::trades::*;
+
+// 7.c Streaming Indicators (Tick-by-Tick)
+pub use crate::indicator::streaming::fair_value_gap::*;
+pub use crate::indicator::streaming::momentum::*;
+pub use crate::indicator::streaming::moving_averages::*;
+pub use crate::indicator::streaming::oscillators::*;
+pub use crate::indicator::streaming::session::*;
+pub use crate::indicator::streaming::swing::*;
+pub use crate::indicator::streaming::timing::*;
+pub use crate::indicator::streaming::volatility::*;
+
+// 8. Errors
 pub use crate::error::*;

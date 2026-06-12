@@ -7,11 +7,11 @@ use crate::{
         domain::{AggregatedPrice, Price, Volume},
         event::{Ohlcv, TradeEvent},
     },
-    math::{
+    indicator::streaming::{
         StreamingIndicator,
-        accumulators::KahanSum,
         moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
     },
+    math::accumulators::KahanSum,
 };
 
 // ================================================================================================

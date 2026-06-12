@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     data::event::{
-        EconomicCalendarId, EmaId, MarketEvent, OhlcvId, RsiId, SmaId, StreamId, TpoId, TradesId,
-        VolumeProfileId,
+        EconomicCalendarId, MarketEvent, OhlcvId, StreamId, TpoId, TradesId, VolumeProfileId,
     },
+    indicator::batch::event::{EmaId, RsiId, SmaId},
     sim::data::EventMap,
     sorted_vec_map::SortedVecMap,
 };

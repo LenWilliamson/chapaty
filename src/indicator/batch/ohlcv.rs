@@ -9,43 +9,24 @@ use polars::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    data::{
-        batch_indicator::{convert_err, finalize_scalar},
-        domain::AggregatedPrice,
-    },
+    data::domain::AggregatedPrice,
     error::ChapatyResult,
+    indicator::{
+        batch::{convert_err, finalize_scalar},
+        config::{AtrConfig, SessionWindow},
+    },
     transport::schema::CanonicalCol,
 };
-
-use super::config::SessionConfig;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct VwapConfig(pub AggregatedPrice);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EmaWindow(pub u16);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SmaWindow(pub u16);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RsiWindow(pub u16);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct AtrWindow(pub u16);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RateOfChangeWindow(pub u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchOhlcvIndicator {
     Ema(EmaWindow),
     Sma(SmaWindow),
     Rsi(RsiWindow),
-    Atr(AtrWindow),
+    Atr(AtrConfig),
     RateOfChange(RateOfChangeWindow),
     Vwap(VwapConfig),
-    OvernightRange(SessionConfig),
+    OvernightRange(SessionWindow),
 }
 
 impl BatchOhlcvIndicator {
@@ -140,10 +121,12 @@ impl RsiWindow {
     }
 }
 
-impl AtrWindow {
-    fn pre_compute_atr(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-        let window = self.0;
-        let alpha = 1.0 / (window as f64);
+// In src/data/batch_indicator.rs
+impl BatchCompute for AtrConfig {
+    fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+        // Nutze self.window und self.smoothing, um die
+        // mathematisch äquivalente Polars-Expression zu bauen.
+        let alpha = 1.0 / (self.window as f64);
         let options = EWMOptions {
             alpha,
             adjust: false,

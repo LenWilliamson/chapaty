@@ -5,7 +5,7 @@ use crate::{
         domain::{CandleDirection, Price, PriceSource},
         event::{IndexedOhlcv, MarketEvent, Ohlcv},
     },
-    math::StreamingIndicator,
+    indicator::streaming::StreamingIndicator,
 };
 use chrono::{DateTime, Utc};
 

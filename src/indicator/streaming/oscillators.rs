@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::math::{StreamingIndicator, moving_averages::StreamingEwm};
+use crate::indicator::streaming::{StreamingIndicator, moving_averages::StreamingEwm};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingRsi {

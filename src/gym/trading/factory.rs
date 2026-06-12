@@ -1,6 +1,5 @@
 use crate::{
     data::{
-        batch_indicator::ohlcv::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         common::ProfileAggregation,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
@@ -8,9 +7,8 @@ use crate::{
         },
         episode::{EpisodeBuilder, EpisodeLength},
         event::{
-            EconomicCalendarId, EconomicEvent, Ema, EmaId, Ohlcv, OhlcvId, Rsi, RsiId, Sma, SmaId,
-            StreamId, Tpo, TpoBin, TpoId, TradeEvent, TradesId, VolumeProfile, VolumeProfileBin,
-            VolumeProfileId,
+            EconomicCalendarId, EconomicEvent, Ohlcv, OhlcvId, StreamId, Tpo, TpoBin, TpoId,
+            TradeEvent, TradesId, VolumeProfile, VolumeProfileBin, VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
         query::QueryId,
@@ -21,6 +19,13 @@ use crate::{
         env::Environment,
         ledger::{Ledger, LedgerCapacityHint},
         state::States,
+    },
+    indicator::{
+        batch::{
+            event::{Ema, EmaId, Rsi, RsiId, Sma, SmaId},
+            ohlcv::BatchOhlcvIndicator,
+        },
+        config::{EmaWindow, RsiWindow, SmaWindow},
     },
     io::IoConfig,
     math::market_profile::compute_profile_stats,

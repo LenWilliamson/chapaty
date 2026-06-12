@@ -1,3 +1,12 @@
+pub mod fair_value_gap;
+pub mod momentum;
+pub mod moving_averages;
+pub mod oscillators;
+pub mod session;
+pub mod swing;
+pub mod timing;
+pub mod volatility;
+
 /// A generic trait for incremental indicators.
 /// Designed to be object-safe so agents can hold `Box<dyn StreamingIndicator<Input=I, Output=O>>`.
 pub trait StreamingIndicator: std::fmt::Debug + Send + Sync {

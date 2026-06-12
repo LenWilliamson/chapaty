@@ -3,17 +3,18 @@ use polars::prelude::{LazyFrame, NULL, SortMultipleOptions, col, lit, when};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    data::batch_indicator::{convert_err, finalize_scalar},
     error::ChapatyResult,
+    indicator::{
+        batch::{convert_err, finalize_scalar},
+        config::SessionWindow,
+    },
     transport::schema::CanonicalCol,
 };
-
-use super::config::SessionConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchTradesIndicator {
     Vwap,
-    OvernightRange(SessionConfig),
+    OvernightRange(SessionWindow),
 }
 
 impl BatchTradesIndicator {

@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::event::{
-        EconomicCalendarId, EmaId, MarketEvent, MarketId, OhlcvId, RsiId, SmaId, StreamId, TpoId,
-        TradesId, VolumeProfileId,
+        EconomicCalendarId, MarketEvent, MarketId, OhlcvId, StreamId, TpoId, TradesId,
+        VolumeProfileId,
     },
     error::{ChapatyResult, IoError, SystemError},
     gym::trading::config::EnvConfig,
+    indicator::batch::event::{EmaId, RsiId, SmaId},
     io::{IoConfig, SerdeFormat},
     sorted_vec_map::SortedVecMap,
 };

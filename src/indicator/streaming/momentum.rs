@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use crate::math::StreamingIndicator;
+use crate::indicator::streaming::StreamingIndicator;
 
 /// The required input for time-aware or bar-aware lookback indicators.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use crate::{data::event::Ohlcv, math::StreamingIndicator, ring_buffer::RingBuffer};
+use crate::{data::event::Ohlcv, indicator::streaming::StreamingIndicator, ring_buffer::RingBuffer};
 
 // ================================================================================================
 // TD X Sequential

@@ -7,7 +7,7 @@ use crate::{
         domain::{Price, PriceSource},
         event::{IndexedOhlcv, MarketEvent, Ohlcv},
     },
-    math::StreamingIndicator,
+    indicator::streaming::StreamingIndicator,
 };
 
 const LHS: usize = 0;
