@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use chrono_tz::Tz;
-use polars::lazy::dsl::{Expr, col};
+use polars::prelude::{Expr, col, lit};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, fmt, str::FromStr};
 use strum::{AsRefStr, Display, EnumIter, IntoStaticStr};

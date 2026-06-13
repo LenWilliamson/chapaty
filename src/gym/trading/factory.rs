@@ -252,6 +252,9 @@ impl BuildCtx {
                         rsi_map.insert(id, (schema.clone(), lf_result));
                     }
                     BatchOhlcvIndicator::Atr(_) => {}
+                    _ => {
+                        unimplemented!("TODO")
+                    }
                 }
             }
             Ok(())

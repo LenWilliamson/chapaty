@@ -208,7 +208,7 @@ impl CanonicalCol {
             Self::SessionDate => DataType::Date,
 
             // Time
-            Self::PointInTime | Self::OpenTimestamp => {
+            Self::Date | Self::PointInTime | Self::OpenTimestamp => {
                 DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC))
             }
 
