@@ -68,7 +68,7 @@ impl ProtoBatch for EconomicCalendarResponse {
         let df = df![
             CanonicalCol::DataSource.to_string() => data_sources,
             CanonicalCol::Category.to_string() => categories,
-            CanonicalCol::Timestamp.to_string() => event_timestamps,
+            CanonicalCol::PointInTime.to_string() => event_timestamps,
             CanonicalCol::NewsType.to_string() => news_types,
             CanonicalCol::NewsTypeConfidence.to_string() => news_type_confidences,
             CanonicalCol::NewsTypeSource.to_string() => news_type_sources,
@@ -85,7 +85,7 @@ impl ProtoBatch for EconomicCalendarResponse {
 
         let lf = df
             .lazy()
-            .with_column(col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )));
@@ -130,7 +130,7 @@ impl ProtoBatch for OhlcvFutureResponse {
             CanonicalCol::Low.to_string() => lows,
             CanonicalCol::Close.to_string() => closes,
             CanonicalCol::Volume.to_string() => volumes,
-            CanonicalCol::Timestamp.to_string() => close_timestamps,
+            CanonicalCol::PointInTime.to_string() => close_timestamps,
         ]
         .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
 
@@ -139,7 +139,7 @@ impl ProtoBatch for OhlcvFutureResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -193,7 +193,7 @@ impl ProtoBatch for OhlcvSpotResponse {
             CanonicalCol::Low.to_string() => lows,
             CanonicalCol::Close.to_string() => closes,
             CanonicalCol::Volume.to_string() => volumes,
-            CanonicalCol::Timestamp.to_string() => close_timestamps,
+            CanonicalCol::PointInTime.to_string() => close_timestamps,
             CanonicalCol::QuoteAssetVolume.to_string() => quote_asset_volumes,
             CanonicalCol::NumberOfTrades.to_string() => number_of_trades,
             CanonicalCol::TakerBuyBaseAssetVolume.to_string() => taker_buy_base_asset_volumes,
@@ -206,7 +206,7 @@ impl ProtoBatch for OhlcvSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -250,7 +250,7 @@ impl ProtoBatch for TradesSpotResponse {
             CanonicalCol::Price.to_string() => prices,
             CanonicalCol::Volume.to_string() => quantities,
             CanonicalCol::QuoteAssetVolume.to_string() => quote_quantities,
-            CanonicalCol::Timestamp.to_string() => trade_timestamps,
+            CanonicalCol::PointInTime.to_string() => trade_timestamps,
             CanonicalCol::IsBuyerMaker.to_string() => is_buyer_makers,
             CanonicalCol::IsBestMatch.to_string() => is_best_matches,
         ]
@@ -258,7 +258,7 @@ impl ProtoBatch for TradesSpotResponse {
 
         let lf = df
             .lazy()
-            .with_column(col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )));
@@ -291,7 +291,7 @@ impl ProtoBatch for TpoFutureResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::TimeSlotCount.to_string() => time_slot_counts,
@@ -303,7 +303,7 @@ impl ProtoBatch for TpoFutureResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -337,7 +337,7 @@ impl ProtoBatch for TpoSpotResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::TimeSlotCount.to_string() => time_slot_counts,
@@ -349,7 +349,7 @@ impl ProtoBatch for TpoSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -399,7 +399,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::Volume.to_string() => base_volumes,
@@ -419,7 +419,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -608,7 +608,7 @@ mod tests {
         assert_eq!(get_opt_f64(&df, CanonicalCol::Actual, 0), Some(3.5));
         assert_eq!(get_opt_f64(&df, CanonicalCol::Forecast, 0), Some(3.6));
         assert_eq!(get_opt_f64(&df, CanonicalCol::Previous, 0), Some(3.4));
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &ts);
     }
 
     #[test]
@@ -686,7 +686,7 @@ mod tests {
         assert_eq!(get_f64(&df, CanonicalCol::Close, 0), 50500.0);
         assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 100.0);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &open_ts);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &close_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &close_ts);
     }
 
     #[test]
@@ -753,7 +753,7 @@ mod tests {
             63000.0
         );
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &open_ts);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &close_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &close_ts);
     }
 
     #[test]
@@ -805,7 +805,7 @@ mod tests {
         assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
         assert!(get_bool(&df, CanonicalCol::IsBuyerMaker, 0));
         assert!(get_bool(&df, CanonicalCol::IsBestMatch, 0));
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &trade_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &trade_ts);
     }
 
     #[test]
@@ -878,7 +878,7 @@ mod tests {
         assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 40010.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 15);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -927,7 +927,7 @@ mod tests {
         assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 151.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 5);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -1004,7 +1004,7 @@ mod tests {
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfBuyTrades, 0), 60);
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfSellTrades, 0), 40);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -1059,9 +1059,9 @@ mod tests {
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 100);
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 1), 200);
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 2), 300);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &t1);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 1, &t2);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 2, &t3);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &t1);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 1, &t2);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 2, &t3);
     }
 
     #[test]

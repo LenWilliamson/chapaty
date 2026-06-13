@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use chrono_tz::Tz;
+use polars::lazy::dsl::{Expr, col};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, fmt, str::FromStr};
 use strum::{AsRefStr, Display, EnumIter, IntoStaticStr};
@@ -15,6 +16,7 @@ use crate::{
     },
     impl_abs_primitive, impl_add_sub_mul_div_primitive, impl_from_primitive,
     impl_min_max_primitive, impl_neg_primitive,
+    transport::schema::CanonicalCol,
 };
 
 // ================================================================================================
@@ -225,6 +227,27 @@ pub enum AggregatedPrice {
     Ohlc4,
     /// `Close` only. Ignores intra-bar movement entirely.
     Close,
+}
+
+impl AggregatedPrice {
+    /// Converts the price aggregation type into its corresponding Polars Expression.
+    pub(crate) fn to_expr(&self) -> Expr {
+        match self {
+            Self::Close => col(CanonicalCol::Close),
+            Self::Hl2 => (col(CanonicalCol::High) + col(CanonicalCol::Low)) / lit(2.0),
+            Self::Ohlc4 => {
+                (col(CanonicalCol::Open)
+                    + col(CanonicalCol::High)
+                    + col(CanonicalCol::Low)
+                    + col(CanonicalCol::Close))
+                    / lit(4.0)
+            }
+            Self::Hlc3 => {
+                (col(CanonicalCol::High) + col(CanonicalCol::Low) + col(CanonicalCol::Close))
+                    / lit(3.0)
+            }
+        }
+    }
 }
 
 /// Indicates the depth of the Order Book where the trade execution occurred.
@@ -1111,6 +1134,10 @@ impl SessionWindow {
     }
     pub fn apac_overnight() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
+    }
+
+    pub fn pl_time_zone(&self) -> polars::datatypes::TimeZone {
+        polars::datatypes::TimeZone::from_chrono(&self.timezone)
     }
 
     pub fn window_kind(&self) -> WindowKind {

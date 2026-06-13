@@ -11,8 +11,8 @@ pub mod report;
 // === Private Implementation Details ===
 mod generated;
 mod io;
-mod math;
 mod macros;
+mod math;
 mod sim;
 mod transport;
 

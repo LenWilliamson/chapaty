@@ -22,6 +22,7 @@ use crate::{
     },
     indicator::{
         batch::{
+            BatchCompute,
             event::{Ema, EmaId, Rsi, RsiId, Sma, SmaId},
             ohlcv::BatchOhlcvIndicator,
         },
@@ -215,7 +216,7 @@ impl BuildCtx {
         let mut rsi_map = HashMap::new();
 
         let s = Schema::from_iter(vec![
-            CanonicalCol::Timestamp.field(),
+            CanonicalCol::PointInTime.field(),
             CanonicalCol::Price.field(),
         ]);
         let schema = Arc::new(s);
@@ -250,14 +251,7 @@ impl BuildCtx {
                         };
                         rsi_map.insert(id, (schema.clone(), lf_result));
                     }
-                    // ATR / RateOfChange / VWAP / OvernightRange have working
-                    // `pre_compute` transforms but no dedicated downstream id-map yet,
-                    // so they are not registered here. Wiring them follows the same
-                    // pattern as the moving averages above.
-                    BatchOhlcvIndicator::Atr(_)
-                    | BatchOhlcvIndicator::RateOfChange(_)
-                    | BatchOhlcvIndicator::Vwap(_)
-                    | BatchOhlcvIndicator::OvernightRange(_) => {}
+                    BatchOhlcvIndicator::Atr(_) => {}
                 }
             }
             Ok(())
@@ -369,7 +363,7 @@ impl BuildCtx {
                 .map(|(_, lf)| {
                     // Strictly select only what the overlay logic needs
                     lf.clone()
-                        .select([col(CanonicalCol::Timestamp), col(CanonicalCol::Category)])
+                        .select([col(CanonicalCol::PointInTime), col(CanonicalCol::Category)])
                 })
                 .collect::<Vec<LazyFrame>>();
 
@@ -700,7 +694,7 @@ fn apply_filter<T>(
 
     // Build predicate once inside this function
     let predicate = {
-        let ts_col = col(CanonicalCol::Timestamp);
+        let ts_col = col(CanonicalCol::PointInTime);
         let wd = ts_col.clone().dt().weekday();
         let hr = ts_col.dt().hour();
 
@@ -739,7 +733,7 @@ fn apply_filter<T>(
 fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) -> ChapatyResult<()> {
     for (_id, (_schema, lf)) in map.iter_mut() {
         *lf = lf.clone().sort(
-            [CanonicalCol::Timestamp],
+            [CanonicalCol::PointInTime],
             SortMultipleOptions::default().with_maintain_order(false),
         );
     }
@@ -806,7 +800,7 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     // Required fields
     let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let open_ts_ca = open_dt_logical.physical();
-    let ts_dt_locial = df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_locial = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = ts_dt_locial.physical();
     let open_ca = df.f64_ca(CanonicalCol::Open)?;
     let high_ca = df.f64_ca(CanonicalCol::High)?;
@@ -896,7 +890,7 @@ fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     }
 
     // Required fields
-    let dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = dt_logical.physical();
     let price_ca = df.f64_ca(CanonicalCol::Price)?;
     let vol_ca = df.f64_ca(CanonicalCol::Volume)?;
@@ -963,7 +957,7 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     }
 
     // Required fields
-    let dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = dt_logical.physical();
     let source_ca = df.str_ca(CanonicalCol::DataSource)?;
     let cat_ca = df.str_ca(CanonicalCol::Category)?;
@@ -1102,7 +1096,7 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
 
     let open_dt_logical = sorted_df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let ts_open_ca = open_dt_logical.physical();
-    let ts_dt_logical = sorted_df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_logical = sorted_df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_close_ca = ts_dt_logical.physical();
     let p_start_ca = sorted_df.f64_ca(CanonicalCol::PriceBinStart)?;
     let p_end_ca = sorted_df.f64_ca(CanonicalCol::PriceBinEnd)?;
@@ -1211,7 +1205,7 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
     let open_dt_logical = sorted_df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let ts_open_ca = open_dt_logical.physical();
-    let close_dt_logical = sorted_df.dt_logical(CanonicalCol::Timestamp)?;
+    let close_dt_logical = sorted_df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_close_ca = close_dt_logical.physical();
     let p_start_ca = sorted_df.f64_ca(CanonicalCol::PriceBinStart)?;
     let p_end_ca = sorted_df.f64_ca(CanonicalCol::PriceBinEnd)?;
@@ -1377,7 +1371,7 @@ where
         return Ok(Box::new([]));
     }
 
-    let ts_dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = ts_dt_logical.physical();
     let price_ca = df.f64_ca(CanonicalCol::Price)?;
 
@@ -1457,7 +1451,7 @@ impl LazyFrameCalendarExt for LazyFrame {
 
         // 2. Prepare Calendar: Key by Simulation Window + deduplicate
         let news_w_key = calendar_lf
-            .with_simulation_window_key(CanonicalCol::Timestamp, sim_timeframe, join_key)
+            .with_simulation_window_key(CanonicalCol::PointInTime, sim_timeframe, join_key)
             .select([col(join_key)])
             .unique(None, UniqueKeepStrategy::Any) // prevent row multiplication
             .with_column(lit(true).alias(is_on_calendar_event));
@@ -1659,7 +1653,7 @@ mod test {
                         TimeUnit::Microseconds,
                         Some(polars::prelude::TimeZone::UTC),
                     ))
-                    .alias(CanonicalCol::Timestamp.as_str()),
+                    .alias(CanonicalCol::PointInTime.as_str()),
                 // Rename the metrics (Implicitly drops 'exchange', 'symbol', etc.)
                 col("open").alias(CanonicalCol::Open.as_str()),
                 col("high").alias(CanonicalCol::High.as_str()),
@@ -1689,7 +1683,7 @@ mod test {
                         TimeUnit::Microseconds,
                         Some(polars::prelude::TimeZone::UTC),
                     ))
-                    .alias(CanonicalCol::Timestamp.as_str()),
+                    .alias(CanonicalCol::PointInTime.as_str()),
                 col("category").alias(CanonicalCol::Category.as_str()),
             ])
     }
@@ -1826,7 +1820,7 @@ mod test {
 
             // 2. Prepare Master Calendar (Union of sources)
             let cols = [
-                col(CanonicalCol::Timestamp.as_str()),
+                col(CanonicalCol::PointInTime.as_str()),
                 col(CanonicalCol::Category.as_str()),
             ];
             let master_calendar = polars::prelude::concat(
@@ -1865,7 +1859,7 @@ mod test {
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
-                col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+                col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
@@ -1962,7 +1956,7 @@ mod test {
         assert_eq!(result.height(), 2);
 
         let valid_ts = result
-            .column(CanonicalCol::Timestamp.as_str())
+            .column(CanonicalCol::PointInTime.as_str())
             .unwrap()
             .datetime()
             .unwrap()
@@ -2152,14 +2146,14 @@ mod test {
     fn test_extract_technical_indicator() {
         // 1. Setup Data
         let df = df!(
-            CanonicalCol::Timestamp.as_str() => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"),
                 ts_micros("2026-01-01T11:00:00Z"),
             ],
             CanonicalCol::Price.as_str() => &[100.5, 101.0],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
         // 2. Extract
         let events = extract_ema(df).expect("failed to extract ema");
@@ -2190,7 +2184,7 @@ mod test {
         // Row 2: 100.5 (Ready)
         // Row 3: 101.0 (Ready)
         let df = df!(
-            CanonicalCol::Timestamp.as_str() => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"), // Index 0
                 ts_micros("2026-01-01T11:00:00Z"), // Index 1
                 ts_micros("2026-01-01T12:00:00Z"), // Index 2
@@ -2204,7 +2198,7 @@ mod test {
         .unwrap();
 
         // Ensure timestamp is properly cast to Microseconds
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
         // 2. Extract
         // We use extract_ema as a proxy for any technical indicator extractor
@@ -2233,7 +2227,7 @@ mod test {
     fn test_extract_ohlcv() {
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str() => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()      => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()      => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::Open.as_str()           => &[150.0],
             CanonicalCol::High.as_str()           => &[155.0],
             CanonicalCol::Low.as_str()            => &[149.0],
@@ -2250,7 +2244,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 
@@ -2284,7 +2278,7 @@ mod test {
     #[test]
     fn test_extract_trade() {
         let df = df!(
-            CanonicalCol::Timestamp.as_str()          => &[
+            CanonicalCol::PointInTime.as_str()          => &[
                 ts_micros("2026-01-01T12:00:01Z"),
                 ts_micros("2026-01-01T12:00:02Z")
             ],
@@ -2297,7 +2291,7 @@ mod test {
             CanonicalCol::IsBestMatch.as_str()        => &[Some(true), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
         let events = extract_trade(df).expect("failed to extract trade");
 
@@ -2341,7 +2335,7 @@ mod test {
     #[test]
     fn test_extract_economic() {
         let df = df!(
-            CanonicalCol::Timestamp.as_str()            => &[
+            CanonicalCol::PointInTime.as_str()            => &[
                 ts_micros("2026-10-01T08:30:00Z"),
                 ts_micros("2026-10-02T09:00:00Z")
             ],
@@ -2362,7 +2356,7 @@ mod test {
             CanonicalCol::Previous.as_str()             => &[Some(160.0), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
         let events = extract_economic(df).expect("failed to extract economic");
 
@@ -2417,7 +2411,7 @@ mod test {
         let n = prices.len();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => vec![ts_open; n],
-            CanonicalCol::Timestamp.as_str()       => vec![ts_close; n],
+            CanonicalCol::PointInTime.as_str()       => vec![ts_close; n],
             CanonicalCol::PriceBinStart.as_str() => prices,
             CanonicalCol::PriceBinEnd.as_str()   => prices.iter().map(|p| p + 1.0).collect::<Vec<_>>(),
             CanonicalCol::TimeSlotCount.as_str() => counts,
@@ -2427,7 +2421,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         )
     }
@@ -2491,7 +2485,7 @@ mod test {
 
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[t1, t2],
-            CanonicalCol::Timestamp.as_str()       => &[t1 + 1000, t2 + 1000],
+            CanonicalCol::PointInTime.as_str()       => &[t1 + 1000, t2 + 1000],
             CanonicalCol::PriceBinStart.as_str() => &[100.0, 200.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0, 201.0],
             CanonicalCol::TimeSlotCount.as_str() => &[5i64, 10i64],
@@ -2501,7 +2495,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 
@@ -2525,7 +2519,7 @@ mod test {
         // SCENARIO: TPO requires 'time_slot_count'. If missing, it should fail nicely.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T08:00:00Z")],
-            CanonicalCol::Timestamp.as_str()       => &[ts_micros("2026-01-01T08:30:00Z")],
+            CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T08:30:00Z")],
             CanonicalCol::PriceBinStart.as_str() => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0],
             // "time_slot_count" is MISSING
@@ -2536,7 +2530,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 
@@ -2580,7 +2574,7 @@ mod test {
         // Also checks that 'volume' is converted to Quantity/Volume types correctly.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()               => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()                    => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()                    => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::PriceBinStart.as_str()              => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()                => &[101.0],
             CanonicalCol::Volume.as_str()                       => &[1000.0],
@@ -2599,7 +2593,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 
@@ -2638,7 +2632,7 @@ mod test {
         // The extractor should handle iterators yielding None gracefully.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()       => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::PriceBinStart.as_str() => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0],
             CanonicalCol::Volume.as_str()          => &[1000.0],
@@ -2650,7 +2644,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 
@@ -2678,7 +2672,7 @@ mod test {
                 ts_micros("2026-01-01T09:00:00Z"), ts_micros("2026-01-01T09:00:00Z"),
                 ts_micros("2026-01-01T10:00:00Z")
             ],
-            CanonicalCol::Timestamp.as_str()       => &[
+            CanonicalCol::PointInTime.as_str()       => &[
                 ts_micros("2026-01-01T09:30:00Z"), ts_micros("2026-01-01T09:30:00Z"),
                 ts_micros("2026-01-01T10:30:00Z")
             ],
@@ -2691,7 +2685,7 @@ mod test {
             df,
             &[
                 CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
             ],
         );
 

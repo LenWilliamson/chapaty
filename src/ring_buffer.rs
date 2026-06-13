@@ -23,6 +23,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 enum RingState {
@@ -60,7 +61,7 @@ impl RingState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RingBuffer<T> {
     capacity: usize,
-    buffer: Vec<T>,
+    buffer: SmallVec<[T; 16]>,
     state: RingState,
 }
 
@@ -91,7 +92,7 @@ impl<T> RingBuffer<T> {
         );
         Self {
             capacity,
-            buffer: Vec::with_capacity(capacity),
+            buffer: SmallVec::with_capacity(capacity),
             state: RingState::Filling,
         }
     }

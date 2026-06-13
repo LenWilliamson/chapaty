@@ -20,12 +20,15 @@ pub enum CanonicalCol {
     // ========================================================================
     // Time Definitions
     // ========================================================================
+    /// The date of the data point.
+    Date,
+
     /// The primary index timestamp.
     /// - OHLCV: Close time (When the candle is complete).
     /// - Trade: Trade time.
     /// - TPO/VP: Window End time (When the profile is complete).
     /// - Economic Events: Event Timestamp
-    Timestamp,
+    PointInTime,
 
     /// The start time of an interval.
     /// - OHLCV: Open time.
@@ -112,7 +115,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Derived Technical Indicators
     // ========================================================================
-    //
+
     // Single-value indicators (EMA, SMA, RSI, ATR, VWAP) are emitted in the
     // canonical `[Timestamp, Price]` shape — their value lives in `Price`, matching
     // the `{ timestamp, price }` streaming output structs. Only multi-value
@@ -205,7 +208,7 @@ impl CanonicalCol {
             Self::SessionDate => DataType::Date,
 
             // Time
-            Self::Timestamp | Self::OpenTimestamp => {
+            Self::PointInTime | Self::OpenTimestamp => {
                 DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC))
             }
 
@@ -227,7 +230,7 @@ pub fn ohlcv_future_schema() -> SchemaRef {
         CanonicalCol::Low.field(),
         CanonicalCol::Close.field(),
         CanonicalCol::Volume.field(),
-        CanonicalCol::Timestamp.field(), // CloseTimestamp
+        CanonicalCol::PointInTime.field(), // CloseTimestamp
     ]);
 
     Arc::new(s)
@@ -241,7 +244,7 @@ pub fn ohlcv_spot_schema() -> SchemaRef {
         CanonicalCol::Low.field(),
         CanonicalCol::Close.field(),
         CanonicalCol::Volume.field(),
-        CanonicalCol::Timestamp.field(), // CloseTimestamp
+        CanonicalCol::PointInTime.field(), // CloseTimestamp
         CanonicalCol::QuoteAssetVolume.field(),
         CanonicalCol::NumberOfTrades.field(),
         CanonicalCol::TakerBuyBaseAssetVolume.field(),
@@ -257,7 +260,7 @@ pub fn trades_spot_schema() -> SchemaRef {
         CanonicalCol::Price.field(),
         CanonicalCol::Volume.field(),           // Maps to 'quantity'
         CanonicalCol::QuoteAssetVolume.field(), // Maps to 'quote_quantity'
-        CanonicalCol::Timestamp.field(),        // Maps to 'trade_timestamp'
+        CanonicalCol::PointInTime.field(),      // Maps to 'trade_timestamp'
         CanonicalCol::IsBuyerMaker.field(),
         CanonicalCol::IsBestMatch.field(),
     ]);
@@ -269,7 +272,7 @@ pub fn volume_profile_spot_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // Profile Bins
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -293,7 +296,7 @@ pub fn tpo_spot_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // TPO Data
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -306,7 +309,7 @@ pub fn tpo_future_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // TPO Data
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -328,7 +331,7 @@ pub fn economic_calendar_schema() -> SchemaRef {
         CanonicalCol::DataSource.field(),
         CanonicalCol::Category.field(),
         // Primary Time Index (event_timestamp)
-        CanonicalCol::Timestamp.field(),
+        CanonicalCol::PointInTime.field(),
         // Classification Metadata
         CanonicalCol::NewsType.field(),
         CanonicalCol::NewsTypeConfidence.field(), // maps to news_type_confidence

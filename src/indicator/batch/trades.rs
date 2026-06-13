@@ -1,11 +1,10 @@
-use chrono::Duration;
-use polars::prelude::{LazyFrame, NULL, SortMultipleOptions, col, lit, when};
+use polars::prelude::{LazyFrame, SortMultipleOptions, col};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     data::domain::SessionWindow,
     error::ChapatyResult,
-    indicator::batch::{BatchCompute, convert_err, finalize_scalar},
+    indicator::batch::{BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt},
     transport::schema::CanonicalCol,
 };
 
@@ -19,7 +18,9 @@ impl BatchCompute for BatchTradesIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
             BatchTradesIndicator::Vwap => pre_compute_trades_vwap(lf),
-            BatchTradesIndicator::OvernightRange(session) => session.pre_compute_trades_session(lf),
+            BatchTradesIndicator::OvernightRange(session) => {
+                pre_compute_overnight_range(*session, lf)
+            }
         }
     }
 }
@@ -29,108 +30,41 @@ impl BatchCompute for BatchTradesIndicator {
 // ================================================================================================
 
 fn pre_compute_trades_vwap(lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    // Pure execution price VWAP (no HLC3 approximation needed for trades).
-    // Trade quantity is carried in the canonical `Volume` column.
-    //
-    // Non-positive quantity contributes nothing, mirroring the streaming
-    // accumulator. A conditional (rather than `filter`) keeps the series the
-    // same length as the frame so it stays alignable with the timestamp.
-    let has_qty = col(CanonicalCol::Volume).gt(lit(0.0));
-    let price_x_qty = when(has_qty.clone())
-        .then(col(CanonicalCol::Price) * col(CanonicalCol::Volume))
-        .otherwise(lit(0.0));
-    let quantity = when(has_qty)
-        .then(col(CanonicalCol::Volume))
-        .otherwise(lit(0.0));
-
-    let cumulative_q = quantity.cum_sum(false);
-    // VWAP is undefined until the first positive-quantity trade arrives.
-    let vwap_expr = when(cumulative_q.clone().gt(lit(0.0)))
-        .then(price_x_qty.cum_sum(false) / cumulative_q)
-        .otherwise(lit(NULL));
-
-    Ok(finalize_scalar(lf, vwap_expr))
+    Ok(lf.finalize_scalar(col(CanonicalCol::Price).vwap(col(CanonicalCol::Volume))))
 }
 
-fn pre_compute_trades_session(sw: SessionWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let start_mins = (sw.start_h as u32) * 60 + (sw.start_m as u32);
-    let end_mins = (sw.end_h as u32) * 60 + (sw.end_m as u32);
-    let is_intraday = start_mins < end_mins;
-
-    let local_ts = col(CanonicalCol::Timestamp)
-        .dt()
-        .convert_time_zone(sw.polars_tz()?);
-    let time_mins = local_ts.clone().dt().hour() * lit(60u32) + local_ts.clone().dt().minute();
-    let local_date = local_ts.clone().dt().date();
-
-    let session_date_expr = if is_intraday {
-        when(
-            time_mins
-                .clone()
-                .gt_eq(lit(start_mins))
-                .and(time_mins.clone().lt(lit(end_mins))),
-        )
-        .then(local_date.clone())
-        .otherwise(lit(NULL))
-    } else {
-        when(time_mins.clone().gt_eq(lit(start_mins)))
-            .then(local_date.clone())
-            .when(time_mins.lt(lit(end_mins)))
-            .then(local_date - lit(Duration::days(1)))
-            .otherwise(lit(NULL))
-    };
-
-    // For trades, VWAP is exactly price * quantity (quantity carried in `Volume`).
-    let pv = col(CanonicalCol::Price) * col(CanonicalCol::Volume);
-
-    // Session VWAP partitioned by session; `over` is fallible so divide last.
-    let session_pv_cum = pv
-        .cum_sum(false)
-        .over([col(CanonicalCol::SessionDate)])
-        .map_err(convert_err)?;
-    let session_volume_cum = col(CanonicalCol::Volume)
-        .cum_sum(false)
-        .over([col(CanonicalCol::SessionDate)])
-        .map_err(convert_err)?;
-    let session_vwap = session_pv_cum / session_volume_cum;
+fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    let session_date_col = col(CanonicalCol::PointInTime).session_date(session);
 
     let out_lf = lf
-        .sort(
-            [CanonicalCol::Timestamp],
-            SortMultipleOptions::default().with_maintain_order(false),
-        )
-        .with_column(session_date_expr.alias(CanonicalCol::SessionDate))
-        .with_columns([
-            // Trades do not have inherent High/Low columns, so we calculate the
-            // extremes dynamically based on execution Price.
+        .with_column(session_date_col.alias(CanonicalCol::Date))
+        .filter(col(CanonicalCol::Date).is_not_null())
+        .group_by([col(CanonicalCol::Date)])
+        .agg([
+            // --- Time Boundaries ---
+            col(CanonicalCol::OpenTimestamp)
+                .first()
+                .alias("OpenTimestamp"),
+            col(CanonicalCol::PointInTime)
+                .last()
+                .alias(CanonicalCol::PointInTime),
+            // --- Trade Extremes (Derived from Price) ---
             col(CanonicalCol::Price)
-                .cum_max(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .max()
                 .alias(CanonicalCol::SessionHigh),
             col(CanonicalCol::Price)
-                .cum_min(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .min()
                 .alias(CanonicalCol::SessionLow),
             col(CanonicalCol::Volume)
-                .cum_sum(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .sum()
                 .alias(CanonicalCol::SessionVolume),
-            session_vwap.alias(CanonicalCol::SessionVwap),
+            // --- Session VWAP ---
+            col(CanonicalCol::Price)
+                .agg_vwap(col(CanonicalCol::Volume))
+                .alias(CanonicalCol::SessionVwap),
         ])
-        // Project to the columns of the `TradesSessionData` struct (keyed by
-        // timestamp) and keep only rows that belong to a session.
-        .select([
-            col(CanonicalCol::Timestamp),
-            col(CanonicalCol::SessionDate),
-            col(CanonicalCol::SessionHigh),
-            col(CanonicalCol::SessionLow),
-            col(CanonicalCol::SessionVolume),
-            col(CanonicalCol::SessionVwap),
-        ])
-        .filter(col(CanonicalCol::SessionDate).is_not_null());
+        // Ensure chronological order
+        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default());
 
     Ok(out_lf)
 }

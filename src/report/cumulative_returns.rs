@@ -16,7 +16,7 @@ use crate::{
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
-        journal::{Journal, JournalCol, is_executed_expr},
+        journal::{ExprDefineExt, Journal, JournalCol, JournalExprExt},
         polars_ext::{ExprExt, polars_to_chapaty_error},
     },
 };
@@ -99,7 +99,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
             .as_df()
             .clone()
             .lazy()
-            .filter(is_executed_expr(JournalCol::TradeState))
+            .filter(col(JournalCol::TradeState).is_executed())
             .select(exprs(init_val))
             .collect()
             .map_err(convert_err)?;
@@ -130,7 +130,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 
                 let lf = df
                     .lazy()
-                    .filter(is_executed_expr(JournalCol::TradeState))
+                    .filter(col(JournalCol::TradeState).is_executed())
                     .sort(
                         [JournalCol::EntryTimestamp.as_str()],
                         SortMultipleOptions::default(),
@@ -159,72 +159,49 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 fn exprs(init_val: u32) -> Vec<Expr> {
     vec![
         // === Identifiers ===
-        col(JournalCol::RowId)
-            .alias(CumulativeReturnCol::RowId)
-            .cast(DataType::UInt32),
-        col(JournalCol::EpisodeId)
-            .alias(CumulativeReturnCol::EpisodeId)
-            .cast(DataType::UInt32),
-        col(JournalCol::TradeId)
-            .alias(CumulativeReturnCol::TradeId)
-            .cast(DataType::UInt32),
-        col(JournalCol::AgentId)
-            .alias(CumulativeReturnCol::AgentId)
-            .cast(DataType::String),
+        col(JournalCol::RowId).define_as(CumulativeReturnCol::RowId, DataType::UInt32),
+        col(JournalCol::EpisodeId).define_as(CumulativeReturnCol::EpisodeId, DataType::UInt32),
+        col(JournalCol::TradeId).define_as(CumulativeReturnCol::TradeId, DataType::UInt32),
+        col(JournalCol::AgentId).define_as(CumulativeReturnCol::AgentId, DataType::String),
         // === Market spec ===
-        col(JournalCol::DataBroker)
-            .alias(CumulativeReturnCol::DataBroker)
-            .cast(DataType::String),
-        col(JournalCol::Exchange)
-            .alias(CumulativeReturnCol::Exchange)
-            .cast(DataType::String),
-        col(JournalCol::Symbol)
-            .alias(CumulativeReturnCol::Symbol)
-            .cast(DataType::String),
-        col(JournalCol::MarketType)
-            .alias(CumulativeReturnCol::MarketType)
-            .cast(DataType::String),
+        col(JournalCol::DataBroker).define_as(CumulativeReturnCol::DataBroker, DataType::String),
+        col(JournalCol::Exchange).define_as(CumulativeReturnCol::Exchange, DataType::String),
+        col(JournalCol::Symbol).define_as(CumulativeReturnCol::Symbol, DataType::String),
+        col(JournalCol::MarketType).define_as(CumulativeReturnCol::MarketType, DataType::String),
         // === Trade configuration ===
-        col(JournalCol::TradeType)
-            .alias(CumulativeReturnCol::TradeType)
-            .cast(DataType::String),
-        col(JournalCol::Quantity)
-            .alias(CumulativeReturnCol::Quantity)
-            .cast(DataType::Float64),
+        col(JournalCol::TradeType).define_as(CumulativeReturnCol::TradeType, DataType::String),
+        col(JournalCol::Quantity).define_as(CumulativeReturnCol::Quantity, DataType::Float64),
         // === Time ===
-        col(JournalCol::ExitTimestamp)
-            .alias(CumulativeReturnCol::CumulativeTimestamp)
-            .cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(TimeZone::UTC),
-            )),
-        last_peak_timestamp_expr(init_val)
-            .alias(CumulativeReturnCol::LastPeakTimestamp)
-            .cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(TimeZone::UTC),
-            )),
+        col(JournalCol::ExitTimestamp).define_as(
+            CumulativeReturnCol::CumulativeTimestamp,
+            DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC)),
+        ),
+        last_peak_timestamp_expr(init_val).define_as(
+            CumulativeReturnCol::LastPeakTimestamp,
+            DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC)),
+        ),
         // === Equity curve metrics ===
-        peak_cumulative_return_usd_expr(init_val)
-            .alias(CumulativeReturnCol::PeakCumulativeReturnUsd)
-            .cast(DataType::Float64),
+        peak_cumulative_return_usd_expr(init_val).define_as(
+            CumulativeReturnCol::PeakCumulativeReturnUsd,
+            DataType::Float64,
+        ),
         drawdown_from_peak_usd_expr(init_val)
-            .alias(CumulativeReturnCol::DrawdownFromPeakUsd)
-            .cast(DataType::Float64),
-        drawdown_from_peak_pct_expr(init_val)
-            .alias(CumulativeReturnCol::DrawdownFromPeakPercentage)
-            .cast(DataType::Float64),
+            .define_as(CumulativeReturnCol::DrawdownFromPeakUsd, DataType::Float64),
+        drawdown_from_peak_pct_expr(init_val).define_as(
+            CumulativeReturnCol::DrawdownFromPeakPercentage,
+            DataType::Float64,
+        ),
         // === Performance ratio ===
-        rolling_recovery_factor_expr(init_val)
-            .alias(CumulativeReturnCol::RollingRecoveryFactor)
-            .cast(DataType::Float64),
+        rolling_recovery_factor_expr(init_val).define_as(
+            CumulativeReturnCol::RollingRecoveryFactor,
+            DataType::Float64,
+        ),
         // === Return outcomes ===
-        col(JournalCol::ExitReason)
-            .alias(CumulativeReturnCol::ExitReason)
-            .cast(DataType::String),
-        cumulative_realized_return_usd_expr(init_val)
-            .alias(CumulativeReturnCol::CumulativeRealizedReturnUsd)
-            .cast(DataType::Float64),
+        col(JournalCol::ExitReason).define_as(CumulativeReturnCol::ExitReason, DataType::String),
+        cumulative_realized_return_usd_expr(init_val).define_as(
+            CumulativeReturnCol::CumulativeRealizedReturnUsd,
+            DataType::Float64,
+        ),
     ]
 }
 

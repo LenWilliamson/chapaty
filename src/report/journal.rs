@@ -3,7 +3,7 @@ use std::sync::Arc;
 use polars::{
     prelude::{
         DataFrame, DataType, Expr, Field, PlSmallStr, Schema, SchemaRef, SortMultipleOptions,
-        TimeUnit, TimeZone, col, lit,
+        TimeUnit, TimeZone, lit,
     },
     series::IsSorted,
 };
@@ -309,10 +309,21 @@ impl ToSchema for Journal {
 // Helper
 // ================================================================================================
 
+pub trait ExprDefineExt {
+    /// Casts the expression to the specified data type and aliases it using the provided column name.
+    fn define_as<C: Into<PlSmallStr>>(self, col: C, dtype: DataType) -> Expr;
+}
+
+impl ExprDefineExt for Expr {
+    fn define_as<C: Into<PlSmallStr>>(self, col: C, dtype: DataType) -> Expr {
+        self.cast(dtype).alias(col)
+    }
+}
+
 pub trait JournalExprExt {
     /// Evaluates to true if the expression resolves to an Active or Closed state.
     fn is_executed(self) -> Expr;
-    
+
     /// Converts a boolean mask into a sum of occurrences.
     fn count_true(self) -> Expr;
 }
@@ -333,7 +344,7 @@ impl JournalExprExt for Expr {
 mod test {
     use std::path::PathBuf;
 
-    use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath};
+    use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, col};
 
     use super::*;
 
@@ -400,7 +411,7 @@ mod test {
             .as_df()
             .clone()
             .lazy()
-            .filter(is_executed_expr(JournalCol::TradeState))
+            .filter(col(JournalCol::TradeState).is_executed())
             .collect()
             .expect("Failed to apply is_executed_expr filter");
 

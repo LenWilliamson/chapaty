@@ -1,9 +1,8 @@
-use chrono::Duration;
 use polars::{
-    datatypes::TimeZone,
     lazy::dsl::max_horizontal,
     prelude::{
-        EWMOptions, LazyFrame, NULL, RollingOptionsFixedWindow, SortMultipleOptions, col, lit, when,
+        EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
+        SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
 };
@@ -13,11 +12,17 @@ use crate::{
     data::domain::{AggregatedPrice, SessionWindow},
     error::ChapatyResult,
     indicator::{
-        batch::{BatchCompute, convert_err, finalize_scalar},
+        batch::{BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err},
         config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
     },
     transport::schema::CanonicalCol,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionCfg {
+    window: SessionWindow,
+    price_aggregation: AggregatedPrice,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchOhlcvIndicator {
@@ -27,20 +32,20 @@ pub enum BatchOhlcvIndicator {
     Atr(AtrConfig),
     RateOfChange(LookbackWindow),
     Vwap(AggregatedPrice),
-    OvernightRange(SessionWindow),
+    OvernightRange(SessionCfg),
 }
 
 impl BatchCompute for BatchOhlcvIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            BatchOhlcvIndicator::Ema(ema) => pre_compute_ema(ema, lf),
-            BatchOhlcvIndicator::Sma(sma) => pre_compute_sma(sma, lf),
-            BatchOhlcvIndicator::Rsi(rsi) => pre_compute_rsi(rsi, lf),
-            BatchOhlcvIndicator::Atr(atr) => pre_compute_atr(atr, lf),
-            BatchOhlcvIndicator::RateOfChange(roc) => pre_compute_rate_of_change(roc, lf),
-            BatchOhlcvIndicator::Vwap(vwap) => pre_compute_vwap(vwap, lf),
+            BatchOhlcvIndicator::Ema(ema) => pre_compute_ema(*ema, lf),
+            BatchOhlcvIndicator::Sma(sma) => pre_compute_sma(*sma, lf),
+            BatchOhlcvIndicator::Rsi(rsi) => pre_compute_rsi(*rsi, lf),
+            BatchOhlcvIndicator::Atr(atr) => pre_compute_atr(*atr, lf),
+            BatchOhlcvIndicator::RateOfChange(lb) => pre_compute_rate_of_change(*lb, lf),
+            BatchOhlcvIndicator::Vwap(vwap) => pre_compute_vwap(*vwap, lf),
             BatchOhlcvIndicator::OvernightRange(session) => {
-                pre_compute_overnight_range(session, lf)
+                pre_compute_overnight_range(*session, lf)
             }
         }
     }
@@ -50,7 +55,81 @@ impl BatchCompute for BatchOhlcvIndicator {
 // LazyFrame Pre-Computations
 // ================================================================================================
 
-fn pre_compute_ema(ema: &EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+trait OhlcvIndicatorExprExt {
+    /// Computes the Relative Strength Index (RSI).
+    fn rsi(self, window: RsiWindow) -> Expr;
+
+    /// Computes the True Range using High, Low, and self (as Close).
+    fn true_range(self, high: Expr, low: Expr) -> ChapatyResult<Expr>;
+
+    /// Computes the absolute point change: $Close_{current} - Close_{current - n}$
+    /// Returns Null if the reference price is 0.0 to prevent division-by-zero downstream.
+    fn momentum_absolute(self, reference: Expr) -> Expr;
+
+    /// Computes the percentage rate of change.
+    /// Returns Null if the reference price is 0.0.
+    fn momentum_roc(self, reference: Expr) -> Expr;
+}
+
+impl OhlcvIndicatorExprExt for Expr {
+    fn rsi(self, window: RsiWindow) -> Expr {
+        let window = window.0;
+        let alpha = 1.0 / (window as f64);
+        let options = EWMOptions {
+            alpha,
+            adjust: false,
+            bias: false,
+            min_periods: window as usize,
+            ignore_nulls: true,
+        };
+
+        let delta = self.diff(lit(1), NullBehavior::Ignore);
+        let gain = delta.clone().clip(lit(0), lit(f64::MAX));
+        let loss = delta.clip(lit(f64::MIN), lit(0)).abs();
+
+        let avg_gain = gain.ewm_mean(options.clone());
+        let avg_loss = loss.ewm_mean(options);
+
+        let is_flat = avg_gain
+            .clone()
+            .eq(lit(0.0))
+            .and(avg_loss.clone().eq(lit(0.0)));
+        let rs = avg_gain / avg_loss;
+
+        when(is_flat)
+            .then(lit(50.0))
+            .otherwise(lit(100.0) - (lit(100.0) / (lit(1.0) + rs)))
+    }
+
+    fn true_range(self, high: Expr, low: Expr) -> ChapatyResult<Expr> {
+        let prev_close = self.shift(lit(1));
+        max_horizontal([
+            high.clone() - low.clone(),
+            (high - prev_close.clone()).abs(),
+            (low - prev_close).abs(),
+        ])
+        .map_err(convert_err)
+    }
+
+    fn momentum_absolute(self, reference: Expr) -> Expr {
+        let has_ref = reference.clone().abs().gt(lit(f64::EPSILON));
+
+        when(has_ref)
+            .then(self - reference.clone())
+            .otherwise(lit(NULL))
+    }
+
+    fn momentum_roc(self, reference: Expr) -> Expr {
+        let has_ref = reference.clone().abs().gt(lit(f64::EPSILON));
+        let absolute = self.clone() - reference.clone();
+
+        when(has_ref)
+            .then((absolute / reference) * lit(100.0))
+            .otherwise(lit(NULL))
+    }
+}
+
+fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     let window = ema.0;
     let alpha = 2.0 / (window as f64 + 1.0);
 
@@ -62,13 +141,10 @@ fn pre_compute_ema(ema: &EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         ignore_nulls: true,
     };
 
-    Ok(finalize_scalar(
-        lf,
-        col(CanonicalCol::Close).ewm_mean(options),
-    ))
+    Ok(lf.finalize_scalar(col(CanonicalCol::Close).ewm_mean(options)))
 }
 
-fn pre_compute_sma(sma: &SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     let window = sma.0;
     let options = RollingOptionsFixedWindow {
         window_size: window as usize,
@@ -78,52 +154,14 @@ fn pre_compute_sma(sma: &SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         fn_params: None,
     };
 
-    Ok(finalize_scalar(
-        lf,
-        col(CanonicalCol::Close).rolling_mean(options),
-    ))
+    Ok(lf.finalize_scalar(col(CanonicalCol::Close).rolling_mean(options)))
 }
 
-fn pre_compute_rsi(rsi: &RsiWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let window = rsi.0;
-    let alpha = 1.0 / (window as f64);
-    let options = EWMOptions {
-        alpha,
-        adjust: false,
-        bias: false,
-        min_periods: window as usize,
-        ignore_nulls: true,
-    };
-
-    let rsi_expr = {
-        let delta = col(CanonicalCol::Close).diff(lit(1), NullBehavior::Ignore);
-        let gain = delta.clone().clip(lit(0), lit(f64::MAX));
-        let loss = delta.clip(lit(f64::MIN), lit(0)).abs();
-
-        let avg_gain = gain.ewm_mean(options.clone());
-        let avg_loss = loss.ewm_mean(options);
-
-        // Mirror the streaming RSI's degenerate-case handling: a flat series
-        // (no gains and no losses) is defined as 50 rather than the 0/0 NaN the
-        // raw formula would produce. A pure up-trend (avg_loss == 0, avg_gain > 0)
-        // still resolves to 100 naturally, since rs -> +inf.
-        let is_flat = avg_gain
-            .clone()
-            .eq(lit(0.0))
-            .and(avg_loss.clone().eq(lit(0.0)));
-        let rs = avg_gain / avg_loss;
-        when(is_flat)
-            .then(lit(50.0))
-            .otherwise(lit(100.0) - (lit(100.0) / (lit(1.0) + rs)))
-    };
-
-    Ok(finalize_scalar(lf, rsi_expr))
+fn pre_compute_rsi(rsi: RsiWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    Ok(lf.finalize_scalar(col(CanonicalCol::Close).rsi(rsi)))
 }
 
-// In src/data/batch_indicator.rs
-fn pre_compute_atr(atr: &AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    // Nutze atr.window und atr.smoothing, um die
-    // mathematisch äquivalente Polars-Expression zu bauen.
+fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     let alpha = 1.0 / (atr.window as f64);
     let options = EWMOptions {
         alpha,
@@ -133,171 +171,117 @@ fn pre_compute_atr(atr: &AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         ignore_nulls: true,
     };
 
-    let tr_expr = {
-        let prev_close = col(CanonicalCol::Close).shift(lit(1));
-        max_horizontal([
-            col(CanonicalCol::High) - col(CanonicalCol::Low),
-            (col(CanonicalCol::High) - prev_close.clone()).abs(),
-            (col(CanonicalCol::Low) - prev_close).abs(),
-        ])
-        .expect("Valid arguments supplied to max_horizontal for True Range")
-    };
+    let tr_expr =
+        col(CanonicalCol::Close).true_range(col(CanonicalCol::High), col(CanonicalCol::Low))?;
 
-    Ok(finalize_scalar(lf, tr_expr.ewm_mean(options)))
+    Ok(lf.finalize_scalar(tr_expr.ewm_mean(options)))
 }
 
-fn pre_compute_rate_of_change(roc: &RateOfChangeWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let window = roc.0;
-
-    // Reference price `window` bars back (null during warm-up).
-    let reference = col(CanonicalCol::Close).shift(lit(window));
-    let absolute = col(CanonicalCol::Close) - reference.clone();
-    let roc_val = (absolute.clone() / reference.clone()) * lit(100.0);
-
-    // Match the streaming guard: a (near-)zero reference price would divide by
-    // zero, so the whole observation (both absolute and roc_val) is suppressed.
-    let has_reference = reference.abs().gt(lit(f64::EPSILON));
-
-    // Mirrors the streaming `MomentumOutput { absolute, roc }`, keyed by timestamp.
-    Ok(lf
-        .sort(
-            [CanonicalCol::Timestamp],
-            SortMultipleOptions::default().with_maintain_order(false),
-        )
-        .select([
-            col(CanonicalCol::Timestamp),
-            when(has_reference.clone())
-                .then(absolute)
-                .otherwise(lit(NULL))
-                .alias(CanonicalCol::RocAbsolute),
-            when(has_reference)
-                .then(roc_val)
-                .otherwise(lit(NULL))
-                .alias(CanonicalCol::Roc),
-        ])
-        .filter(col(CanonicalCol::Roc).is_not_null()))
+fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    Ok(lf.finalize_scalar(agg.to_expr().vwap(col(CanonicalCol::Volume))))
 }
 
-fn pre_compute_vwap(_vwap: &AggregatedPrice, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let hlc3 =
-        (col(CanonicalCol::High) + col(CanonicalCol::Low) + col(CanonicalCol::Close)) / lit(3.0);
+fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    match window {
+        LookbackWindow::Bars(n) => {
+            // Row-based lookback is natively supported by Polars
+            let reference = col(CanonicalCol::Close).shift(lit(n as u32));
 
-    // Non-positive volume contributes nothing to either running sum, mirroring
-    // the streaming accumulator. Use a conditional (rather than `filter`) so the
-    // series keeps the frame's length and stays alignable with the timestamp.
-    let has_volume = col(CanonicalCol::Volume).gt(lit(0.0));
-    let price_x_volume = when(has_volume.clone())
-        .then(hlc3 * col(CanonicalCol::Volume))
-        .otherwise(lit(0.0));
-    let volume = when(has_volume)
-        .then(col(CanonicalCol::Volume))
-        .otherwise(lit(0.0));
+            Ok(lf
+                .sort(
+                    [CanonicalCol::PointInTime],
+                    SortMultipleOptions::default().with_maintain_order(false),
+                )
+                .select([
+                    col(CanonicalCol::PointInTime),
+                    col(CanonicalCol::Close)
+                        .momentum_absolute(reference.clone())
+                        .alias(CanonicalCol::RocAbsolute),
+                    col(CanonicalCol::Close)
+                        .momentum_roc(reference)
+                        .alias(CanonicalCol::Roc),
+                ])
+                .filter(col(CanonicalCol::Roc).is_not_null()))
+        }
 
-    let cumulative_v = volume.cum_sum(false);
-    // VWAP is undefined until the first positive-volume bar arrives.
-    let vwap_expr = when(cumulative_v.clone().gt(lit(0.0)))
-        .then(price_x_volume.cum_sum(false) / cumulative_v)
-        .otherwise(lit(NULL));
+        LookbackWindow::Time(duration) => {
+            // To mimic the exact time-boundary guard of your streaming buffer:
+            // 1. Create an exact historical timestamp.
+            // 2. Perform a left join onto itself.
+            // If the exact historical time doesn't exist (e.g., gaps), it yields null,
+            // which perfectly matches the streaming buffer's `None` output.
 
-    Ok(finalize_scalar(lf, vwap_expr))
+            let duration_ms = duration.num_milliseconds();
+
+            // Define the time exactly `duration` ago
+            let lookback_target = col(CanonicalCol::PointInTime) - lit(duration_ms);
+
+            let history_lf = lf.clone().select([
+                col(CanonicalCol::PointInTime).alias("hist_ts"),
+                col(CanonicalCol::Close).alias("hist_close"),
+            ]);
+
+            Ok(lf
+                .with_column(lookback_target.alias("lookback_target"))
+                .join(
+                    history_lf,
+                    [col("lookback_target")],
+                    [col("hist_ts")],
+                    JoinArgs::new(JoinType::Left),
+                )
+                .select([
+                    col(CanonicalCol::PointInTime),
+                    col(CanonicalCol::Close)
+                        .momentum_absolute(col("hist_close"))
+                        .alias(CanonicalCol::RocAbsolute),
+                    col(CanonicalCol::Close)
+                        .momentum_roc(col("hist_close"))
+                        .alias(CanonicalCol::Roc),
+                ])
+                .filter(col(CanonicalCol::Roc).is_not_null()))
+        }
+    }
 }
 
-fn pre_compute_overnight_range(session: &SessionWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let start_mins = (session.start_h as u32) * 60 + (session.start_m as u32);
-    let end_mins = (session.end_h as u32) * 60 + (session.end_m as u32);
-    let is_intraday = start_mins < end_mins;
+fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+    let SessionCfg {
+        window,
+        price_aggregation,
+    } = cfg;
 
-    // 1. Convert to local timezone and extract raw time
-    let local_ts = col(CanonicalCol::Timestamp)
-        .dt()
-        .convert_time_zone(TimeZone::from_chrono(&session.timezone));
-    let time_mins = local_ts.clone().dt().hour() * lit(60u32) + local_ts.clone().dt().minute();
-    let local_date = local_ts.clone().dt().date();
+    let session_date_col = col(CanonicalCol::PointInTime).session_date(window);
 
-    // 2. Classify Session Date
-    let session_date_expr = if is_intraday {
-        when(
-            time_mins
-                .clone()
-                .gt_eq(lit(start_mins))
-                .and(time_mins.clone().lt(lit(end_mins))),
-        )
-        .then(local_date.clone())
-        .otherwise(lit(NULL))
-    } else {
-        when(time_mins.clone().gt_eq(lit(start_mins)))
-            .then(local_date.clone())
-            .when(time_mins.lt(lit(end_mins)))
-            // Pull morning leg into the previous day's session
-            .then(local_date - lit(Duration::days(1)))
-            .otherwise(lit(NULL))
-    };
-
-    let hlc3 =
-        (col(CanonicalCol::High) + col(CanonicalCol::Low) + col(CanonicalCol::Close)) / lit(3.0);
-    let pv = hlc3 * col(CanonicalCol::Volume);
-
-    // Session VWAP = running sum(price * volume) / running sum(volume), both
-    // partitioned by session. `over` is fallible, so build the two cumulative
-    // legs first and only then divide.
-    let session_pv_cum = pv
-        .cum_sum(false)
-        .over([col(CanonicalCol::SessionDate)])
-        .map_err(convert_err)?;
-    let session_volume_cum = col(CanonicalCol::Volume)
-        .cum_sum(false)
-        .over([col(CanonicalCol::SessionDate)])
-        .map_err(convert_err)?;
-    let session_vwap = session_pv_cum / session_volume_cum;
-
-    // 3. Compute running cumulative session extremes (Stateless Vectorized Mapping)
     let out_lf = lf
-        .sort(
-            [CanonicalCol::Timestamp],
-            SortMultipleOptions::default().with_maintain_order(false),
-        )
-        .with_column(session_date_expr.alias(CanonicalCol::SessionDate))
-        .with_columns([
+        .with_column(session_date_col.alias(CanonicalCol::Date))
+        .filter(col(CanonicalCol::Date).is_not_null())
+        .group_by([col(CanonicalCol::Date)])
+        .agg([
+            col(CanonicalCol::OpenTimestamp)
+                .first()
+                .alias("OpenTimestamp"),
+            col(CanonicalCol::PointInTime)
+                .last()
+                .alias(CanonicalCol::PointInTime),
             col(CanonicalCol::High)
-                .cum_max(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .max()
                 .alias(CanonicalCol::SessionHigh),
-            col(CanonicalCol::Low)
-                .cum_min(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
-                .alias(CanonicalCol::SessionLow),
+            col(CanonicalCol::Low).min().alias(CanonicalCol::SessionLow),
             col(CanonicalCol::Close)
-                .cum_max(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .max()
                 .alias(CanonicalCol::SessionHighestClose),
             col(CanonicalCol::Close)
-                .cum_min(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .min()
                 .alias(CanonicalCol::SessionLowestClose),
             col(CanonicalCol::Volume)
-                .cum_sum(false)
-                .over([col(CanonicalCol::SessionDate)])
-                .map_err(convert_err)?
+                .sum()
                 .alias(CanonicalCol::SessionVolume),
-            session_vwap.alias(CanonicalCol::SessionVwap),
+            // --- Session VWAP ---
+            price_aggregation
+                .to_expr()
+                .agg_vwap(col(CanonicalCol::Volume))
+                .alias(CanonicalCol::SessionVwap),
         ])
-        // Project to the columns of the `OhlcvSessionData` struct (keyed by
-        // timestamp) and keep only rows that belong to a session.
-        .select([
-            col(CanonicalCol::Timestamp),
-            col(CanonicalCol::SessionDate),
-            col(CanonicalCol::SessionHigh),
-            col(CanonicalCol::SessionLow),
-            col(CanonicalCol::SessionHighestClose),
-            col(CanonicalCol::SessionLowestClose),
-            col(CanonicalCol::SessionVolume),
-            col(CanonicalCol::SessionVwap),
-        ])
-        .filter(col(CanonicalCol::SessionDate).is_not_null());
+        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default());
 
     Ok(out_lf)
 }

@@ -17,7 +17,7 @@ use crate::{
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
-        journal::{Journal, JournalCol, is_executed_expr},
+        journal::{ExprDefineExt, Journal, JournalCol, JournalExprExt},
         polars_ext::polars_to_chapaty_error,
     },
 };
@@ -168,94 +168,95 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
     let exprs = vec![
         // === Trade counts ===
         winning_trade_count_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::WinningTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::WinningTradeCount, DataType::UInt32),
         losing_trade_count_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::LosingTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::LosingTradeCount, DataType::UInt32),
         executed_trade_count_expr(trade_state_col)
-            .alias(TradeStatCol::TotalTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::TotalTradeCount, DataType::UInt32),
         // === Trade streaks ===
         max_consecutive_wins_expr(return_col, trade_state_col)?
-            .alias(TradeStatCol::MaxConsecutiveWins)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::MaxConsecutiveWins, DataType::UInt32),
         max_consecutive_losses_expr(return_col, trade_state_col)?
-            .alias(TradeStatCol::MaxConsecutiveLosses)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::MaxConsecutiveLosses, DataType::UInt32),
         max_consecutive_unrealized_wins_expr(trade_state_col, return_col)?
-            .alias(TradeStatCol::MaxConsecutiveUnrealizedWins)
-            .cast(DataType::UInt32),
-        max_consecutive_unrealized_losses_expr(trade_state_col, return_col)?
-            .alias(TradeStatCol::MaxConsecutiveUnrealizedLosses)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::MaxConsecutiveUnrealizedWins, DataType::UInt32),
+        max_consecutive_unrealized_losses_expr(trade_state_col, return_col)?.define_as(
+            TradeStatCol::MaxConsecutiveUnrealizedLosses,
+            DataType::UInt32,
+        ),
         // === Trade durations ===
-        avg_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::AvgTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        median_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::MedianTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        min_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::MinTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        max_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::MaxTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        lower_quantile_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::LowerQuantileTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        upper_quantile_trade_duration_expr(trade_state_col)
-            .alias(TradeStatCol::UpperQuantileTradeDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
+        avg_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::AvgTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        median_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::MedianTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        min_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::MinTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        max_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::MaxTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        lower_quantile_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::LowerQuantileTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        upper_quantile_trade_duration_expr(trade_state_col).define_as(
+            TradeStatCol::UpperQuantileTradeDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
         // === Duration breakdown by outcome ===
-        avg_win_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::AvgWinDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        median_win_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::MedianWinDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        lower_quantile_win_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::LowerQuantileWinDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        upper_quantile_win_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::UpperQuantileWinDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        avg_loss_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::AvgLossDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        median_loss_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::MedianLossDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        lower_quantile_loss_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::LowerQuantileLossDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
-        upper_quantile_loss_duration_expr(return_col, trade_state_col)
-            .alias(TradeStatCol::UpperQuantileLossDuration)
-            .cast(DataType::Duration(TimeUnit::Microseconds)),
+        avg_win_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::AvgWinDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        median_win_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::MedianWinDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        lower_quantile_win_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::LowerQuantileWinDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        upper_quantile_win_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::UpperQuantileWinDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        avg_loss_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::AvgLossDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        median_loss_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::MedianLossDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        lower_quantile_loss_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::LowerQuantileLossDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
+        upper_quantile_loss_duration_expr(return_col, trade_state_col).define_as(
+            TradeStatCol::UpperQuantileLossDuration,
+            DataType::Duration(TimeUnit::Microseconds),
+        ),
         // === Unrealized tracking ===
         unrealized_win_count_expr(trade_state_col, return_col)
-            .alias(TradeStatCol::UnrealizedWinCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::UnrealizedWinCount, DataType::UInt32),
         unrealized_loss_count_expr(trade_state_col, return_col)
-            .alias(TradeStatCol::UnrealizedLossCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::UnrealizedLossCount, DataType::UInt32),
         unrealized_trade_count_expr(trade_state_col)
-            .alias(TradeStatCol::UnrealizedTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::UnrealizedTradeCount, DataType::UInt32),
         // === Entry quality ===
-        pending_count_expr(trade_state_col)
-            .alias(TradeStatCol::PendingCount)
-            .cast(DataType::UInt32),
+        pending_count_expr(trade_state_col).define_as(TradeStatCol::PendingCount, DataType::UInt32),
         longest_pending_streak_expr(trade_state_col)?
-            .alias(TradeStatCol::LongestPendingStreak)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::LongestPendingStreak, DataType::UInt32),
         long_trade_count_expr(trade_type_col, trade_state_col)
-            .alias(TradeStatCol::LongTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::LongTradeCount, DataType::UInt32),
         short_trade_count_expr(trade_type_col, trade_state_col)
-            .alias(TradeStatCol::ShortTradeCount)
-            .cast(DataType::UInt32),
+            .define_as(TradeStatCol::ShortTradeCount, DataType::UInt32),
     ];
     Ok(exprs)
 }
@@ -264,23 +265,21 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
 // === Trade counts ===
 // ================================================================================================
 fn winning_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
-    is_executed_expr(trade_state_col)
+    col(trade_state_col)
+        .is_executed()
         .and(col(return_col).gt(lit(0)))
-        .cast(DataType::UInt32)
-        .sum()
+        .count_true()
 }
 
 fn losing_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
-    is_executed_expr(trade_state_col)
+    col(trade_state_col)
+        .is_executed()
         .and(col(return_col).lt_eq(lit(0)))
-        .cast(DataType::UInt32)
-        .sum()
+        .count_true()
 }
 
 pub(super) fn executed_trade_count_expr(trade_state_col: JournalCol) -> Expr {
-    is_executed_expr(trade_state_col)
-        .cast(DataType::UInt32)
-        .sum()
+    col(trade_state_col).is_executed().count_true()
 }
 
 // ================================================================================================
@@ -290,7 +289,9 @@ fn max_consecutive_wins_expr(
     return_col: JournalCol,
     trade_state_col: JournalCol,
 ) -> ChapatyResult<Expr> {
-    let predicate = is_executed_expr(trade_state_col).and(col(return_col).gt(lit(0)));
+    let predicate = col(trade_state_col)
+        .is_executed()
+        .and(col(return_col).gt(lit(0)));
     max_consecutive_streak_expr(predicate)
 }
 
@@ -298,7 +299,9 @@ fn max_consecutive_losses_expr(
     return_col: JournalCol,
     trade_state_col: JournalCol,
 ) -> ChapatyResult<Expr> {
-    let predicate = is_executed_expr(trade_state_col).and(col(return_col).lt_eq(lit(0)));
+    let predicate = col(trade_state_col)
+        .is_executed()
+        .and(col(return_col).lt_eq(lit(0)));
     max_consecutive_streak_expr(predicate)
 }
 
@@ -329,37 +332,37 @@ fn max_consecutive_unrealized_losses_expr(
 // ================================================================================================
 fn avg_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .mean()
 }
 
 fn median_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .median()
 }
 
 fn min_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .min()
 }
 
 fn max_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .max()
 }
 
 fn lower_quantile_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .quantile(lit(0.25), QuantileMethod::Linear)
 }
 
 fn upper_quantile_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col))
+        .filter(col(trade_state_col).is_executed())
         .quantile(lit(0.75), QuantileMethod::Linear)
 }
 
@@ -368,13 +371,21 @@ fn upper_quantile_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
 // ================================================================================================
 fn avg_win_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col).and(col(return_col).gt(lit(0))))
+        .filter(
+            col(trade_state_col)
+                .is_executed()
+                .and(col(return_col).gt(lit(0))),
+        )
         .mean()
 }
 
 fn median_win_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col).and(col(return_col).gt(lit(0))))
+        .filter(
+            col(trade_state_col)
+                .is_executed()
+                .and(col(return_col).gt(lit(0))),
+        )
         .median()
 }
 
@@ -388,13 +399,21 @@ fn upper_quantile_win_duration_expr(return_col: JournalCol, trade_state_col: Jou
 
 fn avg_loss_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col).and(col(return_col).lt_eq(lit(0))))
+        .filter(
+            col(trade_state_col)
+                .is_executed()
+                .and(col(return_col).lt_eq(lit(0))),
+        )
         .mean()
 }
 
 fn median_loss_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(is_executed_expr(trade_state_col).and(col(return_col).lt_eq(lit(0))))
+        .filter(
+            col(trade_state_col)
+                .is_executed()
+                .and(col(return_col).lt_eq(lit(0))),
+        )
         .median()
 }
 
@@ -413,22 +432,18 @@ fn unrealized_win_count_expr(trade_state_col: JournalCol, return_col: JournalCol
     (col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).gt(lit(0))))
-    .cast(DataType::UInt32)
-    .sum()
+    .count_true()
 }
 
 fn unrealized_loss_count_expr(trade_state_col: JournalCol, return_col: JournalCol) -> Expr {
     (col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).lt_eq(lit(0))))
-    .cast(DataType::UInt32)
-    .sum()
+    .count_true()
 }
 
 fn unrealized_trade_count_expr(trade_state_col: JournalCol) -> Expr {
-    (col(trade_state_col).eq(lit(StateKind::Active.as_str())))
-        .cast(DataType::UInt32)
-        .sum()
+    (col(trade_state_col).eq(lit(StateKind::Active.as_str()))).count_true()
 }
 
 // ================================================================================================
@@ -437,7 +452,7 @@ fn unrealized_trade_count_expr(trade_state_col: JournalCol) -> Expr {
 fn pending_count_expr(trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .eq(lit(StateKind::Pending.as_str()))
-        .sum()
+        .count_true()
 }
 
 fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Expr> {
@@ -446,17 +461,17 @@ fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Exp
 }
 
 fn long_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
-    is_executed_expr(trade_state_col)
+    col(trade_state_col)
+        .is_executed()
         .and(col(trade_type_col).eq(lit(TradeType::Long.as_str())))
-        .cast(DataType::UInt32)
-        .sum()
+        .count_true()
 }
 
 fn short_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
-    is_executed_expr(trade_state_col)
+    col(trade_state_col)
+        .is_executed()
         .and(col(trade_type_col).eq(lit(TradeType::Short.as_str())))
-        .cast(DataType::UInt32)
-        .sum()
+        .count_true()
 }
 
 // ================================================================================================
@@ -486,9 +501,13 @@ fn quantile_duration_expr(
     is_win: bool,
 ) -> Expr {
     let filter_expr = if is_win {
-        is_executed_expr(trade_state_col).and(col(return_col).gt(lit(0)))
+        col(trade_state_col)
+            .is_executed()
+            .and(col(return_col).gt(lit(0)))
     } else {
-        is_executed_expr(trade_state_col).and(col(return_col).lt_eq(lit(0)))
+        col(trade_state_col)
+            .is_executed()
+            .and(col(return_col).lt_eq(lit(0)))
     };
 
     trade_duration_expr()
