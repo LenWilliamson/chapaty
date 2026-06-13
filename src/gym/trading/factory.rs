@@ -1620,6 +1620,8 @@ enum StateFn<'a, Ctx> {
 
 #[cfg(test)]
 mod test {
+    use crate::indicator::batch::BatchCompute;
+
     use super::*;
     use chrono::{TimeZone, Timelike};
     use polars::{

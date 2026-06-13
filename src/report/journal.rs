@@ -309,14 +309,24 @@ impl ToSchema for Journal {
 // Helper
 // ================================================================================================
 
-/// Evaluates to true if the trade state is Active or Closed.
-/// Filtering by this expression ensures pending or canceled trades do not skew aggregated metrics.
-pub(super) fn is_executed_expr(trade_state_col: JournalCol) -> Expr {
-    let col_expr = col(trade_state_col);
-    col_expr
-        .clone()
-        .eq(lit(StateKind::Active.as_str()))
-        .or(col_expr.eq(lit(StateKind::Closed.as_str())))
+pub trait JournalExprExt {
+    /// Evaluates to true if the expression resolves to an Active or Closed state.
+    fn is_executed(self) -> Expr;
+    
+    /// Converts a boolean mask into a sum of occurrences.
+    fn count_true(self) -> Expr;
+}
+
+impl JournalExprExt for Expr {
+    fn is_executed(self) -> Expr {
+        self.clone()
+            .eq(lit(StateKind::Active.as_str()))
+            .or(self.eq(lit(StateKind::Closed.as_str())))
+    }
+
+    fn count_true(self) -> Expr {
+        self.cast(DataType::UInt32).sum()
+    }
 }
 
 #[cfg(test)]

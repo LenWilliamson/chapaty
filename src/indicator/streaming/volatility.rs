@@ -7,9 +7,12 @@ use crate::{
         domain::{AggregatedPrice, Price, Volume},
         event::{Ohlcv, TradeEvent},
     },
-    indicator::streaming::{
-        StreamingIndicator,
-        moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+    indicator::{
+        config::{AtrConfig, AtrSmoothingType, EmaWindow, SmaWindow},
+        streaming::{
+            StreamingIndicator,
+            moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+        },
     },
     math::accumulators::KahanSum,
 };
@@ -17,21 +20,6 @@ use crate::{
 // ================================================================================================
 // ATR
 // ================================================================================================
-
-/// Defines the smoothing algorithm used to average the True Range.
-/// Traders often experiment with different smoothing types depending on their
-/// responsiveness requirements.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub enum AtrSmoothingType {
-    /// J. Welles Wilder's original smoothing method (Running Moving Average / RMA).
-    /// Formula: alpha = 1 / window_size
-    #[default]
-    Wilders,
-    /// Simple Moving Average (SMA).
-    Sma,
-    /// Exponential Moving Average (EMA).
-    Ema,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AtrSmoother {
@@ -83,25 +71,19 @@ impl Default for StreamingAtr {
 }
 
 impl StreamingAtr {
-    /// Creates a new ATR indicator.
-    ///
-    /// Panics if `window_size` is not strictly positive (i.e., `window_size` must be > 0).
-    pub fn new(window_size: u16, smoothing_type: AtrSmoothingType) -> Self {
-        assert!(
-            window_size > 0,
-            "window_size must be > 0, but got {window_size} <= 0"
-        );
-        let smoother = match smoothing_type {
+    pub fn new(cfg: AtrConfig) -> Self {
+        let AtrConfig { window, smoothing } = cfg;
+        let smoother = match smoothing {
             AtrSmoothingType::Wilders => {
-                let alpha = 1.0 / (window_size as f64);
-                AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize))
+                let alpha = 1.0 / (window as f64);
+                AtrSmoother::Wilders(StreamingEwm::new(alpha, window as usize))
             }
-            AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(window_size)),
-            AtrSmoothingType::Ema => AtrSmoother::Ema(StreamingEma::new(window_size)),
+            AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
+            AtrSmoothingType::Ema => AtrSmoother::Ema(StreamingEma::new(EmaWindow(window))),
         };
 
         Self {
-            window_size,
+            window_size: window,
             smoother,
             ..Default::default()
         }
@@ -329,12 +311,14 @@ mod tests {
     // ============================================================================================
     // ATR TESTS
     // ============================================================================================
-
     #[test]
     fn atr_calculates_true_range_correctly_across_edge_cases() {
         // By using an SMA of length 1, the smoother just outputs the exact True Range of the current candle.
         // This isolates the TR math from the smoothing math.
-        let mut atr = StreamingAtr::new(1, AtrSmoothingType::Sma);
+        let mut atr = StreamingAtr::new(AtrConfig {
+            window: 1,
+            smoothing: AtrSmoothingType::Sma,
+        });
 
         // 1. First Candle: No previous close. TR should be High - Low (15.0 - 5.0 = 10.0)
         let candle1 = mock_candle(10., 15., 5., 12., 100.);
@@ -370,7 +354,10 @@ mod tests {
             AtrSmoothingType::Sma,
             AtrSmoothingType::Ema,
         ] {
-            let mut atr = StreamingAtr::new(3, smoothing);
+            let mut atr = StreamingAtr::new(AtrConfig {
+                window: 3,
+                smoothing,
+            });
             let mut last = None;
             for _ in 0..6 {
                 last = atr.update(mock_candle(10., 11., 9., 10., 100.));
@@ -387,7 +374,10 @@ mod tests {
     /// bar (TR = High - Low), not as a gap from the stale close.
     #[test]
     fn atr_reset_clears_previous_close() {
-        let mut atr = StreamingAtr::new(1, AtrSmoothingType::Sma);
+        let mut atr = StreamingAtr::new(AtrConfig {
+            window: 1,
+            smoothing: AtrSmoothingType::Sma,
+        });
         atr.update(mock_candle(10., 15., 5., 12., 100.)); // prev_close becomes 12
 
         atr.reset();
@@ -395,12 +385,6 @@ mod tests {
         // Without the reset, TR would be max(5, |25-12|, |20-12|) = 13.
         let after = atr.update(mock_candle(20., 25., 20., 24., 100.));
         assert_eq!(after, Some(5.0)); // 25 - 20, treated as a first bar
-    }
-
-    #[test]
-    #[should_panic(expected = "window_size must be > 0")]
-    fn atr_new_panics_on_zero_window() {
-        let _ = StreamingAtr::new(0, AtrSmoothingType::Wilders);
     }
 
     /// The documented default is a 14-period Wilder's ATR.

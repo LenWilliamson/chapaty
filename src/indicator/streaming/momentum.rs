@@ -1,8 +1,8 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use crate::indicator::streaming::StreamingIndicator;
+use crate::indicator::{config::LookbackWindow, streaming::StreamingIndicator};
 
 /// The required input for time-aware or bar-aware lookback indicators.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -14,50 +14,6 @@ pub struct MomentumInput {
 impl From<(DateTime<Utc>, f64)> for MomentumInput {
     fn from((timestamp, value): (DateTime<Utc>, f64)) -> Self {
         Self { timestamp, value }
-    }
-}
-
-/// Defines how far back the indicator should look.
-/// Gives the trader the degree of freedom to mix time-based and bar-based strategies.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum LookbackWindow {
-    /// A fixed number of bars/events (e.g., 14 periods).
-    Bars(usize),
-    /// A fixed time duration.
-    Time(Duration),
-}
-
-impl LookbackWindow {
-    /// Create a time-based window in seconds.
-    pub fn seconds(secs: u64) -> Self {
-        Self::Time(
-            Duration::from_std(std::time::Duration::from_secs(secs))
-                .expect("Duration exceeds Chrono limit"),
-        )
-    }
-
-    /// Create a time-based window in minutes.
-    pub fn minutes(mins: u64) -> Self {
-        Self::Time(
-            Duration::from_std(std::time::Duration::from_secs(mins * 60))
-                .expect("Duration exceeds Chrono limit"),
-        )
-    }
-
-    /// Create a time-based window in hours.
-    pub fn hours(hours: u64) -> Self {
-        Self::Time(
-            Duration::from_std(std::time::Duration::from_hours(hours))
-                .expect("Duration exceeds Chrono limit"),
-        )
-    }
-
-    /// Create a time-based window in days.
-    pub fn days(days: u64) -> Self {
-        Self::Time(
-            Duration::from_std(std::time::Duration::from_hours(days * 24))
-                .expect("Duration exceeds Chrono limit"),
-        )
     }
 }
 

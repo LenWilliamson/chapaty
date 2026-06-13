@@ -6,12 +6,12 @@ pub mod data;
 pub mod error;
 pub mod gym;
 pub mod indicator;
-pub mod math;
 pub mod report;
 
 // === Private Implementation Details ===
 mod generated;
 mod io;
+mod math;
 mod macros;
 mod sim;
 mod transport;

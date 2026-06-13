@@ -4,12 +4,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     data::{
         domain::{Price, Symbol},
-        event::{
-            IndicatorValueProvider, MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider,
-        },
+        event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider},
     },
     gym::trading::TradeType,
-    indicator::batch::ohlcv::{EmaWindow, RsiWindow, SmaWindow},
+    indicator::config::{EmaWindow, RsiWindow, SmaWindow},
 };
 
 // ================================================================================================
@@ -35,15 +33,6 @@ impl PriceReachable for Ema {
             TradeType::Long => self.price.0 <= target_price.0,
             TradeType::Short => self.price.0 >= target_price.0,
         }
-    }
-}
-
-impl IndicatorValueProvider for Ema {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
     }
 }
 
@@ -85,15 +74,6 @@ impl PriceReachable for Rsi {
     }
 }
 
-impl IndicatorValueProvider for Rsi {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
 impl MarketEvent for Rsi {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.timestamp
@@ -130,15 +110,6 @@ impl PriceReachable for Sma {
             TradeType::Long => self.price.0 <= target_price.0,
             TradeType::Short => self.price.0 >= target_price.0,
         }
-    }
-}
-
-impl IndicatorValueProvider for Sma {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
     }
 }
 

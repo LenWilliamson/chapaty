@@ -22,20 +22,16 @@ pub use crate::data::common::*;
 pub use crate::data::filter::*;
 pub use crate::data::query::*;
 
-// 6. Math & Algorithms (Domain-Agnostic)
-pub use crate::math::accumulators::*;
-pub use crate::math::market_profile::*;
-
-// 7. Technical Indicators (Business Logic)
-// 7.a Shared Blueprints / Configs
+// 6. Technical Indicators (Business Logic)
+// 6.a Shared Blueprints / Configs
 pub use crate::indicator::config::*;
 
-// 7.b Batch Indicators (Polars / O(1))
+// 6.b Batch Indicators (Polars / O(1))
 pub use crate::indicator::batch::WithBatchIndicators;
 pub use crate::indicator::batch::ohlcv::*;
 pub use crate::indicator::batch::trades::*;
 
-// 7.c Streaming Indicators (Tick-by-Tick)
+// 6.c Streaming Indicators (Tick-by-Tick)
 pub use crate::indicator::streaming::fair_value_gap::*;
 pub use crate::indicator::streaming::momentum::*;
 pub use crate::indicator::streaming::moving_averages::*;
@@ -45,5 +41,5 @@ pub use crate::indicator::streaming::swing::*;
 pub use crate::indicator::streaming::timing::*;
 pub use crate::indicator::streaming::volatility::*;
 
-// 8. Errors
+// 7. Errors
 pub use crate::error::*;

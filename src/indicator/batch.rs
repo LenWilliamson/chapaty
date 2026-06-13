@@ -1,7 +1,6 @@
-use polars::prelude::{Expr, LazyFrame, SortMultipleOptions, TimeZone, col};
+use polars::prelude::{Expr, LazyFrame, SortMultipleOptions, col};
 
 use crate::{
-    data::domain::SessionWindow,
     error::{ChapatyError, ChapatyResult, DataError},
     transport::schema::CanonicalCol,
 };
@@ -23,9 +22,7 @@ pub trait WithBatchIndicators: Sized {
     }
 }
 
-
-
-trait BatchCompute {
+pub(crate) trait BatchCompute {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame>;
 }
 
@@ -46,16 +43,6 @@ fn finalize_scalar(lf: LazyFrame, value: Expr) -> LazyFrame {
         value.alias(CanonicalCol::Price),
     ])
     .filter(col(CanonicalCol::Price).is_not_null())
-}
-
-fn get_polars_tz(window: &SessionWindow) -> ChapatyResult<TimeZone> {
-    TimeZone::from_chrono(&window.timezone)
-        .map_err(convert_err)?
-        .ok_or_else(|| {
-            ChapatyError::Data(DataError::DataFrame(format!(
-                "Failed to resolve timezone for session batch indicator"
-            )))
-        })
 }
 
 fn convert_err(e: polars::error::PolarsError) -> ChapatyError {

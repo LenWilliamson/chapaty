@@ -38,15 +38,6 @@ pub trait ClosePriceProvider {
     fn close_timestamp(&self) -> DateTime<Utc>;
 }
 
-/// Capability to provide a computed technical indicator value at a specific point in time.
-pub trait IndicatorValueProvider {
-    /// The computed value of the indicator (e.g., the EMA line level).
-    fn value(&self) -> Price;
-
-    /// The timestamp at which this indicator value was recorded/calculated.
-    fn timestamp(&self) -> DateTime<Utc>;
-}
-
 /// Defines the temporal properties of any financial event.
 pub trait MarketEvent {
     /// The canonical timestamp when the event is finished and the data

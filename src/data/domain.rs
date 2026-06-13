@@ -1062,7 +1062,7 @@ impl Instrument for Symbol {
 // ================================================================================================
 
 /// A timezone-aware accumulation window defined by a local start and end time-of-day.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionWindow {
     pub timezone: Tz,
     pub start: NaiveTime,
@@ -1174,6 +1174,7 @@ pub struct SessionDate(pub NaiveDate);
 mod tests {
 
     use super::*;
+    use chrono::TimeZone;
     use chrono_tz::America::New_York;
 
     // ============================================================================================
