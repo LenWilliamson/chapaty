@@ -30,7 +30,9 @@ impl BatchCompute for BatchTradesIndicator {
 // ================================================================================================
 
 fn pre_compute_trades_vwap(lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.finalize_scalar(col(CanonicalCol::Price).vwap(col(CanonicalCol::Volume))))
+    Ok(lf.into_price_timeseries(
+        col(CanonicalCol::Price).vwap_with_volume(col(CanonicalCol::Volume)),
+    ))
 }
 
 fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
@@ -41,92 +43,31 @@ fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> Chapaty
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
         .agg([
-            // --- Time Boundaries ---
-            col(CanonicalCol::OpenTimestamp)
-                .first()
-                .alias("OpenTimestamp"),
-            col(CanonicalCol::PointInTime)
-                .last()
-                .alias(CanonicalCol::PointInTime),
-            // --- Trade Extremes (Derived from Price) ---
+            col(CanonicalCol::OpenTimestamp).min(),
+            col(CanonicalCol::PointInTime).max(),
             col(CanonicalCol::Price)
                 .max()
                 .alias(CanonicalCol::SessionHigh),
             col(CanonicalCol::Price)
                 .min()
                 .alias(CanonicalCol::SessionLow),
+            col(CanonicalCol::Price)
+                .agg_vwap_with_volume(col(CanonicalCol::Volume))
+                .alias(CanonicalCol::SessionVwap),
             col(CanonicalCol::Volume)
                 .sum()
                 .alias(CanonicalCol::SessionVolume),
-            // --- Session VWAP ---
-            col(CanonicalCol::Price)
-                .agg_vwap(col(CanonicalCol::Volume))
-                .alias(CanonicalCol::SessionVwap),
         ])
-        // Ensure chronological order
-        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default());
+        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default())
+        .select([
+            col(CanonicalCol::Date),
+            col(CanonicalCol::OpenTimestamp),
+            col(CanonicalCol::PointInTime),
+            col(CanonicalCol::SessionHigh),
+            col(CanonicalCol::SessionLow),
+            col(CanonicalCol::SessionVolume),
+            col(CanonicalCol::SessionVwap),
+        ]);
 
     Ok(out_lf)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use polars::prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit};
-    use std::path::PathBuf;
-
-    // ============================================================================
-    // Test Fixtures & Helpers
-    // ============================================================================
-
-    /// Returns the absolute path to the test fixtures directory.
-    fn fixtures_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gym")
-    }
-
-    /// Loads an OHLCV CSV fixture and maps column names to the canonical schema.
-    fn load_ohlcv_fixture(filename: &str) -> LazyFrame {
-        let path = fixtures_path().join("input").join(filename);
-
-        LazyCsvReader::new(PlRefPath::new(path.as_os_str().to_str().expect("filepath")))
-            .with_has_header(true)
-            .finish()
-            .expect("Failed to parse fixture CSV")
-            .select([
-                col("open_timestamp")
-                    .cast(DataType::Datetime(
-                        TimeUnit::Microseconds,
-                        Some(polars::prelude::TimeZone::UTC),
-                    ))
-                    .alias(CanonicalCol::OpenTimestamp.as_str()),
-                col("close_timestamp")
-                    .cast(DataType::Datetime(
-                        TimeUnit::Microseconds,
-                        Some(polars::prelude::TimeZone::UTC),
-                    ))
-                    .alias(CanonicalCol::PointInTime.as_str()),
-                // Rename the metrics (Implicitly drops 'exchange', 'symbol', etc.)
-                col("open").alias(CanonicalCol::Open.as_str()),
-                col("high").alias(CanonicalCol::High.as_str()),
-                col("low").alias(CanonicalCol::Low.as_str()),
-                col("close").alias(CanonicalCol::Close.as_str()),
-                col("volume").alias(CanonicalCol::Volume.as_str()),
-                col("quote_asset_volume").alias(CanonicalCol::QuoteAssetVolume.as_str()),
-                col("number_of_trades").alias(CanonicalCol::NumberOfTrades.as_str()),
-                col("taker_buy_base_asset_volume")
-                    .alias(CanonicalCol::TakerBuyBaseAssetVolume.as_str()),
-                col("taker_buy_quote_asset_volume")
-                    .alias(CanonicalCol::TakerBuyQuoteAssetVolume.as_str()),
-            ])
-    }
-
-    struct IndicatorTestCase {
-        name: &'static str,
-        indicator: BatchTradesIndicator,
-        expected_file: &'static str,
-    }
-
-    // ============================================================================
-    // Indicator Tests
-    // ============================================================================
 }

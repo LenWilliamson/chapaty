@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::{Price, Symbol},
-        event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider},
+        domain::{AggregatedPrice, Price, SessionDate, Symbol, Volume},
+        event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider, TradesId},
     },
     gym::trading::TradeType,
     indicator::config::{EmaWindow, RsiWindow, SmaWindow},
 };
 
 // ================================================================================================
-// Technical Indicator
+// EMA
 // ================================================================================================
 
 /// Uniquely identifies an Exponential Moving Average (EMA) stream.
@@ -52,6 +52,10 @@ impl SymbolProvider for EmaId {
     }
 }
 
+// ================================================================================================
+// RSI
+// ================================================================================================
+
 /// Uniquely identifies a Relative Strength Index (RSI) stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RsiId {
@@ -89,6 +93,11 @@ impl SymbolProvider for RsiId {
         self.parent.symbol()
     }
 }
+
+// ================================================================================================
+// SMA
+// ================================================================================================
+
 /// Uniquely identifies a Simple Moving Average (SMA) stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SmaId {
@@ -128,6 +137,149 @@ impl SymbolProvider for SmaId {
         self.parent.symbol()
     }
 }
+
+// ================================================================================================
+// OHLCV VWAP
+// ================================================================================================
+
+/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from OHLCV data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct OhlcvVwapId {
+    /// The source data stream this indicator is calculated from.
+    pub parent: OhlcvId,
+    /// The aggregated price to use for calculations.
+    pub price_aggregation: AggregatedPrice,
+}
+
+pub struct OhlcvVwap {
+    pub timestamp: DateTime<Utc>,
+    pub price: Price,
+}
+
+impl PriceReachable for OhlcvVwap {
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
+    }
+}
+
+impl MarketEvent for OhlcvVwap {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+}
+
+impl StreamId for OhlcvVwapId {
+    type Event = OhlcvVwap;
+}
+
+impl SymbolProvider for OhlcvVwapId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
+
+// ================================================================================================
+// Trades VWAP
+// ================================================================================================
+
+/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from Trades data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TradesVwapId {
+    /// The source data stream this indicator is calculated from.
+    pub parent: TradesId,
+}
+
+pub struct TradesVwap {
+    pub timestamp: DateTime<Utc>,
+    pub price: Price,
+}
+
+impl PriceReachable for TradesVwap {
+    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+        match direction {
+            TradeType::Long => self.price.0 <= target_price.0,
+            TradeType::Short => self.price.0 >= target_price.0,
+        }
+    }
+}
+
+impl MarketEvent for TradesVwap {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+}
+
+impl StreamId for TradesVwapId {
+    type Event = TradesVwap;
+}
+
+impl SymbolProvider for TradesVwapId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
+
+// ================================================================================================
+// Ohlcv Session
+// ================================================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OhlcvSession {
+    pub session: SessionDate,
+    pub open_timestamp: DateTime<Utc>,
+    pub close_timestamp: DateTime<Utc>,
+    pub high: Price,
+    pub low: Price,
+    pub highest_close: Price,
+    pub lowest_close: Price,
+    pub volume: Volume,
+    pub vwap: Option<Price>,
+}
+
+impl MarketEvent for OhlcvSession {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.close_timestamp
+    }
+    fn opened_at(&self) -> DateTime<Utc> {
+        self.open_timestamp
+    }
+}
+
+// ================================================================================================
+// Trades Session
+// ================================================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TradesSession {
+    pub session: SessionDate,
+    pub open_timestamp: DateTime<Utc>,
+    pub close_timestamp: DateTime<Utc>,
+    pub high: Price,
+    pub low: Price,
+    pub volume: Volume,
+    pub vwap: Option<Price>,
+}
+
+impl MarketEvent for TradesSession {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.close_timestamp
+    }
+    fn opened_at(&self) -> DateTime<Utc> {
+        self.open_timestamp
+    }
+}
+
+// ================================================================================================
+// ATR
+// ================================================================================================
+
+// ================================================================================================
+// Rate Of Change
+// ================================================================================================
+
 
 #[cfg(test)]
 mod test {

@@ -12,7 +12,7 @@ use crate::{
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
     },
     error::ChapatyResult,
-    indicator::batch::{WithBatchIndicators, ohlcv::BatchOhlcvIndicator},
+    indicator::batch::{WithBatchIndicators, ohlcv::BatchOhlcvIndicator, trades::BatchTradesIndicator},
 };
 
 // ================================================================================================
@@ -241,6 +241,15 @@ impl WithBatchIndicators for OhlcvSpotQuery {
 
 impl WithBatchIndicators for OhlcvFutureQuery {
     type BatchIndicator = BatchOhlcvIndicator;
+
+    fn with_indicator(mut self, kind: Self::BatchIndicator) -> Self {
+        self.indicators.push(kind);
+        self
+    }
+}
+
+impl WithBatchIndicators for TradesSpotQuery {
+    type BatchIndicator = BatchTradesIndicator;
 
     fn with_indicator(mut self, kind: Self::BatchIndicator) -> Self {
         self.indicators.push(kind);

@@ -1,7 +1,7 @@
 use polars::{
     lazy::dsl::max_horizontal,
     prelude::{
-        EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
+        DataType, EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
         SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::domain::{AggregatedPrice, SessionWindow},
-    error::ChapatyResult,
+    error::{ChapatyResult, DataError},
     indicator::{
         batch::{BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err},
         config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
@@ -84,8 +84,8 @@ impl OhlcvIndicatorExprExt for Expr {
         };
 
         let delta = self.diff(lit(1), NullBehavior::Ignore);
-        let gain = delta.clone().clip(lit(0), lit(f64::MAX));
-        let loss = delta.clip(lit(f64::MIN), lit(0)).abs();
+        let gain = delta.clone().clip(lit(0.0), lit(f64::MAX));
+        let loss = delta.clip(lit(f64::MIN), lit(0.0)).abs();
 
         let avg_gain = gain.ewm_mean(options.clone());
         let avg_loss = loss.ewm_mean(options);
@@ -120,12 +120,8 @@ impl OhlcvIndicatorExprExt for Expr {
     }
 
     fn momentum_roc(self, reference: Expr) -> Expr {
-        let has_ref = reference.clone().abs().gt(lit(f64::EPSILON));
-        let absolute = self.clone() - reference.clone();
-
-        when(has_ref)
-            .then((absolute / reference) * lit(100.0))
-            .otherwise(lit(NULL))
+        let absolute = self.clone().momentum_absolute(reference.clone());
+        (absolute / reference) * lit(100.0)
     }
 }
 
@@ -141,7 +137,7 @@ fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         ignore_nulls: true,
     };
 
-    Ok(lf.finalize_scalar(col(CanonicalCol::Close).ewm_mean(options)))
+    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).ewm_mean(options)))
 }
 
 fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
@@ -154,11 +150,11 @@ fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         fn_params: None,
     };
 
-    Ok(lf.finalize_scalar(col(CanonicalCol::Close).rolling_mean(options)))
+    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).rolling_mean(options)))
 }
 
 fn pre_compute_rsi(rsi: RsiWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.finalize_scalar(col(CanonicalCol::Close).rsi(rsi)))
+    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).rsi(rsi)))
 }
 
 fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
@@ -174,17 +170,16 @@ fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     let tr_expr =
         col(CanonicalCol::Close).true_range(col(CanonicalCol::High), col(CanonicalCol::Low))?;
 
-    Ok(lf.finalize_scalar(tr_expr.ewm_mean(options)))
+    Ok(lf.into_price_timeseries(tr_expr.ewm_mean(options)))
 }
 
 fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.finalize_scalar(agg.to_expr().vwap(col(CanonicalCol::Volume))))
+    Ok(lf.into_price_timeseries(agg.to_expr().vwap_with_volume(col(CanonicalCol::Volume))))
 }
 
 fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     match window {
         LookbackWindow::Bars(n) => {
-            // Row-based lookback is natively supported by Polars
             let reference = col(CanonicalCol::Close).shift(lit(n as u32));
 
             Ok(lf
@@ -205,37 +200,48 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
         }
 
         LookbackWindow::Time(duration) => {
-            // To mimic the exact time-boundary guard of your streaming buffer:
-            // 1. Create an exact historical timestamp.
-            // 2. Perform a left join onto itself.
-            // If the exact historical time doesn't exist (e.g., gaps), it yields null,
-            // which perfectly matches the streaming buffer's `None` output.
+            const TMP_LOOKBACK_TARGET_TS: &str = "_lookback_target_ts";
+            const TMP_HISTORY_TS: &str = "_history_ts";
+            const TMP_HISTORY_CLOSE: &str = "_history_close";
 
-            let duration_ms = duration.num_milliseconds();
+            let duration_us = duration.num_microseconds().ok_or_else(|| {
+                        DataError::TimestampConversion(
+                            "Lookback duration overflow: The requested time window is too large to be represented in microseconds, or requires unsupported nanosecond precision.".to_string(),
+                        )
+                    })?;
 
-            // Define the time exactly `duration` ago
-            let lookback_target = col(CanonicalCol::PointInTime) - lit(duration_ms);
+            // 1. Calculate the target timestamp we want to find in the past
+            let ts_micros = col(CanonicalCol::PointInTime)
+                .ts_as_microseconds()
+                .cast(DataType::Int64);
 
+            let lookback_target = (ts_micros - lit(duration_us)).alias(TMP_LOOKBACK_TARGET_TS);
+
+            // 2. Build the historical lookup table
             let history_lf = lf.clone().select([
-                col(CanonicalCol::PointInTime).alias("hist_ts"),
-                col(CanonicalCol::Close).alias("hist_close"),
+                col(CanonicalCol::PointInTime)
+                    .ts_as_microseconds()
+                    .cast(DataType::Int64)
+                    .alias(TMP_HISTORY_TS),
+                col(CanonicalCol::Close).alias(TMP_HISTORY_CLOSE),
             ]);
 
+            // 3. Join the history onto the current frame and compute rate of change
             Ok(lf
-                .with_column(lookback_target.alias("lookback_target"))
+                .with_column(lookback_target)
                 .join(
                     history_lf,
-                    [col("lookback_target")],
-                    [col("hist_ts")],
+                    [col(TMP_LOOKBACK_TARGET_TS)],
+                    [col(TMP_HISTORY_TS)],
                     JoinArgs::new(JoinType::Left),
                 )
                 .select([
                     col(CanonicalCol::PointInTime),
                     col(CanonicalCol::Close)
-                        .momentum_absolute(col("hist_close"))
+                        .momentum_absolute(col(TMP_HISTORY_CLOSE))
                         .alias(CanonicalCol::RocAbsolute),
                     col(CanonicalCol::Close)
-                        .momentum_roc(col("hist_close"))
+                        .momentum_roc(col(TMP_HISTORY_CLOSE))
                         .alias(CanonicalCol::Roc),
                 ])
                 .filter(col(CanonicalCol::Roc).is_not_null()))
@@ -256,12 +262,8 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
         .agg([
-            col(CanonicalCol::OpenTimestamp)
-                .first()
-                .alias("OpenTimestamp"),
-            col(CanonicalCol::PointInTime)
-                .last()
-                .alias(CanonicalCol::PointInTime),
+            col(CanonicalCol::OpenTimestamp).min(),
+            col(CanonicalCol::PointInTime).max(),
             col(CanonicalCol::High)
                 .max()
                 .alias(CanonicalCol::SessionHigh),
@@ -275,13 +277,23 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<
             col(CanonicalCol::Volume)
                 .sum()
                 .alias(CanonicalCol::SessionVolume),
-            // --- Session VWAP ---
             price_aggregation
                 .to_expr()
-                .agg_vwap(col(CanonicalCol::Volume))
+                .agg_vwap_with_volume(col(CanonicalCol::Volume))
                 .alias(CanonicalCol::SessionVwap),
         ])
-        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default());
+        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default())
+        .select([
+            col(CanonicalCol::Date),
+            col(CanonicalCol::OpenTimestamp),
+            col(CanonicalCol::PointInTime),
+            col(CanonicalCol::SessionHigh),
+            col(CanonicalCol::SessionLow),
+            col(CanonicalCol::SessionHighestClose),
+            col(CanonicalCol::SessionLowestClose),
+            col(CanonicalCol::SessionVolume),
+            col(CanonicalCol::SessionVwap),
+        ]);
 
     Ok(out_lf)
 }
@@ -412,8 +424,4 @@ mod tests {
             );
         }
     }
-
-    // ============================================================================
-    // Indicator Tests
-    // ============================================================================
 }

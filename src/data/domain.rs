@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
 use chrono_tz::Tz;
 use polars::prelude::{Expr, col, lit};
 use serde::{Deserialize, Serialize};
@@ -216,7 +216,7 @@ impl From<LiquiditySide> for bool {
 /// Selects which aggregated price of a bar is used for calculations.
 ///
 /// Only meaningful for bar-like data that spans a range (e.g. [`Ohlcv`]).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AggregatedPrice {
     /// `(High + Low + Close) / 3`. The industry-standard typical price.
     #[default]
@@ -1105,39 +1105,72 @@ impl SessionWindow {
         }
     }
 
+    /// US Core Session: 09:30 to 16:00 New York time.
     pub fn us_core_session() -> Self {
         SessionWindow::new(Tz::America__New_York, hm(9, 30), hm(16, 0))
     }
+
+    /// London Core Session: 08:00 to 16:30 London time.
     pub fn london_core_session() -> Self {
         SessionWindow::new(Tz::Europe__London, hm(8, 0), hm(16, 30))
     }
+
+    /// US/Europe Overlap: 13:00 to 17:00 London time.
     pub fn us_europe_overlap() -> Self {
         SessionWindow::new(Tz::Europe__London, hm(13, 0), hm(17, 0))
     }
+
+    /// Singapore Core Session: 09:00 to 17:00 Singapore time.
     pub fn singapore_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
+
+    /// Sydney Core Session: 10:00 to 16:00 Sydney time.
     pub fn sydney_core_session() -> Self {
         SessionWindow::new(Tz::Australia__Sydney, hm(10, 0), hm(16, 0))
     }
+
+    /// US Overnight: 16:00 to 09:30 New York time.
+    pub fn us_overnight() -> Self {
+        SessionWindow::new(Tz::America__New_York, hm(16, 0), hm(9, 30))
+    }
+
+    /// US Extended Overnight: 18:00 to 09:30 New York time.
     pub fn us_extended_overnight() -> Self {
         SessionWindow::new(Tz::America__New_York, hm(18, 0), hm(9, 30))
     }
+
+    /// Tokyo Core Session: 09:00 to 15:00 Tokyo time.
     pub fn tokyo_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Tokyo, hm(9, 0), hm(15, 0))
     }
+
+    /// Asia Institutional Core: 09:00 to 17:00 Singapore time.
     pub fn asia_institutional_core() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
+
+    /// Hong Kong Core Session: 09:30 to 16:00 Hong Kong time.
     pub fn hong_kong_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Hong_Kong, hm(9, 30), hm(16, 0))
     }
+
+    /// APAC Overnight: 17:00 to 08:00 Singapore time.
     pub fn apac_overnight() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
     }
 
     pub fn pl_time_zone(&self) -> polars::datatypes::TimeZone {
         polars::datatypes::TimeZone::from_chrono(&self.timezone)
+    }
+
+    pub fn start_nanos_since_midnight(&self) -> i64 {
+        (self.start.num_seconds_from_midnight() as i64 * 1_000_000_000)
+            + self.start.nanosecond() as i64
+    }
+
+    pub fn end_nanos_since_midnight(&self) -> i64 {
+        (self.end.num_seconds_from_midnight() as i64 * 1_000_000_000) + self.end.nanosecond() as i64
     }
 
     pub fn window_kind(&self) -> WindowKind {
@@ -1191,6 +1224,16 @@ pub enum WindowPosition {
 pub enum WindowKind {
     Intraday,
     Overnight,
+}
+
+impl WindowKind {
+    pub fn is_intraday(&self) -> bool {
+        matches!(self, WindowKind::Intraday)
+    }
+
+    pub fn is_overnight(&self) -> bool {
+        matches!(self, WindowKind::Overnight)
+    }
 }
 
 /// Identifies one accumulation session by its anchor date.

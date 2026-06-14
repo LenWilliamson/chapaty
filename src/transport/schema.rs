@@ -7,9 +7,11 @@ use strum::{Display, EnumString, IntoStaticStr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum CanonicalCol {
+    
     // ========================================================================
     // Identifiers
     // ========================================================================
+
     /// The eonomic data publisher (e.g., "investingcom", "cftc", "fred").
     DataSource,
     /// Geographic identifier (ISO 3166-1 alpha-2, e.g., "US", "EZ").
@@ -20,6 +22,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Time Definitions
     // ========================================================================
+
     /// The date of the data point.
     Date,
 
@@ -38,6 +41,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Market Data (Price, Volume, Generic)
     // ========================================================================
+
     /// Temporal granularity.
     /// - Market Data: Candle width ("1m", "1h").
     /// - Econ Calendar: Periodicity ("yoy", "mom", "qoq").
@@ -58,6 +62,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Advanced Spot / Order Flow Metadata
     // ========================================================================
+
     TradeId,
     QuoteAssetVolume,
     NumberOfTrades,
@@ -81,6 +86,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Profile Indicators (TPO / Volume Profile)
     // ========================================================================
+
     /// The lower bound price of the profile bucket.
     PriceBinStart,
     /// The upper bound price of the profile bucket.
@@ -91,6 +97,7 @@ pub enum CanonicalCol {
     // ========================================================================
     // Economic Calendar Specific
     // ========================================================================
+
     /// Broad category (e.g., "inflation", "employment").
     Category,
     /// Specific event type (e.g., "CPI", "NFP").
@@ -116,16 +123,15 @@ pub enum CanonicalCol {
     // Derived Technical Indicators
     // ========================================================================
 
-    // Single-value indicators (EMA, SMA, RSI, ATR, VWAP) are emitted in the
-    // canonical `[Timestamp, Price]` shape — their value lives in `Price`, matching
-    // the `{ timestamp, price }` streaming output structs. Only multi-value
-    // indicators need their own columns.
+    // === Momentum ===
+
     /// Rate of Change, expressed as a percentage.
     Roc,
     /// Absolute price change over the Rate of Change lookback.
     RocAbsolute,
 
     // === Session / Overnight Range ===
+    
     /// Anchor date identifying the session a row belongs to (null when outside any session).
     SessionDate,
     /// Running session high.

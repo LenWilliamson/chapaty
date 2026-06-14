@@ -252,9 +252,6 @@ impl BuildCtx {
                         rsi_map.insert(id, (schema.clone(), lf_result));
                     }
                     BatchOhlcvIndicator::Atr(_) => {}
-                    _ => {
-                        unimplemented!("TODO")
-                    }
                 }
             }
             Ok(())
@@ -540,7 +537,7 @@ impl BuildCtx {
             // === Trades ===
             s.spawn(|_| {
                 debug!("Processing Trade data");
-                trade_res = process_map(self.trade_spot_map.as_ref(), |df, _id| extract_trade(df));
+                trade_res = process_map(self.trade_spot_map.as_ref(), |df, _id| extract_trades(df));
                 if let Ok(ref map) = trade_res {
                     info!("Trade: extracted {} streams", map.len());
                 }
@@ -886,7 +883,7 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
+fn extract_trades(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -2218,7 +2215,7 @@ mod test {
         .unwrap();
         let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
-        let events = extract_trade(df).expect("failed to extract trade");
+        let events = extract_trades(df).expect("failed to extract trade");
 
         assert_eq!(events.len(), 2);
 
@@ -2643,7 +2640,7 @@ mod test {
         assert!(events.is_empty());
         let events = extract_sma(df.clone()).expect("failed to extract sma");
         assert!(events.is_empty());
-        let events = extract_trade(df.clone()).expect("failed to extract trade");
+        let events = extract_trades(df.clone()).expect("failed to extract trade");
         assert!(events.is_empty());
         let events = extract_tpo(df.clone(), &default_agg()).expect("failed to extract tpo");
         assert!(events.is_empty());
