@@ -34,6 +34,17 @@ impl_neg_primitive!(Price, f64);
 impl_abs_primitive!(Price, f64);
 impl_min_max_primitive!(Price, f64);
 
+/// Represents a price level in the quote currency.
+///
+/// Used for: Open, High, Low, Close, Trade Price, Stops, and Take Profits.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct PriceDelta(pub f64);
+impl_from_primitive!(PriceDelta, f64);
+impl_add_sub_mul_div_primitive!(PriceDelta, f64);
+impl_neg_primitive!(PriceDelta, f64);
+impl_abs_primitive!(PriceDelta, f64);
+impl_min_max_primitive!(PriceDelta, f64);
+
 /// Represents the smallest discrete movement of an asset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Tick(pub i64);
@@ -216,7 +227,9 @@ impl From<LiquiditySide> for bool {
 /// Selects which aggregated price of a bar is used for calculations.
 ///
 /// Only meaningful for bar-like data that spans a range (e.g. [`Ohlcv`]).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub enum AggregatedPrice {
     /// `(High + Low + Close) / 3`. The industry-standard typical price.
     #[default]
@@ -1090,6 +1103,22 @@ pub struct SessionWindow {
     pub timezone: Tz,
     pub start: NaiveTime,
     pub end: NaiveTime,
+}
+
+impl PartialOrd for SessionWindow {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SessionWindow {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.start, self.end, self.timezone as usize).cmp(&(
+            other.start,
+            other.end,
+            other.timezone as usize,
+        ))
+    }
 }
 
 fn hm(h: u32, m: u32) -> NaiveTime {

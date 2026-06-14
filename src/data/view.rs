@@ -159,6 +159,12 @@ pub struct MarketView<'env> {
     ema: EmaView<'env>,
     sma: SmaView<'env>,
     rsi: RsiView<'env>,
+    trades_vwap: TradesVwapView<'env>,
+    ohlcv_vwap: OhlcvVwapView<'env>,
+    trades_session: TradesSessionView<'env>,
+    ohlcv_session: OhlcvSessionView<'env>,
+    atr: AtrView<'env>,
+    roc: RocView<'env>,
 
     // Tradable Markets
     market_ids: Arc<[MarketId]>,

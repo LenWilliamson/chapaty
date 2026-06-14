@@ -18,7 +18,7 @@ use crate::{
     transport::schema::CanonicalCol,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SessionCfg {
     window: SessionWindow,
     price_aggregation: AggregatedPrice,
@@ -180,7 +180,10 @@ fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> ChapatyResult<LazyFr
 fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     match window {
         LookbackWindow::Bars(n) => {
-            let reference = col(CanonicalCol::Close).shift(lit(n as u32));
+            let reference_close = col(CanonicalCol::Close).shift(lit(n as u32));
+            let reference_time = col(CanonicalCol::PointInTime)
+                .shift(lit(n as u32))
+                .alias(CanonicalCol::OpenTimestamp);
 
             Ok(lf
                 .sort(
@@ -188,12 +191,13 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
                     SortMultipleOptions::default().with_maintain_order(false),
                 )
                 .select([
+                    reference_time,
                     col(CanonicalCol::PointInTime),
                     col(CanonicalCol::Close)
-                        .momentum_absolute(reference.clone())
+                        .momentum_absolute(reference_close.clone())
                         .alias(CanonicalCol::RocAbsolute),
                     col(CanonicalCol::Close)
-                        .momentum_roc(reference)
+                        .momentum_roc(reference_close)
                         .alias(CanonicalCol::Roc),
                 ])
                 .filter(col(CanonicalCol::Roc).is_not_null()))
@@ -203,12 +207,11 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
             const TMP_LOOKBACK_TARGET_TS: &str = "_lookback_target_ts";
             const TMP_HISTORY_TS: &str = "_history_ts";
             const TMP_HISTORY_CLOSE: &str = "_history_close";
+            const TMP_HISTORY_WINDOW_START: &str = "_history_window_start";
 
             let duration_us = duration.num_microseconds().ok_or_else(|| {
-                        DataError::TimestampConversion(
-                            "Lookback duration overflow: The requested time window is too large to be represented in microseconds, or requires unsupported nanosecond precision.".to_string(),
-                        )
-                    })?;
+                DataError::TimestampConversion("Lookback duration overflow: The requested time window is too large to be represented in microseconds, or requires unsupported nanosecond precision.".to_string())
+            })?;
 
             // 1. Calculate the target timestamp we want to find in the past
             let ts_micros = col(CanonicalCol::PointInTime)
@@ -223,6 +226,7 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
                     .ts_as_microseconds()
                     .cast(DataType::Int64)
                     .alias(TMP_HISTORY_TS),
+                col(CanonicalCol::PointInTime).alias(TMP_HISTORY_WINDOW_START),
                 col(CanonicalCol::Close).alias(TMP_HISTORY_CLOSE),
             ]);
 
@@ -236,6 +240,7 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
                     JoinArgs::new(JoinType::Left),
                 )
                 .select([
+                    col(TMP_HISTORY_WINDOW_START).alias(CanonicalCol::OpenTimestamp),
                     col(CanonicalCol::PointInTime),
                     col(CanonicalCol::Close)
                         .momentum_absolute(col(TMP_HISTORY_CLOSE))

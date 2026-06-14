@@ -35,6 +35,13 @@ pub(crate) struct Streams {
     ema: EmaEventMap,
     sma: SmaEventMap,
     rsi: RsiEventMap,
+    // IDIOMATIC SORTING ???
+    trades_vwap: TradesVwapEventMap,
+    ohlcv_vwap: OhlcvVwapEventMap,
+    trades_session: TradesSessionEventMap,
+    ohlcv_session: OhlcvSessionEventMap,
+    atr: AtrEventMap,
+    roc: RocEventMap,
 }
 
 impl Default for Streams {

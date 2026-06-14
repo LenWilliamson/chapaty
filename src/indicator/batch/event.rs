@@ -3,11 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::{AggregatedPrice, Price, SessionDate, Symbol, Volume},
+        domain::{AggregatedPrice, Price, PriceDelta, SessionDate, Symbol, Volume},
         event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider, TradesId},
     },
     gym::trading::TradeType,
-    indicator::config::{EmaWindow, RsiWindow, SmaWindow},
+    indicator::{
+        batch::ohlcv::SessionCfg,
+        config::{EmaWindow, RsiWindow, SmaWindow},
+    },
 };
 
 // ================================================================================================
@@ -226,6 +229,12 @@ impl SymbolProvider for TradesVwapId {
 // Ohlcv Session
 // ================================================================================================
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct OhlcvSessionId {
+    pub parent: OhlcvId,
+    pub cfg: SessionCfg,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OhlcvSession {
     pub session: SessionDate,
@@ -236,7 +245,7 @@ pub struct OhlcvSession {
     pub highest_close: Price,
     pub lowest_close: Price,
     pub volume: Volume,
-    pub vwap: Option<Price>,
+    pub vwap: Price,
 }
 
 impl MarketEvent for OhlcvSession {
@@ -248,9 +257,25 @@ impl MarketEvent for OhlcvSession {
     }
 }
 
+impl StreamId for OhlcvSessionId {
+    type Event = OhlcvSession;
+}
+
+impl SymbolProvider for OhlcvSessionId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
+
 // ================================================================================================
 // Trades Session
 // ================================================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TradesSessionId {
+    pub parent: TradesId,
+    pub cfg: SessionCfg,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TradesSession {
@@ -260,7 +285,7 @@ pub struct TradesSession {
     pub high: Price,
     pub low: Price,
     pub volume: Volume,
-    pub vwap: Option<Price>,
+    pub vwap: Price,
 }
 
 impl MarketEvent for TradesSession {
@@ -272,14 +297,90 @@ impl MarketEvent for TradesSession {
     }
 }
 
+impl StreamId for TradesSessionId {
+    type Event = TradesSession;
+}
+
+impl SymbolProvider for TradesSessionId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
+
 // ================================================================================================
 // ATR
 // ================================================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct AtrId {
+    pub parent: OhlcvId,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Atr {
+    pub timestamp: DateTime<Utc>,
+    pub range: PriceDelta,
+}
+
+impl MarketEvent for Atr {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+}
+
+impl StreamId for AtrId {
+    type Event = Atr;
+}
+
+impl SymbolProvider for AtrId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
 
 // ================================================================================================
 // Rate Of Change
 // ================================================================================================
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RocId {
+    pub parent: OhlcvId,
+}
+
+/// Represents the Rate of Change (ROC) over a specific lookback window.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Roc {
+    /// The point in time when this rate of change was recorded (the end of the window).
+    pub timestamp: DateTime<Utc>,
+
+    /// The point in time of the historical reference price (the start of the window).
+    pub window_start: DateTime<Utc>,
+
+    /// The raw price difference between the current close and the historical close.
+    pub absolute_change: PriceDelta,
+
+    /// The relative rate of change expressed as a ratio.
+    pub percentage: f64,
+}
+
+impl MarketEvent for Roc {
+    fn point_in_time(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+    fn opened_at(&self) -> DateTime<Utc> {
+        self.window_start
+    }
+}
+
+impl StreamId for RocId {
+    type Event = Roc;
+}
+
+impl SymbolProvider for RocId {
+    fn symbol(&self) -> Symbol {
+        self.parent.symbol()
+    }
+}
 
 #[cfg(test)]
 mod test {

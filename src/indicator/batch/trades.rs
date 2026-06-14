@@ -8,7 +8,7 @@ use crate::{
     transport::schema::CanonicalCol,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BatchTradesIndicator {
     Vwap,
     OvernightRange(SessionWindow),

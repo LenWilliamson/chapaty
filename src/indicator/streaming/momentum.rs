@@ -87,6 +87,8 @@ impl HistoricalBuffer {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct MomentumOutput {
+    /// The point in time of the historical reference price (the start of the window).
+    pub window_start: DateTime<Utc>,
     /// The absolute point change: $Close_{current} - Close_{current - n}$
     pub absolute: f64,
     /// The percentage rate of change: $((Close_{current} - Close_{current - n}) / Close_{current - n}) \times 100$
@@ -121,7 +123,11 @@ impl StreamingIndicator for StreamingRateOfChange {
             let absolute = current.value - historical.value;
             let roc = (absolute / historical.value) * 100.0;
 
-            Some(MomentumOutput { absolute, roc })
+            Some(MomentumOutput {
+                window_start: historical.timestamp,
+                absolute,
+                roc,
+            })
         } else {
             None
         }
@@ -266,6 +272,7 @@ mod tests {
         assert_eq!(
             momentum.update(input(1, 75.0)),
             Some(MomentumOutput {
+                window_start: ts(0),
                 absolute: 25.0,
                 roc: 50.0
             })
@@ -277,6 +284,7 @@ mod tests {
         assert_eq!(
             momentum.update(input(2, 60.0)),
             Some(MomentumOutput {
+                window_start: ts(1),
                 absolute: -15.0,
                 roc: -20.0
             })
@@ -299,6 +307,7 @@ mod tests {
         assert_eq!(
             momentum.update(input(2, 20.0)),
             Some(MomentumOutput {
+                window_start: ts(1),
                 absolute: 10.0,
                 roc: 100.0
             })

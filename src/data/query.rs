@@ -12,7 +12,9 @@ use crate::{
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
     },
     error::ChapatyResult,
-    indicator::batch::{WithBatchIndicators, ohlcv::BatchOhlcvIndicator, trades::BatchTradesIndicator},
+    indicator::batch::{
+        WithBatchIndicators, ohlcv::BatchOhlcvIndicator, trades::BatchTradesIndicator,
+    },
 };
 
 // ================================================================================================
@@ -42,7 +44,7 @@ pub struct OhlcvSpotQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     pub batch_size: i32,
 
-    // Data configurations that support derived technical analysis.
+    /// Data configurations that support derived technical analysis.
     pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
@@ -69,7 +71,7 @@ pub struct OhlcvFutureQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     pub batch_size: i32,
 
-    // Data configurations that support derived technical analysis.
+    /// Data configurations that support derived technical analysis.
     pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
@@ -81,7 +83,7 @@ pub struct OhlcvFutureQuery {
 ///
 /// Trade data represents individual trades or price updates at the finest granularity,
 /// capturing every market transaction with microsecond precision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TradesSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
@@ -97,6 +99,9 @@ pub struct TradesSpotQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     /// Consider larger batch sizes for trade data to optimize throughput.
     pub batch_size: i32,
+
+    /// Data configurations that support derived technical analysis.
+    pub indicators: Vec<BatchTradesIndicator>,
 }
 
 // ================================================================================================
