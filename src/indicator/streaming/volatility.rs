@@ -170,8 +170,7 @@ impl KahanAccumulator {
     }
 
     fn reset(&mut self) {
-        self.sum_price_x_volume.reset();
-        self.sum_volume.reset();
+        *self = Self::default();
     }
 }
 

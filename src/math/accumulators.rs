@@ -22,9 +22,4 @@ impl KahanSum {
     pub fn value(self) -> f64 {
         self.sum
     }
-
-    /// Yields a fresh, zeroed-out state.
-    pub fn reset(self) -> Self {
-        Self::default()
-    }
 }

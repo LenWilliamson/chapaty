@@ -109,7 +109,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "window_size must be > 0")]
+    #[should_panic(expected = "window must be > 0")]
     fn atr_cfg_new_panics_on_zero_window() {
         let _ = AtrConfig::new(0);
     }

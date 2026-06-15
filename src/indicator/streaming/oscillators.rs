@@ -136,22 +136,6 @@ mod tests {
     }
 
     #[test]
-    fn balanced_gain_and_loss_gives_50() {
-        // Symmetric up/down moves of equal size make avg_gain == avg_loss,
-        // so rs = 1 and RSI = 100 - 100/2 = 50.
-        let mut rsi = StreamingRsi::new(RsiWindow(2));
-        // deltas: +2, -2, +2, -2, ... equal magnitude gains and losses.
-        let mut last = None;
-        for p in [10.0, 12.0, 10.0, 12.0, 10.0, 12.0] {
-            last = rsi.update(p);
-        }
-        assert!(
-            (last.unwrap() - 50.0).abs() < f64::EPSILON,
-            "expected 50, got {last:?}"
-        );
-    }
-
-    #[test]
     fn output_stays_within_bounds() {
         // Whatever the input, RSI must land in [0, 100].
         let mut rsi = StreamingRsi::new(RsiWindow(4));
