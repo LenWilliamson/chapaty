@@ -155,7 +155,7 @@ impl StreamingIndicator for StreamingEma {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     /// Compare two floats with a small tolerance (EMA math isn't exact).

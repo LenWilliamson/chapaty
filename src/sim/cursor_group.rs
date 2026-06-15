@@ -315,7 +315,7 @@ impl CursorGroup {
 
 #[cfg(test)]
 mod test {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use crate::{
         data::{

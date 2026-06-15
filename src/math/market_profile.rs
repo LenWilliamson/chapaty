@@ -6,7 +6,7 @@ use crate::{
     error::{ChapatyResult, DataError, SystemError},
 };
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub fn compute_profile_stats<T: ProfileBinStats>(
     bins: &[T],
     va_pct: f64,
@@ -67,17 +67,7 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
                     .iter()
                     .copied()
                     .min_by(|&a, &b| {
-                        #[allow(
-                            clippy::unwrap_used,
-                            reason = "Safe because `sum_indices` and `candidates.len()` have already been successfully \
-                                      converted to `u32` earlier in this block, ensuring all element indices fit in `u32`."
-                        )]
                         let a = u32::try_from(a).expect("candidate index exceeds u32");
-                        #[allow(
-                            clippy::unwrap_used,
-                            reason = "Safe because `sum_indices` and `candidates.len()` have already been successfully \
-                                      converted to `u32` earlier in this block, ensuring all element indices fit in `u32`."
-                        )]
                         let b = u32::try_from(b).expect("candidate index exceeds u32");
                         let diff_a = (f64::from(a) - avg_idx).abs();
                         let diff_b = (f64::from(b) - avg_idx).abs();
@@ -98,7 +88,7 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
     let mut low_idx = poc_idx;
     let mut high_idx = poc_idx;
 
-    #[allow(clippy::while_float)]
+    #[expect(clippy::while_float)]
     while current_vol < target_vol {
         // Look at neighbors
         let vol_below = if low_idx > 0 {

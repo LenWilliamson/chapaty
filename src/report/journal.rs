@@ -355,7 +355,7 @@ impl JournalExprExt for Expr {
 
 #[cfg(test)]
 mod test {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use std::path::PathBuf;
 
     use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, col};

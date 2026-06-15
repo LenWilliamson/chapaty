@@ -11,7 +11,7 @@ pub struct BaseMarketParams {
     /// Required: Year for data retrieval
     #[prost(int32, tag = "3")]
     pub year: i32,
-    /// Optional: Exchange name. Defaults to `data_broker` name if empty.
+    /// Optional: Exchange name. Defaults to data_broker name if empty.
     #[prost(string, tag = "4")]
     pub exchange: ::prost::alloc::string::String,
     /// Optional: Batch size for streaming. Defaults to 1000. Range: 100-10000.
@@ -160,7 +160,7 @@ pub struct EconomicCalendarResponse {
     #[prost(message, optional, tag = "2")]
     pub metadata: ::core::option::Option<BatchMetadata>,
 }
-/// `EconomicCategory` identifies the economic classification of calendar events.
+/// EconomicCategory identifies the economic classification of calendar events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EconomicCategory {
@@ -184,10 +184,10 @@ pub enum EconomicCategory {
     Bonds = 8,
 }
 impl EconomicCategory {
-    /// String value of the enum field names used in the `ProtoBuf` definition.
+    /// String value of the enum field names used in the ProtoBuf definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
-    /// (if the `ProtoBuf` definition does not change) and safe for programmatic use.
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
             Self::Unspecified => "ECONOMIC_CATEGORY_UNSPECIFIED",
@@ -201,7 +201,7 @@ impl EconomicCategory {
             Self::Bonds => "ECONOMIC_CATEGORY_BONDS",
         }
     }
-    /// Creates an enum from field names used in the `ProtoBuf` definition.
+    /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
             "ECONOMIC_CATEGORY_UNSPECIFIED" => Some(Self::Unspecified),
@@ -217,7 +217,7 @@ impl EconomicCategory {
         }
     }
 }
-/// `EconomicImportance` represents the potential market volatility associated with an event.
+/// EconomicImportance represents the potential market volatility associated with an event.
 /// This corresponds directly to the "bull head" rating on Investing.com.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -235,10 +235,10 @@ pub enum EconomicImportance {
     High = 3,
 }
 impl EconomicImportance {
-    /// String value of the enum field names used in the `ProtoBuf` definition.
+    /// String value of the enum field names used in the ProtoBuf definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
-    /// (if the `ProtoBuf` definition does not change) and safe for programmatic use.
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
             Self::Unspecified => "ECONOMIC_IMPORTANCE_UNSPECIFIED",
@@ -247,7 +247,7 @@ impl EconomicImportance {
             Self::High => "ECONOMIC_IMPORTANCE_HIGH",
         }
     }
-    /// Creates an enum from field names used in the `ProtoBuf` definition.
+    /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
             "ECONOMIC_IMPORTANCE_UNSPECIFIED" => Some(Self::Unspecified),
@@ -265,10 +265,10 @@ pub mod exporter_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     /// Market data export service.
     #[derive(Debug, Clone)]
     pub struct ExporterServiceClient<T> {
@@ -308,14 +308,13 @@ pub mod exporter_service_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    http::Request<tonic::body::Body>,
+                    Response = http::Response<
+                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    >,
                 >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
+                Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             ExporterServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -358,26 +357,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::TradesSpotResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/TradesSpot",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "TradesSpot",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "TradesSpot",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream OHLCV data for spot markets
@@ -388,26 +379,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::OhlcvSpotResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/OhlcvSpot",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "OhlcvSpot",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "OhlcvSpot",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream OHLCV data for futures markets
@@ -418,26 +401,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::OhlcvFutureResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/OhlcvFuture",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "OhlcvFuture",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "OhlcvFuture",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream TPO data for spot markets
@@ -448,23 +423,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::TpoSpotResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/TpoSpot",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new("chapaty.bq_exporter.v1.ExporterService", "TpoSpot"),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "TpoSpot",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream TPO data for futures markets
@@ -475,26 +445,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::TpoFutureResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/TpoFuture",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "TpoFuture",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "TpoFuture",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream volume profile data for spot markets
@@ -505,26 +467,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::VolumeProfileSpotResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/VolumeProfileSpot",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "VolumeProfileSpot",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "VolumeProfileSpot",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Stream economic calendar events
@@ -535,26 +489,18 @@ pub mod exporter_service_client {
             tonic::Response<tonic::codec::Streaming<super::EconomicCalendarResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/chapaty.bq_exporter.v1.ExporterService/EconomicCalendar",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new(
-                        "chapaty.bq_exporter.v1.ExporterService",
-                        "EconomicCalendar",
-                    ),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "chapaty.bq_exporter.v1.ExporterService",
+                "EconomicCalendar",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
     }

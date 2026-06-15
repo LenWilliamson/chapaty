@@ -276,7 +276,7 @@ impl StreamingIndicator for StreamingTradesVwap {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use crate::data::domain::Quantity;
 
     use super::*;

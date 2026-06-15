@@ -189,7 +189,7 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn exprs(cfg: RiskMetricsConfig) -> Vec<Expr> {
     let return_col = JournalCol::RealizedReturnDollars;
     let exit_reason_col = JournalCol::ExitReason;
@@ -1091,7 +1091,7 @@ impl PortfolioPerformanceCol {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use std::{collections::HashSet, path::PathBuf};
 
     use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};

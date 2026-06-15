@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::error::{ChapatyError, ChapatyResult, DataError, IoError};
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(super) fn polars_to_chapaty_error(report: &str, e: polars::error::PolarsError) -> ChapatyError {
     ChapatyError::Data(DataError::DataFrame(format!(
         "Error while building {report} from journal DataFrame: {e}"
@@ -126,7 +126,7 @@ impl LazyFrameExt for LazyFrame {
 // Helper Functions
 // ================================================================================================
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 fn fmt_duration_udf(c: Column) -> PolarsResult<Column> {
     let ca = c.duration()?;
     let unit = ca.time_unit();

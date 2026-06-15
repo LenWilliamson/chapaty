@@ -472,7 +472,7 @@ fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
 }
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use crate::generated::chapaty::data::v1::{
         EconomicCalendarBatch, EconomicCalendarEvent, OhlcvFutureBatch, OhlcvFutureEvent,

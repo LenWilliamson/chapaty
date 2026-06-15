@@ -999,8 +999,8 @@ pub trait Instrument {
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
     /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_possible_truncation)]
     fn usd_to_ticks(&self, usd: f64) -> Tick {
         let raw_ticks = (usd / self.tick_value_usd()).round();
 
@@ -1033,8 +1033,8 @@ pub trait Instrument {
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
     /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_possible_truncation)]
     fn price_to_ticks(&self, price_dist: Price) -> Tick {
         let raw_ticks = (price_dist.0 / self.tick_size()).round();
 
@@ -1323,7 +1323,7 @@ pub struct SessionDate(pub NaiveDate);
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
     use chrono::TimeZone;

@@ -231,7 +231,7 @@ impl EpisodeLength {
     ///
     /// Panics if internal calendar arithmetic produces an invalid date or time,
     /// which should not occur given the hardcoded valid calendar values used (months 1–12, day 1, midnight 00:00:00).
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used)]
     fn calculate_end(self, start: DateTime<Utc>) -> DateTime<Utc> {
         use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
         match self {
@@ -305,7 +305,7 @@ impl EpisodeLength {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use chrono::TimeZone;
 

@@ -185,7 +185,7 @@ impl BuildCtx {
 
 impl BuildCtx {
     #[tracing::instrument]
-    #[allow(clippy::large_futures)]
+    #[expect(clippy::large_futures)]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
         Ok(next_async_fn(|ctx| {
@@ -222,7 +222,7 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
         tracing::info!("Computing derived batch technical ohlcv indicators");
 
@@ -570,7 +570,7 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     fn finish<'a>(&mut self) -> NextState<'a, Self> {
         info!("Starting environment finalization");
 
@@ -1110,7 +1110,7 @@ fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
@@ -1336,7 +1336,7 @@ fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[T
     Ok(profiles.into_boxed_slice())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
@@ -1927,7 +1927,7 @@ impl DataFrameExt for DataFrame {
 
 type NextState<'a, Ctx> = ChapatyResult<StateFn<'a, Ctx>>;
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 enum StateFn<'a, Ctx> {
     Next(fn(&mut Ctx) -> NextState<'a, Ctx>),
     NextAsync(
@@ -1949,7 +1949,7 @@ enum StateFn<'a, Ctx> {
 
 #[cfg(test)]
 mod test {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use chrono::{TimeZone, Timelike};
     use polars::{
@@ -2607,7 +2607,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::similar_names)]
+    #[expect(clippy::similar_names)]
     fn test_extract_economic() {
         let df = df!(
             CanonicalCol::PointInTime.as_str()            => &[

@@ -56,7 +56,7 @@ impl Ledger {
             .all_closed())
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(clippy::needless_pass_by_value)]
     pub fn with_capacity(capacity: LedgerCapacityHint) -> Self {
         let mut states = Vec::with_capacity(capacity.expected_episodes);
         let mut equity_curves = Vec::with_capacity(capacity.expected_episodes);
@@ -753,7 +753,7 @@ impl TryFrom<JournalSoA> for DataFrame {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
     DataError::DataFrame(e.to_string()).into()
 }
@@ -766,7 +766,7 @@ fn ep_not_found_err(episode: &Episode) -> ChapatyError {
 
 #[cfg(test)]
 mod test {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(clippy::unwrap_used, clippy::expect_used)]
     use std::collections::HashSet;
 
     use polars::prelude::SchemaExt;
@@ -852,8 +852,8 @@ mod test {
 
     /// Creates a minimal `JournalEntry` for testing transformations.
     /// This is the core helper for white-box testing of `JournalSoA`.
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_possible_truncation)]
     fn sample_journal_entry(
         episode: usize,
         trade_id: i64,
