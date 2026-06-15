@@ -37,6 +37,54 @@ pub struct CursorGroup {
     current_ts: DateTime<Utc>,
 }
 
+// ================================================================================================
+// Macro Helpers
+// ================================================================================================
+
+/// Calls a void method on every cursor that requires simulation storage.
+macro_rules! for_each_cursor {
+    ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {{
+        $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
+        $self.trade.$method($sim_data.trade() $(, $args)*);
+        $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
+        $self.vp.$method($sim_data.volume_profile() $(, $args)*);
+        $self.tpo.$method($sim_data.tpo() $(, $args)*);
+        $self.ema.$method($sim_data.ema() $(, $args)*);
+        $self.sma.$method($sim_data.sma() $(, $args)*);
+        $self.rsi.$method($sim_data.rsi() $(, $args)*);
+        $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*);
+        $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*);
+        $self.trades_session.$method($sim_data.trades_session() $(, $args)*);
+        $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*);
+        $self.atr.$method($sim_data.atr() $(, $args)*);
+        $self.roc.$method($sim_data.roc() $(, $args)*);
+    }};
+}
+
+/// Calls a method on every cursor that requires simulation storage and collects results.
+macro_rules! map_cursors {
+    ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {
+        [
+            $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*),
+            $self.trade.$method($sim_data.trade() $(, $args)*),
+            $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*),
+            $self.vp.$method($sim_data.volume_profile() $(, $args)*),
+            $self.tpo.$method($sim_data.tpo() $(, $args)*),
+            $self.ema.$method($sim_data.ema() $(, $args)*),
+            $self.sma.$method($sim_data.sma() $(, $args)*),
+            $self.rsi.$method($sim_data.rsi() $(, $args)*),
+            $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*),
+            $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*),
+            $self.trades_session
+                .$method($sim_data.trades_session() $(, $args)*),
+            $self.ohlcv_session
+                .$method($sim_data.ohlcv_session() $(, $args)*),
+            $self.atr.$method($sim_data.atr() $(, $args)*),
+            $self.roc.$method($sim_data.roc() $(, $args)*),
+        ]
+    };
+}
+
 impl CursorGroup {
     pub fn new(sim_data: &SimulationData) -> ChapatyResult<Self> {
         let start_ts = sim_data.global_availability_start();
@@ -128,28 +176,10 @@ impl CursorGroup {
     }
 
     pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
-        [
-            self.ohlcv.next_point_in_time(sim_data.ohlcv()),
-            self.trade.next_point_in_time(sim_data.trade()),
-            self.economic_cal
-                .next_point_in_time(sim_data.economic_cal()),
-            self.vp.next_point_in_time(sim_data.volume_profile()),
-            self.tpo.next_point_in_time(sim_data.tpo()),
-            self.ema.next_point_in_time(sim_data.ema()),
-            self.sma.next_point_in_time(sim_data.sma()),
-            self.rsi.next_point_in_time(sim_data.rsi()),
-            self.trades_vwap.next_point_in_time(sim_data.trades_vwap()),
-            self.ohlcv_vwap.next_point_in_time(sim_data.ohlcv_vwap()),
-            self.trades_session
-                .next_point_in_time(sim_data.trades_session()),
-            self.ohlcv_session
-                .next_point_in_time(sim_data.ohlcv_session()),
-            self.atr.next_point_in_time(sim_data.atr()),
-            self.roc.next_point_in_time(sim_data.roc()),
-        ]
-        .into_iter()
-        .flatten()
-        .min()
+        map_cursors!(self, sim_data, next_point_in_time)
+            .into_iter()
+            .flatten()
+            .min()
     }
 
     /// Advances the cursor to the next chronological available event in the simulation data.
@@ -189,39 +219,10 @@ impl CursorGroup {
         let current_ep_end = ep.end();
 
         // 1. Try to find the next episode start
-        let next_start = [
-            self.ohlcv
-                .find_first_open_at_or_after(sim_data.ohlcv(), current_ep_end),
-            self.trade
-                .find_first_open_at_or_after(sim_data.trade(), current_ep_end),
-            self.economic_cal
-                .find_first_open_at_or_after(sim_data.economic_cal(), current_ep_end),
-            self.vp
-                .find_first_open_at_or_after(sim_data.volume_profile(), current_ep_end),
-            self.tpo
-                .find_first_open_at_or_after(sim_data.tpo(), current_ep_end),
-            self.ema
-                .find_first_open_at_or_after(sim_data.ema(), current_ep_end),
-            self.sma
-                .find_first_open_at_or_after(sim_data.sma(), current_ep_end),
-            self.rsi
-                .find_first_open_at_or_after(sim_data.rsi(), current_ep_end),
-            self.trades_vwap
-                .find_first_open_at_or_after(sim_data.trades_vwap(), current_ep_end),
-            self.ohlcv_vwap
-                .find_first_open_at_or_after(sim_data.ohlcv_vwap(), current_ep_end),
-            self.trades_session
-                .find_first_open_at_or_after(sim_data.trades_session(), current_ep_end),
-            self.ohlcv_session
-                .find_first_open_at_or_after(sim_data.ohlcv_session(), current_ep_end),
-            self.atr
-                .find_first_open_at_or_after(sim_data.atr(), current_ep_end),
-            self.roc
-                .find_first_open_at_or_after(sim_data.roc(), current_ep_end),
-        ]
-        .into_iter()
-        .flatten()
-        .min();
+        let next_start = map_cursors!(self, sim_data, find_first_open_at_or_after, current_ep_end)
+            .into_iter()
+            .flatten()
+            .min();
 
         let Some(next_start) = next_start else {
             // If no future episode exists, explicitly mark all streams as exhausted.
@@ -230,36 +231,12 @@ impl CursorGroup {
         };
 
         // 2. Find data availability for that start time
-        let start_availability_candidate = [
-            self.ohlcv
-                .find_first_point_in_time_at_or_after(sim_data.ohlcv(), next_start),
-            self.trade
-                .find_first_point_in_time_at_or_after(sim_data.trade(), next_start),
-            self.economic_cal
-                .find_first_point_in_time_at_or_after(sim_data.economic_cal(), next_start),
-            self.vp
-                .find_first_point_in_time_at_or_after(sim_data.volume_profile(), next_start),
-            self.tpo
-                .find_first_point_in_time_at_or_after(sim_data.tpo(), next_start),
-            self.ema
-                .find_first_point_in_time_at_or_after(sim_data.ema(), next_start),
-            self.sma
-                .find_first_point_in_time_at_or_after(sim_data.sma(), next_start),
-            self.rsi
-                .find_first_point_in_time_at_or_after(sim_data.rsi(), next_start),
-            self.trades_vwap
-                .find_first_point_in_time_at_or_after(sim_data.trades_vwap(), next_start),
-            self.ohlcv_vwap
-                .find_first_point_in_time_at_or_after(sim_data.ohlcv_vwap(), next_start),
-            self.trades_session
-                .find_first_point_in_time_at_or_after(sim_data.trades_session(), next_start),
-            self.ohlcv_session
-                .find_first_point_in_time_at_or_after(sim_data.ohlcv_session(), next_start),
-            self.atr
-                .find_first_point_in_time_at_or_after(sim_data.atr(), next_start),
-            self.roc
-                .find_first_point_in_time_at_or_after(sim_data.roc(), next_start),
-        ]
+        let start_availability_candidate = map_cursors!(
+            self,
+            sim_data,
+            find_first_point_in_time_at_or_after,
+            next_start
+        )
         .into_iter()
         .flatten()
         .min();
@@ -304,39 +281,15 @@ impl CursorGroup {
     /// corresponding event array in `SimulationData`.
     /// `false` if there is any data left to be processed in any stream.
     pub fn is_end_of_data(&self, sim_data: &SimulationData) -> bool {
-        self.ohlcv.is_done(sim_data.ohlcv())
-            && self.trade.is_done(sim_data.trade())
-            && self.economic_cal.is_done(sim_data.economic_cal())
-            && self.vp.is_done(sim_data.volume_profile())
-            && self.tpo.is_done(sim_data.tpo())
-            && self.ema.is_done(sim_data.ema())
-            && self.sma.is_done(sim_data.sma())
-            && self.rsi.is_done(sim_data.rsi())
-            && self.trades_vwap.is_done(sim_data.trades_vwap())
-            && self.ohlcv_vwap.is_done(sim_data.ohlcv_vwap())
-            && self.trades_session.is_done(sim_data.trades_session())
-            && self.ohlcv_session.is_done(sim_data.ohlcv_session())
-            && self.atr.is_done(sim_data.atr())
-            && self.roc.is_done(sim_data.roc())
+        map_cursors!(self, sim_data, is_done)
+            .into_iter()
+            .all(|is_done| is_done)
     }
 }
 
 impl CursorGroup {
     fn advance_all_to_end(&mut self, sim_data: &SimulationData) {
-        self.ohlcv.to_end(sim_data.ohlcv());
-        self.trade.to_end(sim_data.trade());
-        self.economic_cal.to_end(sim_data.economic_cal());
-        self.vp.to_end(sim_data.volume_profile());
-        self.tpo.to_end(sim_data.tpo());
-        self.ema.to_end(sim_data.ema());
-        self.sma.to_end(sim_data.sma());
-        self.rsi.to_end(sim_data.rsi());
-        self.trades_vwap.to_end(sim_data.trades_vwap());
-        self.ohlcv_vwap.to_end(sim_data.ohlcv_vwap());
-        self.trades_session.to_end(sim_data.trades_session());
-        self.ohlcv_session.to_end(sim_data.ohlcv_session());
-        self.atr.to_end(sim_data.atr());
-        self.roc.to_end(sim_data.roc());
+        for_each_cursor!(self, sim_data, to_end);
     }
 
     fn rewind(&mut self) {
@@ -357,20 +310,7 @@ impl CursorGroup {
     }
 
     fn advance_all(&mut self, sim_data: &SimulationData, ts: DateTime<Utc>) {
-        self.ohlcv.advance(sim_data.ohlcv(), ts);
-        self.trade.advance(sim_data.trade(), ts);
-        self.economic_cal.advance(sim_data.economic_cal(), ts);
-        self.vp.advance(sim_data.volume_profile(), ts);
-        self.tpo.advance(sim_data.tpo(), ts);
-        self.ema.advance(sim_data.ema(), ts);
-        self.sma.advance(sim_data.sma(), ts);
-        self.rsi.advance(sim_data.rsi(), ts);
-        self.trades_vwap.advance(sim_data.trades_vwap(), ts);
-        self.ohlcv_vwap.advance(sim_data.ohlcv_vwap(), ts);
-        self.trades_session.advance(sim_data.trades_session(), ts);
-        self.ohlcv_session.advance(sim_data.ohlcv_session(), ts);
-        self.atr.advance(sim_data.atr(), ts);
-        self.roc.advance(sim_data.roc(), ts);
+        for_each_cursor!(self, sim_data, advance, ts);
     }
 }
 
