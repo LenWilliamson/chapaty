@@ -863,10 +863,6 @@ mod tests {
         }
     }
 
-    /// Helper to assert floats with epsilon tolerance
-    fn assert_f64_eq(a: f64, b: f64) {
-        assert!((a - b).abs() < f64::EPSILON, "Expected {a} to equal {b}");
-    }
 
     fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {
         let indicator = StreamingHhll::default()
@@ -900,13 +896,13 @@ mod tests {
         let doji_candle = candle(2, "2026-05-24T10:02:00Z", 15., 20., 5., 15.).candle;
 
         // === HighLow PriceSource (Always extracts High/Low regardless of direction) ===
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::High
                 .extract_price(bullish_candle, PriceSource::HighLow)
                 .0,
             20.,
         );
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::Low
                 .extract_price(bullish_candle, PriceSource::HighLow)
                 .0,
@@ -915,13 +911,13 @@ mod tests {
 
         // === OpenClose PriceSource ===
         // Bullish: High -> Close(15), Low -> Open(10)
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::High
                 .extract_price(bullish_candle, PriceSource::OpenClose)
                 .0,
             15.,
         );
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::Low
                 .extract_price(bullish_candle, PriceSource::OpenClose)
                 .0,
@@ -929,13 +925,13 @@ mod tests {
         );
 
         // Bearish: High -> Open(15), Low -> Close(10)
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::High
                 .extract_price(bearish_candle, PriceSource::OpenClose)
                 .0,
             15.,
         );
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::Low
                 .extract_price(bearish_candle, PriceSource::OpenClose)
                 .0,
@@ -943,13 +939,13 @@ mod tests {
         );
 
         // Doji: High -> Close(15), Low -> Close(15)
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::High
                 .extract_price(doji_candle, PriceSource::OpenClose)
                 .0,
             15.,
         );
-        assert_f64_eq(
+        assert_f64_eq!(
             PivotType::Low
                 .extract_price(doji_candle, PriceSource::OpenClose)
                 .0,
@@ -1047,18 +1043,18 @@ mod tests {
         // Slope = (150 - 100) / (20 - 10) = 5.0 per bar
         let line_by_idx = p1.price_line_by_index(&p2);
 
-        assert_f64_eq(line_by_idx(10).0, 100.0); // Start point
-        assert_f64_eq(line_by_idx(15).0, 125.0); // Exact midpoint
-        assert_f64_eq(line_by_idx(20).0, 150.0); // Target point
-        assert_f64_eq(line_by_idx(25).0, 175.0); // Extrapolation into the future!
+        assert_f64_eq!(line_by_idx(10).0, 100.0); // Start point
+        assert_f64_eq!(line_by_idx(15).0, 125.0); // Exact midpoint
+        assert_f64_eq!(line_by_idx(20).0, 150.0); // Target point
+        assert_f64_eq!(line_by_idx(25).0, 175.0); // Extrapolation into the future!
 
         // === 2. Test Time Based Interpolation ===
         let line_by_time = p1.price_line_by_point_in_time(&p2);
 
-        assert_f64_eq(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
-        assert_f64_eq(line_by_time(ts("2026-05-24T15:05:00Z")).0, 125.0); // Midpoint (5 mins)
-        assert_f64_eq(line_by_time(ts("2026-05-24T15:10:00Z")).0, 150.0); // Target
-        assert_f64_eq(line_by_time(ts("2026-05-24T15:20:00Z")).0, 200.0); // Extrapolation into future
+        assert_f64_eq!(line_by_time(ts("2026-05-24T15:00:00Z")).0, 100.0); // Start
+        assert_f64_eq!(line_by_time(ts("2026-05-24T15:05:00Z")).0, 125.0); // Midpoint (5 mins)
+        assert_f64_eq!(line_by_time(ts("2026-05-24T15:10:00Z")).0, 150.0); // Target
+        assert_f64_eq!(line_by_time(ts("2026-05-24T15:20:00Z")).0, 200.0); // Extrapolation into future
     }
 
     #[test]
@@ -1079,7 +1075,7 @@ mod tests {
 
         // Same index/time should result in flat line, NOT a NaN/Inf panic
         let line = p1.price_line_by_index(&p2);
-        assert_f64_eq(line(10).0, 100.0);
+        assert_f64_eq!(line(10).0, 100.0);
     }
 
     // ==========================================
@@ -1340,7 +1336,7 @@ mod tests {
         // Assert: Bullish Mega Bar routes to `process_high`
         assert!(event_bullish.is_some());
         assert_eq!(event_bullish.unwrap().1.pivot_type(), PivotType::High);
-        assert_f64_eq(event_bullish.unwrap().1.price.0, 30.0);
+        assert_f64_eq!(event_bullish.unwrap().1.price.0, 30.0);
 
         hhll.reset();
 
@@ -1353,7 +1349,7 @@ mod tests {
         // Assert: Bearish Mega Bar routes to `process_low`
         assert!(event_bearish.is_some());
         assert_eq!(event_bearish.unwrap().1.pivot_type(), PivotType::Low);
-        assert_f64_eq(event_bearish.unwrap().1.price.0, 5.0);
+        assert_f64_eq!(event_bearish.unwrap().1.price.0, 5.0);
     }
 
     // ==========================================
@@ -1386,7 +1382,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(event.1.pivot_type(), PivotType::High);
-        assert_f64_eq(event.1.price.0, 20.0);
+        assert_f64_eq!(event.1.price.0, 20.0);
         assert_eq!(event.1.point_in_time(), ts("2026-05-24T15:03:00Z"));
     }
 
@@ -1488,9 +1484,9 @@ mod tests {
             .1;
 
         // Assert strict initial state before the conflict
-        assert_f64_eq(p1_confirmed.price.0, 20.0);
+        assert_f64_eq!(p1_confirmed.price.0, 20.0);
         assert_eq!(p1_confirmed.pivot_type(), PivotType::High);
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 20.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 20.0);
         assert!(
             hhll.history().is_empty(),
             "History must be empty before confirmation"
@@ -1512,12 +1508,12 @@ mod tests {
             .1;
 
         // Because Alternation is active and no Trough fired, P2 replaces P1.
-        assert_f64_eq(p2_confirmed.price.0, 30.0);
+        assert_f64_eq!(p2_confirmed.price.0, 30.0);
         assert_eq!(p2_confirmed.pivot_type(), PivotType::High);
 
         // Ensure the lesser peak was successfully overwritten and NOT pushed to history
         assert_eq!(hhll.history().len(), 0);
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 30.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 30.0);
     }
 
     /// Tests Macro Tiebreaker Resolution: Earliest.
@@ -1602,7 +1598,7 @@ mod tests {
         }
 
         // Active pivot is Peak 2.
-        assert_f64_eq(hhll.active_pivot.unwrap().price.0, 30.0);
+        assert_f64_eq!(hhll.active_pivot.unwrap().price.0, 30.0);
 
         // History should be EMPTY. Peak 1 was discarded and never locked in.
         assert_eq!(
@@ -1617,7 +1613,7 @@ mod tests {
 
         // NOW Peak 2 should be safely locked in history.
         assert_eq!(hhll.history().len(), 1);
-        assert_f64_eq(hhll.history()[0].price.0, 30.0);
+        assert_f64_eq!(hhll.history()[0].price.0, 30.0);
         assert_eq!(hhll.history()[0].pivot_type(), PivotType::High);
     }
 
@@ -1647,7 +1643,7 @@ mod tests {
         }
 
         // Active pivot is tracking Peak 3.
-        assert_f64_eq(hhll.active_pivot.unwrap().price.0, 40.0);
+        assert_f64_eq!(hhll.active_pivot.unwrap().price.0, 40.0);
 
         // History should contain Peak 1 and Peak 2, despite them all being Highs.
         assert_eq!(
@@ -1655,8 +1651,8 @@ mod tests {
             2,
             "Consecutive mode should lock all previous peaks"
         );
-        assert_f64_eq(hhll.history()[0].price.0, 20.0);
-        assert_f64_eq(hhll.history()[1].price.0, 30.0);
+        assert_f64_eq!(hhll.history()[0].price.0, 20.0);
+        assert_f64_eq!(hhll.history()[1].price.0, 30.0);
     }
 
     // ==========================================
@@ -1684,7 +1680,7 @@ mod tests {
         // Assert natural setup is valid
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::High);
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 50.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 50.0);
 
         // 1. Push Left Window (prevents Low from firing)
         assert!(
@@ -1709,7 +1705,7 @@ mod tests {
         );
         let (_, pivot) = event.unwrap();
         assert_eq!(pivot.pivot_type(), PivotType::High);
-        assert_f64_eq(pivot.price.0, 60.0);
+        assert_f64_eq!(pivot.price.0, 60.0);
     }
 
     /// # Scenario B: Mega Doji Extends a Low (Sweeps Liquidity)
@@ -1725,7 +1721,7 @@ mod tests {
         // Assert natural setup is valid
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 10.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
 
         assert!(
             hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
@@ -1743,7 +1739,7 @@ mod tests {
         assert!(event.is_some(), "Expected Doji to extend the Low");
         let (_, pivot) = event.unwrap();
         assert_eq!(pivot.pivot_type(), PivotType::Low);
-        assert_f64_eq(pivot.price.0, 5.0);
+        assert_f64_eq!(pivot.price.0, 5.0);
     }
 
     /// # Scenario C: Mega Doji Discarded as Internal Noise
@@ -1757,7 +1753,7 @@ mod tests {
         let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
 
         assert!(p1.is_some());
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 1.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 1.0);
 
         assert!(
             hhll.update(candle(3, "2026-05-24T17:01:00Z", 50., 50., 20., 50.))
@@ -1810,7 +1806,7 @@ mod tests {
             event.is_some(),
             "Expected Doji to successfully extend the High under Earliest"
         );
-        assert_f64_eq(event.unwrap().1.price.0, 60.0);
+        assert_f64_eq!(event.unwrap().1.price.0, 60.0);
     }
 
     /// # Scenario E: Mega Doji Exact Tie under Earliest (Discarded)
@@ -1862,7 +1858,7 @@ mod tests {
             "Expected exact tie Doji to overwrite under Latest tiebreaker"
         );
         let (_, pivot) = event.unwrap();
-        assert_f64_eq(pivot.price.0, 50.0);
+        assert_f64_eq!(pivot.price.0, 50.0);
         // Ensure it is actually the NEW candle by checking the timestamp
         assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
     }
@@ -1879,7 +1875,7 @@ mod tests {
 
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
-        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 10.0);
+        assert_f64_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
 
         // 1. Push Left Window (prevents High from firing)
         assert!(
@@ -1901,7 +1897,7 @@ mod tests {
             event.is_some(),
             "Expected Doji to successfully extend the Low under Earliest"
         );
-        assert_f64_eq(event.unwrap().1.price.0, 5.0);
+        assert_f64_eq!(event.unwrap().1.price.0, 5.0);
     }
 
     /// # Scenario H: Mega Doji Exact Tie under Earliest (Discarded for Low)
@@ -1953,7 +1949,7 @@ mod tests {
             "Expected exact tie Doji to overwrite under Latest tiebreaker"
         );
         let (_, pivot) = event.unwrap();
-        assert_f64_eq(pivot.price.0, 10.0);
+        assert_f64_eq!(pivot.price.0, 10.0);
         // Ensure it is actually the NEW candle by checking the timestamp
         assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
     }

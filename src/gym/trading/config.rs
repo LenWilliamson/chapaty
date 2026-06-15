@@ -74,8 +74,8 @@ pub enum ExecutionBias {
 /// of the preset variants, you can conveniently pass `preset.to_string()` as the filename.
 ///
 /// ```rust,no_run
-/// use anyhow::{Context, Result};
-/// use chapaty::prelude::*;
+/// # use anyhow::{Context, Result};
+/// # use chapaty::prelude::*;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {

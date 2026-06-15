@@ -51,7 +51,7 @@ impl RingState {
 /// # Examples
 ///
 /// ```rust
-/// use chapaty::ring_buffer::RingBuffer;
+/// # use chapaty::ring_buffer::RingBuffer;
 ///
 /// let mut buffer = RingBuffer::new(2);
 /// assert_eq!(buffer.push("a"), None);
@@ -79,7 +79,7 @@ impl<T> RingBuffer<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use chapaty::ring_buffer::RingBuffer;
+    /// # use chapaty::ring_buffer::RingBuffer;
     ///
     /// let buffer: RingBuffer<f64> = RingBuffer::new(3);
     /// assert!(buffer.is_empty());
@@ -113,7 +113,7 @@ impl<T> RingBuffer<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use chapaty::ring_buffer::RingBuffer;
+    /// # use chapaty::ring_buffer::RingBuffer;
     ///
     /// let mut buffer = RingBuffer::new(2);
     /// assert_eq!(buffer.len(), 0);
@@ -139,7 +139,7 @@ impl<T> RingBuffer<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use chapaty::ring_buffer::RingBuffer;
+    /// # use chapaty::ring_buffer::RingBuffer;
     ///
     /// let mut buffer = RingBuffer::new(2);
     /// assert!(!buffer.is_full());
@@ -162,7 +162,7 @@ impl<T> RingBuffer<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use chapaty::ring_buffer::RingBuffer;
+    /// # use chapaty::ring_buffer::RingBuffer;
     ///
     /// let mut buffer = RingBuffer::new(2);
     /// assert_eq!(buffer.push(10), None);
@@ -207,7 +207,7 @@ impl<T> RingBuffer<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use chapaty::ring_buffer::RingBuffer;
+    /// # use chapaty::ring_buffer::RingBuffer;
     ///
     /// let mut buffer = RingBuffer::new(3);
     /// buffer.push(1.0);

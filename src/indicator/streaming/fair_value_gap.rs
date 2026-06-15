@@ -614,11 +614,6 @@ mod tests {
         }
     }
 
-    /// Helper to assert floats with epsilon tolerance
-    fn assert_f64_eq(a: f64, b: f64) {
-        assert!((a - b).abs() < f64::EPSILON, "Expected {a} to equal {b}");
-    }
-
     // ==========================================
     // === 2. Core Invariant Proofs ===
     // ==========================================
@@ -685,9 +680,9 @@ mod tests {
         assert_eq!(indicator.active_gaps.len(), 1);
         let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
-        assert_f64_eq(gap.bottom().0, 10.0);
-        assert_f64_eq(gap.top().0, 15.0);
-        assert_f64_eq(gap.gap_size(), 5.0);
+        assert_f64_eq!(gap.bottom().0, 10.0);
+        assert_f64_eq!(gap.top().0, 15.0);
+        assert_f64_eq!(gap.gap_size(), 5.0);
 
         indicator.reset();
 
@@ -699,9 +694,9 @@ mod tests {
         assert_eq!(indicator.active_gaps.len(), 1);
         let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bearish);
-        assert_f64_eq(gap.top().0, 20.0);
-        assert_f64_eq(gap.bottom().0, 15.0);
-        assert_f64_eq(gap.gap_size(), 5.0);
+        assert_f64_eq!(gap.top().0, 20.0);
+        assert_f64_eq!(gap.bottom().0, 15.0);
+        assert_f64_eq!(gap.gap_size(), 5.0);
     }
 
     // ==========================================
@@ -725,9 +720,9 @@ mod tests {
         );
         let initial_gap = indicator.active_gaps()[0];
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
-        assert_f64_eq(initial_gap.top().0, 15.0);
-        assert_f64_eq(initial_gap.bottom().0, 10.0);
-        assert_f64_eq(initial_gap.gap_size(), 5.0);
+        assert_f64_eq!(initial_gap.top().0, 15.0);
+        assert_f64_eq!(initial_gap.bottom().0, 10.0);
+        assert_f64_eq!(initial_gap.gap_size(), 5.0);
 
         // 2. Partial Fill: Wick down to 12.5 (50% fill)
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 12.5, 17.));
@@ -737,14 +732,14 @@ mod tests {
 
         let gap = indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 1);
-        assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // (15 - 12.5) / 5
+        assert_f64_eq!(gap.state().max_fill_percentage(), 0.5); // (15 - 12.5) / 5
 
         // 3. Lesser Fill: Wick down to 14.0 (20% fill). Should NOT reduce max_fill.
         indicator.update(candle(5, "2026-05-24T10:04:00Z", 18., 18., 14.0, 17.));
 
         let gap = indicator.active_gaps()[0];
         assert_eq!(gap.state().touch_count(), 2);
-        assert_f64_eq(gap.state().max_fill_percentage(), 0.5); // Retains 50% max
+        assert_f64_eq!(gap.state().max_fill_percentage(), 0.5); // Retains 50% max
     }
 
     #[test]
@@ -764,8 +759,8 @@ mod tests {
         );
         let initial_gap = indicator.active_gaps()[0];
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bearish);
-        assert_f64_eq(initial_gap.top().0, 20.0);
-        assert_f64_eq(initial_gap.bottom().0, 15.0);
+        assert_f64_eq!(initial_gap.top().0, 20.0);
+        assert_f64_eq!(initial_gap.bottom().0, 15.0);
         assert_eq!(indicator.closed_gaps().len(), 0);
 
         // 2. Miss (Price drops further away from the gap)
@@ -789,7 +784,7 @@ mod tests {
 
         let closed = indicator.closed_gaps()[0];
         assert_eq!(closed.direction(), FairValueGapDirection::Bearish);
-        assert_f64_eq(closed.state().max_fill_percentage(), 1.0); // Full fill is exactly 1.0
+        assert_f64_eq!(closed.state().max_fill_percentage(), 1.0); // Full fill is exactly 1.0
         assert_eq!(closed.state().touch_count(), 1); // Only took 1 touch to close
         assert_eq!(closed.state().closed_time(), ts("2026-05-24T10:04:00Z")); // Time of the violating candle
     }
@@ -811,8 +806,8 @@ mod tests {
             "Assumption failed: Bullish gap was not created"
         );
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
-        assert_f64_eq(initial_gap.top().0, 15.0);
-        assert_f64_eq(initial_gap.bottom().0, 10.0);
+        assert_f64_eq!(initial_gap.top().0, 15.0);
+        assert_f64_eq!(initial_gap.bottom().0, 10.0);
 
         // Send a candle that wicks to EXACTLY 15.0
         // Because process_candle uses `candle.low < self.top`, this evaluates to false.
@@ -825,7 +820,7 @@ mod tests {
             0,
             "Exact tick overlap should not increment touches"
         );
-        assert_f64_eq(gap.state().max_fill_percentage(), 0.0);
+        assert_f64_eq!(gap.state().max_fill_percentage(), 0.0);
     }
 
     #[test]
@@ -847,8 +842,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
-        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
 
         // 2. Create Bullish Gap B (25 -> 30) further up the trend
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 25., 25., 20., 22.));
@@ -865,8 +860,8 @@ mod tests {
             indicator.active_gaps()[1].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[1].top().0, 30.0);
-        assert_f64_eq(indicator.active_gaps()[1].bottom().0, 25.0);
+        assert_f64_eq!(indicator.active_gaps()[1].top().0, 30.0);
+        assert_f64_eq!(indicator.active_gaps()[1].bottom().0, 25.0);
 
         // 3. Price drops to 20. This completely fills Gap B (25->30), but only misses Gap A (10->15)
         indicator.update(candle(7, "2026-05-26T10:07:00Z", 30., 30., 20., 25.));
@@ -880,16 +875,16 @@ mod tests {
 
         // Verify Gap A is still active and untouched (passed by value since it is Copy)
         let active_gap = indicator.active_gaps()[0];
-        assert_f64_eq(active_gap.bottom().0, 10.0);
-        assert_f64_eq(active_gap.top().0, 15.0);
+        assert_f64_eq!(active_gap.bottom().0, 10.0);
+        assert_f64_eq!(active_gap.top().0, 15.0);
         assert_eq!(active_gap.state().touch_count(), 0);
 
         // Verify Gap B is closed (passed by value)
         let closed_gap = indicator.closed_gaps()[0];
-        assert_f64_eq(closed_gap.bottom().0, 25.0);
-        assert_f64_eq(closed_gap.top().0, 30.0);
+        assert_f64_eq!(closed_gap.bottom().0, 25.0);
+        assert_f64_eq!(closed_gap.top().0, 30.0);
         assert_eq!(closed_gap.state().touch_count(), 1);
-        assert_f64_eq(closed_gap.state().max_fill_percentage(), 1.0);
+        assert_f64_eq!(closed_gap.state().max_fill_percentage(), 1.0);
     }
 
     // ==========================================
@@ -1061,7 +1056,7 @@ mod tests {
             1,
             "Should preserve the touch count before expiration"
         );
-        assert_f64_eq(expired.state().final_fill_percentage(), 0.5);
+        assert_f64_eq!(expired.state().final_fill_percentage(), 0.5);
     }
 
     #[test]
@@ -1086,7 +1081,7 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq!(indicator.active_gaps()[0].top().0, 15.0);
 
         // 2. Einen gewaltigen Sprung in die Zukunft simulieren (Index 1000, 10 Stunden später)
         // Der Preis bleibt weit über der Lücke, sodass sie nicht gefüllt wird.
@@ -1127,8 +1122,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
-        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,
@@ -1161,7 +1156,7 @@ mod tests {
         );
 
         let closed = indicator.closed_gaps()[0];
-        assert_f64_eq(closed.state().max_fill_percentage(), 1.0);
+        assert_f64_eq!(closed.state().max_fill_percentage(), 1.0);
     }
 
     #[test]
@@ -1187,8 +1182,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
-        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,
@@ -1218,7 +1213,7 @@ mod tests {
             1,
             "Must register the touch from the expiring candle"
         );
-        assert_f64_eq(expired.state().final_fill_percentage(), 0.5); // Correctly captured the 50% fill right before death
+        assert_f64_eq!(expired.state().final_fill_percentage(), 0.5); // Correctly captured the 50% fill right before death
     }
 
     #[test]
@@ -1244,8 +1239,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
-        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,
@@ -1283,7 +1278,7 @@ mod tests {
         );
 
         let closed = indicator.closed_gaps()[0];
-        assert_f64_eq(closed.state().max_fill_percentage(), 1.0);
+        assert_f64_eq!(closed.state().max_fill_percentage(), 1.0);
     }
 
     #[test]
@@ -1318,7 +1313,7 @@ mod tests {
             0,
             "The market never traded inside the Bullish gap"
         );
-        assert_f64_eq(bullish_gap.state().max_fill_percentage(), 0.0);
+        assert_f64_eq!(bullish_gap.state().max_fill_percentage(), 0.0);
 
         indicator.reset();
 
@@ -1347,7 +1342,7 @@ mod tests {
             0,
             "The market never traded inside the Bearish gap"
         );
-        assert_f64_eq(bearish_gap.state().max_fill_percentage(), 0.0);
+        assert_f64_eq!(bearish_gap.state().max_fill_percentage(), 0.0);
     }
 
     #[test]
@@ -1581,8 +1576,8 @@ mod tests {
         assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
 
         // Displacement reading == the middle candle only.
-        assert_f64_eq(gap.displacement().high.0, 18.0);
-        assert_f64_eq(gap.displacement().low.0, 9.0);
+        assert_f64_eq!(gap.displacement().high.0, 18.0);
+        assert_f64_eq!(gap.displacement().low.0, 9.0);
 
         // Whole-movement reading is genuinely different.
         let movement_high = gap
@@ -1590,7 +1585,7 @@ mod tests {
             .iter()
             .map(|c| c.high.0)
             .fold(f64::MIN, f64::max);
-        assert_f64_eq(movement_high, 20.0);
+        assert_f64_eq!(movement_high, 20.0);
         assert!(movement_high > gap.displacement().high.0);
     }
 
@@ -1605,14 +1600,14 @@ mod tests {
         let gap = indicator.active_gaps()[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bearish);
 
-        assert_f64_eq(gap.displacement().low.0, 12.0);
+        assert_f64_eq!(gap.displacement().low.0, 12.0);
 
         let movement_low = gap
             .window()
             .iter()
             .map(|c| c.low.0)
             .fold(f64::MAX, f64::min);
-        assert_f64_eq(movement_low, 10.0);
+        assert_f64_eq!(movement_low, 10.0);
         assert!(movement_low < gap.displacement().low.0);
     }
 
@@ -1632,7 +1627,7 @@ mod tests {
         // Partial fill (wick to 12.5) -> still active, window intact.
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 12.5, 17.));
         assert_eq!(indicator.active_gaps().len(), 1);
-        assert_f64_eq(indicator.active_gaps()[0].displacement_high().0, disp_high);
+        assert_f64_eq!(indicator.active_gaps()[0].displacement_high().0, disp_high);
         assert_eq!(
             indicator.active_gaps()[0].displacement().close_timestamp,
             disp_ts
@@ -1641,7 +1636,7 @@ mod tests {
         // Full fill (wick below bottom 10.0) -> migrates to closed; map() must carry the window.
         indicator.update(candle(5, "2026-05-24T10:04:00Z", 18., 18., 9., 14.));
         assert_eq!(indicator.closed_gaps().len(), 1);
-        assert_f64_eq(indicator.closed_gaps()[0].displacement_high().0, disp_high);
+        assert_f64_eq!(indicator.closed_gaps()[0].displacement_high().0, disp_high);
         assert_eq!(
             indicator.closed_gaps()[0].displacement().close_timestamp,
             disp_ts
@@ -1668,14 +1663,14 @@ mod tests {
         assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
 
         // High: displacement is the window maximum, so both readings agree.
-        assert_f64_eq(gap.displacement_high().0, 25.0);
-        assert_f64_eq(gap.movement_high().0, 25.0);
-        assert_f64_eq(gap.displacement_high().0, gap.movement_high().0);
+        assert_f64_eq!(gap.displacement_high().0, 25.0);
+        assert_f64_eq!(gap.movement_high().0, 25.0);
+        assert_f64_eq!(gap.displacement_high().0, gap.movement_high().0);
 
         // Low: displacement is also the window minimum, so both readings agree.
-        assert_f64_eq(gap.displacement_low().0, 9.0);
-        assert_f64_eq(gap.movement_low().0, 9.0);
-        assert_f64_eq(gap.displacement_low().0, gap.movement_low().0);
+        assert_f64_eq!(gap.displacement_low().0, 9.0);
+        assert_f64_eq!(gap.movement_low().0, 9.0);
+        assert_f64_eq!(gap.displacement_low().0, gap.movement_low().0);
     }
 
     #[test]
@@ -1691,12 +1686,12 @@ mod tests {
         indicator.update(candle(3, "2026-05-24T10:02:00Z", 15., 20., 15., 19.)); // rhs: close 19
 
         let gap = indicator.active_gaps()[0];
-        assert_f64_eq(gap.movement_open().0, 7.0); // lhs.open
-        assert_f64_eq(gap.movement_close().0, 19.0); // rhs.close
+        assert_f64_eq!(gap.movement_open().0, 7.0); // lhs.open
+        assert_f64_eq!(gap.movement_close().0, 19.0); // rhs.close
 
         // They must equal the open/close of the named boundary candles.
-        assert_f64_eq(gap.movement_open().0, gap.first().open.0);
-        assert_f64_eq(gap.movement_close().0, gap.last().close.0);
+        assert_f64_eq!(gap.movement_open().0, gap.first().open.0);
+        assert_f64_eq!(gap.movement_close().0, gap.last().close.0);
 
         // And they must survive migration to closed, like the rest of the window.
         let open_before = gap.movement_open().0;
@@ -1704,7 +1699,7 @@ mod tests {
 
         indicator.update(candle(4, "2026-05-24T10:03:00Z", 18., 18., 9., 14.)); // full fill, wick below bottom 10.0
         assert_eq!(indicator.closed_gaps().len(), 1);
-        assert_f64_eq(indicator.closed_gaps()[0].movement_open().0, open_before);
-        assert_f64_eq(indicator.closed_gaps()[0].movement_close().0, close_before);
+        assert_f64_eq!(indicator.closed_gaps()[0].movement_open().0, open_before);
+        assert_f64_eq!(indicator.closed_gaps()[0].movement_close().0, close_before);
     }
 }

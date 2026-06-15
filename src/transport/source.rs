@@ -12,7 +12,6 @@ use tracing::info;
 use crate::{
     error::{ChapatyResult, TransportError},
     generated::chapaty::bq_exporter::v1::exporter_service_client::ExporterServiceClient,
-    impl_from_primitive,
 };
 
 // Define the concrete type of your authenticated client
@@ -26,7 +25,7 @@ pub type ChapatyClient = ExporterServiceClient<InterceptedService<Channel, ApiKe
 /// # Examples
 ///
 /// ```rust
-/// use chapaty::prelude::*;
+/// # use chapaty::prelude::*;
 /// let url = EndpointUrl::from("https://api.example.com".to_string());
 /// assert_eq!(url.0, "https://api.example.com");
 /// ```
@@ -48,7 +47,7 @@ impl From<&str> for EndpointUrl {
 /// # Examples
 ///
 /// ```rust
-/// use chapaty::prelude::*;
+/// # use chapaty::prelude::*;
 /// let key = ApiKey::from("my-secret-key".to_string());
 /// assert_eq!(key.0, "my-secret-key");
 /// ```

@@ -4,10 +4,7 @@ use ndarray::Array;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
-use crate::{
-    error::{ChapatyResult, DataError},
-    impl_add_sub_mul_div_primitive, impl_from_primitive,
-};
+use crate::error::{ChapatyResult, DataError};
 
 pub mod trading;
 

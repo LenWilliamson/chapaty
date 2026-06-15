@@ -2,10 +2,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::{
-    error::{ChapatyError, ChapatyResult, SystemError},
-    impl_add_sub_mul_div_primitive, impl_from_primitive,
-};
+use crate::error::{ChapatyError, ChapatyResult, SystemError};
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
