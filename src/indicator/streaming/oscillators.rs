@@ -13,6 +13,7 @@ pub struct StreamingRsi {
 }
 
 impl StreamingRsi {
+    #[must_use]
     pub fn new(window_size: RsiWindow) -> Self {
         let size = window_size.0 as usize;
         // Wilder's Smoothing Alpha = 1 / N
@@ -32,12 +33,9 @@ impl StreamingIndicator for StreamingRsi {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
-        let prev = match self.prev_price {
-            Some(p) => p,
-            None => {
-                self.prev_price = Some(value);
-                return None;
-            }
+        let prev = if let Some(p) = self.prev_price { p } else {
+            self.prev_price = Some(value);
+            return None;
         };
 
         let delta = value - prev;

@@ -95,9 +95,9 @@ pub enum CanonicalCol {
     Category,
     /// Specific event type (e.g., "CPI", "NFP").
     NewsType,
-    /// Confidence score (0.0 - 1.0) for the inferred NewsType.
+    /// Confidence score (0.0 - 1.0) for the inferred `NewsType`.
     NewsTypeConfidence,
-    /// Method used to classify the NewsType (e.g., "ml", "rule").
+    /// Method used to classify the `NewsType` (e.g., "ml", "rule").
     NewsTypeSource,
     /// Full display name of the event.
     NewsName,

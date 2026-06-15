@@ -74,6 +74,7 @@ pub struct StreamingSma {
 }
 
 impl StreamingSma {
+    #[must_use]
     pub fn new(window_size: SmaWindow) -> Self {
         let size = window_size.0 as usize;
         Self {
@@ -121,6 +122,7 @@ pub struct StreamingEma {
 }
 
 impl StreamingEma {
+    #[must_use]
     pub fn new(window_size: EmaWindow) -> Self {
         let size = window_size.0 as usize;
         // Standard EMA Alpha = 2 / (Span + 1)

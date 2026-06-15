@@ -93,15 +93,12 @@ pub async fn load<'a>(
 ) -> ChapatyResult<Environment> {
     let env_cfg: EnvConfig = env_cfg.into();
 
-    let sim_data = match SimulationData::read(&env_cfg, io_cfg).await {
-        Ok(data) => {
-            tracing::info!("Cache hit: Initializing environment from loaded data.");
-            Arc::new(data)
-        }
-        Err(_) => {
-            tracing::info!("Cache miss: Building new environment.");
-            return make(env_cfg).await;
-        }
+    let sim_data = if let Ok(data) = SimulationData::read(&env_cfg, io_cfg).await {
+        tracing::info!("Cache hit: Initializing environment from loaded data.");
+        Arc::new(data)
+    } else {
+        tracing::info!("Cache miss: Building new environment.");
+        return make(env_cfg).await;
     };
 
     let trade_hint = env_cfg.trade_hint();
@@ -211,7 +208,7 @@ impl BuildCtx {
         self.vp_spot_map = Some(vp_spot);
         self.economic_calendar_map = Some(news);
 
-        Ok(StateFn::Next(|ctx| ctx.compute_batch_ohlcv_indicators()))
+        Ok(StateFn::Next(BuildCtx::compute_batch_ohlcv_indicators))
     }
 
     #[tracing::instrument(skip_all)]
@@ -403,7 +400,7 @@ impl BuildCtx {
             tracing::info!(
                 "Policy is Unrestricted or undefined. Skipping economic calendar overlay."
             );
-            return Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()));
+            return Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window));
         };
 
         // Handle Edge Case: No Calendar Data
@@ -412,7 +409,7 @@ impl BuildCtx {
         let is_empty = self
             .economic_calendar_map
             .as_ref()
-            .is_none_or(|m| m.is_empty());
+            .is_none_or(std::collections::HashMap::is_empty);
         if is_empty {
             if policy.is_only_with_events() {
                 tracing::warn!(
@@ -425,7 +422,7 @@ impl BuildCtx {
                 self.tpo_future_map = None;
                 self.vp_spot_map = None;
             }
-            return Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()));
+            return Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window));
         }
 
         tracing::info!("Applying economic calendar policy: {:?}", policy);
@@ -482,7 +479,7 @@ impl BuildCtx {
 
         tracing::info!("Economic calendar policy applied successfully");
 
-        Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()))
+        Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window))
     }
 
     #[tracing::instrument(skip_all)]
@@ -494,7 +491,7 @@ impl BuildCtx {
             .and_then(|cfg| cfg.allowed_trading_hours.as_ref())
         else {
             tracing::info!("No trading hour restrictions defined. Skipping filter.");
-            return Ok(StateFn::Next(|ctx| ctx.sort_all_data()));
+            return Ok(StateFn::Next(BuildCtx::sort_all_data));
         };
 
         if allowed_hours_map.is_empty() {
@@ -527,7 +524,7 @@ impl BuildCtx {
         }
 
         tracing::info!("Trading hours filter applied successfully");
-        Ok(StateFn::Next(|ctx| ctx.sort_all_data()))
+        Ok(StateFn::Next(BuildCtx::sort_all_data))
     }
 
     #[tracing::instrument(skip_all)]
@@ -558,7 +555,7 @@ impl BuildCtx {
         }
 
         tracing::info!("Sorting applied successfully");
-        Ok(StateFn::Next(|ctx| ctx.finish()))
+        Ok(StateFn::Next(BuildCtx::finish))
     }
 
     #[tracing::instrument(skip_all)]
@@ -814,7 +811,7 @@ where
     Ok(StateFn::NextAsync(Box::new(f)))
 }
 
-/// Generic helper to fetch data from a list of SourceGroups.
+/// Generic helper to fetch data from a list of `SourceGroups`.
 async fn fetch_groups<T: Fetchable>(
     groups: &[SourceGroup<T>],
     years: Vec<u16>,
@@ -881,7 +878,7 @@ fn apply_filter<T>(
         // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering all rows.
         conditions
             .into_iter()
-            .reduce(|acc, expr| acc.or(expr))
+            .reduce(polars::prelude::Expr::or)
             .unwrap_or(lit(false))
     };
 
@@ -901,7 +898,7 @@ fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) -> ChapatyResult<
     Ok(())
 }
 
-/// Generic helper to materialize and transform a map of LazyFrames.
+/// Generic helper to materialize and transform a map of `LazyFrames`.
 ///
 /// Short-circuits early if the map is `None` or empty.
 #[tracing::instrument(skip_all)]
@@ -969,25 +966,29 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let vol_ca = df.f64_ca(CanonicalCol::Volume)?;
 
     // Optional numeric fields with iterators
-    let qav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let qav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::QuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let nt_iter: Box<dyn Iterator<Item = Option<i64>>> = df
-        .i64_ca(CanonicalCol::NumberOfTrades)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<i64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let nt_iter: Box<dyn Iterator<Item = Option<i64>>> =
+        match df.i64_ca(CanonicalCol::NumberOfTrades) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let tbbav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::TakerBuyBaseAssetVolume)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let tbbav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::TakerBuyBaseAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let tbqav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::TakerBuyQuoteAssetVolume)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let tbqav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::TakerBuyQuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
     let mut events = Vec::with_capacity(len);
 
@@ -1046,25 +1047,29 @@ fn extract_trades(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let vol_ca = df.f64_ca(CanonicalCol::Volume)?;
 
     // Optional numeric fields with iterators
-    let trade_id_iter: Box<dyn Iterator<Item = Option<i64>>> = df
-        .i64_ca(CanonicalCol::TradeId)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<i64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let trade_id_iter: Box<dyn Iterator<Item = Option<i64>>> =
+        match df.i64_ca(CanonicalCol::TradeId) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let quote_vol_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let quote_vol_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::QuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let is_maker_iter: Box<dyn Iterator<Item = Option<bool>>> = df
-        .bool_ca(CanonicalCol::IsBuyerMaker)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<bool>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let is_maker_iter: Box<dyn Iterator<Item = Option<bool>>> =
+        match df.bool_ca(CanonicalCol::IsBuyerMaker) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let is_best_iter: Box<dyn Iterator<Item = Option<bool>>> = df
-        .bool_ca(CanonicalCol::IsBestMatch)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<bool>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let is_best_iter: Box<dyn Iterator<Item = Option<bool>>> =
+        match df.bool_ca(CanonicalCol::IsBestMatch) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
     let mut events = Vec::with_capacity(len);
 
@@ -1112,41 +1117,46 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let impact_ca = df.i64_ca(CanonicalCol::EconomicImpact)?;
 
     // Optional string fields with iterators
-    let news_type_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::NewsType)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let news_type_iter: Box<dyn Iterator<Item = Option<&str>>> =
+        match df.str_ca(CanonicalCol::NewsType) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let news_src_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::NewsTypeSource)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let news_src_iter: Box<dyn Iterator<Item = Option<&str>>> =
+        match df.str_ca(CanonicalCol::NewsTypeSource) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let period_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::Period)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let period_iter: Box<dyn Iterator<Item = Option<&str>>> = match df.str_ca(CanonicalCol::Period)
+    {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
     // Optional numeric fields with iterators
-    let conf_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::NewsTypeConfidence)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let conf_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::NewsTypeConfidence) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let actual_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Actual)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let actual_iter: Box<dyn Iterator<Item = Option<f64>>> = match df.f64_ca(CanonicalCol::Actual) {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
-    let forecast_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Forecast)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let forecast_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::Forecast) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let prev_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Previous)
-        .map(|ca| Box::new(ca.iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let prev_iter: Box<dyn Iterator<Item = Option<f64>>> = match df.f64_ca(CanonicalCol::Previous) {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
     let mut events = Vec::with_capacity(len);
 
@@ -1208,9 +1218,9 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
             country_code,
             currency_code: currency_val.to_string(),
             economic_impact,
-            news_type: news_type.map(|s| s.to_string()),
-            news_type_source: news_src.map(|s| s.to_string()),
-            period: period.map(|s| s.to_string()),
+            news_type: news_type.map(std::string::ToString::to_string),
+            news_type_source: news_src.map(std::string::ToString::to_string),
+            period: period.map(std::string::ToString::to_string),
             news_type_confidence: conf,
             actual: actual.map(EconomicValue),
             forecast: forecast.map(EconomicValue),
@@ -1340,18 +1350,16 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     let vol_ca = sorted_df.f64_ca(CanonicalCol::Volume)?;
 
     let get_opt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<f64>>> {
-        if let Ok(ca) = sorted_df.f64_ca(col) {
-            Box::new(ca.iter())
-        } else {
-            Box::new(std::iter::repeat_n(None, len))
+        match sorted_df.f64_ca(col) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
         }
     };
 
     let get_cnt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<i64>>> {
-        if let Ok(ca) = sorted_df.i64_ca(col) {
-            Box::new(ca.iter())
-        } else {
-            Box::new(std::iter::repeat_n(None, len))
+        match sorted_df.i64_ca(col) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
         }
     };
 
@@ -1668,6 +1676,7 @@ fn extract_ohlcv_session(df: DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
     Ok(events.into_boxed_slice())
 }
 
+#[must_use]
 fn extract_price_timeseries<T, F>(df: DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
 where
     F: Fn(DateTime<Utc>, f64) -> T,
@@ -1697,11 +1706,13 @@ where
     Ok(events.into_boxed_slice())
 }
 
+#[must_use]
 fn parse_session_date(date_opt: Option<i64>) -> ChapatyResult<SessionDate> {
     let dt = micros_to_utc(date_opt, CanonicalCol::Date)?;
     Ok(SessionDate(dt.date_naive()))
 }
 
+#[must_use]
 fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTime<Utc>> {
     let ts_val = ts_opt.ok_or_else(|| DataError::DataFrame(format!("Missing {col:?}")))?;
     DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {

@@ -86,6 +86,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let map: SortedVecMap<i32, String> = SortedVecMap::new();
     /// assert!(map.is_empty());
     /// ```
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             inner: SmallVec::new_const(),
@@ -104,6 +105,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let map: SortedVecMap<i32, String> = SortedVecMap::with_capacity(10);
     /// assert!(map.capacity() >= 10);
     /// ```
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: SmallVec::with_capacity(capacity),
@@ -672,7 +674,7 @@ impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
         self.key
     }
 
-    /// Sets the value of the entry with the VacantEntry's key,
+    /// Sets the value of the entry with the `VacantEntry`'s key,
     /// and returns a mutable reference to it.
     ///
     /// # Examples
@@ -714,6 +716,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// map.entry("poneyland").or_insert(12);
     /// assert_eq!(map.entry("poneyland").key(), &"poneyland");
     /// ```
+    #[must_use]
     pub fn key(&self) -> &K {
         &self.map.inner[self.position].0
     }
@@ -731,6 +734,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     ///     assert_eq!(o.get(), &12);
     /// }
     /// ```
+    #[must_use]
     pub fn get(&self) -> &V {
         &self.map.inner[self.position].1
     }
@@ -774,6 +778,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert_eq!(map[&"poneyland"], 22);
     /// ```
+    #[must_use]
     pub fn into_mut(self) -> &'a mut V {
         &mut self.map.inner[self.position].1
     }
@@ -810,6 +815,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert!(!map.contains_key(&"poneyland"));
     /// ```
+    #[must_use]
     pub fn remove(self) -> V {
         self.map.inner.remove(self.position).1
     }
@@ -828,6 +834,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert!(!map.contains_key(&"poneyland"));
     /// ```
+    #[must_use]
     pub fn remove_entry(self) -> (K, V) {
         self.map.inner.remove(self.position)
     }

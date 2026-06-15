@@ -604,10 +604,12 @@ impl From<TradeStatCol> for PlSmallStr {
 }
 
 impl TradeStatCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -696,8 +698,7 @@ mod tests {
         for col in &expected_columns {
             assert!(
                 df.column(col.as_str()).is_ok(),
-                "Missing expected column: {}",
-                col
+                "Missing expected column: {col}"
             );
         }
 
@@ -711,11 +712,11 @@ mod tests {
                 let actual = df
                     .get_column_names()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let expected = expected_columns
                     .iter()
-                    .map(|c| c.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let missing = expected.difference(&actual).cloned().collect::<Vec<_>>();
                 let extra = actual.difference(&expected).cloned().collect::<Vec<_>>();
@@ -740,13 +741,12 @@ mod tests {
             let expected_dtype = field.dtype();
             let actual_dtype = df
                 .column(col_name)
-                .unwrap_or_else(|_| panic!("Column '{}' not found", col_name))
+                .unwrap_or_else(|_| panic!("Column '{col_name}' not found"))
                 .dtype();
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Data type mismatch for '{}': expected {:?}, found {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Data type mismatch for '{col_name}': expected {expected_dtype:?}, found {actual_dtype:?}"
             );
         }
     }

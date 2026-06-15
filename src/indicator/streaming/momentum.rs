@@ -103,6 +103,7 @@ pub struct StreamingRateOfChange {
 }
 
 impl StreamingRateOfChange {
+    #[must_use]
     pub fn new(window: LookbackWindow) -> Self {
         Self {
             buffer: HistoricalBuffer::new(window),

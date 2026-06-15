@@ -213,8 +213,8 @@ mod test {
         }
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
-    /// It allows us to create a valid MarketView with a simple (low, high, close) API.
+    /// A lightweight wrapper around the heavy `SimulationData`.
+    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -228,7 +228,7 @@ mod test {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -253,7 +253,7 @@ mod test {
             Self { sim_data, cursor }
         }
 
-        /// Returns a valid MarketView borrowing from the owned SimulationData
+        /// Returns a valid `MarketView` borrowing from the owned `SimulationData`
         fn view(&self) -> MarketView<'_> {
             MarketView::new(&self.sim_data, &self.cursor).unwrap()
         }

@@ -265,7 +265,7 @@ impl WithBatchIndicators for TradesSpotQuery {
 /// Maps a configuration type to its corresponding stream identifier.
 ///
 /// This trait enables type-safe conversion from user-facing configuration
-/// (which includes wire protocol details like batch_size) to internal
+/// (which includes wire protocol details like `batch_size`) to internal
 /// domain identifiers used for stream management.
 pub trait QueryId {
     /// The unique identifier type for this configuration's data stream.
@@ -274,7 +274,7 @@ pub trait QueryId {
     /// Converts this configuration into its corresponding stream identifier.
     ///
     /// This method extracts only the fields that uniquely identify a data stream,
-    /// omitting operational parameters like batch_size or indicators.
+    /// omitting operational parameters like `batch_size` or indicators.
     ///
     /// # Errors
     ///

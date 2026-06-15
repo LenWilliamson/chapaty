@@ -167,10 +167,12 @@ impl From<JournalCol> for PlSmallStr {
 }
 
 impl JournalCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -388,8 +390,7 @@ mod test {
             let actual_dtype = current_schema.get(name);
             assert!(
                 actual_dtype.is_some(),
-                "Missing column in Journal DataFrame: {}",
-                name
+                "Missing column in Journal DataFrame: {name}"
             );
             assert_eq!(
                 actual_dtype.unwrap(),
@@ -434,8 +435,7 @@ mod test {
             let state = state_opt.expect("Encountered null state");
             assert!(
                 state == StateKind::Active.as_str() || state == StateKind::Closed.as_str(),
-                "Found unexecuted state in filtered results: {}",
-                state
+                "Found unexecuted state in filtered results: {state}"
             );
         }
     }

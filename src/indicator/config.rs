@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 )]
 pub enum AtrSmoothingType {
     /// J. Welles Wilder's original smoothing method (Running Moving Average / RMA).
-    /// Formula: alpha = 1 / window_size
+    /// Formula: alpha = 1 / `window_size`
     #[default]
     Wilders,
     /// Simple Moving Average (SMA).
@@ -30,6 +30,7 @@ impl AtrConfig {
     /// # Arguments
     ///
     /// * `window` - The window size for the ATR calculation.
+    #[must_use]
     pub fn new(window: u16) -> Self {
         assert!(window > 0, "window must be > 0, but got {window} <= 0");
         Self {
@@ -38,14 +39,17 @@ impl AtrConfig {
         }
     }
 
+    #[must_use]
     pub fn with_smoothing(self, smoothing: AtrSmoothingType) -> Self {
         Self { smoothing, ..self }
     }
 
+    #[must_use]
     pub fn window(&self) -> u16 {
         self.window
     }
 
+    #[must_use]
     pub fn smoothing(&self) -> AtrSmoothingType {
         self.smoothing
     }
@@ -72,6 +76,7 @@ pub enum LookbackWindow {
 
 impl LookbackWindow {
     /// Create a time-based window in seconds.
+    #[must_use]
     pub fn seconds(secs: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(secs))
@@ -80,6 +85,7 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in minutes.
+    #[must_use]
     pub fn minutes(mins: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(mins * 60))
@@ -88,6 +94,7 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in hours.
+    #[must_use]
     pub fn hours(hours: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(hours))
@@ -96,6 +103,7 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in days.
+    #[must_use]
     pub fn days(days: u64) -> Self {
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(days * 24))

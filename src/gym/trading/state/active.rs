@@ -141,7 +141,7 @@ impl Trade<Active> {
     /// Advances an Active trade by one market step.
     ///
     /// Consumes the trade and returns its next state plus the **reward increment**
-    /// for this step (change in PnL since the previous mark):
+    /// for this step (change in `PnL` since the previous mark):
     /// - No exit: a fresh `Active` clone marked to the current price.
     /// - SL/TP hit: the resulting `Closed` trade.
     ///
@@ -229,10 +229,10 @@ impl Trade<Active> {
     /// Closes all (or part) of the position and reports the **reward increment**.
     ///
     /// The reward is a _delta against the trade's last recorded mark_, not the
-    /// absolute realized PnL. Every reward emitted is the "change since the
+    /// absolute realized `PnL`. Every reward emitted is the "change since the
     /// previous mark", and a close is just a final mark at the exit price. The
     /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
-    /// still stores the _absolute_ realized PnL for the journal.
+    /// still stores the _absolute_ realized `PnL` for the journal.
     fn execute_close(self, close_params: CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
         let CloseParams {
             qty,
@@ -322,7 +322,7 @@ struct CloseParams {
     reason: TerminationReason,
 
     /// The instrument's symbol, used for tick-grid price sanitization and for the
-    /// discrete, tick-multiple PnL computation in `calculate_pnl`.
+    /// discrete, tick-multiple `PnL` computation in `calculate_pnl`.
     symbol: Symbol,
 }
 
@@ -374,8 +374,8 @@ mod tests {
         }
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
-    /// It allows us to create a valid MarketView with a simple (low, high, close) API.
+    /// A lightweight wrapper around the heavy `SimulationData`.
+    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -389,7 +389,7 @@ mod tests {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -414,7 +414,7 @@ mod tests {
             Self { sim_data, cursor }
         }
 
-        /// Returns a valid MarketView borrowing from the owned SimulationData
+        /// Returns a valid `MarketView` borrowing from the owned `SimulationData`
         fn view(&self) -> MarketView<'_> {
             MarketView::new(&self.sim_data, &self.cursor).unwrap()
         }

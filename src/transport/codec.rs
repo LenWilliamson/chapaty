@@ -18,7 +18,7 @@ use crate::{
 
 /// A trait for Protobuf messages that represent a batch of data
 pub trait ProtoBatch {
-    /// Converts this batch into a standardized Polars LazyFrame
+    /// Converts this batch into a standardized Polars `LazyFrame`
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame>;
 }
 
@@ -59,7 +59,7 @@ impl ProtoBatch for EconomicCalendarResponse {
             news_names.push(event.news_name);
             country_codes.push(event.country_code);
             currency_codes.push(event.currency_code);
-            importances.push(event.importance as i64);
+            importances.push(i64::from(event.importance));
             actuals.push(event.actual);
             forecasts.push(event.forecast);
             previouses.push(event.previous);
@@ -442,15 +442,14 @@ fn extract_timestamp(ts: &Option<Timestamp>, field: &str) -> ChapatyResult<i64> 
         .transpose()?
         .ok_or_else(|| {
             ChapatyError::Data(DataError::TimestampConversion(format!(
-                "Missing {} in microseconds",
-                field
+                "Missing {field} in microseconds"
             )))
         })
 }
 
 fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
     let secs = ts.seconds;
-    let nanos = ts.nanos as i64;
+    let nanos = i64::from(ts.nanos);
     secs.checked_mul(1_000_000)
         .and_then(|s| s.checked_add(nanos / 1_000))
         .ok_or_else(|| {
@@ -495,10 +494,10 @@ mod tests {
 
     /// Converts a protobuf Timestamp to microseconds for comparison.
     fn to_micros(ts: &Timestamp) -> i64 {
-        ts.seconds * 1_000_000 + (ts.nanos as i64 / 1_000)
+        ts.seconds * 1_000_000 + (i64::from(ts.nanos) / 1_000)
     }
 
-    /// Extracts a scalar value from a DataFrame cell.
+    /// Extracts a scalar value from a `DataFrame` cell.
     fn get_i64(df: &DataFrame, col: CanonicalCol, row: usize) -> i64 {
         let series = df.column(col.as_str()).expect("Column not found");
         match series.get(row).expect("Row not found").into_static() {
@@ -1070,11 +1069,11 @@ mod tests {
             .map(|i| OhlcvFutureEvent {
                 open_timestamp: Some(make_timestamp(i, 0)),
                 close_timestamp: Some(make_timestamp(i, 1)),
-                open: i as f64 * 100.0,
-                high: i as f64 * 110.0,
-                low: i as f64 * 90.0,
-                close: i as f64 * 105.0,
-                volume: i as f64 * 10.0,
+                open: f64::from(i) * 100.0,
+                high: f64::from(i) * 110.0,
+                low: f64::from(i) * 90.0,
+                close: f64::from(i) * 105.0,
+                volume: f64::from(i) * 10.0,
             })
             .collect();
 

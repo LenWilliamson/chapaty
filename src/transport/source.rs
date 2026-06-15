@@ -185,9 +185,9 @@ async fn create_default_client(
         .keep_alive_while_idle(true)
         // Overall connection timeout: 10 minutes for long-running operations
         // This is the timeout for individual RPC calls
-        .timeout(Duration::from_secs(600))
+        .timeout(Duration::from_mins(10))
         // TCP keepalive to detect broken connections at TCP level
-        .tcp_keepalive(Some(Duration::from_secs(60)))
+        .tcp_keepalive(Some(Duration::from_mins(1)))
         // Connection timeout: how long to wait for initial connection
         .connect_timeout(Duration::from_secs(30))
         // Initial connection window size for flow control
@@ -218,6 +218,7 @@ pub struct ApiKeyInterceptor {
 }
 
 impl ApiKeyInterceptor {
+    #[must_use]
     pub fn new(api_key: Option<ApiKey>) -> Self {
         let metadata_value = api_key.map(|key| {
             key.0

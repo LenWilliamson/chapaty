@@ -35,10 +35,12 @@ impl From<TradeType> for PlSmallStr {
 }
 
 impl TradeType {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -55,7 +57,7 @@ impl TradeType {
             Err(AgentError::InvalidInput(msg.to_string()).into())
         }
 
-        use TradeType::*;
+        use TradeType::{Long, Short};
         match (self, stop_loss, entry, take_profit) {
             // No prices: trivially valid
             (_, None, None, None) => Ok(()),
@@ -100,6 +102,7 @@ impl TradeType {
         }
     }
 
+    #[must_use]
     pub fn price_diff(&self, entry: Price, exit: Price) -> Price {
         match self {
             TradeType::Long => exit - entry,
@@ -107,10 +110,11 @@ impl TradeType {
         }
     }
 
-    /// Calculates the "Clean" PnL for a trade.
+    /// Calculates the "Clean" `PnL` for a trade.
     ///
     /// This method guarantees that the result is a multiple of the tick value.
     /// It eliminates floating point drift by routing through discrete Ticks.
+    #[must_use]
     pub fn calculate_pnl(&self, entry: Price, exit: Price, qty: Quantity, symbol: Symbol) -> f64 {
         let price_dist = self.price_diff(entry, exit);
 
@@ -155,10 +159,12 @@ impl From<TerminationReason> for PlSmallStr {
 }
 
 impl TerminationReason {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -193,6 +199,7 @@ pub struct RiskRewardRatio {
 }
 
 impl RiskRewardRatio {
+    #[must_use]
     pub fn new(risk_usd: f64, reward_usd: f64) -> Self {
         let risk = risk_usd.abs();
         let reward = reward_usd.abs();
@@ -216,6 +223,7 @@ impl RiskRewardRatio {
         }
     }
 
+    #[must_use]
     pub fn ratio(&self) -> f64 {
         self.ratio
     }
@@ -258,10 +266,12 @@ impl From<StateKind> for PlSmallStr {
 }
 
 impl StateKind {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }

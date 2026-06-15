@@ -50,6 +50,7 @@ pub struct FilterConfig {
 
 impl FilterConfig {
     /// Returns true if no filters are active (all data allowed).
+    #[must_use]
     pub fn is_unrestricted(&self) -> bool {
         self.economic_news_policy.is_none()
             && self.allowed_years.is_none()
@@ -89,14 +90,17 @@ pub enum EconomicCalendarPolicy {
 }
 
 impl EconomicCalendarPolicy {
+    #[must_use]
     pub fn is_unrestricted(&self) -> bool {
         matches!(self, Self::Unrestricted)
     }
 
+    #[must_use]
     pub fn is_only_with_events(&self) -> bool {
         matches!(self, Self::OnlyWithEvents)
     }
 
+    #[must_use]
     pub fn is_exclude_events(&self) -> bool {
         matches!(self, Self::ExcludeEvents)
     }
@@ -166,16 +170,19 @@ impl TradingWindow {
     }
 
     /// Helper for the full 24-hour day [0, 24).
+    #[must_use]
     pub fn full_day() -> Self {
         Self { start: 0, end: 24 }
     }
 
     /// Returns the inclusive start hour (UTC).
+    #[must_use]
     pub fn start(&self) -> u8 {
         self.start
     }
 
     /// Returns the exclusive end hour (UTC).
+    #[must_use]
     pub fn end(&self) -> u8 {
         self.end
     }

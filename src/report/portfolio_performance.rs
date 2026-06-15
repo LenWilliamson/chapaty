@@ -376,7 +376,7 @@ fn total_win_profit_by_total_loss_expr(
 /// Computes the annualized Sharpe ratio for a series of absolute USD trade returns.
 ///
 /// # Arguments
-/// - `return_col`: The column containing per-trade PnL in USD.
+/// - `return_col`: The column containing per-trade `PnL` in USD.
 /// - `cfg`: Risk metric config holding initial portfolio value and annual risk-free rate.
 ///
 /// # Assumptions
@@ -833,11 +833,11 @@ fn n_trades_per_year_sqrt_expr() -> Expr {
 /// If `previous_equity_i == 0`, returns `0.0` to avoid division-by-zero.
 ///
 /// # Requirements
-/// - The input DataFrame must be sorted chronologically by trade.
-/// - `return_col` must contain **per-trade realized PnL** (in USD), not cumulative.
+/// - The input `DataFrame` must be sorted chronologically by trade.
+/// - `return_col` must contain **per-trade realized `PnL`** (in USD), not cumulative.
 ///
 /// # Arguments
-/// - `return_col`: Column of per-trade PnL (realized return in USD).
+/// - `return_col`: Column of per-trade `PnL` (realized return in USD).
 /// - `initial_value`: Starting portfolio value (cannot be negative).
 ///
 /// # Returns
@@ -911,9 +911,10 @@ pub enum OptimizationDirection {
 }
 
 impl PortfolioPerformanceCol {
+    #[must_use]
     pub fn direction(&self) -> OptimizationDirection {
-        use OptimizationDirection::*;
-        use PortfolioPerformanceCol::*;
+        use OptimizationDirection::{Maximize, Minimize};
+        use PortfolioPerformanceCol::{NetProfit, AvgTradeProfit, ExpectedValuePerTrade, TotalWinProfit, TotalLoss, TotalWinProfitByTotalLoss, TradeSharpeRatio, TradeSortinoRatio, TradeOmegaRatio, TradeCalmarRatio, TradeRecoveryFactor, MaxRealizedDrawdownUsd, MaxRealizedDrawdownPct, WinRate, AvgWinToAvgLossRatio, TradeReturnStdDev, TradeReturnVariance, LowerQuantileTradeReturn, MedianTradeReturn, UpperQuantileTradeReturn, AvgWinReturn, LowerQuantileWinReturn, MedianWinReturn, UpperQuantileWinReturn, AvgLossReturn, LowerQuantileLossReturn, MedianLossReturn, UpperQuantileLossReturn, LargestWin, LargestLoss, UnrealizedWinProfit, UnrealizedLoss, CleanWinProfit, CleanLoss, RootMeanSquareDeviation, MeanAbsoluteError};
 
         match self {
             // === Profitability ===
@@ -998,11 +999,11 @@ impl PortfolioPerformanceCol {
 #[strum(serialize_all = "snake_case")]
 pub enum PortfolioPerformanceCol {
     // === Profitability ===
-    /// Total net PnL (profit and loss) in absolute terms.
+    /// Total net `PnL` (profit and loss) in absolute terms.
     NetProfit,
     /// Average profit per trade.
     AvgTradeProfit,
-    /// Expected value per trade: (win_rate * avg_win) - ((1 - win_rate) * avg_loss).
+    /// Expected value per trade: (`win_rate` * `avg_win`) - ((1 - `win_rate`) * `avg_loss`).
     ExpectedValuePerTrade,
     /// Total reward from winning trades.
     TotalWinProfit,
@@ -1069,15 +1070,18 @@ impl From<PortfolioPerformanceCol> for PlSmallStr {
 }
 
 impl PortfolioPerformanceCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
 
     /// Converts the raw metric value into a comparable "score" for the heap
+    #[must_use]
     pub fn to_heap_score(&self, raw_value: f64) -> f64 {
         match self.direction() {
             OptimizationDirection::Maximize => raw_value,
@@ -1086,6 +1090,7 @@ impl PortfolioPerformanceCol {
     }
 
     /// Converts a heap score back into the original metric value
+    #[must_use]
     pub fn from_heap_score(&self, score: f64) -> f64 {
         match self.direction() {
             OptimizationDirection::Maximize => score,
@@ -1175,8 +1180,7 @@ mod tests {
         for col in &expected_columns {
             assert!(
                 df.column(col.as_str()).is_ok(),
-                "Missing expected column: {}",
-                col
+                "Missing expected column: {col}"
             );
         }
 
@@ -1190,11 +1194,11 @@ mod tests {
                 let actual = df
                     .get_column_names()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let expected = expected_columns
                     .iter()
-                    .map(|c| c.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let missing: Vec<_> = expected.difference(&actual).cloned().collect();
                 let extra: Vec<_> = actual.difference(&expected).cloned().collect();
@@ -1219,13 +1223,12 @@ mod tests {
             let expected_dtype = field.dtype();
             let actual_dtype = df
                 .column(col_name)
-                .unwrap_or_else(|_| panic!("Column '{}' not found", col_name))
+                .unwrap_or_else(|_| panic!("Column '{col_name}' not found"))
                 .dtype();
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Data type mismatch for '{}': expected {:?}, found {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Data type mismatch for '{col_name}': expected {expected_dtype:?}, found {actual_dtype:?}"
             );
         }
     }
@@ -1266,8 +1269,7 @@ mod tests {
 
         assert!(
             (avg_profit - 333.33).abs() < 0.01,
-            "Average trade profit should be ~333.33, got {}",
-            avg_profit
+            "Average trade profit should be ~333.33, got {avg_profit}"
         );
     }
 
@@ -1450,8 +1452,7 @@ mod tests {
         // Max drawdown %: 500 / 9000 = 0.0555...
         assert!(
             (max_dd_pct - 0.0556).abs() < 0.001,
-            "Max drawdown % should be ~5.56%, got {}",
-            max_dd_pct
+            "Max drawdown % should be ~5.56%, got {max_dd_pct}"
         );
     }
 
@@ -1479,8 +1480,7 @@ mod tests {
         // Expected value: 0.5 * 1166.67 + 0.5 * (-500) = 583.33 - 250 = 333.33
         assert!(
             (expected_val - 333.33).abs() < 0.01,
-            "Expected value per trade should be ~333.33, got {}",
-            expected_val
+            "Expected value per trade should be ~333.33, got {expected_val}"
         );
     }
 
@@ -1506,8 +1506,7 @@ mod tests {
 
         assert!(
             (avg_win - 1166.67).abs() < 0.01,
-            "Average win return should be ~1166.67, got {}",
-            avg_win
+            "Average win return should be ~1166.67, got {avg_win}"
         );
 
         // Median winning trade: 1000

@@ -12,6 +12,7 @@ pub struct Observation<'env> {
 }
 
 impl<'env> Observation<'env> {
+    #[must_use]
     pub fn action_space(self) -> ActionSpace<'env> {
         ActionSpace::new(self.states, self.market_view)
     }

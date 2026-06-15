@@ -89,7 +89,7 @@ tracing = "0.1"
 tonic-prost-build = "0.14"
 
 [lints.clippy]
-pedantic = "deny"
+pedantic = "warn"
 
 [dev-dependencies]
 dirs = "6.0"

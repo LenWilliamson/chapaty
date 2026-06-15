@@ -255,7 +255,7 @@ impl SimulationData {
 }
 
 impl SimulationData {
-    /// Reads and deserializes SimulationData from a given storage location.
+    /// Reads and deserializes `SimulationData` from a given storage location.
     ///
     /// # Cache Behavior
     ///
@@ -351,7 +351,7 @@ impl SimulationData {
         result
     }
 
-    /// Serializes and writes the SimulationData to a given storage location.
+    /// Serializes and writes the `SimulationData` to a given storage location.
     ///
     /// # Returns
     ///
@@ -392,7 +392,7 @@ impl SimulationData {
         .map_err(|e| SystemError::Generic(e.to_string()))?;
 
         match &result {
-            Ok(_) => tracing::info!(
+            Ok(()) => tracing::info!(
                 filename = %filename,
                 "Successfully wrote simulation data"
             ),
@@ -505,7 +505,7 @@ impl SimulationDataBuilder {
             .unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
 
-    /// Returns a deterministic (sorted) list of unique MarketIds.
+    /// Returns a deterministic (sorted) list of unique `MarketIds`.
     fn collect_sorted_market_ids(&self) -> Vec<MarketId> {
         let mut unique_markets = HashSet::new();
 
@@ -789,7 +789,7 @@ mod tests {
     // Postcard Serialization Roundtrip
     // ============================================================================================
 
-    /// Creates a minimal EnvConfig for testing serialization.
+    /// Creates a minimal `EnvConfig` for testing serialization.
     fn make_test_env_config() -> EnvConfig {
         // Minimal config - just needs to produce a consistent hash
         EnvConfig::default()
@@ -823,7 +823,7 @@ mod tests {
             )
     }
 
-    /// Creates SimulationData with some test OHLCV and economic calendar events.
+    /// Creates `SimulationData` with some test OHLCV and economic calendar events.
     fn make_test_simulation_data(env_cfg: EnvConfig) -> SimulationData {
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
         let ohlcv_id = make_ohlcv_id(symbol);

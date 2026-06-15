@@ -22,7 +22,7 @@ pub struct GroupedJournal<'a> {
     group_keys: Vec<GroupCol>,
 }
 
-impl<'a> GroupedJournal<'a> {
+impl GroupedJournal<'_> {
     /// Access raw Polars lazy API for custom queries
     pub fn lazy(&self) -> LazyGroupBy {
         let group_cols: Vec<Expr> = self.group_keys.iter().map(GroupCol::as_expr).collect();
@@ -41,10 +41,12 @@ impl<'a> GroupedJournal<'a> {
         self.try_into()
     }
 
+    #[must_use]
     pub fn source(&self) -> &Journal {
         self.journal
     }
 
+    #[must_use]
     pub fn group_criteria(&self) -> &[GroupCol] {
         &self.group_keys
     }
@@ -58,11 +60,11 @@ impl<'a> GroupedJournal<'a> {
         }
     }
 
-    /// Materializes virtual group columns and partitions the DataFrame.
+    /// Materializes virtual group columns and partitions the `DataFrame`.
     ///
     /// # Returns
     /// * `Vec<DataFrame>` - The partitions (one per group).
-    /// * `Vec<GroupCol>` - The group keys (e.g., [GroupCol::Symbol, GroupCol::EntryYear]).
+    /// * `Vec<GroupCol>` - The group keys (e.g., [`GroupCol::Symbol`, `GroupCol::EntryYear`]).
     pub(crate) fn to_partitions(&self) -> ChapatyResult<(Vec<DataFrame>, Vec<GroupCol>)> {
         let group_exprs = self
             .group_keys
@@ -90,7 +92,7 @@ impl<'a> GroupedJournal<'a> {
 /// Represents the subset of columns valid for grouping operations.
 ///
 /// This strictly enforces that users cannot group by continuous variables
-/// (like Price or PnL) or unique identifiers (like RowId), preventing
+/// (like Price or `PnL`) or unique identifiers (like `RowId`), preventing
 /// logical errors at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString, Display, IntoStaticStr, EnumIter)]
 #[strum(serialize_all = "snake_case", prefix = "__")]
@@ -180,10 +182,12 @@ impl From<&GroupCol> for PlSmallStr {
 }
 
 impl GroupCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -462,7 +466,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let non_null_count = peak_values.iter().filter(|v| v.is_some()).count();
+        let non_null_count = peak_values.iter().filter(std::option::Option::is_some).count();
         assert_eq!(
             non_null_count, 3,
             "All BTC/2025 rows should have calculated metrics"
@@ -473,7 +477,7 @@ mod tests {
     // Helper Function
     // ========================================================================
 
-    /// Filters DataFrame to a specific (symbol, year) group.
+    /// Filters `DataFrame` to a specific (symbol, year) group.
     fn filter_group(df: &DataFrame, symbol: &str, year: i32) -> DataFrame {
         df.clone()
             .lazy()

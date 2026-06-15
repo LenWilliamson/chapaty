@@ -58,10 +58,12 @@ impl From<LeaderboardCol> for PlSmallStr {
 }
 
 impl LeaderboardCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -105,14 +107,14 @@ pub struct Leaderboard {
     ///
     /// # Example Table
     ///
-    /// | portfolio_performance_metric | rank | value     | agent_uid  | agent_parameterization                                         |
+    /// | `portfolio_performance_metric` | rank | value     | `agent_uid`  | `agent_parameterization`                                         |
     /// |------------------------------|------|-----------|------------|----------------------------------------------------------------|
-    /// | sharpe_ratio                 | 1    | 2.85      | 45201      | { "wait_duration": 300, "take_profit_risk_factor": 1.0, ... }  |
-    /// | sharpe_ratio                 | 2    | 2.81      | 18934      | { "wait_duration": 600, "take_profit_risk_factor": 0.8, ... }  |
-    /// | net_profit                   | 1    | 150234.60 | 78103      | { "wait_duration": 120, "take_profit_risk_factor": 1.2, ... }  |
-    /// | net_profit                   | 2    | 149875.10 | 45201      | { "wait_duration": 300, "take_profit_risk_factor": 1.0, ... }  |
+    /// | `sharpe_ratio`                 | 1    | 2.85      | 45201      | { "`wait_duration"`: 300, "`take_profit_risk_factor"`: 1.0, ... }  |
+    /// | `sharpe_ratio`                 | 2    | 2.81      | 18934      | { "`wait_duration"`: 600, "`take_profit_risk_factor"`: 0.8, ... }  |
+    /// | `net_profit`                   | 1    | 150234.60 | 78103      | { "`wait_duration"`: 120, "`take_profit_risk_factor"`: 1.2, ... }  |
+    /// | `net_profit`                   | 2    | 149875.10 | 45201      | { "`wait_duration"`: 300, "`take_profit_risk_factor"`: 1.0, ... }  |
     ///
-    /// This makes it easy to export leaderboard data to external systems (e.g. DataFrames, CSV, or
+    /// This makes it easy to export leaderboard data to external systems (e.g. `DataFrames`, CSV, or
     /// dashboards) while retaining schema guarantees.
     df: DataFrame,
 }
@@ -304,7 +306,7 @@ where
                 let uid = entry.agent_uid();
 
                 let agent = self.agent_data.get(&uid).ok_or_else(|| {
-                    SystemError::MissingField(format!("Agent UID {} missing from cache", uid))
+                    SystemError::MissingField(format!("Agent UID {uid} missing from cache"))
                 })?;
 
                 let param_str = serde_json::to_string(agent).map_err(IoError::Json)?;
@@ -375,12 +377,14 @@ pub struct LeaderboardEntry {
 
 impl LeaderboardEntry {
     /// Returns the unique identifier of the agent associated with this entry.
+    #[must_use]
     pub fn agent_uid(&self) -> u64 {
         self.agent_uid
     }
 
     /// Returns the performance metric used for ranking this entry
     /// (e.g. Sharpe ratio, net profit, drawdown).
+    #[must_use]
     pub fn metric(&self) -> PortfolioPerformanceCol {
         self.metric
     }
@@ -390,6 +394,7 @@ impl LeaderboardEntry {
     /// Certain metrics (e.g. drawdowns, errors) are minimized, so they are
     /// transformed into a score where *larger is always better*. This value
     /// is what the leaderboard compares to decide ordering.
+    #[must_use]
     pub fn normalized_reward(&self) -> f64 {
         self.reward.0
     }
@@ -399,6 +404,7 @@ impl LeaderboardEntry {
     /// This is the human-facing score as reported in evaluation tables
     /// (e.g. Sharpe ratio `2.85`, net profit `150_234.60`).
     /// Use this when displaying results instead of the normalized value.
+    #[must_use]
     pub fn denormalized_reward(&self) -> f64 {
         self.metric.from_heap_score(self.normalized_reward())
     }
@@ -443,7 +449,7 @@ mod tests {
         }
     }
 
-    /// Helper to create a LeaderboardEntry for a given metric.
+    /// Helper to create a `LeaderboardEntry` for a given metric.
     fn make_entry(
         agent_uid: u64,
         metric: PortfolioPerformanceCol,
@@ -472,8 +478,7 @@ mod tests {
         for metric in PortfolioPerformanceCol::iter() {
             assert!(
                 leaderboard.top_per_metric.contains_key(&metric),
-                "Leaderboard missing initialization for metric: {:?}",
-                metric
+                "Leaderboard missing initialization for metric: {metric:?}"
             );
         }
 
@@ -866,12 +871,11 @@ mod tests {
         match err {
             ChapatyError::System(SystemError::MissingField(msg)) => {
                 assert!(
-                    msg.contains("2"),
-                    "Error should mention the missing UID: {}",
-                    msg
+                    msg.contains('2'),
+                    "Error should mention the missing UID: {msg}"
                 );
             }
-            other => panic!("Expected SystemError::MissingField, got: {:?}", other),
+            other => panic!("Expected SystemError::MissingField, got: {other:?}"),
         }
     }
 

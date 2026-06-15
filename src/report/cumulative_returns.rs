@@ -343,10 +343,12 @@ impl From<CumulativeReturnCol> for PlSmallStr {
 }
 
 impl CumulativeReturnCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -435,8 +437,7 @@ mod tests {
         for col in &expected_columns {
             assert!(
                 df.column(col.as_str()).is_ok(),
-                "Missing expected column: {}",
-                col
+                "Missing expected column: {col}"
             );
         }
 
@@ -450,11 +451,11 @@ mod tests {
                 let actual = df
                     .get_column_names()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let expected = expected_columns
                     .iter()
-                    .map(|c| c.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let missing: Vec<_> = expected.difference(&actual).cloned().collect();
                 let extra: Vec<_> = actual.difference(&expected).cloned().collect();
@@ -479,13 +480,12 @@ mod tests {
             let expected_dtype = field.dtype();
             let actual_dtype = df
                 .column(col_name)
-                .unwrap_or_else(|_| panic!("Column '{}' not found", col_name))
+                .unwrap_or_else(|_| panic!("Column '{col_name}' not found"))
                 .dtype();
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Data type mismatch for '{}': expected {:?}, found {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Data type mismatch for '{col_name}': expected {expected_dtype:?}, found {actual_dtype:?}"
             );
         }
     }
@@ -515,8 +515,7 @@ mod tests {
             let actual = cum_returns.get(i).expect("Missing value at index");
             assert_eq!(
                 actual, *expected_val,
-                "Cumulative return mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+                "Cumulative return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }
@@ -545,8 +544,7 @@ mod tests {
             let actual = peaks.get(i).expect("Missing value");
             assert_eq!(
                 actual, *expected_val,
-                "Peak return mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+                "Peak return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }
@@ -575,8 +573,7 @@ mod tests {
             let actual = drawdowns.get(i).expect("Missing value");
             assert_eq!(
                 actual, *expected_val,
-                "Drawdown mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+                "Drawdown mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }

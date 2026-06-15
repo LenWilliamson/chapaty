@@ -255,6 +255,7 @@ impl<R: Range> StreamingIndicator for StreamingOvernightRange<R> {
 pub type StreamingOvernightOhlcvRange = StreamingOvernightRange<OhlcvSessionData>;
 
 impl StreamingOvernightOhlcvRange {
+    #[must_use]
     pub fn new(window: SessionWindow, indicator: StreamingOhlcvVwap) -> Self {
         Self {
             status: OvernightRangeStatus::Awaiting(OvernightRange::new(window, indicator)),
@@ -318,30 +319,37 @@ impl Range for OhlcvSessionData {
 
 impl OhlcvSessionData {
     /// Session date of the data.
+    #[must_use]
     pub fn session(&self) -> SessionDate {
         self.session
     }
     /// Highest bar high over the window.
+    #[must_use]
     pub fn high(&self) -> Price {
         self.high
     }
     /// Lowest bar low over the window.
+    #[must_use]
     pub fn low(&self) -> Price {
         self.low
     }
     /// Highest bar close over the window.
+    #[must_use]
     pub fn highest_close(&self) -> Price {
         self.highest_close
     }
     /// Lowest bar close over the window.
+    #[must_use]
     pub fn lowest_close(&self) -> Price {
         self.lowest_close
     }
     /// Total traded volume over the window.
+    #[must_use]
     pub fn volume(&self) -> Volume {
         self.volume
     }
     /// Session VWAP at the last update.
+    #[must_use]
     pub fn vwap(&self) -> Option<Price> {
         self.vwap
     }
@@ -354,6 +362,7 @@ impl OhlcvSessionData {
 pub type StreamingOvernightTradesRange = StreamingOvernightRange<TradesSessionData>;
 
 impl StreamingOvernightTradesRange {
+    #[must_use]
     pub fn new(window: SessionWindow, indicator: StreamingTradesVwap) -> Self {
         Self {
             status: OvernightRangeStatus::Awaiting(OvernightRange::new(window, indicator)),
@@ -414,22 +423,27 @@ impl Range for TradesSessionData {
 
 impl TradesSessionData {
     /// Session date of the data.
+    #[must_use]
     pub fn session(&self) -> SessionDate {
         self.session
     }
     /// Highest trade price over the window.
+    #[must_use]
     pub fn high(&self) -> Price {
         self.high
     }
     /// Lowest trade price over the window.
+    #[must_use]
     pub fn low(&self) -> Price {
         self.low
     }
     /// Total traded volume over the window.
+    #[must_use]
     pub fn volume(&self) -> Volume {
         self.volume
     }
     /// Session VWAP at the last update.
+    #[must_use]
     pub fn vwap(&self) -> Option<Price> {
         self.vwap
     }
@@ -456,7 +470,7 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    /// Helper to easily create a NaiveDate
+    /// Helper to easily create a `NaiveDate`
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
     }

@@ -147,6 +147,7 @@ impl ProfileAggregation {
     }
 
     /// Helper to get the value area as a normalized float (e.g., 0.70).
+    #[must_use]
     pub fn value_area_pct(&self) -> f64 {
         let bps = self.value_area_bps.unwrap_or(7000);
         f64::from(bps) / 10_000.0
@@ -162,8 +163,7 @@ impl ProfileAggregation {
 
         let tick_dec = Decimal::from_f64(tick_size).ok_or_else(|| {
             SystemError::InvariantViolation(format!(
-                "Instrument tick size is invalid (NaN or Infinity): {}",
-                tick_size
+                "Instrument tick size is invalid (NaN or Infinity): {tick_size}"
             ))
         })?;
 
@@ -255,6 +255,7 @@ impl RiskMetricsConfig {
     ///
     /// # Example
     /// `200` = 2.0%.
+    #[must_use]
     pub fn with_annual_risk_free_rate_bps(self, bps: u16) -> Self {
         Self {
             annual_risk_free_rate_bps: bps,
@@ -262,15 +263,18 @@ impl RiskMetricsConfig {
         }
     }
 
+    #[must_use]
     pub fn initial_portfolio_value(&self) -> u32 {
         self.initial_portfolio_value
     }
 
     /// Helper to convert the BPS rate to a normalized `f64` (e.g., `200` -> `0.02`).
+    #[must_use]
     pub fn risk_free_rate_f64(&self) -> f64 {
         f64::from(self.annual_risk_free_rate_bps) / 10_000.0
     }
 
+    #[must_use]
     pub fn risk_free_rate_bps(&self) -> u16 {
         self.annual_risk_free_rate_bps
     }

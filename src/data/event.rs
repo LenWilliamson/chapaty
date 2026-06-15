@@ -146,6 +146,7 @@ impl SymbolProvider for OhlcvId {
 }
 
 impl Ohlcv {
+    #[must_use]
     pub fn direction(&self) -> CandleDirection {
         let open = self.open.0;
         let close = self.close.0;
@@ -255,7 +256,7 @@ impl StreamId for TradesId {
 // Market Profile Properties
 // ================================================================================================
 
-/// Standard column names for Profile DataFrames exposed to Agents.
+/// Standard column names for Profile `DataFrames` exposed to Agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum ProfileCol {
@@ -297,10 +298,12 @@ impl From<ProfileCol> for PlSmallStr {
 }
 
 impl ProfileCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -323,7 +326,7 @@ pub trait MarketProfile {
     /// The bottom of the Value Area.
     fn value_area_low(&self) -> Price;
 
-    /// Converts the efficient binary snapshot into a Polars DataFrame for complex analysis.
+    /// Converts the efficient binary snapshot into a Polars `DataFrame` for complex analysis.
     ///
     /// This unpacks the `Box<[Bin]>` structure into Series.
     fn as_dataframe(&self) -> ChapatyResult<DataFrame>;
@@ -426,7 +429,7 @@ impl MarketProfile for Tpo {
         let mut price_ends = Vec::with_capacity(len);
         let mut counts = Vec::with_capacity(len);
 
-        for bin in self.bins.iter() {
+        for bin in &self.bins {
             price_starts.push(bin.price_bin_start.0);
             price_ends.push(bin.price_bin_end.0);
             counts.push(bin.time_slot_count.0); // Assuming Count wraps integer
@@ -627,7 +630,7 @@ impl MarketProfile for VolumeProfile {
         let mut n_buy = Vec::with_capacity(len);
         let mut n_sell = Vec::with_capacity(len);
 
-        for bin in self.bins.iter() {
+        for bin in &self.bins {
             p_starts.push(bin.price_bin_start.0);
             p_ends.push(bin.price_bin_end.0);
 
@@ -750,10 +753,10 @@ pub struct EconomicEvent {
     /// Classified event type identifier (e.g., "NFP", "CPI", "FOMC").
     pub news_type: Option<String>,
 
-    /// Confidence score for news_type classification (0.0 to 1.0).
+    /// Confidence score for `news_type` classification (0.0 to 1.0).
     pub news_type_confidence: Option<f64>,
 
-    /// Method used to derive news_type classification.
+    /// Method used to derive `news_type` classification.
     pub news_type_source: Option<String>,
 
     /// Reporting periodicity (e.g., "mom", "qoq", "yoy").
@@ -798,6 +801,7 @@ impl SymbolProvider for MarketId {
 }
 
 impl MarketId {
+    #[must_use]
     pub fn market_type(&self) -> MarketType {
         self.symbol.into()
     }
@@ -838,7 +842,7 @@ impl From<TradesId> for MarketId {
 mod test {
     use super::*;
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }

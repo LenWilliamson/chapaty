@@ -97,6 +97,7 @@ impl Default for StreamingTdXSequential {
 }
 
 impl StreamingTdXSequential {
+    #[must_use]
     pub fn new(lookback: usize, target_count: usize) -> Self {
         assert!(
             target_count > 0,
@@ -113,6 +114,7 @@ impl StreamingTdXSequential {
     /// The canonical TD Sequential Setup: nine closes, each beyond the close
     /// four bars earlier. This is the standard. Prefer it unless you specifically
     /// want a non-standard variant.
+    #[must_use]
     pub fn td9() -> Self {
         Self::td(9)
     }
@@ -120,6 +122,7 @@ impl StreamingTdXSequential {
     /// A TD Setup with a custom completion count, keeping the canonical 4-bar
     /// lookback. `td(9)` is the standard. Other counts are deliberate variations
     /// and are *not* the TD Countdown (which is a separate, unmodeled phase).
+    #[must_use]
     pub fn td(target_count: usize) -> Self {
         Self::new(4, target_count)
     }
@@ -197,7 +200,7 @@ const COUNTDOWN_TARGET_STANDARD: usize = 13;
 const COUNTDOWN_LOOKBACK: usize = 2;
 
 /// The Countdown's final bar is validated against the close of this earlier count
-/// (DeMark's "8th bar" rule). Ignored for targets at or below this value.
+/// (`DeMark`'s "8th bar" rule). Ignored for targets at or below this value.
 const COUNTDOWN_QUALIFIER_BAR: usize = 8;
 
 /// Selects which bar the Countdown (phase 2) starts counting on, once a Setup
@@ -217,6 +220,7 @@ pub enum CountdownStart {
 }
 
 impl CountdownStart {
+    #[must_use]
     pub fn is_next_bar(&self) -> bool {
         matches!(self, CountdownStart::NextBar)
     }
@@ -370,6 +374,7 @@ impl StreamingTdSequential {
     /// # Panics
     ///
     /// Panics if `countdown_target` is <= 0.
+    #[must_use]
     pub fn new(setup: StreamingTdXSequential, countdown_target: usize) -> Self {
         assert!(
             countdown_target > 0,
@@ -386,6 +391,7 @@ impl StreamingTdSequential {
     }
 
     /// Sets the [`CountdownStart`] convention.
+    #[must_use]
     pub fn with_countdown_start(self, start: CountdownStart) -> Self {
         Self {
             countdown_start: start,
@@ -394,18 +400,21 @@ impl StreamingTdSequential {
     }
 
     /// The configured [`CountdownStart`] convention.
+    #[must_use]
     pub fn countdown_start(&self) -> CountdownStart {
         self.countdown_start
     }
 
     /// The canonical TD Sequential: a 9-bar Setup followed by a 13-bar Countdown.
-    /// This is the standard configuration traders expect on TradingView, and the
+    /// This is the standard configuration traders expect on `TradingView`, and the
     /// constructor to reach for unless you have a specific reason not to.
+    #[must_use]
     pub fn td9_13() -> Self {
         Self::new(StreamingTdXSequential::td9(), COUNTDOWN_TARGET_STANDARD)
     }
 
     /// The current Countdown count, if a Countdown (phase 2) is in progress.
+    #[must_use]
     pub fn countdown_progress(&self) -> Option<usize> {
         self.countdown.map(|c| c.count)
     }
@@ -516,7 +525,7 @@ mod tests {
 
     use super::*;
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -597,13 +606,13 @@ mod tests {
         }
     }
 
-    /// A pure decline never produces a bearish price flip, so per DeMark no buy
+    /// A pure decline never produces a bearish price flip, so per `DeMark` no buy
     /// setup ever begins. (Lookback 1 used so each bar compares to the prior close.)
     #[test]
     fn monotonic_decline_without_flip_emits_nothing() {
         let mut td = StreamingTdXSequential::new(1, 3);
         let out = feed_tdx(&mut td, &[50.0, 40.0, 30.0, 20.0, 10.0]);
-        assert!(out.iter().all(|o| o.is_none()));
+        assert!(out.iter().all(std::option::Option::is_none));
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
 
@@ -695,7 +704,7 @@ mod tests {
     fn warmup_blocks_comparison_until_buffer_full() {
         let mut td = StreamingTdXSequential::td9(); // lookback 4
         let out = feed_tdx(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
-        assert!(out.iter().all(|o| o.is_none()));
+        assert!(out.iter().all(std::option::Option::is_none));
         assert_eq!(td.state, InternalSetupState::Neutral);
     }
 
@@ -828,7 +837,7 @@ mod tests {
     fn td9_13_silent_during_warmup() {
         let mut td = StreamingTdSequential::td9_13();
         let out = feed_td(&mut td, &[10.0, 10.0, 10.0, 10.0, 11.0]);
-        assert!(out.iter().all(|o| o.is_none()));
+        assert!(out.iter().all(std::option::Option::is_none));
         assert_eq!(td.countdown_progress(), None);
     }
 

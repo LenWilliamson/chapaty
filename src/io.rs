@@ -50,6 +50,7 @@ impl<'a> IoConfig<'a> {
     /// * `file_stem`: `None` (auto-generates from the configuration hash)
     /// * `format`: `SerdeFormat::Postcard`
     /// * `buffer_size`: 128 KiB
+    #[must_use]
     pub fn new(location: StorageLocation<'a>) -> Self {
         Self {
             location,
@@ -60,6 +61,7 @@ impl<'a> IoConfig<'a> {
     }
 
     /// Sets an explicit base filename (without extension).
+    #[must_use]
     pub fn with_file_stem(self, file_stem: &'a str) -> Self {
         Self {
             file_stem: Some(file_stem),
@@ -68,11 +70,13 @@ impl<'a> IoConfig<'a> {
     }
 
     /// Sets a specific serialization format.
+    #[must_use]
     pub fn with_format(self, format: SerdeFormat) -> Self {
         Self { format, ..self }
     }
 
     /// Sets a custom internal I/O buffer size in bytes.
+    #[must_use]
     pub fn with_buffer_size(self, size: usize) -> Self {
         Self {
             buffer_size: size,
@@ -191,7 +195,7 @@ pub enum StorageLocation<'a> {
     HuggingFace { version: Option<&'a str> },
 }
 
-impl<'a> StorageLocation<'a> {
+impl StorageLocation<'_> {
     pub(crate) async fn writer(
         &self,
         filename: &str,
@@ -224,8 +228,7 @@ impl<'a> StorageLocation<'a> {
                 if !path.exists() {
                     std::fs::create_dir_all(path).map_err(|e| {
                         ChapatyError::Io(IoError::WriterCreation(format!(
-                            "Failed to create directory {:?}: {}",
-                            path, e
+                            "Failed to create directory {path:?}: {e}"
                         )))
                     })?;
                 }
@@ -269,9 +272,7 @@ impl<'a> StorageLocation<'a> {
                 open_local_file(&full_path, buffer_size)
             }
             Self::HuggingFace { version } => {
-                let revision = version
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| format!("v{}", crate::VERSION));
+                let revision = version.map_or_else(|| format!("v{}", crate::VERSION), std::string::ToString::to_string);
 
                 let api = hf_hub::api::tokio::Api::new().map_err(|e| {
                     ChapatyError::Io(IoError::ReaderCreation(format!(

@@ -23,7 +23,7 @@ pub enum PivotType {
 
 impl From<MarketStructureSequence> for PivotType {
     fn from(sequence: MarketStructureSequence) -> Self {
-        use MarketStructureSequence::*;
+        use MarketStructureSequence::{LowerHigh, HigherHigh, EqualHigh, UnclassifiedHigh, HigherLow, LowerLow, EqualLow, UnclassifiedLow};
         match sequence {
             LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => PivotType::High,
             HigherLow | LowerLow | EqualLow | UnclassifiedLow => PivotType::Low,
@@ -68,6 +68,7 @@ pub enum MarketStructureSequence {
 }
 
 impl MarketStructureSequence {
+    #[must_use]
     pub fn as_pivot_type(&self) -> PivotType {
         (*self).into()
     }
@@ -77,7 +78,7 @@ impl MarketStructureSequence {
 /// (e.g., detecting two `PivotType::High`s in a row without a `PivotType::Low` in between).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AlternationMode {
-    /// Forces alternating `High -> Low -> High -> Low` sequences (ZigZag behavior).
+    /// Forces alternating `High -> Low -> High -> Low` sequences (`ZigZag` behavior).
     ///
     /// If the algorithm detects a new `PivotType::High`, but the last confirmed pivot
     /// was also a `PivotType::High`, it evaluates both and only keeps the one with
@@ -127,7 +128,7 @@ pub enum MarketStructureEvent {
 
     /// The new pivot reverses a previously confirmed trend.
     ///
-    /// Also known as a _Change of Character_ (CHoCH). This is the strict case:
+    /// Also known as a _Change of Character_ (`CHoCH`). This is the strict case:
     /// it fires only when the prior opposite-side pivot was itself a trend-confirming
     /// break, so there is concrete evidence of a trend to reverse.
     ///
@@ -190,6 +191,7 @@ impl MarketEvent for PivotPoint {
 
 impl PivotPoint {
     /// Returns the geometric type of the pivot, derived directly from its trend sequence.
+    #[must_use]
     pub fn pivot_type(&self) -> PivotType {
         self.trend.into()
     }
@@ -217,7 +219,7 @@ impl PivotPoint {
     ///
     /// Returns a zero-allocation closure that takes a target point in time
     /// (`DateTime<Utc>`) and returns the interpolated/extrapolated price.
-    /// Uses chrono::Duration to safely compute the time deltas in milliseconds.
+    /// Uses `chrono::Duration` to safely compute the time deltas in milliseconds.
     pub fn price_line_by_point_in_time(
         &self,
         target: &PivotPoint,
@@ -267,6 +269,7 @@ impl ZigZagPeriod {
     ///
     /// The indicator will buffer `2 * bars + 1` candles before emitting its first
     /// result.
+    #[must_use]
     pub fn symmetric(bars: u16) -> Self {
         Self {
             left_bars: bars,
@@ -343,6 +346,7 @@ impl Default for StreamingHhll {
 }
 
 impl StreamingHhll {
+    #[must_use]
     pub fn with_zig_zag_period(self, zig_zag_period: ZigZagPeriod) -> Self {
         Self {
             zig_zag_period,
@@ -351,6 +355,7 @@ impl StreamingHhll {
         }
     }
 
+    #[must_use]
     pub fn with_price_source(self, price_source: PriceSource) -> Self {
         Self {
             price_source,
@@ -358,10 +363,12 @@ impl StreamingHhll {
         }
     }
 
+    #[must_use]
     pub fn with_tiebreaker(self, tiebreaker: ExtremeTiebreaker) -> Self {
         Self { tiebreaker, ..self }
     }
 
+    #[must_use]
     pub fn with_alternation_mode(self, alternation_mode: AlternationMode) -> Self {
         Self {
             alternation_mode,
@@ -374,6 +381,7 @@ impl StreamingHhll {
     /// If [`AlternationMode::Alternating`] is active, this pivot remains mutable.
     /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
     /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
+    #[must_use]
     pub fn active_pivot(&self) -> Option<PivotPoint> {
         self.active_pivot
     }
@@ -382,6 +390,7 @@ impl StreamingHhll {
     ///
     /// When a new High vertex is detected, it is compared against this anchor to determine if it
     /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
+    #[must_use]
     pub fn anchor_high(&self) -> Option<PivotPoint> {
         self.anchor_high
     }
@@ -390,6 +399,7 @@ impl StreamingHhll {
     ///
     /// When a new Low vertex is detected, it is compared against this anchor to determine if it
     /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
+    #[must_use]
     pub fn anchor_low(&self) -> Option<PivotPoint> {
         self.anchor_low
     }
@@ -398,6 +408,7 @@ impl StreamingHhll {
     ///
     /// This vector guarantees perfect time-order. To iterate from latest to earliest,
     /// you simply call `self.history.iter().rev()`.
+    #[must_use]
     pub fn history(&self) -> &[PivotPoint] {
         &self.history
     }
@@ -502,7 +513,7 @@ impl StreamingHhll {
         let (trend, event) = match self.anchor_high {
             Some(anchor) => match current_high_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Greater) => {
-                    use MarketStructureSequence::*;
+                    use MarketStructureSequence::{LowerLow, HigherLow, EqualLow, UnclassifiedLow, HigherHigh, LowerHigh, EqualHigh, UnclassifiedHigh};
 
                     let market_structure_event = match self.anchor_low.map(|l| l.trend) {
                         Some(LowerLow) => MarketStructureEvent::MarketStructureShift,
@@ -620,7 +631,7 @@ impl StreamingHhll {
         let (trend, event) = match self.anchor_low {
             Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Less) => {
-                    use MarketStructureSequence::*;
+                    use MarketStructureSequence::{HigherHigh, LowerHigh, EqualHigh, UnclassifiedHigh, HigherLow, LowerLow, EqualLow, UnclassifiedLow};
 
                     // Explicitly match all variants to prevent black holes
                     let market_structure_event = match self.anchor_high.map(|h| h.trend) {
@@ -795,7 +806,7 @@ mod tests {
     // === 1. Mocks & Helpers ===
     // ==========================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -831,9 +842,7 @@ mod tests {
     fn assert_f64_eq(a: f64, b: f64) {
         assert!(
             (a - b).abs() < f64::EPSILON,
-            "Expected {} to equal {}",
-            a,
-            b
+            "Expected {a} to equal {b}"
         );
     }
 
@@ -944,7 +953,7 @@ mod tests {
         }
     }
 
-    /// Verifies the initial struct classification accurately returns NoChange for the first unclassified points.
+    /// Verifies the initial struct classification accurately returns `NoChange` for the first unclassified points.
     #[test]
     fn test_initial_classification_bos_vs_nochange() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
@@ -1971,7 +1980,7 @@ mod tests {
         );
     }
 
-    /// Verifies that state-poisoning (NaN prices) are trapped by the partial_cmp logic
+    /// Verifies that state-poisoning (NaN prices) are trapped by the `partial_cmp` logic
     /// and gracefully return None without panicking the application.
     #[test]
     fn test_nan_price_corruption_resistance() {

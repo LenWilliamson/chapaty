@@ -56,10 +56,12 @@ impl AsRef<str> for EquityCurveCol {
 }
 
 impl EquityCurveCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -192,7 +194,7 @@ mod test {
 
     use super::*;
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts_micros(s: &str) -> i64 {
         DateTime::parse_from_rfc3339(s)
             .unwrap()
@@ -242,8 +244,7 @@ mod test {
             let actual_dtype = current_schema.get(name);
             assert!(
                 actual_dtype.is_some(),
-                "Missing column in Journal DataFrame: {}",
-                name
+                "Missing column in Journal DataFrame: {name}"
             );
             assert_eq!(
                 actual_dtype.unwrap(),

@@ -11,7 +11,7 @@ pub struct BaseMarketParams {
     /// Required: Year for data retrieval
     #[prost(int32, tag = "3")]
     pub year: i32,
-    /// Optional: Exchange name. Defaults to data_broker name if empty.
+    /// Optional: Exchange name. Defaults to `data_broker` name if empty.
     #[prost(string, tag = "4")]
     pub exchange: ::prost::alloc::string::String,
     /// Optional: Batch size for streaming. Defaults to 1000. Range: 100-10000.
@@ -160,7 +160,7 @@ pub struct EconomicCalendarResponse {
     #[prost(message, optional, tag = "2")]
     pub metadata: ::core::option::Option<BatchMetadata>,
 }
-/// EconomicCategory identifies the economic classification of calendar events.
+/// `EconomicCategory` identifies the economic classification of calendar events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EconomicCategory {
@@ -184,10 +184,10 @@ pub enum EconomicCategory {
     Bonds = 8,
 }
 impl EconomicCategory {
-    /// String value of the enum field names used in the ProtoBuf definition.
+    /// String value of the enum field names used in the `ProtoBuf` definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    /// (if the `ProtoBuf` definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
             Self::Unspecified => "ECONOMIC_CATEGORY_UNSPECIFIED",
@@ -201,7 +201,7 @@ impl EconomicCategory {
             Self::Bonds => "ECONOMIC_CATEGORY_BONDS",
         }
     }
-    /// Creates an enum from field names used in the ProtoBuf definition.
+    /// Creates an enum from field names used in the `ProtoBuf` definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
             "ECONOMIC_CATEGORY_UNSPECIFIED" => Some(Self::Unspecified),
@@ -217,7 +217,7 @@ impl EconomicCategory {
         }
     }
 }
-/// EconomicImportance represents the potential market volatility associated with an event.
+/// `EconomicImportance` represents the potential market volatility associated with an event.
 /// This corresponds directly to the "bull head" rating on Investing.com.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -235,10 +235,10 @@ pub enum EconomicImportance {
     High = 3,
 }
 impl EconomicImportance {
-    /// String value of the enum field names used in the ProtoBuf definition.
+    /// String value of the enum field names used in the `ProtoBuf` definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    /// (if the `ProtoBuf` definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
             Self::Unspecified => "ECONOMIC_IMPORTANCE_UNSPECIFIED",
@@ -247,7 +247,7 @@ impl EconomicImportance {
             Self::High => "ECONOMIC_IMPORTANCE_HIGH",
         }
     }
-    /// Creates an enum from field names used in the ProtoBuf definition.
+    /// Creates an enum from field names used in the `ProtoBuf` definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
             "ECONOMIC_IMPORTANCE_UNSPECIFIED" => Some(Self::Unspecified),

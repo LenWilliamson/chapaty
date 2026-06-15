@@ -84,18 +84,22 @@ pub enum EnvStatus {
 }
 
 impl EnvStatus {
+    #[must_use]
     pub fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 
+    #[must_use]
     pub fn is_running(&self) -> bool {
         matches!(self, Self::Running)
     }
 
+    #[must_use]
     pub fn is_episode_done(&self) -> bool {
         matches!(self, Self::EpisodeDone)
     }
 
+    #[must_use]
     pub fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
@@ -113,18 +117,22 @@ pub enum StepOutcome {
 }
 
 impl StepOutcome {
+    #[must_use]
     pub fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
 
+    #[must_use]
     pub fn is_terminated(&self) -> bool {
         matches!(self, Self::Terminated)
     }
 
+    #[must_use]
     pub fn is_truncated(&self) -> bool {
         matches!(self, Self::Truncated)
     }
 
+    #[must_use]
     pub fn is_terminal(&self) -> bool {
         self.is_terminated() || self.is_truncated()
     }
@@ -153,7 +161,7 @@ impl GridAxis {
         let end_f = f64::from_str(end).map_err(DataError::from)?;
         let step_f = f64::from_str(step).map_err(DataError::from)?;
 
-        let precision = step.split('.').nth(1).map(|s| s.len() as u32).unwrap_or(0);
+        let precision = step.split('.').nth(1).map_or(0, |s| s.len() as u32);
 
         Ok(Self {
             start: start_f,
@@ -163,6 +171,7 @@ impl GridAxis {
         })
     }
 
+    #[must_use]
     pub fn generate(&self) -> Vec<f64> {
         let factor = 10_f64.powi(self.precision as i32);
 
@@ -182,7 +191,7 @@ impl GridAxis {
 /// the backtesting or trading process. Each variant contains a `String` that uniquely
 /// identifies the agent for reporting purposes.
 ///
-/// The `String` can represent custom agent names or predefined types (e.g., "NewsCounter").
+/// The `String` can represent custom agent names or predefined types (e.g., "`NewsCounter`").
 #[derive(
     Clone,
     Debug,

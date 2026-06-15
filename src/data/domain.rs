@@ -189,6 +189,7 @@ impl LiquiditySide {
     /// # Logic
     /// * If Maker = Buyer, then Aggressor = **Sell** (Red).
     /// * If Maker = Seller, then Aggressor = **Buy** (Green).
+    #[must_use]
     pub fn trade_side(&self) -> TradeSide {
         match self {
             LiquiditySide::Bid => TradeSide::Sell,
@@ -354,6 +355,7 @@ pub enum DataBroker {
 }
 
 impl DataBroker {
+    #[must_use]
     pub fn supports_economic_calendar(&self) -> bool {
         matches!(self, DataBroker::InvestingCom)
     }
@@ -421,8 +423,7 @@ impl TryFrom<DataBroker> for Exchange {
             DataBroker::NinjaTrader => Ok(Exchange::Cme),
             DataBroker::Binance => Ok(Exchange::Binance),
             DataBroker::InvestingCom => Err(DataError::UnexpectedEnumVariant(format!(
-                "{} does not map to an exchange",
-                broker
+                "{broker} does not map to an exchange"
             ))
             .into()),
         }
@@ -455,7 +456,7 @@ impl TryFrom<DataBroker> for EconomicDataSource {
         match broker {
             DataBroker::InvestingCom => Ok(EconomicDataSource::InvestingCom),
             DataBroker::NinjaTrader | DataBroker::Binance => Err(DataError::UnexpectedEnumVariant(
-                format!("{} does not map to an economic data source", broker),
+                format!("{broker} does not map to an economic data source"),
             )
             .into()),
         }
@@ -563,8 +564,8 @@ pub enum Symbol {
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Symbol::Spot(s) => write!(f, "{}", s),
-            Symbol::Future(s) => write!(f, "{}", s),
+            Symbol::Spot(s) => write!(f, "{s}"),
+            Symbol::Future(s) => write!(f, "{s}"),
         }
     }
 }
@@ -588,6 +589,7 @@ impl FromStr for Symbol {
 }
 
 impl Symbol {
+    #[must_use]
     pub fn market_type(&self) -> MarketType {
         (*self).into()
     }
@@ -763,8 +765,7 @@ impl FromStr for FutureContract {
 
         if s.len() < 3 {
             return Err(DataError::InvalidSymbol(format!(
-                "Future contract string too short: {}",
-                s
+                "Future contract string too short: {s}"
             ))
             .into());
         }
@@ -777,12 +778,12 @@ impl FromStr for FutureContract {
             // 3-character root (e.g., "btc")
             (&s[..3], &s[3..])
         } else {
-            return Err(DataError::InvalidSymbol(format!("Invalid future root in: {}", s)).into());
+            return Err(DataError::InvalidSymbol(format!("Invalid future root in: {s}")).into());
         };
 
         if remainder.len() != 2 {
             return Err(
-                DataError::InvalidSymbol(format!("Invalid future contract format: {}", s)).into(),
+                DataError::InvalidSymbol(format!("Invalid future contract format: {s}")).into(),
             );
         }
 
@@ -998,7 +999,7 @@ pub trait Instrument {
 
     // === CONVERSION LOGIC (Default Implementations) ===
 
-    /// Converts a raw USD PnL target into discrete Tick steps.
+    /// Converts a raw USD `PnL` target into discrete Tick steps.
     /// Uses `round` to snap to the nearest valid grid point.
     fn usd_to_ticks(&self, usd: f64) -> Tick {
         let ticks = (usd / self.tick_value_usd()).round() as i64;
@@ -1006,7 +1007,7 @@ pub trait Instrument {
     }
 
     /// Converts discrete Ticks back into a USD value.
-    /// This is the safest way to calculate realized PnL.
+    /// This is the safest way to calculate realized `PnL`.
     fn ticks_to_usd(&self, ticks: Tick) -> f64 {
         ticks.0 as f64 * self.tick_value_usd()
     }
@@ -1126,6 +1127,7 @@ fn hm(h: u32, m: u32) -> NaiveTime {
 }
 
 impl SessionWindow {
+    #[must_use]
     pub fn new(timezone: Tz, start: NaiveTime, end: NaiveTime) -> Self {
         Self {
             timezone,
@@ -1135,73 +1137,88 @@ impl SessionWindow {
     }
 
     /// US Core Session: 09:30 to 16:00 New York time.
+    #[must_use]
     pub fn us_core_session() -> Self {
         SessionWindow::new(Tz::America__New_York, hm(9, 30), hm(16, 0))
     }
 
     /// London Core Session: 08:00 to 16:30 London time.
+    #[must_use]
     pub fn london_core_session() -> Self {
         SessionWindow::new(Tz::Europe__London, hm(8, 0), hm(16, 30))
     }
 
     /// US/Europe Overlap: 13:00 to 17:00 London time.
+    #[must_use]
     pub fn us_europe_overlap() -> Self {
         SessionWindow::new(Tz::Europe__London, hm(13, 0), hm(17, 0))
     }
 
     /// Singapore Core Session: 09:00 to 17:00 Singapore time.
+    #[must_use]
     pub fn singapore_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
 
     /// Sydney Core Session: 10:00 to 16:00 Sydney time.
+    #[must_use]
     pub fn sydney_core_session() -> Self {
         SessionWindow::new(Tz::Australia__Sydney, hm(10, 0), hm(16, 0))
     }
 
     /// US Overnight: 16:00 to 09:30 New York time.
+    #[must_use]
     pub fn us_overnight() -> Self {
         SessionWindow::new(Tz::America__New_York, hm(16, 0), hm(9, 30))
     }
 
     /// US Extended Overnight: 18:00 to 09:30 New York time.
+    #[must_use]
     pub fn us_extended_overnight() -> Self {
         SessionWindow::new(Tz::America__New_York, hm(18, 0), hm(9, 30))
     }
 
     /// Tokyo Core Session: 09:00 to 15:00 Tokyo time.
+    #[must_use]
     pub fn tokyo_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Tokyo, hm(9, 0), hm(15, 0))
     }
 
     /// Asia Institutional Core: 09:00 to 17:00 Singapore time.
+    #[must_use]
     pub fn asia_institutional_core() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
 
     /// Hong Kong Core Session: 09:30 to 16:00 Hong Kong time.
+    #[must_use]
     pub fn hong_kong_core_session() -> Self {
         SessionWindow::new(Tz::Asia__Hong_Kong, hm(9, 30), hm(16, 0))
     }
 
     /// APAC Overnight: 17:00 to 08:00 Singapore time.
+    #[must_use]
     pub fn apac_overnight() -> Self {
         SessionWindow::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
     }
 
+    #[must_use]
     pub fn pl_time_zone(&self) -> polars::datatypes::TimeZone {
         polars::datatypes::TimeZone::from_chrono(&self.timezone)
     }
 
+    #[must_use]
     pub fn start_nanos_since_midnight(&self) -> i64 {
-        (self.start.num_seconds_from_midnight() as i64 * 1_000_000_000)
-            + self.start.nanosecond() as i64
+        (i64::from(self.start.num_seconds_from_midnight()) * 1_000_000_000)
+            + i64::from(self.start.nanosecond())
     }
 
+    #[must_use]
     pub fn end_nanos_since_midnight(&self) -> i64 {
-        (self.end.num_seconds_from_midnight() as i64 * 1_000_000_000) + self.end.nanosecond() as i64
+        (i64::from(self.end.num_seconds_from_midnight()) * 1_000_000_000) + i64::from(self.end.nanosecond())
     }
 
+    #[must_use]
     pub fn window_kind(&self) -> WindowKind {
         match self.start.cmp(&self.end) {
             Ordering::Less => WindowKind::Intraday,
@@ -1210,6 +1227,7 @@ impl SessionWindow {
     }
 
     /// Classifies a UTC timestamp against the window, resolving the session it belongs to when inside.
+    #[must_use]
     pub fn classify(&self, utc_ts: DateTime<Utc>) -> WindowPosition {
         let local = utc_ts.with_timezone(&self.timezone);
         let date = local.date_naive();
@@ -1256,10 +1274,12 @@ pub enum WindowKind {
 }
 
 impl WindowKind {
+    #[must_use]
     pub fn is_intraday(&self) -> bool {
         matches!(self, WindowKind::Intraday)
     }
 
+    #[must_use]
     pub fn is_overnight(&self) -> bool {
         matches!(self, WindowKind::Overnight)
     }
@@ -1295,7 +1315,7 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    /// Helper to easily create a NaiveDate
+    /// Helper to easily create a `NaiveDate`
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
     }
@@ -1449,7 +1469,7 @@ mod tests {
         for (root, month, year, expected) in cases {
             let contract = FutureContract { root, month, year };
             let symbol = Symbol::Future(contract);
-            assert_eq!(symbol.to_string(), expected, "Failed for {:?}", contract);
+            assert_eq!(symbol.to_string(), expected, "Failed for {contract:?}");
         }
     }
 
@@ -1491,9 +1511,9 @@ mod tests {
         for (input, root, month, year) in cases {
             let parsed: Symbol = input
                 .parse()
-                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{input}'"));
             let expected = Symbol::Future(FutureContract { root, month, year });
-            assert_eq!(parsed, expected, "Mismatch for '{}'", input);
+            assert_eq!(parsed, expected, "Mismatch for '{input}'");
         }
     }
 
@@ -1512,10 +1532,10 @@ mod tests {
         for (input, expected_root) in cases {
             let parsed: Symbol = input
                 .parse()
-                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{input}'"));
             match parsed {
                 Symbol::Future(contract) => assert_eq!(contract.root, expected_root),
-                _ => panic!("Expected Future variant for '{}'", input),
+                _ => panic!("Expected Future variant for '{input}'"),
             }
         }
     }
@@ -1535,7 +1555,7 @@ mod tests {
 
         for input in invalid {
             let result: Result<Symbol, _> = input.parse();
-            assert!(result.is_err(), "Expected '{}' to fail parsing", input);
+            assert!(result.is_err(), "Expected '{input}' to fail parsing");
         }
     }
 
@@ -1565,8 +1585,7 @@ mod tests {
             let deserialized: Symbol = serialized.parse().unwrap();
             assert_eq!(
                 original, deserialized,
-                "Round-trip failed for {:?}",
-                contract
+                "Round-trip failed for {contract:?}"
             );
         }
     }
@@ -1578,7 +1597,7 @@ mod tests {
         for input in canonical {
             let parsed: Symbol = input.parse().unwrap();
             let output = parsed.to_string();
-            assert_eq!(input, output, "Canonical form changed for '{}'", input);
+            assert_eq!(input, output, "Canonical form changed for '{input}'");
         }
     }
 
@@ -1653,9 +1672,7 @@ mod tests {
 
         assert!(
             (norm_high - valid_price).abs() < f64::EPSILON,
-            "Failed to round down dirty high input: {:.8} -> {:.8}",
-            dirty_high,
-            norm_high
+            "Failed to round down dirty high input: {dirty_high:.8} -> {norm_high:.8}"
         );
 
         // Case 2: Artifact just BELOW the valid price (e.g. 1.09999999)
@@ -1665,9 +1682,7 @@ mod tests {
 
         assert!(
             (norm_low - valid_price).abs() < f64::EPSILON,
-            "Failed to round up dirty low input: {:.8} -> {:.8}",
-            dirty_low,
-            norm_low
+            "Failed to round up dirty low input: {dirty_low:.8} -> {norm_low:.8}"
         );
     }
 

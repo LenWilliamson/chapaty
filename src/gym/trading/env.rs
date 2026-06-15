@@ -79,10 +79,12 @@ pub struct Environment {
 }
 
 impl Environment {
+    #[must_use]
     pub fn with_execution_bias(self, bias: ExecutionBias) -> Self {
         Self { bias, ..self }
     }
 
+    #[must_use]
     pub fn with_invalid_action_penalty(self, invalid_action_penalty: InvalidActionPenalty) -> Self {
         Self {
             invalid_action_penalty,
@@ -90,6 +92,7 @@ impl Environment {
         }
     }
 
+    #[must_use]
     pub fn with_risk_metrics_cfg(self, cfg: RiskMetricsConfig) -> Self {
         Self {
             risk_metrics_cfg: cfg,
@@ -168,6 +171,7 @@ impl Environment {
         agent_leaderboard.try_into()
     }
 
+    #[must_use]
     pub fn episode(&self) -> Episode {
         self.ep
     }
@@ -176,6 +180,7 @@ impl Environment {
         self.ledger.episode_pnl(ep)
     }
 
+    #[must_use]
     pub fn status(&self) -> EnvStatus {
         self.env_status
     }
@@ -194,7 +199,7 @@ impl Environment {
 impl Env for Environment {
     #[tracing::instrument(skip(self), fields(ep_id = %self.ep.id().0))]
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)> {
-        use EnvStatus::*;
+        use EnvStatus::{EpisodeDone, Ready, Done, Running};
 
         match self.env_status {
             EpisodeDone => {
@@ -355,11 +360,11 @@ impl Environment {
     }
 
     fn penalty(&self, report: ActionSummary) -> Reward {
-        Reward((report.rejected as i64) * self.invalid_action_penalty.0.0)
+        Reward(i64::from(report.rejected) * self.invalid_action_penalty.0.0)
     }
 
     fn check_step_status(&self) -> ChapatyResult<()> {
-        use EnvStatus::*;
+        use EnvStatus::{Running, Ready, EpisodeDone, Done};
         match self.env_status {
             Running => Ok(()),
             Ready => Err(EnvError::InvalidState(

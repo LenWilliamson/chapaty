@@ -14,7 +14,7 @@ use tracing::error;
 struct Year(pub u16);
 impl From<Year> for i32 {
     fn from(value: Year) -> Self {
-        value.0 as i32
+        i32::from(value.0)
     }
 }
 
@@ -138,7 +138,7 @@ mod generator {
         for (id, job) in unique_jobs {
             for year in &years {
                 tokio::select! {
-                _ = cx.cancelled() => {
+                () = cx.cancelled() => {
                     tracing::info!("Generator cancelled; exiting early.");
                     return Ok(());
                 },
@@ -187,26 +187,23 @@ mod fetcher {
         loop {
             tokio::select! {
             // A. External Cancellation
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::info!("Fetcher received cancellation signal.");
                 break;
             }
 
             // B. Incoming Work
             work = rx.recv() => {
-                match work {
-                    Ok((id, job, year)) => {
-                        let cx = cx.clone();
-                        let tx = tx.clone();
-                        let client = client.clone();
-                        tasks.spawn(async move {
-                            stream(cx, tx, id, job, year, client).await
-                        });
-                    }
-                    Err(_) => {
-                        tracing::info!("Job queue closed (End of Input).");
-                        break;
-                    }
+                if let Ok((id, job, year)) = work {
+                    let cx = cx.clone();
+                    let tx = tx.clone();
+                    let client = client.clone();
+                    tasks.spawn(async move {
+                        stream(cx, tx, id, job, year, client).await
+                    });
+                } else {
+                    tracing::info!("Job queue closed (End of Input).");
+                    break;
                 }
             }
 
@@ -274,7 +271,7 @@ mod fetcher {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::debug!("Stream task cancelled cleanly.");
                 return Ok(());
             }
@@ -327,19 +324,16 @@ mod processor {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 info!("Processor worker cancelled");
                 break Ok(());
             }
             res = rx.recv() => {
-                let (fetcher, batch) = match res {
-                    Ok((f, b)) => (f, b),
-                    Err(_) => {
-                        // This happens if the sender side is dropped/closed, meaning
-                        // the generator has shut down. The processor should also stop.
-                        tracing::info!("No more jobs; processor exiting.");
-                        break Ok(());
-                    }
+                let (fetcher, batch) = if let Ok((f, b)) = res { (f, b) } else {
+                    // This happens if the sender side is dropped/closed, meaning
+                    // the generator has shut down. The processor should also stop.
+                    tracing::info!("No more jobs; processor exiting.");
+                    break Ok(());
                 };
 
                 // Transform the collected events into a LazyFrame
@@ -349,12 +343,9 @@ mod processor {
                     let _ = send.send(result);
                 });
 
-                let lf_res = match recv.await {
-                    Ok(result) => result,
-                    Err(_) => {
-                        error!(?fetcher, "Rayon thread panicked while converting batch to LazyFrame");
-                        return Err(IoError::ReadFailed("Rayon worker panicked during batch conversion".to_string()).into());
-                    }
+                let lf_res = if let Ok(result) = recv.await { result } else {
+                    error!(?fetcher, "Rayon thread panicked while converting batch to LazyFrame");
+                    return Err(IoError::ReadFailed("Rayon worker panicked during batch conversion".to_string()).into());
                 };
 
                 match lf_res {
@@ -408,33 +399,30 @@ mod collector {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::info!("Collector worker cancelled; exiting early");
                 return Err(IoError::ReadFailed("Collector worker cancelled".to_string()).into());
             }
             maybe_res = rx.recv() => {
-                match maybe_res {
-                    Some((id, lf)) => staging.entry(id).or_default().push(lf),
-                    None => {
-                        info!("All results received. Processing final LazyFrames");
-                        let mut results = HashMap::with_capacity(staging.len());
+                if let Some((id, lf)) = maybe_res { staging.entry(id).or_default().push(lf) } else {
+                    info!("All results received. Processing final LazyFrames");
+                    let mut results = HashMap::with_capacity(staging.len());
 
-                        for (id, frames) in staging {
-                            if frames.is_empty() { continue; }
+                    for (id, frames) in staging {
+                        if frames.is_empty() { continue; }
 
-                            let concatenated_lf = polars::prelude::concat(
-                                frames,
-                                UnionArgs {
-                                    parallel: true,
-                                    rechunk: true,
-                                    ..Default::default()
-                                }
-                            ).map_err(|e| DataError::DataFrame(e.to_string()))?;
+                        let concatenated_lf = polars::prelude::concat(
+                            frames,
+                            UnionArgs {
+                                parallel: true,
+                                rechunk: true,
+                                ..Default::default()
+                            }
+                        ).map_err(|e| DataError::DataFrame(e.to_string()))?;
 
-                            results.insert(id, (T::schema_ref(), concatenated_lf));
-                        }
-                        return Ok(results);
+                        results.insert(id, (T::schema_ref(), concatenated_lf));
                     }
+                    return Ok(results);
                 }
             }
             }
@@ -463,10 +451,10 @@ trait DrainSafely {
 impl<T: 'static> DrainSafely for JoinSet<T> {
     async fn drain_safely(&mut self, secs: u64) {
         tokio::select! {
-        _ = self.drain() => {
+        () = self.drain() => {
             tracing::debug!("All workers drained successfully.");
         },
-        _ = tokio::time::sleep(Duration::from_secs(secs)) => {
+        () = tokio::time::sleep(Duration::from_secs(secs)) => {
             tracing::warn!("Workers stuck during shutdown (timeout). Dropping handle.");
         }
         }

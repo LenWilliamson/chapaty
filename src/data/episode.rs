@@ -34,6 +34,7 @@ impl Default for Episode {
 }
 
 impl Episode {
+    #[must_use]
     pub fn is_episode_end(&self, current_ts: DateTime<Utc>) -> bool {
         if self.length.is_infinite() {
             return false;
@@ -41,18 +42,22 @@ impl Episode {
         current_ts >= self.end
     }
 
+    #[must_use]
     pub fn id(&self) -> EpisodeId {
         self.id
     }
 
+    #[must_use]
     pub fn length(&self) -> EpisodeLength {
         self.length
     }
 
+    #[must_use]
     pub fn start(&self) -> DateTime<Utc> {
         self.start
     }
 
+    #[must_use]
     pub fn end(&self) -> DateTime<Utc> {
         self.end
     }
@@ -160,36 +165,44 @@ pub enum EpisodeLength {
 }
 
 impl EpisodeLength {
+    #[must_use]
     pub fn is_infinite(&self) -> bool {
         matches!(self, EpisodeLength::Infinite)
     }
 
+    #[must_use]
     pub fn is_day(&self) -> bool {
         matches!(self, EpisodeLength::Day)
     }
 
+    #[must_use]
     pub fn is_week(&self) -> bool {
         matches!(self, EpisodeLength::Week)
     }
 
+    #[must_use]
     pub fn is_month(&self) -> bool {
         matches!(self, EpisodeLength::Month)
     }
 
+    #[must_use]
     pub fn is_quarter(&self) -> bool {
         matches!(self, EpisodeLength::Quarter)
     }
 
+    #[must_use]
     pub fn is_semi_annual(&self) -> bool {
         matches!(self, EpisodeLength::SemiAnnual)
     }
 
+    #[must_use]
     pub fn is_annual(&self) -> bool {
         matches!(self, EpisodeLength::Annual)
     }
 
+    #[must_use]
     pub fn max_episodes(&self) -> usize {
-        use EpisodeLength::*;
+        use EpisodeLength::{Day, Week, Month, Quarter, SemiAnnual, Annual, Infinite};
 
         match self {
             Day => 366,
@@ -217,7 +230,7 @@ impl EpisodeLength {
     /// The `DateTime<Utc>` marking the beginning of the next period, which is the
     /// exclusive end of the current episode. For `Infinite` length, it returns `DateTime::MAX_UTC`.
     fn calculate_end(&self, start: DateTime<Utc>) -> DateTime<Utc> {
-        use EpisodeLength::*;
+        use EpisodeLength::{Infinite, Day, Week, Month, Quarter, SemiAnnual, Annual};
         match self {
             Infinite => DateTime::<Utc>::MAX_UTC,
             Day => {
@@ -230,7 +243,7 @@ impl EpisodeLength {
                 // Calculates the start of the next week (Monday).
                 let days_to_next_monday = 7 - start.weekday().num_days_from_monday();
                 let start_of_next_week = (start.date_naive()
-                    + Duration::days(days_to_next_monday as i64))
+                    + Duration::days(i64::from(days_to_next_monday)))
                 .and_hms_opt(0, 0, 0)
                 .unwrap();
                 DateTime::from_naive_utc_and_offset(start_of_next_week, Utc)

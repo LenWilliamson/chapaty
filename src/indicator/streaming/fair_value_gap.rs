@@ -36,10 +36,12 @@ pub struct OpenState {
 }
 
 impl OpenState {
+    #[must_use]
     pub fn max_fill_percentage(&self) -> f64 {
         self.max_fill_percentage
     }
 
+    #[must_use]
     pub fn touch_count(&self) -> u32 {
         self.touch_count
     }
@@ -54,14 +56,17 @@ pub struct ClosedState {
 }
 
 impl ClosedState {
+    #[must_use]
     pub fn closed_time(&self) -> DateTime<Utc> {
         self.closed_time
     }
 
+    #[must_use]
     pub const fn max_fill_percentage(&self) -> f64 {
         1.0
     }
 
+    #[must_use]
     pub fn touch_count(&self) -> u32 {
         self.touch_count
     }
@@ -77,12 +82,15 @@ pub struct ExpiredState {
 }
 
 impl ExpiredState {
+    #[must_use]
     pub fn expired_time(&self) -> DateTime<Utc> {
         self.expired_time
     }
+    #[must_use]
     pub fn final_fill_percentage(&self) -> f64 {
         self.final_fill_percentage
     }
+    #[must_use]
     pub fn touch_count(&self) -> u32 {
         self.touch_count
     }
@@ -109,11 +117,13 @@ pub enum GapInteraction {
 
 impl GapInteraction {
     /// Returns true if the candle touched OR filled the gap.
+    #[must_use]
     pub fn is_touch(&self) -> bool {
         matches!(self, Self::Touch | Self::Fill)
     }
 
     /// Returns true strictly if the candle filled the gap.
+    #[must_use]
     pub fn is_fill(&self) -> bool {
         matches!(self, Self::Fill)
     }
@@ -435,6 +445,7 @@ impl StreamingFairValueGap {
     ///
     /// # Panics
     /// Panics if `min_gap_size` <= 0.0.
+    #[must_use]
     pub fn with_min_gap_size(self, min_gap_size: f64) -> Self {
         assert!(
             min_gap_size > 0.0,
@@ -446,10 +457,12 @@ impl StreamingFairValueGap {
         }
     }
 
+    #[must_use]
     pub fn with_ttl_policy(self, ttl_policy: TtlPolicy) -> Self {
         Self { ttl_policy, ..self }
     }
 
+    #[must_use]
     pub fn with_price_source(self, price_source: PriceSource) -> Self {
         Self {
             price_source,
@@ -458,12 +471,15 @@ impl StreamingFairValueGap {
     }
 
     // Accessors for agent state inspection...
+    #[must_use]
     pub fn active_gaps(&self) -> &[FairValueGap<OpenState>] {
         &self.active_gaps
     }
+    #[must_use]
     pub fn closed_gaps(&self) -> &[FairValueGap<ClosedState>] {
         &self.closed_gaps
     }
+    #[must_use]
     pub fn expired_gaps(&self) -> &[FairValueGap<ExpiredState>] {
         &self.expired_gaps
     }
@@ -565,7 +581,7 @@ mod tests {
     // === 1. Mocks & Helpers ===
     // ==========================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -602,9 +618,7 @@ mod tests {
     fn assert_f64_eq(a: f64, b: f64) {
         assert!(
             (a - b).abs() < f64::EPSILON,
-            "Expected {} to equal {}",
-            a,
-            b
+            "Expected {a} to equal {b}"
         );
     }
 

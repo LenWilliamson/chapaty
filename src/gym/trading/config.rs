@@ -211,7 +211,7 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1m15m,
 
-    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Unrestricted (NinjaTrader, CME 6eh6)**
+    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Unrestricted (`NinjaTrader`, CME 6eh6)**
     ///
     /// A multi-resolution intraday environment with 1-minute and 5-minute EUR/USD futures
     /// and US high-impact employment calendar data. The economic calendar filter policy is
@@ -265,7 +265,7 @@ pub enum EnvPreset {
     /// contextual data only.
     NinjaTraderCme6eh61m5mUsEmpHigh,
 
-    /// **EUR/USD 1-Minute Futures with US Employment News — Events Only (NinjaTrader, CME 6eh6)**
+    /// **EUR/USD 1-Minute Futures with US Employment News — Events Only (`NinjaTrader`, CME 6eh6)**
     ///
     /// A high-frequency intraday environment for news-driven strategies on EUR/USD futures,
     /// such as breakout or fade entries around scheduled US employment releases.
@@ -306,7 +306,7 @@ pub enum EnvPreset {
     /// (High impact) event are excluded from simulation.
     NinjaTraderCme6eh61mUsEmpHighEventsOnly,
 
-    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Events Only (NinjaTrader, CME 6eh6)**
+    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Events Only (`NinjaTrader`, CME 6eh6)**
     ///
     /// A multi-resolution intraday environment combining 1-minute and 5-minute futures data
     /// for hybrid news strategies that use different timeframes for entry and confirmation.
@@ -472,7 +472,7 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1h1mTpo1d1Usdt,
 
-    /// **EUR/USD 1-Minute Futures with Daily TPO Profile (NinjaTrader, CME 6eh6)**
+    /// **EUR/USD 1-Minute Futures with Daily TPO Profile (`NinjaTrader`, CME 6eh6)**
     ///
     /// An intraday futures environment with 1-minute EUR/USD OHLCV data and a
     /// daily-aggregated TPO (Market Profile) using tick-level bin size
@@ -961,6 +961,7 @@ impl Default for EnvConfig {
 
 impl EnvConfig {
     /// Adds OHLCV spot market data from a specific source.
+    #[must_use]
     pub fn add_ohlcv_spot(self, source: DataSource, config: OhlcvSpotQuery) -> Self {
         Self {
             ohlcv_spot: update_source_group(self.ohlcv_spot, source, config),
@@ -969,6 +970,7 @@ impl EnvConfig {
     }
 
     /// Adds OHLCV futures market data from a specific source.
+    #[must_use]
     pub fn add_ohlcv_future(self, source: DataSource, config: OhlcvFutureQuery) -> Self {
         Self {
             ohlcv_future: update_source_group(self.ohlcv_future, source, config),
@@ -977,6 +979,7 @@ impl EnvConfig {
     }
 
     /// Adds trade-level spot market data from a specific source.
+    #[must_use]
     pub fn add_trades_spot(self, source: DataSource, config: TradesSpotQuery) -> Self {
         Self {
             trades_spot: update_source_group(self.trades_spot, source, config),
@@ -985,6 +988,7 @@ impl EnvConfig {
     }
 
     /// Adds TPO (Market Profile) spot data from a specific source.
+    #[must_use]
     pub fn add_tpo_spot(self, source: DataSource, config: TpoSpotQuery) -> Self {
         Self {
             tpo_spot: update_source_group(self.tpo_spot, source, config),
@@ -993,6 +997,7 @@ impl EnvConfig {
     }
 
     /// Adds TPO (Market Profile) futures data from a specific source.
+    #[must_use]
     pub fn add_tpo_future(self, source: DataSource, config: TpoFutureQuery) -> Self {
         Self {
             tpo_future: update_source_group(self.tpo_future, source, config),
@@ -1001,6 +1006,7 @@ impl EnvConfig {
     }
 
     /// Adds Volume Profile spot data from a specific source.
+    #[must_use]
     pub fn add_volume_profile_spot(
         self,
         source: DataSource,
@@ -1013,6 +1019,7 @@ impl EnvConfig {
     }
 
     /// Adds economic calendar events from a specific source.
+    #[must_use]
     pub fn add_economic_calendar(self, source: DataSource, config: EconomicCalendarQuery) -> Self {
         Self {
             economic_calendar: update_source_group(self.economic_calendar, source, config),
@@ -1027,6 +1034,7 @@ impl EnvConfig {
 
 impl EnvConfig {
     /// Sets the data filter configuration.
+    #[must_use]
     pub fn with_filter_config(self, filter_config: FilterConfig) -> Self {
         Self {
             filter_config: Some(filter_config),
@@ -1035,6 +1043,7 @@ impl EnvConfig {
     }
 
     /// Sets the maximum trade duration.
+    #[must_use]
     pub fn with_episode_length(self, episode_length: EpisodeLength) -> Self {
         Self {
             episode_length,
@@ -1043,6 +1052,7 @@ impl EnvConfig {
     }
 
     /// Sets the risk metrics calculation configuration.
+    #[must_use]
     pub fn with_risk_metrics_cfg(self, risk_metrics_cfg: RiskMetricsConfig) -> Self {
         Self {
             risk_metrics_cfg,
@@ -1055,6 +1065,7 @@ impl EnvConfig {
     /// # Behavior
     /// Automatically clamps the value to a maximum of 32 to prevent excessive
     /// buffer pre-allocation.
+    #[must_use]
     pub fn with_trade_hint(self, trade_hint: u32) -> Self {
         Self {
             trade_hint: trade_hint.min(32) as usize,
@@ -1066,6 +1077,7 @@ impl EnvConfig {
     ///
     /// # Panics
     /// Panics if the penalty is positive (> 0).
+    #[must_use]
     pub fn with_invalid_action_penalty(self, penalty: InvalidActionPenalty) -> Self {
         assert!(
             penalty.0.0 <= 0,
@@ -1084,50 +1096,62 @@ impl EnvConfig {
 // ================================================================================================
 
 impl EnvConfig {
+    #[must_use]
     pub fn ohlcv_spot(&self) -> &[SourceGroup<OhlcvSpotQuery>] {
         &self.ohlcv_spot
     }
 
+    #[must_use]
     pub fn ohlcv_future(&self) -> &[SourceGroup<OhlcvFutureQuery>] {
         &self.ohlcv_future
     }
 
+    #[must_use]
     pub fn trades_spot(&self) -> &[SourceGroup<TradesSpotQuery>] {
         &self.trades_spot
     }
 
+    #[must_use]
     pub fn tpo_spot(&self) -> &[SourceGroup<TpoSpotQuery>] {
         &self.tpo_spot
     }
 
+    #[must_use]
     pub fn tpo_future(&self) -> &[SourceGroup<TpoFutureQuery>] {
         &self.tpo_future
     }
 
+    #[must_use]
     pub fn volume_profile_spot(&self) -> &[SourceGroup<VolumeProfileSpotQuery>] {
         &self.volume_profile_spot
     }
 
+    #[must_use]
     pub fn economic_calendar(&self) -> &[SourceGroup<EconomicCalendarQuery>] {
         &self.economic_calendar
     }
 
+    #[must_use]
     pub fn filter_config(&self) -> Option<&FilterConfig> {
         self.filter_config.as_ref()
     }
 
+    #[must_use]
     pub fn episode_length(&self) -> EpisodeLength {
         self.episode_length
     }
 
+    #[must_use]
     pub fn risk_metrics_cfg(&self) -> RiskMetricsConfig {
         self.risk_metrics_cfg
     }
 
+    #[must_use]
     pub fn trade_hint(&self) -> usize {
         self.trade_hint
     }
 
+    #[must_use]
     pub fn invalid_action_penalty(&self) -> InvalidActionPenalty {
         self.invalid_action_penalty
     }
@@ -1136,6 +1160,7 @@ impl EnvConfig {
     ///
     /// If specific years are configured in the filter, returns that list.
     /// Otherwise, returns the default simulation range (1990..=2040).
+    #[must_use]
     pub fn allowed_years(&self) -> Vec<u16> {
         if let Some(years_set) = self
             .filter_config()
@@ -1155,6 +1180,7 @@ impl EnvConfig {
     /// based on the configured episode length and allowed years.
     ///
     /// Used to pre-allocate the Ledger.
+    #[must_use]
     pub fn max_episode_capacity(&self) -> usize {
         let max_episodes_per_year = self.episode_length().max_episodes();
         let number_of_years = self.allowed_years().len();
@@ -1203,6 +1229,7 @@ impl EnvConfig {
     }
 
     /// Validates that at least one market data source is configured.
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         !self.ohlcv_spot.is_empty() || !self.ohlcv_future.is_empty() || !self.trades_spot.is_empty()
     }

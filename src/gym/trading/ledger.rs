@@ -39,7 +39,7 @@ pub(super) struct Ledger {
 
 impl Ledger {
     pub fn clear(&mut self) {
-        self.states.iter_mut().for_each(|states| states.clear());
+        self.states.iter_mut().for_each(super::state::States::clear);
     }
 
     pub fn states(&self, episode: &Episode) -> ChapatyResult<&States> {
@@ -109,7 +109,7 @@ impl Ledger {
 
             // D. Trace the Outcome
             match result {
-                Ok(_) => {
+                Ok(()) => {
                     // For Command Sourcing, an "Applied" log confirms the state
                     // machine accepted the transition.
                     tracing::debug!(outcome = "applied", "State Transition Successful");
@@ -199,7 +199,7 @@ impl Ledger {
             let offset = pnls.last().copied().unwrap_or(0.0);
 
             episode_ids.extend(std::iter::repeat_n(ep_id, len));
-            timestamps.extend(curve.timestamps.iter().map(|ts| ts.timestamp_micros()));
+            timestamps.extend(curve.timestamps.iter().map(chrono::DateTime::timestamp_micros));
             pnls.extend(curve.cumulative_pnl.iter().map(|&ep_pnl| offset + ep_pnl));
         }
 
@@ -347,7 +347,7 @@ struct JournalEntry {
 
 /// Column-oriented, tabular representation of a ledger entry set.
 ///
-/// This is the transposed struct of array (SoA) equivalent of `Vec<LedgerEntry>`,
+/// This is the transposed struct of array (`SoA`) equivalent of `Vec<LedgerEntry>`,
 /// optimized for columnar processing, serialization, and analysis.
 #[derive(Default, Debug)]
 struct JournalSoA {
@@ -753,8 +753,7 @@ fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
 
 fn ep_not_found_err(episode: &Episode) -> ChapatyError {
     ChapatyError::System(SystemError::IndexOutOfBounds(format!(
-        "Episode {:?} not present in EpisodeLog",
-        episode
+        "Episode {episode:?} not present in EpisodeLog"
     )))
 }
 
@@ -791,8 +790,8 @@ mod test {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
-    /// It allows us to create a valid MarketView with a simple (low, high, close) API.
+    /// A lightweight wrapper around the heavy `SimulationData`.
+    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -813,7 +812,7 @@ mod test {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -843,8 +842,8 @@ mod test {
         }
     }
 
-    /// Creates a minimal JournalEntry for testing transformations.
-    /// This is the core helper for white-box testing of JournalSoA.
+    /// Creates a minimal `JournalEntry` for testing transformations.
+    /// This is the core helper for white-box testing of `JournalSoA`.
     fn sample_journal_entry(
         episode: usize,
         trade_id: i64,
@@ -891,7 +890,7 @@ mod test {
         }
     }
 
-    /// Populates a JournalSoA with a single entry (helper to reduce boilerplate).
+    /// Populates a `JournalSoA` with a single entry (helper to reduce boilerplate).
     fn populate_soa_single(soa: &mut JournalSoA, entry: JournalEntry) {
         soa.episode_id.push(entry.episode_id);
         soa.trade_id.push(entry.trade_id);
@@ -1267,12 +1266,11 @@ mod test {
             let expected_dtype = field.dtype();
             let actual_dtype = actual_schema
                 .get(col_name)
-                .unwrap_or_else(|| panic!("Column '{}' missing", col_name));
+                .unwrap_or_else(|| panic!("Column '{col_name}' missing"));
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Type mismatch for '{}': expected {:?}, got {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Type mismatch for '{col_name}': expected {expected_dtype:?}, got {actual_dtype:?}"
             );
         }
     }
@@ -2175,9 +2173,7 @@ mod test {
 
         assert!(
             df.equals(&expected_df),
-            "Global PnL stitching failed to correctly bridge empty partitions.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
-            df,
-            expected_df
+            "Global PnL stitching failed to correctly bridge empty partitions.\n\nActual:\n{df:?}\n\nExpected:\n{expected_df:?}"
         );
     }
 
@@ -2226,9 +2222,7 @@ mod test {
         // 3. Assert full DataFrame equality (Values, Types, and Order)
         assert!(
             df.equals(&expected_df),
-            "DataFrame failed sorting, schema validation, or RowId assignment.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
-            df,
-            expected_df
+            "DataFrame failed sorting, schema validation, or RowId assignment.\n\nActual:\n{df:?}\n\nExpected:\n{expected_df:?}"
         );
     }
 }

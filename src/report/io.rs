@@ -52,6 +52,7 @@ impl Default for FileConfig<'_> {
 }
 
 impl<'a> FileConfig<'a> {
+    #[must_use]
     pub fn with_dir(self, dir: &'a Path) -> Self {
         Self { dir, ..self }
     }
@@ -63,10 +64,12 @@ impl<'a> FileConfig<'a> {
         }
     }
 
+    #[must_use]
     pub fn with_format(self, format: ExportFormat) -> Self {
         Self { format, ..self }
     }
 
+    #[must_use]
     pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
@@ -88,6 +91,7 @@ pub struct CloudConfig<'a> {
 
 impl<'a> CloudConfig<'a> {
     /// Creates a new `CloudConfig` targeting a specific, complete Cloud URI.
+    #[must_use]
     pub fn new(uri: &'a str) -> Self {
         Self {
             uri,
@@ -97,14 +101,17 @@ impl<'a> CloudConfig<'a> {
         }
     }
 
+    #[must_use]
     pub fn with_format(self, format: ExportFormat) -> Self {
         Self { format, ..self }
     }
 
+    #[must_use]
     pub fn with_cloud_opts(self, cloud_opts: CloudOptions) -> Self {
         Self { cloud_opts, ..self }
     }
 
+    #[must_use]
     pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
@@ -114,12 +121,12 @@ impl<'a> CloudConfig<'a> {
 // Traits
 // ================================================================================================
 
-/// Defines a common interface for all Report types (Journal, TradeStats, etc.).
+/// Defines a common interface for all Report types (Journal, `TradeStats`, etc.).
 pub trait Report {
-    /// Access the underlying DataFrame (Immutable).
+    /// Access the underlying `DataFrame` (Immutable).
     fn as_df(&self) -> &DataFrame;
 
-    /// Access the underlying DataFrame (Mutable).
+    /// Access the underlying `DataFrame` (Mutable).
     fn as_df_mut(&mut self) -> &mut DataFrame;
 }
 
@@ -289,7 +296,7 @@ where
             }?;
 
             let _ = sink_plan.collect().map_err(|e| {
-                DataError::DataFrame(format!("Streaming upload failed to '{}': {e}", uri_string))
+                DataError::DataFrame(format!("Streaming upload failed to '{uri_string}': {e}"))
             })?;
 
             Ok(())
@@ -351,7 +358,7 @@ impl From<ExportFormat> for FileExtension {
 /// Generates a base name dynamically based on the presence of grouping columns.
 ///
 /// # Logic
-/// 1. Scans the DataFrame column names.
+/// 1. Scans the `DataFrame` column names.
 /// 2. Filters for columns starting with `__` (the `GroupCol` prefix).
 /// 3. Strips the prefix to get clean names (e.g., `__symbol` -> `symbol`).
 /// 4. Joins them to form a prefix for the file.
@@ -377,7 +384,7 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
         base_name.to_string()
     } else {
         let prefix = group_keys.join("_");
-        format!("{}_{}", prefix, base_name)
+        format!("{prefix}_{base_name}")
     }
 }
 

@@ -30,9 +30,9 @@ use tonic::async_trait;
 /// Defines how a specific Config/Spec fetches its data.
 #[async_trait]
 pub trait Fetchable: QueryId + Clone + Send + Sync + Debug + 'static {
-    /// The Protobuf Response type (e.g., OhlcvSpotResponse)
+    /// The Protobuf Response type (e.g., `OhlcvSpotResponse`)
     type Response: ProtoBatch + Send;
-    /// The Protobuf Request type (e.g., OhlcvSpotRequest)
+    /// The Protobuf Request type (e.g., `OhlcvSpotRequest`)
     type Request: Send;
 
     /// How to build the request for a specific year
@@ -69,7 +69,7 @@ impl Fetchable for OhlcvSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -107,7 +107,7 @@ impl Fetchable for OhlcvFutureQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -145,7 +145,7 @@ impl Fetchable for TradesSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -182,7 +182,7 @@ impl Fetchable for TpoSpotQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(|tf| tf.to_string())
+                        .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
                     price_bin: agg.actual_price_bin_string(self.symbol)?,
                 })
@@ -197,7 +197,7 @@ impl Fetchable for TpoSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -235,7 +235,7 @@ impl Fetchable for TpoFutureQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(|tf| tf.to_string())
+                        .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
                     price_bin: agg.actual_price_bin_string(self.symbol)?,
                 })
@@ -250,7 +250,7 @@ impl Fetchable for TpoFutureQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -288,7 +288,7 @@ impl Fetchable for VolumeProfileSpotQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(|tf| tf.to_string())
+                        .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
                     price_bin: agg.actual_price_bin_string(self.symbol)?,
                 })
@@ -303,7 +303,7 @@ impl Fetchable for VolumeProfileSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default(),
                 batch_size: self.batch_size,
             }),
@@ -344,12 +344,10 @@ impl Fetchable for EconomicCalendarQuery {
                 .map_or(String::default(), |cc| cc.to_string()),
             category: self
                 .category
-                .map(|ec| EconomicCategory::from(ec) as i32)
-                .unwrap_or(0),
+                .map_or(0, |ec| EconomicCategory::from(ec) as i32),
             importance: self
                 .importance
-                .map(|ei| EconomicImportance::from(ei) as i32)
-                .unwrap_or(0),
+                .map_or(0, |ei| EconomicImportance::from(ei) as i32),
             batch_size: self.batch_size,
         })
     }

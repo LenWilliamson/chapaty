@@ -85,6 +85,7 @@ impl<T> RingBuffer<T> {
     /// assert!(buffer.is_empty());
     /// assert_eq!(buffer.capacity(), 3);
     /// ```
+    #[must_use]
     pub fn new(capacity: usize) -> Self {
         assert!(
             capacity > 0,

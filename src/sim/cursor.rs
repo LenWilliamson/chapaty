@@ -14,7 +14,7 @@ use crate::{
     sorted_vec_map::SortedVecMap,
 };
 
-/// Binds a StreamId to its physical storage container in the simulation.
+/// Binds a `StreamId` to its physical storage container in the simulation.
 ///
 /// This "Type Family" pattern allows generic components (like Cursors) to know
 /// exactly what data structure they operate on without explicit generic parameters.
@@ -184,7 +184,7 @@ where
 
                     range.end += advance_by;
                 }
-            })
+            });
     }
 
     fn rewind(&mut self) {
@@ -214,7 +214,7 @@ where
                 events[range.end..]
                     .iter()
                     .find(|e| e.opened_at() >= ts)
-                    .map(|e| e.opened_at())
+                    .map(super::super::data::event::MarketEvent::opened_at)
             })
             .min()
     }
@@ -233,7 +233,7 @@ where
                 events[range.end..]
                     .iter()
                     .find(|e| e.point_in_time() >= ts)
-                    .map(|e| e.point_in_time())
+                    .map(super::super::data::event::MarketEvent::point_in_time)
             })
             .min()
     }
@@ -244,7 +244,7 @@ where
             .zip(data.iter())
             .filter_map(|((cursor_id, range), (data_id, events))| {
                 debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
-                events.get(range.end).map(|e| e.point_in_time())
+                events.get(range.end).map(super::super::data::event::MarketEvent::point_in_time)
             })
             .min()
     }
@@ -275,13 +275,13 @@ mod test {
     // Test Helpers
     // ============================================================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
     /// Create an OHLCV event with specified open and close timestamps.
-    /// The `point_in_time` is determined by `close_timestamp` per the MarketEvent trait.
+    /// The `point_in_time` is determined by `close_timestamp` per the `MarketEvent` trait.
     fn ohlcv(open_ts: DateTime<Utc>, close_ts: DateTime<Utc>) -> Ohlcv {
         Ohlcv {
             open_timestamp: open_ts,
@@ -321,7 +321,7 @@ mod test {
         }
     }
 
-    /// Create a TradeId for testing.
+    /// Create a `TradeId` for testing.
     fn trade_id() -> TradesId {
         TradesId {
             broker: DataBroker::Binance,
@@ -330,7 +330,7 @@ mod test {
         }
     }
 
-    /// Create an EconomicEvent (news release) at the specified timestamp.
+    /// Create an `EconomicEvent` (news release) at the specified timestamp.
     fn economic_event(timestamp: DateTime<Utc>, name: &str) -> EconomicEvent {
         EconomicEvent {
             timestamp,
@@ -350,7 +350,7 @@ mod test {
         }
     }
 
-    /// Create an EconomicCalendarId for testing.
+    /// Create an `EconomicCalendarId` for testing.
     fn econ_id() -> EconomicCalendarId {
         EconomicCalendarId {
             broker: DataBroker::InvestingCom,

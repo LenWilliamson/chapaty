@@ -332,13 +332,13 @@ mod test {
     // Test Helpers
     // ============================================================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
     /// Create an OHLCV event with specified open and close timestamps.
-    /// The `point_in_time()` is determined by `close_timestamp` per the MarketEvent trait.
+    /// The `point_in_time()` is determined by `close_timestamp` per the `MarketEvent` trait.
     fn ohlcv(open_ts: DateTime<Utc>, close_ts: DateTime<Utc>) -> Ohlcv {
         Ohlcv {
             open_timestamp: open_ts,
@@ -366,7 +366,7 @@ mod test {
     }
 
     /// Create a Trade event at the specified timestamp.
-    /// For trades, `point_in_time()` returns `timestamp` per the MarketEvent trait.
+    /// For trades, `point_in_time()` returns `timestamp` per the `MarketEvent` trait.
     fn trade(timestamp: DateTime<Utc>) -> TradeEvent {
         TradeEvent {
             timestamp,
@@ -379,7 +379,7 @@ mod test {
         }
     }
 
-    /// Create a TradeId for testing.
+    /// Create a `TradeId` for testing.
     fn trade_id() -> TradesId {
         TradesId {
             broker: DataBroker::Binance,
@@ -388,7 +388,7 @@ mod test {
         }
     }
 
-    /// Create a second TradeId for multi-stream tests (ETH instead of BTC).
+    /// Create a second `TradeId` for multi-stream tests (ETH instead of BTC).
     fn trade_id_alt() -> TradesId {
         TradesId {
             broker: DataBroker::Binance,
@@ -397,7 +397,7 @@ mod test {
         }
     }
 
-    /// Build SimulationData with OHLCV data only.
+    /// Build `SimulationData` with OHLCV data only.
     fn sim_data_with_ohlcv(id: OhlcvId, events: Vec<Ohlcv>) -> SimulationData {
         let mut ohlcv_map = SortedVecMap::new();
         ohlcv_map.insert(id, events.into_boxed_slice());
@@ -409,7 +409,7 @@ mod test {
             .unwrap()
     }
 
-    /// Build SimulationData with both OHLCV and Trade data for multi-stream tests.
+    /// Build `SimulationData` with both OHLCV and Trade data for multi-stream tests.
     fn sim_data_multi_stream(
         oid: OhlcvId,
         ohlcv_events: Vec<Ohlcv>,
@@ -431,7 +431,7 @@ mod test {
             .unwrap()
     }
 
-    /// Build an Episode using EpisodeBuilder.
+    /// Build an Episode using `EpisodeBuilder`.
     fn episode(start: DateTime<Utc>, length: EpisodeLength) -> Episode {
         EpisodeBuilder::new()
             .with_start(start)

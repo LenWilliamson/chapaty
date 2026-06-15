@@ -23,6 +23,7 @@ pub struct ActionSpace<'env> {
 }
 
 impl<'env> ActionSpace<'env> {
+    #[must_use]
     pub fn new(states: &'env States, view: MarketView<'env>) -> Self {
         Self {
             states,

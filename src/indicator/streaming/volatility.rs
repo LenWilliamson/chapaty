@@ -60,7 +60,7 @@ pub struct StreamingAtr {
 impl Default for StreamingAtr {
     fn default() -> Self {
         let window_size = 14;
-        let alpha = 1.0 / (window_size as f64);
+        let alpha = 1.0 / f64::from(window_size);
         let smoother = AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize));
         Self {
             window_size,
@@ -71,11 +71,12 @@ impl Default for StreamingAtr {
 }
 
 impl StreamingAtr {
+    #[must_use]
     pub fn new(cfg: AtrConfig) -> Self {
         let AtrConfig { window, smoothing } = cfg;
         let smoother = match smoothing {
             AtrSmoothingType::Wilders => {
-                let alpha = 1.0 / (window as f64);
+                let alpha = 1.0 / f64::from(window);
                 AtrSmoother::Wilders(StreamingEwm::new(alpha, window as usize))
             }
             AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
@@ -191,6 +192,7 @@ pub struct StreamingOhlcvVwap {
 }
 
 impl StreamingOhlcvVwap {
+    #[must_use]
     pub fn new(source: AggregatedPrice) -> Self {
         Self {
             source,
@@ -199,6 +201,7 @@ impl StreamingOhlcvVwap {
     }
 
     /// Current VWAP, or `None` before any positive-volume input has arrived.
+    #[must_use]
     pub fn value(&self) -> Option<f64> {
         self.acc.value()
     }
@@ -251,11 +254,13 @@ pub struct StreamingTradesVwap {
 }
 
 impl StreamingTradesVwap {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Current VWAP, or `None` before any positive-volume input has arrived.
+    #[must_use]
     pub fn value(&self) -> Option<f64> {
         self.acc.value()
     }
@@ -437,7 +442,7 @@ mod tests {
         assert_eq!(vwap_hlc3.update(candle), Some((20. + 10. + 18.) / 3.0)); // 16.0
 
         let mut vwap_hl2 = StreamingOhlcvVwap::new(AggregatedPrice::Hl2);
-        assert_eq!(vwap_hl2.update(candle), Some((20. + 10.) / 2.0)); // 15.0
+        assert_eq!(vwap_hl2.update(candle), Some(f64::midpoint(20., 10.))); // 15.0
 
         let mut vwap_ohlc4 = StreamingOhlcvVwap::new(AggregatedPrice::Ohlc4);
         assert_eq!(

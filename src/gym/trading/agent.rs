@@ -33,6 +33,6 @@ impl Agent for Box<dyn Agent> {
     }
 
     fn reset(&mut self) {
-        (**self).reset()
+        (**self).reset();
     }
 }

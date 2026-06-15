@@ -41,9 +41,11 @@ pub struct Pending {
 }
 
 impl Pending {
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
+    #[must_use]
     pub fn limit_price(&self) -> Price {
         self.limit_price
     }
@@ -61,22 +63,27 @@ pub struct Active {
 }
 
 impl Active {
+    #[must_use]
     pub fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
+    #[must_use]
     pub fn entry_price(&self) -> Price {
         self.entry_price
     }
 
+    #[must_use]
     pub fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
 
+    #[must_use]
     pub fn current_price(&self) -> Price {
         self.current_price
     }
 
+    #[must_use]
     pub fn unrealized_pnl(&self) -> f64 {
         self.unrealized_pnl
     }
@@ -95,26 +102,32 @@ pub struct Closed {
 }
 
 impl Closed {
+    #[must_use]
     pub fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
+    #[must_use]
     pub fn entry_price(&self) -> Price {
         self.entry_price
     }
 
+    #[must_use]
     pub fn exit_ts(&self) -> DateTime<Utc> {
         self.exit_ts
     }
 
+    #[must_use]
     pub fn exit_price(&self) -> Price {
         self.exit_price
     }
 
+    #[must_use]
     pub fn termination_reason(&self) -> TerminationReason {
         self.termination_reason
     }
 
+    #[must_use]
     pub fn realized_pnl(&self) -> f64 {
         self.realized_pnl
     }
@@ -130,18 +143,22 @@ pub struct Canceled {
 }
 
 impl Canceled {
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
 
+    #[must_use]
     pub fn canceled_at(&self) -> DateTime<Utc> {
         self.canceled_at
     }
 
+    #[must_use]
     pub fn termination_reason(&self) -> TerminationReason {
         TerminationReason::Canceled
     }
 
+    #[must_use]
     pub fn limit_price(&self) -> Price {
         self.limit_price
     }
@@ -292,6 +309,7 @@ impl TryFrom<State> for Trade<Canceled> {
 }
 
 impl State {
+    #[must_use]
     pub fn trade_id(&self) -> TradeId {
         match self {
             State::Pending(t) => t.uid,
@@ -301,6 +319,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn agent_id(&self) -> &AgentIdentifier {
         match self {
             State::Pending(t) => &t.agent_id,
@@ -310,6 +329,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn trade_type(&self) -> &TradeType {
         match self {
             State::Pending(t) => &t.trade_type,
@@ -319,6 +339,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn quantity(&self) -> Quantity {
         match self {
             State::Pending(t) => t.quantity,
@@ -328,6 +349,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn stop_loss(&self) -> Option<Price> {
         match self {
             State::Pending(t) => t.stop_loss,
@@ -337,6 +359,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn take_profit(&self) -> Option<Price> {
         match self {
             State::Pending(t) => t.take_profit,
@@ -346,6 +369,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn anticipated_entry_price(&self) -> Price {
         match self {
             State::Pending(t) => t.state.limit_price,
@@ -356,6 +380,7 @@ impl State {
     }
 
     /// Calculates the expected loss in Ticks based on the Stop Loss.
+    #[must_use]
     pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
         let diff = self.trade_type().price_diff(ref_price, sl);
@@ -364,6 +389,7 @@ impl State {
     }
 
     /// Calculates the expected profit in Ticks based on the Take Profit.
+    #[must_use]
     pub fn expected_profit_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, tp) = self.get_reward_params()?;
         let diff = self.trade_type().price_diff(ref_price, tp);
@@ -371,6 +397,7 @@ impl State {
     }
 
     /// Calculates the expected loss in USD (Absolute Value) based on Stop Loss.
+    #[must_use]
     pub fn expected_loss_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, sl) = self.get_risk_params()?;
         let qty = self.quantity(); // Uses the helper we defined earlier
@@ -381,6 +408,7 @@ impl State {
     }
 
     /// Calculates the expected profit in USD (Absolute Value) based on Take Profit.
+    #[must_use]
     pub fn expected_profit_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, tp) = self.get_reward_params()?;
         let qty = self.quantity();
@@ -390,6 +418,7 @@ impl State {
     }
 
     /// Computes the Risk-Reward Ratio based on SL/TP settings.
+    #[must_use]
     pub fn risk_reward_ratio(&self, symbol: Symbol) -> Option<RiskRewardRatio> {
         // We need both parameters to exist to calculate a ratio
         let risk = self.expected_loss_in_usd(symbol)?;
@@ -398,7 +427,8 @@ impl State {
         Some(RiskRewardRatio::new(risk, reward))
     }
 
-    /// Returns the "Clean" USD PnL directly from the storage fields.
+    /// Returns the "Clean" USD `PnL` directly from the storage fields.
+    #[must_use]
     pub fn pnl_usd(&self) -> Option<f64> {
         match self {
             // Already calculated via tick-math during `update`
@@ -416,6 +446,7 @@ impl State {
     /// We re-calculate this on the fly because `Active` state stores USD, not Ticks.
     /// However, because `entry` and `current/exit` are **Guaranteed Clean** (snapped to grid),
     /// this calculation is strictly deterministic and free of artifacts.
+    #[must_use]
     pub fn pnl_ticks(&self, symbol: Symbol) -> Option<Tick> {
         match self {
             State::Active(t) => {
@@ -437,6 +468,7 @@ impl State {
     }
 
     /// Returns the timestamp when the trade was effectively entered (Active/Closed only).
+    #[must_use]
     pub fn entry_ts(&self) -> Option<DateTime<Utc>> {
         match self {
             State::Active(t) => Some(t.state.entry_ts),
@@ -447,6 +479,7 @@ impl State {
     }
 
     /// Returns the timestamp when the trade ended (Closed/Canceled only).
+    #[must_use]
     pub fn exit_ts(&self) -> Option<DateTime<Utc>> {
         match self {
             State::Closed(t) => Some(t.state.exit_ts),
@@ -456,6 +489,7 @@ impl State {
     }
 
     /// Returns the price at which the trade was closed.
+    #[must_use]
     pub fn exit_price(&self) -> Option<Price> {
         match self {
             State::Closed(t) => Some(t.state.exit_price),
@@ -465,6 +499,7 @@ impl State {
     }
 
     /// Returns the reason why the trade ended.
+    #[must_use]
     pub fn exit_reason(&self) -> Option<TerminationReason> {
         match self {
             State::Closed(t) => Some(t.state.termination_reason()),
@@ -474,22 +509,27 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn kind(&self) -> StateKind {
         self.into()
     }
 
+    #[must_use]
     pub fn is_pending(&self) -> bool {
         matches!(self, State::Pending(_))
     }
 
+    #[must_use]
     pub fn is_active(&self) -> bool {
         matches!(self, State::Active(_))
     }
 
+    #[must_use]
     pub fn is_closed(&self) -> bool {
         matches!(self, State::Closed(_))
     }
 
+    #[must_use]
     pub fn is_canceled(&self) -> bool {
         matches!(self, State::Canceled(_))
     }
@@ -552,7 +592,7 @@ pub struct States {
     /// We never iterate this during updates.
     archive: SortedVecMap<MarketId, Vec<State>>,
 
-    /// Secondary Index: TradeId -> idx
+    /// Secondary Index: `TradeId` -> idx
     /// Allows O(1) lookup of any trade in live.
     live_index: HashMap<TradeId, (MarketId, usize)>,
 
@@ -584,11 +624,13 @@ impl States {
 
     /// Returns `true` if there are NO active or pending trades currently in the system.
     /// This checks the Hot Path only (O(M) where M is number of markets).
+    #[must_use]
     pub fn all_closed(&self) -> bool {
         // If the map is empty, or all vectors within it are empty
         self.live.iter().all(|(_, list)| list.is_empty())
     }
 
+    #[must_use]
     pub fn pnl(&self) -> f64 {
         self.cumulative_pnl
     }
@@ -608,7 +650,7 @@ impl States {
         self.live.iter().flat_map(|(_, list)| list.iter())
     }
 
-    /// Iterates Active/Pending trades tupled with their MarketId.
+    /// Iterates Active/Pending trades tupled with their `MarketId`.
     pub fn iter_live_with_market(&self) -> impl Iterator<Item = (MarketId, &State)> {
         self.live
             .iter()
@@ -636,15 +678,17 @@ impl States {
     // ========================================================================
 
     /// Returns the active vector for a specific market if it exists, else empty slice.
+    #[must_use]
     pub fn get_live_trades(&self, market: &MarketId) -> &[State] {
         self.live
             .get(market)
-            .map(|v| v.as_slice())
+            .map(std::vec::Vec::as_slice)
             .unwrap_or_default()
     }
 
     /// Retrieves a reference to a LIVE trade.
     /// Returns None if the trade is closed/canceled or doesn't exist.
+    #[must_use]
     pub fn get_by_id(&self, uid: &TradeId) -> Option<&State> {
         let (m_id, idx) = self.live_index.get(uid)?;
         self.live.get(m_id)?.get(*idx)
@@ -652,12 +696,14 @@ impl States {
 
     /// Checks if a specific agent has any **Active** (not just pending) positions.
     /// Filters the Hot Path (fast).
+    #[must_use]
     pub fn any_active_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
         self.iter_live()
             .any(|s| s.is_active() && s.agent_id() == id)
     }
 
     /// Finds the first active trade for a specific agent.
+    #[must_use]
     pub fn find_active_trade_for_agent(&self, id: &AgentIdentifier) -> Option<(MarketId, &State)> {
         self.iter_live_with_market()
             .find(|(_, s)| s.is_active() && s.agent_id() == id)
@@ -806,7 +852,7 @@ impl States {
             }
             // Modifying a Closed/Canceled trade is generally invalid
             other => {
-                Err(AgentError::InvalidInput(format!("Cannot modify state {:?}", other)).into())
+                Err(AgentError::InvalidInput(format!("Cannot modify state {other:?}")).into())
             }
         })
     }
@@ -873,7 +919,7 @@ impl States {
         })
     }
 
-    /// Returns an iterator over ALL states (Live + Archived) coupled with their MarketId.
+    /// Returns an iterator over ALL states (Live + Archived) coupled with their `MarketId`.
     /// Useful for reporting, logging, or serialization of the entire state.
     pub(super) fn flattened(&self) -> impl Iterator<Item = (&MarketId, &State)> {
         let active_iter = self
@@ -891,7 +937,7 @@ impl States {
 }
 
 impl States {
-    /// Internal helper to register a PnL change.
+    /// Internal helper to register a `PnL` change.
     /// This updates BOTH the transient signal and the persistent score.
     fn record_pnl_change(&mut self, delta: f64) {
         self.step_reward += delta;
@@ -920,7 +966,7 @@ impl States {
         let mut idx = 0;
 
         // We re-evaluate len() every loop because it shrinks when trades close.
-        while idx < self.live.get(&m_id).map(|v| v.len()).unwrap_or(0) {
+        while idx < self.live.get(&m_id).map_or(0, std::vec::Vec::len) {
             // 1. Perform the transactional update
             let update_result = self.update_single_at_idx(m_id, idx, ctx);
 
@@ -1125,7 +1171,7 @@ impl<'a> StateGuard<'a> {
     }
 }
 
-impl<'a> Drop for StateGuard<'a> {
+impl Drop for StateGuard<'_> {
     fn drop(&mut self) {
         // If we drop without commit, we do NOTHING.
         // The original state is still sitting safely in the vector.
@@ -1207,7 +1253,7 @@ mod tests {
 
         // 2. Backward Check: Live count must match index count
         // (Archive is not indexed)
-        let total_live = states.live.values().map(|v| v.len()).sum::<usize>();
+        let total_live = states.live.values().map(std::vec::Vec::len).sum::<usize>();
 
         assert_eq!(
             counted_states, total_live,
@@ -1308,7 +1354,7 @@ mod tests {
         (states, m_id)
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
+    /// A lightweight wrapper around the heavy `SimulationData`.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -1332,7 +1378,7 @@ mod tests {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -1701,7 +1747,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {} // Expected
-            e => panic!("Expected IndexOutOfBounds, got {:?}", e),
+            e => panic!("Expected IndexOutOfBounds, got {e:?}"),
         }
         check_invariants(&states);
     }

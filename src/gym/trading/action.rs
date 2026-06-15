@@ -80,6 +80,7 @@ impl Command for Action {
 
 impl Action {
     /// Helper to identify "Open" intent for filtering/sorting optimization.
+    #[must_use]
     pub fn is_open(&self) -> bool {
         matches!(self, Action::Open(_))
     }
@@ -91,6 +92,7 @@ impl Action {
     /// 2. Close (1) - Exit active risk and free up margin.
     /// 3. Modify (2) - Adjust existing trades.
     /// 4. Open (3) - Enter new positions last (using freed resources).
+    #[must_use]
     pub fn execution_priority(&self) -> u8 {
         match self {
             Action::Cancel(_) => 0,
@@ -100,12 +102,14 @@ impl Action {
         }
     }
 
+    #[must_use]
     pub fn kind(&self) -> ActionKind {
         self.into()
     }
 
     /// Extracts the Trade ID associated with this action.
     /// Useful for logging and routing without matching on the specific variant.
+    #[must_use]
     pub fn trade_id(&self) -> TradeId {
         match self {
             Action::Open(cmd) => cmd.trade_id,
@@ -115,6 +119,7 @@ impl Action {
         }
     }
 
+    #[must_use]
     pub fn as_command(&self) -> &dyn Command {
         match self {
             Action::Open(cmd) => cmd,
@@ -125,6 +130,7 @@ impl Action {
     }
 
     /// Extracts the Agent ID associated with this action.
+    #[must_use]
     pub fn agent_id(&self) -> AgentIdentifier {
         match self {
             Action::Open(cmd) => cmd.agent_id.clone(),
@@ -217,8 +223,7 @@ impl Command for MarketCloseCmd {
             && qty <= Quantity(0.0)
         {
             return Err(AgentError::InvalidInput(format!(
-                "Close quantity must be positive. Got: {:?}",
-                qty
+                "Close quantity must be positive. Got: {qty:?}"
             ))
             .into());
         }
@@ -256,10 +261,12 @@ impl Default for Actions {
 
 impl Actions {
     /// Returns an [`Actions`] instance that represents **no operations**.
+    #[must_use]
     pub fn no_op() -> Self {
         Actions(SortedVecMap::new())
     }
 
+    #[must_use]
     pub fn new() -> Self {
         Self::no_op()
     }
@@ -268,16 +275,17 @@ impl Actions {
         self.0.entry(spec).or_default().push(action);
     }
 
+    #[must_use]
     pub fn with_action(mut self, spec: MarketId, action: Action) -> Self {
         self.add(spec, action);
         self
     }
 
+    #[must_use]
     pub fn any_open_action(&self, spec: &MarketId) -> bool {
         self.0
             .get(spec)
-            .map(|actions| actions.iter().any(|action| action.is_open()))
-            .unwrap_or(false)
+            .is_some_and(|actions| actions.iter().any(Action::is_open))
     }
 
     /// Consumes the batch and returns an iterator yielding actions sorted by execution priority.

@@ -35,7 +35,7 @@ pub trait StreamView<'env> {
     fn get_slice(&self, id: &Self::Id) -> Option<&'env [Self::Event]>;
 
     fn len(&self, id: &Self::Id) -> usize {
-        self.get_slice(id).map_or(0, |s| s.len())
+        self.get_slice(id).map_or(0, <[Self::Event]>::len)
     }
 
     fn last_event(&self, id: &Self::Id) -> Option<&'env Self::Event> {
@@ -113,7 +113,7 @@ impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     }
 }
 
-impl<'env, S> PriceCheckableView for View<'env, S>
+impl<S> PriceCheckableView for View<'_, S>
 where
     S: StreamId + SymbolProvider,
     S::Event: PriceReachable,
@@ -143,7 +143,7 @@ where
     }
 }
 
-impl<'env, S> ClosePriceView for View<'env, S>
+impl<S> ClosePriceView for View<'_, S>
 where
     S: StreamId + SymbolProvider,
     S::Event: ClosePriceProvider,
@@ -184,59 +184,77 @@ pub struct MarketView<'env> {
 }
 
 impl<'env> MarketView<'env> {
+    #[must_use]
     pub fn ohlcv(&self) -> &OhlcvView<'env> {
         &self.ohlcv
     }
+    #[must_use]
     pub fn trades(&self) -> &TradeView<'env> {
         &self.trades
     }
+    #[must_use]
     pub fn economic_news(&self) -> &EconomicCalendarView<'env> {
         &self.economic_calendar
     }
+    #[must_use]
     pub fn volume_profile(&self) -> &VolumeProfileView<'env> {
         &self.volume_profile
     }
+    #[must_use]
     pub fn tpo(&self) -> &TpoView<'env> {
         &self.tpo
     }
+    #[must_use]
     pub fn ema(&self) -> &EmaView<'env> {
         &self.ema
     }
+    #[must_use]
     pub fn sma(&self) -> &SmaView<'env> {
         &self.sma
     }
+    #[must_use]
     pub fn rsi(&self) -> &RsiView<'env> {
         &self.rsi
     }
+    #[must_use]
     pub fn trades_vwap(&self) -> &TradesVwapView<'env> {
         &self.trades_vwap
     }
+    #[must_use]
     pub fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
         &self.ohlcv_vwap
     }
+    #[must_use]
     pub fn trades_session(&self) -> &TradesSessionView<'env> {
         &self.trades_session
     }
+    #[must_use]
     pub fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
         &self.ohlcv_session
     }
+    #[must_use]
     pub fn atr(&self) -> &AtrView<'env> {
         &self.atr
     }
+    #[must_use]
     pub fn roc(&self) -> &RocView<'env> {
         &self.roc
     }
+    #[must_use]
     pub fn current_timestamp(&self) -> DateTime<Utc> {
         self.current_ts
     }
+    #[must_use]
     pub fn previous_timestamp(&self) -> DateTime<Utc> {
         self.previous_ts.unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
+    #[must_use]
     pub fn market_ids(&self) -> Arc<[MarketId]> {
         self.market_ids.clone()
     }
 
     /// Finds the candle active at the specific timestamp (Search: Newest to Oldest).
+    #[must_use]
     pub fn find_candle(&self, id: &OhlcvId, ts: DateTime<Utc>) -> Option<Ohlcv> {
         self.ohlcv
             .rev_iter(id)?
@@ -245,6 +263,7 @@ impl<'env> MarketView<'env> {
     }
 
     /// Returns `true` if `price` was reached by any *new* event since the last step.
+    #[must_use]
     pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeType) -> bool {
         let prev = self.previous_timestamp();
         self.all_price_checkable_views()
@@ -263,8 +282,7 @@ impl<'env> MarketView<'env> {
 
         best_price.ok_or_else(|| {
             ChapatyError::Data(DataError::KeyNotFound(format!(
-                "No price events found for symbol {:?}",
-                target_symbol
+                "No price events found for symbol {target_symbol:?}"
             )))
         })
     }
@@ -294,7 +312,7 @@ impl<'env> MarketView<'env> {
     }
 }
 
-impl<'env> MarketView<'env> {
+impl MarketView<'_> {
     /// Returns a stack-allocated array of all views that support price checking.
     fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 7] {
         [
@@ -362,7 +380,7 @@ mod test {
     // Test Helpers
     // ============================================================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -396,7 +414,7 @@ mod test {
         ohlcv(open_ts, close_ts, 100.0, 110.0, 90.0, 105.0)
     }
 
-    /// Create an OhlcvId for testing.
+    /// Create an `OhlcvId` for testing.
     fn ohlcv_id(symbol: SpotPair, period: Period) -> OhlcvId {
         OhlcvId {
             broker: DataBroker::Binance,
@@ -406,12 +424,12 @@ mod test {
         }
     }
 
-    /// Helper to create a MarketView with specified OHLCV data and time state.
-    fn market_view_with_ohlcv<'a>(
-        ohlcv_data: SortedVecMap<OhlcvId, &'a [Ohlcv]>,
+    /// Helper to create a `MarketView` with specified OHLCV data and time state.
+    fn market_view_with_ohlcv(
+        ohlcv_data: SortedVecMap<OhlcvId, &[Ohlcv]>,
         previous_ts: Option<DateTime<Utc>>,
         current_ts: DateTime<Utc>,
-    ) -> MarketView<'a> {
+    ) -> MarketView<'_> {
         MarketView {
             ohlcv: OhlcvView { data: ohlcv_data },
             trades: TradeView {
