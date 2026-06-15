@@ -384,7 +384,7 @@ impl SimulationData {
                     .map_err(|e| IoError::WriteFailed(e.to_string()).into()),
             };
 
-            res.and_then(|_| {
+            res.and_then(|()| {
                 writer
                     .flush()
                     .map_err(|e| IoError::WriteFailed(e.to_string()).into())

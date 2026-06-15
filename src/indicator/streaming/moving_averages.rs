@@ -89,6 +89,10 @@ impl StreamingIndicator for StreamingSma {
     type Input = f64;
     type Output<'a> = Option<f64>;
 
+    #[expect(
+        clippy::expect_used,
+        reason = "the ring-buffer length is bounded by the window size, which always fits in u32"
+    )]
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
         self.buffer.push_back(value);
         self.sum += value;
@@ -132,7 +136,7 @@ impl StreamingEma {
     pub fn new(window_size: EmaWindow) -> Self {
         let size = window_size.0 as usize;
         // Standard EMA Alpha = 2 / (Span + 1)
-        let size_u32 = u32::try_from(size).expect("EMA window size exceeds u32 range");
+        let size_u32 = u32::from(window_size.0);
         let alpha = 2.0 / (f64::from(size_u32) + 1.0);
         Self {
             inner: StreamingEwm::new(alpha, size),

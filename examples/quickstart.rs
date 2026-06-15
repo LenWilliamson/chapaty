@@ -126,6 +126,7 @@ async fn environment() -> Result<Environment> {
 // JSON to stdout in containers, or to a timestamped file under the OS state dir locally.
 // ================================================================================================
 
+#[expect(clippy::expect_used, reason = "the example assumes a standard environment with a discoverable home directory")]
 fn init_tracing() -> Result<Option<WorkerGuard>> {
     let app_name = "chapaty";
 

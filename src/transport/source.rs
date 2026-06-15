@@ -222,6 +222,7 @@ impl ApiKeyInterceptor {
     /// # Panics
     /// Panics if the provided API key cannot be parsed into ASCII metadata.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "a non-token API key is a configuration error; failing fast here surfaces it immediately at setup")]
     pub fn new(api_key: Option<ApiKey>) -> Self {
         let metadata_value = api_key.map(|key| {
             key.0

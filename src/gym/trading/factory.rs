@@ -2056,7 +2056,7 @@ mod test {
     }
 
     #[test]
-    #[allow(
+    #[expect(
         clippy::print_stdout,
         reason = "table-driven test prints the active case name so a failing subcase is identifiable"
     )]
@@ -2160,7 +2160,7 @@ mod test {
     }
 
     #[test]
-    #[allow(
+    #[expect(
         clippy::print_stdout,
         reason = "table-driven test prints the active case name so a failing subcase is identifiable"
     )]
