@@ -523,6 +523,8 @@ fn self_hosted_source() -> DataSource {
 }
 
 impl From<EnvPreset> for EnvConfig {
+    #[allow(clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     fn from(preset: EnvPreset) -> Self {
         let source = self_hosted_source();
         match preset {

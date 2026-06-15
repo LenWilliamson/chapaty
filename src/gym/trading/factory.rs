@@ -94,9 +94,9 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
 /// # Errors
 /// Returns an error if cache load fails and fallback build also fails.
 #[tracing::instrument(skip(env_cfg, io_cfg))]
-pub async fn load<'a>(
+pub async fn load(
     env_cfg: impl Into<EnvConfig>,
-    io_cfg: &IoConfig<'a>,
+    io_cfg: &IoConfig<'_>,
 ) -> ChapatyResult<Environment> {
     let env_cfg: EnvConfig = env_cfg.into();
 
@@ -185,6 +185,7 @@ impl BuildCtx {
 
 impl BuildCtx {
     #[tracing::instrument]
+    #[allow(clippy::large_futures)]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
         Ok(next_async_fn(|ctx| {
@@ -221,6 +222,7 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
+    #[allow(clippy::too_many_lines)]
     fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
         tracing::info!("Computing derived batch technical ohlcv indicators");
 
@@ -568,6 +570,7 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
+    #[allow(clippy::too_many_lines)]
     fn finish<'a>(&mut self) -> NextState<'a, Self> {
         info!("Starting environment finalization");
 
@@ -844,10 +847,9 @@ fn apply_overlay<T>(
     policy: EconomicCalendarPolicy,
 ) {
     for (_id, (_schema, lf)) in map.iter_mut() {
-        let new_lf =
+        *lf =
             lf.clone()
                 .join_with_economic_calendar_overlay(news_lf.clone(), sim_timeframe, policy);
-        *lf = new_lf;
     }
 }
 
@@ -1108,6 +1110,7 @@ fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
+#[allow(clippy::too_many_lines)]
 fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
@@ -1333,6 +1336,7 @@ fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[T
     Ok(profiles.into_boxed_slice())
 }
 
+#[allow(clippy::too_many_lines)]
 fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
@@ -1684,7 +1688,6 @@ fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
     Ok(events.into_boxed_slice())
 }
 
-#[must_use]
 fn extract_price_timeseries<T, F>(df: &DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
 where
     F: Fn(DateTime<Utc>, f64) -> T,
@@ -1713,13 +1716,11 @@ where
     Ok(events.into_boxed_slice())
 }
 
-#[must_use]
 fn parse_session_date(date_opt: Option<i64>) -> ChapatyResult<SessionDate> {
     let dt = micros_to_utc(date_opt, CanonicalCol::Date)?;
     Ok(SessionDate(dt.date_naive()))
 }
 
-#[must_use]
 fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTime<Utc>> {
     let ts_val = ts_opt.ok_or_else(|| DataError::DataFrame(format!("Missing {col:?}")))?;
     DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
@@ -2093,15 +2094,15 @@ mod test {
             .unwrap()
             .unique(None, UniqueKeepStrategy::First);
 
-            // 3. Apply Overlay
-            let result_lf = market_lf.join_with_economic_calendar_overlay(
-                master_calendar,
-                case.episode_length,
-                case.policy,
-            );
-
-            // 4. Assert
-            let result_df = result_lf.collect().unwrap();
+            // 3. Apply Overlay & Assert
+            let result_df = market_lf
+                .join_with_economic_calendar_overlay(
+                    master_calendar,
+                    case.episode_length,
+                    case.policy,
+                )
+                .collect()
+                .unwrap();
 
             let expected_file = fixtures_path().join("expected").join(case.expected_file);
             let expected_df = LazyCsvReader::new(PlRefPath::new(
@@ -2139,13 +2140,14 @@ mod test {
         let empty_calendar =
             load_calendar_fixture("investingcom-ez-inflation.csv").filter(lit(false));
 
-        let result_lf = market_lf.join_with_economic_calendar_overlay(
-            empty_calendar,
-            EpisodeLength::Day,
-            EconomicCalendarPolicy::OnlyWithEvents,
-        );
-
-        let result_df = result_lf.collect().unwrap();
+        let result_df = market_lf
+            .join_with_economic_calendar_overlay(
+                empty_calendar,
+                EpisodeLength::Day,
+                EconomicCalendarPolicy::OnlyWithEvents,
+            )
+            .collect()
+            .unwrap();
 
         assert_eq!(
             result_df.height(),
@@ -2604,6 +2606,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn test_extract_economic() {
         let df = df!(
             CanonicalCol::PointInTime.as_str()            => &[

@@ -212,9 +212,9 @@ fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> LazyFrame {
 fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     match window {
         LookbackWindow::Bars(n) => {
-            let reference_close = col(CanonicalCol::Close).shift(lit(n as u32));
+            let reference_close = col(CanonicalCol::Close).shift(lit(n as u64));
             let reference_time = col(CanonicalCol::PointInTime)
-                .shift(lit(n as u32))
+                .shift(lit(n as u64))
                 .alias(CanonicalCol::OpenTimestamp);
 
             Ok(lf
@@ -294,10 +294,7 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> LazyFrame {
 
     let session_date_col = col(CanonicalCol::PointInTime).session_date(window);
 
-    
-
-    lf
-        .with_column(session_date_col.alias(CanonicalCol::Date))
+    lf.with_column(session_date_col.alias(CanonicalCol::Date))
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
         .agg([
@@ -406,6 +403,7 @@ mod tests {
     /// do NOT guarantee mathematical correctness against an external standard
     /// (like TA-Lib or `TradingView`).
     #[test]
+    #[allow(clippy::similar_names)]
     fn test_indicators_regression_consistency() {
         let test_cases = vec![
             IndicatorTestCase {

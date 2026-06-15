@@ -470,7 +470,7 @@ impl TryDrain for JoinSet<ChapatyResult<()>> {
         while let Some(result) = self.join_next().await {
             match result {
                 // Happy Path: Task succeeded
-                Ok(Ok(())) => continue,
+                Ok(Ok(())) => {}
 
                 // Case A: Application Error (Logic failed)
                 Ok(Err(e)) => {

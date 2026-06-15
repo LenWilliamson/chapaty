@@ -10,7 +10,7 @@ use crate::{
         },
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
-    gym::trading::types::TradeType,
+    gym::trading::types::TradeKind,
     indicator::batch::event::{
         AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
         TradesVwapId,
@@ -72,7 +72,7 @@ pub trait PriceCheckableView {
         &self,
         target_symbol: Symbol,
         price: Price,
-        direction: TradeType,
+        direction: TradeKind,
         since_ts: DateTime<Utc>,
     ) -> bool;
 }
@@ -122,7 +122,7 @@ where
         &self,
         target_symbol: Symbol,
         price: Price,
-        direction: TradeType,
+        direction: TradeKind,
         since_ts: DateTime<Utc>,
     ) -> bool {
         // Linear scan of all streams in this view is cheap (M < 100).
@@ -264,7 +264,7 @@ impl<'env> MarketView<'env> {
 
     /// Returns `true` if `price` was reached by any *new* event since the last step.
     #[must_use]
-    pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeType) -> bool {
+    pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
         let prev = self.previous_timestamp();
         self.all_price_checkable_views()
             .into_iter()
@@ -522,23 +522,23 @@ mod test {
         );
 
         assert!(
-            market_view.reached_price(Price(110.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(110.0), symbol, TradeKind::Long),
             "High (110.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(90.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(90.0), symbol, TradeKind::Long),
             "Low (90.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(100.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(100.0), symbol, TradeKind::Long),
             "Price in range (100.0) should be reached"
         );
         assert!(
-            !market_view.reached_price(Price(120.0), symbol, TradeType::Long),
+            !market_view.reached_price(Price(120.0), symbol, TradeKind::Long),
             "Price above high (120.0) should NOT be reached"
         );
         assert!(
-            !market_view.reached_price(Price(80.0), symbol, TradeType::Long),
+            !market_view.reached_price(Price(80.0), symbol, TradeKind::Long),
             "Price below low (80.0) should NOT be reached"
         );
     }
@@ -584,11 +584,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(150.0), symbol, TradeType::Long),
+            !market_view.reached_price(Price(150.0), symbol, TradeKind::Long),
             "Price 150 is in OLD candle (<=previous_ts), should be IGNORED"
         );
         assert!(
-            market_view.reached_price(Price(115.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(115.0), symbol, TradeKind::Long),
             "Price 115 is in NEW candle, should be reached"
         );
     }
@@ -654,11 +654,11 @@ mod test {
 
         // Both candles are "new" (point_in_time > previous_ts), so both should be checked
         assert!(
-            market_view.reached_price(Price(500.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(500.0), symbol, TradeKind::Long),
             "3m candle (new) contains 500, should be reached"
         );
         assert!(
-            market_view.reached_price(Price(200.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(200.0), symbol, TradeKind::Long),
             "5m candle (new) contains 200, should be reached"
         );
     }
@@ -706,11 +706,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(111.0), symbol, TradeType::Long),
+            !market_view.reached_price(Price(111.0), symbol, TradeKind::Long),
             "Price 111 is in candle at EXACTLY previous_ts, should be EXCLUDED (not > since_ts)"
         );
         assert!(
-            market_view.reached_price(Price(222.0), symbol, TradeType::Long),
+            market_view.reached_price(Price(222.0), symbol, TradeKind::Long),
             "Price 222 is in candle 1 second after previous_ts, should be INCLUDED"
         );
     }

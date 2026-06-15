@@ -4,7 +4,7 @@ use crate::{
         event::MarketId,
     },
     error::{AgentError, ChapatyResult},
-    gym::{AgentIdentifier, trading::types::TradeType},
+    gym::{AgentIdentifier, trading::types::TradeKind},
     sorted_vec_map::SortedVecMap,
 };
 use serde::{Deserialize, Serialize};
@@ -154,7 +154,7 @@ pub struct OpenCmd {
     pub agent_id: AgentIdentifier,
     /// The unique ID assigned by the agent for this trade.
     pub trade_id: TradeId,
-    pub trade_type: TradeType,
+    pub trade_type: TradeKind,
     pub quantity: Quantity,
 
     // Optional Parameters

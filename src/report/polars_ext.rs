@@ -97,6 +97,7 @@ impl DataFrameExt for DataFrame {
 }
 
 pub trait LazyFrameExt {
+    #[must_use]
     fn with_human_durations(self, schema: SchemaRef) -> Self;
 }
 

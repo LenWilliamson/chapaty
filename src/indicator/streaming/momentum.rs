@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use crate::indicator::{config::LookbackWindow, streaming::StreamingIndicator};
+use crate::{
+    error::{ChapatyResult, DataError},
+    indicator::{config::LookbackWindow, streaming::StreamingIndicator},
+};
 
 /// The required input for time-aware or bar-aware lookback indicators.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -26,19 +29,21 @@ struct HistoricalBuffer {
 }
 
 impl HistoricalBuffer {
-    fn new(window: LookbackWindow) -> Self {
+    fn new(window: LookbackWindow) -> ChapatyResult<Self> {
         // Adding +2 prevents reallocation because we push BEFORE we pop in the update loop.
         let capacity = match window {
             LookbackWindow::Bars(n) => n + 2,
             // Convert time window to capacity in minutes, rounded up to nearest minute.
             // Worst case for minute based OHLCV data.
-            LookbackWindow::Time(d) => ((d.num_seconds() / 60) + 1 + 2) as usize,
+            LookbackWindow::Time(d) => {
+                usize::try_from((d.num_seconds() / 60) + 1 + 2).map_err(DataError::from)?
+            }
         };
 
-        Self {
+        Ok(Self {
             window,
             buffer: VecDeque::with_capacity(capacity),
-        }
+        })
     }
 
     /// Pushes the new value into the buffer, drops stale values, and returns the reference value (Input_{current - n}).
@@ -104,10 +109,10 @@ pub struct StreamingRateOfChange {
 
 impl StreamingRateOfChange {
     #[must_use]
-    pub fn new(window: LookbackWindow) -> Self {
-        Self {
-            buffer: HistoricalBuffer::new(window),
-        }
+    pub fn new(window: LookbackWindow) -> ChapatyResult<Self> {
+        Ok(Self {
+            buffer: HistoricalBuffer::new(window)?,
+        })
     }
 }
 
@@ -160,7 +165,7 @@ mod tests {
         // Lookback = 1 means we compare CURRENT against PREVIOUS.
         // Needs exactly 2 elements in the buffer. The +2 capacity guarantees
         // pushing the 3rd element won't trigger a reallocation before the pop.
-        let mut buffer = HistoricalBuffer::new(LookbackWindow::Bars(1));
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::Bars(1)).unwrap();
 
         // T=0: Push 10. Len=1. Returns None.
         assert_eq!(buffer.update(input(0, 10.0)), None);
@@ -182,7 +187,7 @@ mod tests {
         // retained and returned. A point only 1s old is NOT a 60s lookback, so once
         // the 60s-old point falls out of range the result is None rather than a
         // too-recent (and wrongly labelled) reference.
-        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(60));
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(60)).unwrap();
 
         // Start
         buffer.update(input(0, 100.0));
@@ -200,10 +205,10 @@ mod tests {
     /// `Time(n * period)` buffer and asserts they return the identical reference at
     /// every step. This is the core invariant: on regularly spaced bars a bar-count
     /// window and the equivalent time window must look back to the same point.
-    fn assert_bars_matches_time(n: usize, period_secs: i64, points: &[(i64, f64)]) {
-        let secs = (n as u64) * (period_secs as u64);
-        let mut bars = HistoricalBuffer::new(LookbackWindow::Bars(n));
-        let mut time = HistoricalBuffer::new(LookbackWindow::seconds(secs));
+    fn assert_bars_matches_time(n: usize, period_secs: u64, points: &[(i64, f64)]) {
+        let secs = (n as u64) * period_secs;
+        let mut bars = HistoricalBuffer::new(LookbackWindow::Bars(n)).unwrap();
+        let mut time = HistoricalBuffer::new(LookbackWindow::seconds(secs)).unwrap();
 
         for &(t, value) in points {
             let inp = input(t, value);
@@ -255,7 +260,7 @@ mod tests {
         // actually 120s old. The 60s-old point at t=60 is too recent to be a 120s
         // lookback, so the result is None — matching Bars(2) warmup. This is the
         // exact case the old `len >= 2` guard got wrong (it returned the t=0 point).
-        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(120));
+        let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(120)).unwrap();
         assert_eq!(buffer.update(input(0, 100.0)), None);
         assert_eq!(buffer.update(input(60, 110.0)), None);
         assert_eq!(buffer.update(input(120, 120.0)), Some(input(0, 100.0)));
@@ -263,7 +268,7 @@ mod tests {
 
     #[test]
     fn merged_momentum_and_roc_calculates_correctly() {
-        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1));
+        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1)).unwrap();
 
         assert_eq!(momentum.update(input(0, 50.0)), None);
 
@@ -294,7 +299,7 @@ mod tests {
 
     #[test]
     fn merged_indicator_safely_handles_division_by_zero() {
-        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1));
+        let mut momentum = StreamingRateOfChange::new(LookbackWindow::Bars(1)).unwrap();
 
         // Simulate an asset or synthetic spread priced at exactly 0.0
         assert_eq!(momentum.update(input(0, 0.0)), None);

@@ -6,6 +6,7 @@ use crate::{
     error::{ChapatyResult, DataError, SystemError},
 };
 
+#[allow(clippy::too_many_lines)]
 pub fn compute_profile_stats<T: ProfileBinStats>(
     bins: &[T],
     va_pct: f64,

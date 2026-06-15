@@ -2,7 +2,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use polars::{
     frame::DataFrame,
-    io::cloud::CloudOptions,
+    io::{cloud::CloudOptions, utils::sync_on_close::SyncOnCloseType},
     prelude::{
         CsvWriterOptions, FileWriteFormat, IntoLazy, LazyFrame, ParquetWriteOptions, PlRefPath,
         SchemaRef, SinkDestination, SinkTarget, UnifiedSinkArgs,
@@ -57,6 +57,7 @@ impl<'a> FileConfig<'a> {
         Self { dir, ..self }
     }
 
+    #[must_use]
     pub fn with_file_stem(self, file_stem: impl Into<String>) -> Self {
         Self {
             file_stem: Some(file_stem.into()),
@@ -321,7 +322,7 @@ fn default_unified_sink_args() -> UnifiedSinkArgs {
     UnifiedSinkArgs {
         mkdir: true,
         maintain_order: true,
-        sync_on_close: Default::default(),
+        sync_on_close: SyncOnCloseType::default(),
         cloud_options: None,
         sinked_paths_callback: None,
     }

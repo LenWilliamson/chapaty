@@ -189,6 +189,7 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn exprs(cfg: RiskMetricsConfig) -> Vec<Expr> {
     let return_col = JournalCol::RealizedReturnDollars;
     let exit_reason_col = JournalCol::ExitReason;

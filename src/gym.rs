@@ -160,7 +160,12 @@ impl GridAxis {
         let end_f = f64::from_str(end).map_err(DataError::from)?;
         let step_f = f64::from_str(step).map_err(DataError::from)?;
 
-        let precision = step.split('.').nth(1).map_or(0, |s| s.len() as u32);
+        let precision = step
+            .split('.')
+            .nth(1)
+            .map(|s| u32::try_from(s.len()).map_err(DataError::from))
+            .transpose()?
+            .unwrap_or(0);
 
         Ok(Self {
             start: start_f,

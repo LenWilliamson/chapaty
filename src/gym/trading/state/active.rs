@@ -50,7 +50,7 @@ impl Trade<Active> {
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            trade_type: cmd.trade_type,
+            kind: cmd.trade_type,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -101,7 +101,7 @@ impl Trade<Active> {
         // 2. Validate Logic
         // We check if the NEW combination of (SL, Entry, TP) is valid.
         // Note: Active trades always have a fixed entry price.
-        self.trade_type.price_ordering_validation(
+        self.kind.price_ordering_validation(
             candidate_sl,
             Some(self.state.entry_price),
             candidate_tp,
@@ -162,22 +162,19 @@ impl Trade<Active> {
 
         // Clean (tick-multiple) unrealized PnL at the current price. Used only on
         // the survival branch; on an exit the trade fills at the SL/TP price instead.
-        let current_unrealized_pnl = self.trade_type.calculate_pnl(
-            self.state.entry_price,
-            current_price,
-            self.quantity,
-            symbol,
-        );
+        let current_unrealized_pnl =
+            self.kind
+                .calculate_pnl(self.state.entry_price, current_price, self.quantity, symbol);
 
         // 3. Check Triggers.
         let tp_exit = self
             .take_profit
-            .filter(|&tp| ctx.market.reached_price(tp, symbol, self.trade_type))
+            .filter(|&tp| ctx.market.reached_price(tp, symbol, self.kind))
             .map(|tp| (TerminationReason::TakeProfit, tp.0));
 
         let sl_exit = self
             .stop_loss
-            .filter(|&sl| ctx.market.reached_price(sl, symbol, self.trade_type))
+            .filter(|&sl| ctx.market.reached_price(sl, symbol, self.kind))
             .map(|sl| (TerminationReason::StopLoss, sl.0));
 
         // Resolve conflict (priority by execution bias).
@@ -245,7 +242,7 @@ impl Trade<Active> {
         let last_marked_unrealized_pnl = self.state.unrealized_pnl;
 
         let realized_pnl =
-            self.trade_type
+            self.kind
                 .calculate_pnl(self.state.entry_price, clean_exit_price, *qty, *symbol);
         let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
 
@@ -341,7 +338,7 @@ mod tests {
             AgentIdentifier,
             trading::{
                 config::{EnvConfig, ExecutionBias},
-                types::TradeType,
+                types::TradeKind,
             },
         },
         sim::{
@@ -427,7 +424,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(1),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -447,7 +444,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(2),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Short,
+                trade_type: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -761,7 +758,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(10),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.095_567)),   // Off-grid
                 take_profit: Some(Price(1.105_123)), // Off-grid
@@ -855,7 +852,7 @@ mod tests {
                 assert!(reward > 0.0, "Should have positive PnL");
                 assert_f64_eq!(reward, 625.0);
             }
-            _ => panic!("Expected FullyClosed"),
+            CloseOutcome::PartiallyClosed { .. } => panic!("Expected FullyClosed"),
         }
     }
 
@@ -903,7 +900,7 @@ mod tests {
                 assert_eq!(remaining.quantity, Quantity(0.5));
                 assert_eq!(remaining.state.entry_price, Price(1.1));
             }
-            _ => panic!("Expected PartiallyClosed outcome"),
+            CloseOutcome::FullyClosed(_) => panic!("Expected PartiallyClosed outcome"),
         }
     }
 
@@ -960,7 +957,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,

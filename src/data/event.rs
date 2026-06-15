@@ -19,7 +19,7 @@ use crate::{
         },
     },
     error::{ChapatyError, ChapatyResult, DataError},
-    gym::trading::types::TradeType,
+    gym::trading::types::TradeKind,
 };
 
 // ================================================================================================
@@ -29,7 +29,7 @@ use crate::{
 /// Capability to check if a specific price was traded within an event's range.
 pub trait PriceReachable {
     /// Returns true if the given `price` was reached or breached based on the intended trade direction.
-    fn price_reached(&self, price: Price, direction: TradeType) -> bool;
+    fn price_reached(&self, price: Price, direction: TradeKind) -> bool;
 }
 
 /// Capability to provide a "Close" price for resolving market state.
@@ -112,7 +112,7 @@ pub struct Ohlcv {
 }
 
 impl PriceReachable for Ohlcv {
-    fn price_reached(&self, price: Price, _direction: TradeType) -> bool {
+    fn price_reached(&self, price: Price, _direction: TradeKind) -> bool {
         self.low.0 <= price.0 && price.0 <= self.high.0
     }
 }
@@ -219,10 +219,10 @@ pub struct TradeEvent {
 }
 
 impl PriceReachable for TradeEvent {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -625,11 +625,11 @@ impl MarketProfile for VolumeProfile {
 
         // Use Vec<Option<f64>> to handle sparse data correctly in Polars
         let mut vol = Vec::with_capacity(len);
-        let mut tb_base = Vec::with_capacity(len);
-        let mut ts_base = Vec::with_capacity(len);
-        let mut q_vol = Vec::with_capacity(len);
-        let mut tb_quote = Vec::with_capacity(len);
-        let mut ts_quote = Vec::with_capacity(len);
+        let mut taker_buy_base = Vec::with_capacity(len);
+        let mut taker_sell_base = Vec::with_capacity(len);
+        let mut quote_asset_vol = Vec::with_capacity(len);
+        let mut taker_buy_quote = Vec::with_capacity(len);
+        let mut taker_sell_quote_quote = Vec::with_capacity(len);
 
         // Counts
         let mut n_trades = Vec::with_capacity(len);
@@ -643,12 +643,12 @@ impl MarketProfile for VolumeProfile {
             vol.push(bin.volume.0);
 
             // Map Option<Volume> -> Option<f64>
-            tb_base.push(bin.taker_buy_base_asset_volume.map(|v| v.0));
-            ts_base.push(bin.taker_sell_base_asset_volume.map(|v| v.0));
+            taker_buy_base.push(bin.taker_buy_base_asset_volume.map(|v| v.0));
+            taker_sell_base.push(bin.taker_sell_base_asset_volume.map(|v| v.0));
 
-            q_vol.push(bin.quote_asset_volume.map(|v| v.0));
-            tb_quote.push(bin.taker_buy_quote_asset_volume.map(|v| v.0));
-            ts_quote.push(bin.taker_sell_quote_asset_volume.map(|v| v.0));
+            quote_asset_vol.push(bin.quote_asset_volume.map(|v| v.0));
+            taker_buy_quote.push(bin.taker_buy_quote_asset_volume.map(|v| v.0));
+            taker_sell_quote_quote.push(bin.taker_sell_quote_asset_volume.map(|v| v.0));
 
             // Map Option<Count> -> Option<u64>
             n_trades.push(bin.number_of_trades.map(|c| c.0));
@@ -663,12 +663,12 @@ impl MarketProfile for VolumeProfile {
             ProfileCol::PriceBinEnd.to_string() => p_ends,
 
             ProfileCol::Volume.to_string() => vol,
-            ProfileCol::TakerBuyBaseVol.to_string() => tb_base,
-            ProfileCol::TakerSellBaseVol.to_string() => ts_base,
+            ProfileCol::TakerBuyBaseVol.to_string() => taker_buy_base,
+            ProfileCol::TakerSellBaseVol.to_string() => taker_sell_base,
 
-            ProfileCol::QuoteVol.to_string() => q_vol,
-            ProfileCol::TakerBuyQuoteVol.to_string() => tb_quote,
-            ProfileCol::TakerSellQuoteVol.to_string() => ts_quote,
+            ProfileCol::QuoteVol.to_string() => quote_asset_vol,
+            ProfileCol::TakerBuyQuoteVol.to_string() => taker_buy_quote,
+            ProfileCol::TakerSellQuoteVol.to_string() => taker_sell_quote_quote,
 
             ProfileCol::NumTrades.to_string() => n_trades,
             ProfileCol::NumBuyTrades.to_string() => n_buy,
@@ -1011,27 +1011,27 @@ mod test {
 
         // 1. Exact Wick Touches (Edge Cases)
         assert!(
-            mock_ohlcv(49000.0, 50000.0).price_reached(target, TradeType::Long),
+            mock_ohlcv(49000.0, 50000.0).price_reached(target, TradeKind::Long),
             "High wick exactly touches target"
         );
         assert!(
-            mock_ohlcv(50000.0, 51000.0).price_reached(target, TradeType::Short),
+            mock_ohlcv(50000.0, 51000.0).price_reached(target, TradeKind::Short),
             "Low wick exactly touches target"
         );
 
         // 2. Complete Engulfing (Target is inside the candle body/wicks)
-        assert!(mock_ohlcv(49000.0, 51000.0).price_reached(target, TradeType::Long));
+        assert!(mock_ohlcv(49000.0, 51000.0).price_reached(target, TradeKind::Long));
 
         // 3. Flat Candle / Zero Variance (Doji tick)
-        assert!(mock_ohlcv(50000.0, 50000.0).price_reached(target, TradeType::Long));
+        assert!(mock_ohlcv(50000.0, 50000.0).price_reached(target, TradeKind::Long));
 
         // 4. Undershoots / Misses
         assert!(
-            !mock_ohlcv(49000.0, 49_999.999_999).price_reached(target, TradeType::Long),
+            !mock_ohlcv(49000.0, 49_999.999_999).price_reached(target, TradeKind::Long),
             "Wick high barely misses"
         );
         assert!(
-            !mock_ohlcv(50_000.000_001, 51000.0).price_reached(target, TradeType::Short),
+            !mock_ohlcv(50_000.000_001, 51000.0).price_reached(target, TradeKind::Short),
             "Wick low barely misses"
         );
     }
@@ -1041,13 +1041,13 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't dropped enough.
-        assert!(!mock_trade(50_000.000_001).price_reached(target, TradeType::Long));
+        assert!(!mock_trade(50_000.000_001).price_reached(target, TradeKind::Long));
 
         // 2. Exact Touch: Market prints exactly at our limit.
-        assert!(mock_trade(50000.0).price_reached(target, TradeType::Long));
+        assert!(mock_trade(50000.0).price_reached(target, TradeKind::Long));
 
         // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
-        assert!(mock_trade(49990.0).price_reached(target, TradeType::Long));
+        assert!(mock_trade(49990.0).price_reached(target, TradeKind::Long));
     }
 
     #[test]
@@ -1055,12 +1055,12 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't risen enough.
-        assert!(!mock_trade(49_999.999_999).price_reached(target, TradeType::Short));
+        assert!(!mock_trade(49_999.999_999).price_reached(target, TradeKind::Short));
 
         // 2. Exact Touch: Market prints exactly at our limit.
-        assert!(mock_trade(50000.0).price_reached(target, TradeType::Short));
+        assert!(mock_trade(50000.0).price_reached(target, TradeKind::Short));
 
         // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
-        assert!(mock_trade(50010.0).price_reached(target, TradeType::Short));
+        assert!(mock_trade(50010.0).price_reached(target, TradeKind::Short));
     }
 }

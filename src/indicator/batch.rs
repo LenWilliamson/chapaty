@@ -19,8 +19,10 @@ pub mod trades;
 pub trait WithBatchIndicators: Sized {
     type BatchIndicator: Clone;
 
+    #[must_use]
     fn with_indicator(self, kind: Self::BatchIndicator) -> Self;
 
+    #[must_use]
     fn with_indicators(self, kinds: &[Self::BatchIndicator]) -> Self {
         kinds
             .iter()
@@ -78,11 +80,11 @@ impl IndicatorExprExt for Expr {
     fn agg_vwap_with_volume(self, volume: Expr) -> Expr {
         let (price_x_volume, vol) = prepare_vwap_components(self, volume);
 
-        let sum_pv = price_x_volume.sum();
-        let sum_v = vol.sum();
+        let sum_price_x_vol = price_x_volume.sum();
+        let sum_vol = vol.sum();
 
-        when(sum_v.clone().gt(lit(0.0)))
-            .then(sum_pv / sum_v)
+        when(sum_vol.clone().gt(lit(0.0)))
+            .then(sum_price_x_vol / sum_vol)
             .otherwise(lit(NULL))
     }
 

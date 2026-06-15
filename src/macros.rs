@@ -81,6 +81,7 @@ macro_rules! impl_abs_primitive {
     ($wrapper:ident, $primitive:ty) => {
         impl $wrapper {
             /// Returns the absolute value of the wrapped primitive.
+            #[must_use]
             pub fn abs(self) -> Self {
                 Self(self.0.abs())
             }
@@ -108,11 +109,13 @@ macro_rules! impl_min_max_primitive {
     ($wrapper:ident, $primitive:ty) => {
         impl $wrapper {
             /// Returns the minimum of `self` and `other`.
+            #[must_use]
             pub fn min(self, other: Self) -> Self {
                 Self(self.0.min(other.0))
             }
 
             /// Returns the maximum of `self` and `other`.
+            #[must_use]
             pub fn max(self, other: Self) -> Self {
                 Self(self.0.max(other.0))
             }

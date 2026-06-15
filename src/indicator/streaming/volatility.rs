@@ -98,11 +98,11 @@ impl StreamingAtr {
 
         match self.prev_close {
             Some(prev_c) => {
-                let hc_range = (ohlcv.high - prev_c).abs();
-                let lc_range = (ohlcv.low - prev_c).abs();
+                let high_close_range = (ohlcv.high - prev_c).abs();
+                let low_close_range = (ohlcv.low - prev_c).abs();
 
                 // TR = max(H - L, |H - C_prev|, |L - C_prev|)
-                hl_range.max(hc_range).max(lc_range).0
+                hl_range.max(high_close_range).max(low_close_range).0
             }
             None => {
                 // First candle: we don't have a previous close, so TR is just the High-Low range.

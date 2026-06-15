@@ -473,10 +473,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let non_null_count = peak_values
-            .iter()
-            .filter(std::option::Option::is_some)
-            .count();
+        let non_null_count = peak_values.iter().flatten().count();
         assert_eq!(
             non_null_count, 3,
             "All BTC/2025 rows should have calculated metrics"

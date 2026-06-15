@@ -55,10 +55,7 @@ fn pre_compute_trades_vwap(lf: LazyFrame) -> LazyFrame {
 fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> LazyFrame {
     let session_date_col = col(CanonicalCol::PointInTime).session_date(session);
 
-    
-
-    lf
-        .with_column(session_date_col.alias(CanonicalCol::Date))
+    lf.with_column(session_date_col.alias(CanonicalCol::Date))
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
         .agg([

@@ -23,18 +23,18 @@ use crate::{
     IntoStaticStr,
 )]
 #[strum(serialize_all = "lowercase")]
-pub enum TradeType {
+pub enum TradeKind {
     Long,
     Short,
 }
 
-impl From<TradeType> for PlSmallStr {
-    fn from(value: TradeType) -> Self {
+impl From<TradeKind> for PlSmallStr {
+    fn from(value: TradeKind) -> Self {
         value.as_str().into()
     }
 }
 
-impl TradeType {
+impl TradeKind {
     #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
@@ -46,7 +46,7 @@ impl TradeType {
     }
 }
 
-impl TradeType {
+impl TradeKind {
     /// Validates `stop_loss`, `entry`, and `take_profit` ordering for the trade side.
     ///
     /// # Errors
@@ -61,7 +61,7 @@ impl TradeType {
             Err(AgentError::InvalidInput(msg.to_string()).into())
         }
 
-        use TradeType::{Long, Short};
+        use TradeKind::{Long, Short};
         match (self, stop_loss, entry, take_profit) {
             // No prices: trivially valid
             (_, None, None, None) => Ok(()),
@@ -109,8 +109,8 @@ impl TradeType {
     #[must_use]
     pub fn price_diff(&self, entry: Price, exit: Price) -> Price {
         match self {
-            TradeType::Long => exit - entry,
-            TradeType::Short => entry - exit,
+            TradeKind::Long => exit - entry,
+            TradeKind::Short => entry - exit,
         }
     }
 
@@ -302,28 +302,28 @@ mod tests {
     fn test_long_valid_cases() {
         // stop_loss < entry < take_profit
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(90.0)), Some(en(100.0)), Some(tp(110.0)))
                 .is_ok()
         );
 
         // only entry + take_profit, entry < tp
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(None, Some(en(100.0)), Some(tp(120.0)))
                 .is_ok()
         );
 
         // stop_loss + entry, sl < entry
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(80.0)), Some(en(100.0)), None)
                 .is_ok()
         );
 
         // stop_loss + take_profit, sl < tp
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(80.0)), None, Some(tp(120.0)))
                 .is_ok()
         );
@@ -333,28 +333,28 @@ mod tests {
     fn test_long_invalid_cases() {
         // entry >= take_profit
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(None, Some(en(120.0)), Some(tp(100.0)))
                 .is_err()
         );
 
         // stop_loss >= entry
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(100.0)), Some(en(90.0)), None)
                 .is_err()
         );
 
         // stop_loss >= take_profit
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(120.0)), None, Some(tp(100.0)))
                 .is_err()
         );
 
         // full triple but wrong ordering
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(100.0)), Some(en(110.0)), Some(tp(105.0)))
                 .is_err()
         );
@@ -364,28 +364,28 @@ mod tests {
     fn test_short_valid_cases() {
         // take_profit < entry < stop_loss
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(120.0)), Some(en(110.0)), Some(tp(100.0)))
                 .is_ok()
         );
 
         // only entry + take_profit, tp < entry
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(None, Some(en(110.0)), Some(tp(100.0)))
                 .is_ok()
         );
 
         // stop_loss + entry, entry < sl
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(120.0)), Some(en(100.0)), None)
                 .is_ok()
         );
 
         // stop_loss + take_profit, tp < sl
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(120.0)), None, Some(tp(100.0)))
                 .is_ok()
         );
@@ -395,28 +395,28 @@ mod tests {
     fn test_short_invalid_cases() {
         // take_profit >= entry
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(None, Some(en(90.0)), Some(tp(110.0)))
                 .is_err()
         );
 
         // entry >= stop_loss
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(90.0)), Some(en(100.0)), None)
                 .is_err()
         );
 
         // take_profit >= stop_loss
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(100.0)), None, Some(tp(110.0)))
                 .is_err()
         );
 
         // full triple but wrong ordering
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(100.0)), Some(en(90.0)), Some(tp(95.0)))
                 .is_err()
         );
@@ -433,7 +433,7 @@ mod tests {
         // Case 1: Entry < TP is Valid (100 < 110), but SL > Entry (105 > 100) -> INVALID
         // This was the specific bug case.
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(105.0)), Some(en(100.0)), Some(tp(110.0)))
                 .is_err(),
             "Long: Valid Entry/TP should not mask invalid SL/Entry"
@@ -441,7 +441,7 @@ mod tests {
 
         // Case 2: SL < Entry is Valid (90 < 100), but Entry > TP (100 > 95) -> INVALID
         assert!(
-            TradeType::Long
+            TradeKind::Long
                 .price_ordering_validation(Some(sl(90.0)), Some(en(100.0)), Some(tp(95.0)))
                 .is_err(),
             "Long: Valid SL/Entry should not mask invalid Entry/TP"
@@ -452,7 +452,7 @@ mod tests {
         // Case 3: TP < Entry is Valid (90 < 100), but Entry > SL (100 > 95) -> INVALID
         // (Remember Short SL must be > Entry)
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(95.0)), Some(en(100.0)), Some(tp(90.0)))
                 .is_err(),
             "Short: Valid TP/Entry should not mask invalid Entry/SL"
@@ -460,7 +460,7 @@ mod tests {
 
         // Case 4: Entry < SL is Valid (100 < 110), but TP > Entry (105 > 100) -> INVALID
         assert!(
-            TradeType::Short
+            TradeKind::Short
                 .price_ordering_validation(Some(sl(110.0)), Some(en(100.0)), Some(tp(105.0)))
                 .is_err(),
             "Short: Valid Entry/SL should not mask invalid TP/Entry"
@@ -471,24 +471,24 @@ mod tests {
     fn test_price_diff_logic() {
         // 1. Long: Profit if Exit > Entry
         assert_eq!(
-            TradeType::Long.price_diff(Price(100.0), Price(110.0)),
+            TradeKind::Long.price_diff(Price(100.0), Price(110.0)),
             Price(10.0),
             "Long should be positive when price goes up"
         );
         assert_eq!(
-            TradeType::Long.price_diff(Price(110.0), Price(100.0)),
+            TradeKind::Long.price_diff(Price(110.0), Price(100.0)),
             Price(-10.0),
             "Long should be negative when price goes down"
         );
 
         // 2. Short: Profit if Entry > Exit
         assert_eq!(
-            TradeType::Short.price_diff(Price(110.0), Price(100.0)),
+            TradeKind::Short.price_diff(Price(110.0), Price(100.0)),
             Price(10.0),
             "Short should be positive when price goes down"
         );
         assert_eq!(
-            TradeType::Short.price_diff(Price(100.0), Price(110.0)),
+            TradeKind::Short.price_diff(Price(100.0), Price(110.0)),
             Price(-10.0),
             "Short should be negative when price goes up"
         );
@@ -513,7 +513,7 @@ mod tests {
         // CASE 1: Dirty Long Exit (Price is slightly too high: 1.10050 + 0.00000001)
         let dirty_exit = Price(1.100_500_01);
 
-        let pnl = TradeType::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), eur);
+        let pnl = TradeKind::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), eur);
 
         // Without grid snapping, this would result in ~$62.50125
         // With snapping, it must be exactly 62.5
@@ -524,7 +524,7 @@ mod tests {
         let dirty_entry = Price(1.099_499_99); // Target 10 ticks below is ~1.09900
         let clean_exit = Price(1.09900);
 
-        let pnl_short = TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
+        let pnl_short = TradeKind::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
 
         assert_f64_eq!(
             pnl_short,

@@ -454,7 +454,7 @@ impl Environment {
             bias: ExecutionBias::Pessimistic,
             invalid_action_penalty: InvalidActionPenalty::default(),
             env_status: EnvStatus::Ready,
-            risk_metrics_cfg: Default::default(),
+            risk_metrics_cfg: RiskMetricsConfig::default(),
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::{
             action::{CancelCmd, MarketCloseCmd, ModifyCmd, OpenCmd},
             context::UpdateCtx,
             state::active::CloseOutcome,
-            types::{RiskRewardRatio, StateKind, TerminationReason, TradeType},
+            types::{RiskRewardRatio, StateKind, TerminationReason, TradeKind},
         },
     },
     sorted_vec_map::SortedVecMap,
@@ -171,7 +171,7 @@ impl TradeState for Canceled {}
 pub struct Trade<S: TradeState> {
     uid: TradeId,
     agent_id: AgentIdentifier,
-    trade_type: TradeType,
+    kind: TradeKind,
     quantity: Quantity,
     stop_loss: Option<Price>,
     take_profit: Option<Price>,
@@ -187,8 +187,8 @@ impl<S: TradeState> Trade<S> {
         &self.agent_id
     }
 
-    pub fn trade_type(&self) -> &TradeType {
-        &self.trade_type
+    pub fn trade_type(&self) -> &TradeKind {
+        &self.kind
     }
 
     pub fn quantity(&self) -> Quantity {
@@ -216,7 +216,7 @@ impl<S: TradeState> Trade<S> {
         Trade {
             uid: self.uid,
             agent_id: self.agent_id,
-            trade_type: self.trade_type,
+            kind: self.kind,
             quantity: self.quantity,
             stop_loss: self.stop_loss,
             take_profit: self.take_profit,
@@ -330,12 +330,12 @@ impl State {
     }
 
     #[must_use]
-    pub fn trade_type(&self) -> &TradeType {
+    pub fn trade_type(&self) -> &TradeKind {
         match self {
-            State::Pending(t) => &t.trade_type,
-            State::Active(t) => &t.trade_type,
-            State::Closed(t) => &t.trade_type,
-            State::Canceled(t) => &t.trade_type,
+            State::Pending(t) => &t.kind,
+            State::Active(t) => &t.kind,
+            State::Closed(t) => &t.kind,
+            State::Canceled(t) => &t.kind,
         }
     }
 
@@ -452,15 +452,13 @@ impl State {
             State::Active(t) => {
                 // Use your existing helper
                 let diff = t
-                    .trade_type
+                    .kind
                     .price_diff(t.state.entry_price, t.state.current_price);
                 Some(symbol.price_to_ticks(diff))
             }
             State::Closed(t) => {
                 // Use your existing helper
-                let diff = t
-                    .trade_type
-                    .price_diff(t.state.entry_price, t.state.exit_price);
+                let diff = t.kind.price_diff(t.state.entry_price, t.state.exit_price);
                 Some(symbol.price_to_ticks(diff))
             }
             _ => None,
@@ -795,10 +793,28 @@ impl States {
     }
 
     /// Consumes and resets the accumulated step reward.
+    /// Clamps overflows safely to `i64::MAX` or `i64::MIN` and logs warnings.
+    #[tracing::instrument(skip(self))]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     pub(super) fn pop_reward(&mut self) -> Reward {
         let r = self.step_reward;
         self.step_reward = 0.0;
-        Reward(r.round() as i64)
+
+        let rounded = r.round();
+
+        if rounded.is_nan() {
+            tracing::error!("Accumulated step reward is NaN! Defaulting to 0.");
+            Reward(0)
+        } else if rounded >= (i64::MAX as f64) {
+            tracing::warn!("Reward overflow detected (value: {r}). Saturating to i64::MAX.");
+            Reward(i64::MAX)
+        } else if rounded <= (i64::MIN as f64) {
+            tracing::warn!("Reward underflow detected (value: {r}). Saturating to i64::MIN.");
+            Reward(i64::MIN)
+        } else {
+            Reward(rounded as i64)
+        }
     }
 
     pub(super) fn open(
@@ -1282,7 +1298,7 @@ mod tests {
         State::Pending(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(1.0),
             stop_loss: None,
             take_profit: None,
@@ -1297,7 +1313,7 @@ mod tests {
         State::Canceled(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(1.0),
             stop_loss: None,
             take_profit: None,
@@ -1318,7 +1334,7 @@ mod tests {
         State::Active(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(qty),
             stop_loss: None,
             take_profit: None,
@@ -1864,7 +1880,7 @@ mod tests {
         let cmd1 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(100.0)), // Limit order
             stop_loss: None,
@@ -1887,7 +1903,7 @@ mod tests {
         let cmd2 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42), // Duplicate!
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(2.0),
             entry_price: Some(Price(110.0)),
             stop_loss: None,
@@ -1918,7 +1934,7 @@ mod tests {
         let limit_cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(50000.0)), // Limit price
             stop_loss: Some(Price(49000.0)),
@@ -2067,7 +2083,7 @@ mod tests {
         let cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: None, // MARKET ORDER
             stop_loss: None,

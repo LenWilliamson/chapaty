@@ -6,7 +6,7 @@ use crate::{
         domain::{AggregatedPrice, Price, PriceDelta, SessionDate, SessionWindow, Symbol, Volume},
         event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider, TradesId},
     },
-    gym::trading::TradeType,
+    gym::trading::TradeKind,
     indicator::{
         batch::ohlcv::SessionCfg,
         config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
@@ -31,10 +31,10 @@ pub struct Ema {
 }
 
 impl PriceReachable for Ema {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -73,10 +73,10 @@ pub struct Rsi {
 }
 
 impl PriceReachable for Rsi {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -117,10 +117,10 @@ pub struct Sma {
 }
 
 impl PriceReachable for Sma {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -161,10 +161,10 @@ pub struct OhlcvVwap {
 }
 
 impl PriceReachable for OhlcvVwap {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -203,10 +203,10 @@ pub struct TradesVwap {
 }
 
 impl PriceReachable for TradesVwap {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -426,13 +426,13 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Undershoot (Miss): SMA is at 50000.1, hasn't dropped enough.
-        assert!(!mock_sma(50000.1).price_reached(target, TradeType::Long));
+        assert!(!mock_sma(50000.1).price_reached(target, TradeKind::Long));
 
         // 2. Exact Touch: SMA hits exactly 50000.0.
-        assert!(mock_sma(50000.0).price_reached(target, TradeType::Long));
+        assert!(mock_sma(50000.0).price_reached(target, TradeKind::Long));
 
         // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping 50000.0.
-        assert!(mock_sma(49000.0).price_reached(target, TradeType::Long));
+        assert!(mock_sma(49000.0).price_reached(target, TradeKind::Long));
     }
 
     #[test]
@@ -441,13 +441,13 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Undershoot (Miss): SMA is at 49999.9, hasn't risen enough.
-        assert!(!mock_sma(49999.9).price_reached(target, TradeType::Short));
+        assert!(!mock_sma(49999.9).price_reached(target, TradeKind::Short));
 
         // 2. Exact Touch: SMA hits exactly 50000.0.
-        assert!(mock_sma(50000.0).price_reached(target, TradeType::Short));
+        assert!(mock_sma(50000.0).price_reached(target, TradeKind::Short));
 
         // 3. Overshoot (Gap up): SMA gaps up to 51000.0, completely skipping 50000.0.
-        assert!(mock_sma(51000.0).price_reached(target, TradeType::Short));
+        assert!(mock_sma(51000.0).price_reached(target, TradeKind::Short));
     }
 
     #[test]
@@ -455,9 +455,9 @@ mod test {
         let target = Price(100.5);
 
         // Test precision boundaries often encountered in floating-point math
-        assert!(!mock_ema(100.500_000_01).price_reached(target, TradeType::Long));
-        assert!(mock_ema(100.5).price_reached(target, TradeType::Long));
-        assert!(mock_ema(100.499_999_99).price_reached(target, TradeType::Long));
+        assert!(!mock_ema(100.500_000_01).price_reached(target, TradeKind::Long));
+        assert!(mock_ema(100.5).price_reached(target, TradeKind::Long));
+        assert!(mock_ema(100.499_999_99).price_reached(target, TradeKind::Long));
     }
 
     #[test]
@@ -465,15 +465,15 @@ mod test {
         let target = Price(100.5);
 
         assert!(
-            !mock_ema(100.499_999_99).price_reached(target, TradeType::Short),
+            !mock_ema(100.499_999_99).price_reached(target, TradeKind::Short),
             "EMA is just below target"
         );
         assert!(
-            mock_ema(100.5).price_reached(target, TradeType::Short),
+            mock_ema(100.5).price_reached(target, TradeKind::Short),
             "EMA exactly hits target"
         );
         assert!(
-            mock_ema(100.500_000_01).price_reached(target, TradeType::Short),
+            mock_ema(100.500_000_01).price_reached(target, TradeKind::Short),
             "EMA spikes just above target"
         );
     }
@@ -484,13 +484,13 @@ mod test {
         let target = Price(30.0);
 
         // RSI is 31 (Not oversold enough)
-        assert!(!mock_rsi(31.0).price_reached(target, TradeType::Long));
+        assert!(!mock_rsi(31.0).price_reached(target, TradeKind::Long));
 
         // RSI is exactly 30 (Trigger)
-        assert!(mock_rsi(30.0).price_reached(target, TradeType::Long));
+        assert!(mock_rsi(30.0).price_reached(target, TradeKind::Long));
 
         // RSI plummets to 15 (Trigger)
-        assert!(mock_rsi(15.0).price_reached(target, TradeType::Long));
+        assert!(mock_rsi(15.0).price_reached(target, TradeKind::Long));
     }
 
     #[test]
@@ -499,12 +499,12 @@ mod test {
         let target = Price(70.0);
 
         // RSI is 69.9 (Not overbought enough)
-        assert!(!mock_rsi(69.9).price_reached(target, TradeType::Short));
+        assert!(!mock_rsi(69.9).price_reached(target, TradeKind::Short));
 
         // RSI is exactly 70.0 (Trigger)
-        assert!(mock_rsi(70.0).price_reached(target, TradeType::Short));
+        assert!(mock_rsi(70.0).price_reached(target, TradeKind::Short));
 
         // RSI rockets to 85.5 (Trigger)
-        assert!(mock_rsi(85.5).price_reached(target, TradeType::Short));
+        assert!(mock_rsi(85.5).price_reached(target, TradeKind::Short));
     }
 }

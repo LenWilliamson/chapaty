@@ -40,7 +40,7 @@ impl Trade<Pending> {
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            trade_type: cmd.trade_type,
+            kind: cmd.trade_type,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -81,11 +81,8 @@ impl Trade<Pending> {
         };
 
         // 2. Validate Logic
-        self.trade_type.price_ordering_validation(
-            candidate_sl,
-            Some(candidate_entry),
-            candidate_tp,
-        )?;
+        self.kind
+            .price_ordering_validation(candidate_sl, Some(candidate_entry), candidate_tp)?;
 
         // 3. Commit Changes
         Ok(self
@@ -120,7 +117,7 @@ impl Trade<Pending> {
         let limit_price = self.state.limit_price;
         let hit_entry = ctx
             .market
-            .reached_price(limit_price, m_id.symbol, self.trade_type);
+            .reached_price(limit_price, m_id.symbol, self.kind);
 
         if !hit_entry {
             return Ok((State::Pending(self), 0.0));
@@ -182,7 +179,7 @@ mod test {
             AgentIdentifier,
             trading::{
                 config::{EnvConfig, ExecutionBias},
-                types::{TerminationReason, TradeType},
+                types::{TerminationReason, TradeKind},
             },
         },
         sim::{
@@ -265,7 +262,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(100),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -284,7 +281,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(101),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Short,
+                trade_type: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -709,7 +706,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(200),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.085_567)),
                 take_profit: Some(Price(1.095_123)),
@@ -890,7 +887,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,

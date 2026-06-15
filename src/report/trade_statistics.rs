@@ -13,7 +13,7 @@ use strum::{Display, EnumCount, EnumIter, EnumString, IntoEnumIterator, IntoStat
 
 use crate::{
     error::{ChapatyError, ChapatyResult, DataError},
-    gym::trading::types::{StateKind, TradeType},
+    gym::trading::types::{StateKind, TradeKind},
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
@@ -464,14 +464,14 @@ fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Exp
 fn long_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .trade_executed()
-        .and(col(trade_type_col).eq(lit(TradeType::Long.as_str())))
+        .and(col(trade_type_col).eq(lit(TradeKind::Long.as_str())))
         .count_true()
 }
 
 fn short_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .trade_executed()
-        .and(col(trade_type_col).eq(lit(TradeType::Short.as_str())))
+        .and(col(trade_type_col).eq(lit(TradeKind::Short.as_str())))
         .count_true()
 }
 

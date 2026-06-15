@@ -49,7 +49,7 @@ impl ProtoBatch for EconomicCalendarResponse {
             data_sources.push(event.data_source);
             categories.push(event.category);
             event_timestamps.push(extract_timestamp(
-                &event.event_timestamp,
+                event.event_timestamp.as_ref(),
                 "event_timestamp",
             )?);
             news_types.push(event.news_type);
@@ -111,14 +111,17 @@ impl ProtoBatch for OhlcvFutureResponse {
         let mut close_timestamps = Vec::with_capacity(len);
 
         for event in events {
-            open_timestamps.push(extract_timestamp(&event.open_timestamp, "open_timestamp")?);
+            open_timestamps.push(extract_timestamp(
+                event.open_timestamp.as_ref(),
+                "open_timestamp",
+            )?);
             opens.push(event.open);
             highs.push(event.high);
             lows.push(event.low);
             closes.push(event.close);
             volumes.push(event.volume);
             close_timestamps.push(extract_timestamp(
-                &event.close_timestamp,
+                event.close_timestamp.as_ref(),
                 "close_timestamp",
             )?);
         }
@@ -170,14 +173,17 @@ impl ProtoBatch for OhlcvSpotResponse {
         let mut taker_buy_quote_asset_volumes = Vec::with_capacity(len);
 
         for event in events {
-            open_timestamps.push(extract_timestamp(&event.open_timestamp, "open_timestamp")?);
+            open_timestamps.push(extract_timestamp(
+                event.open_timestamp.as_ref(),
+                "open_timestamp",
+            )?);
             opens.push(event.open);
             highs.push(event.high);
             lows.push(event.low);
             closes.push(event.close);
             volumes.push(event.volume);
             close_timestamps.push(extract_timestamp(
-                &event.close_timestamp,
+                event.close_timestamp.as_ref(),
                 "close_timestamp",
             )?);
             quote_asset_volumes.push(event.quote_asset_volume);
@@ -238,7 +244,7 @@ impl ProtoBatch for TradesSpotResponse {
             quantities.push(event.quantity);
             quote_quantities.push(event.quote_quantity);
             trade_timestamps.push(extract_timestamp(
-                &event.trade_timestamp,
+                event.trade_timestamp.as_ref(),
                 "trade_timestamp",
             )?);
             is_buyer_makers.push(event.is_buyer_maker);
@@ -282,8 +288,11 @@ impl ProtoBatch for TpoFutureResponse {
         let mut time_slot_counts = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             time_slot_counts.push(event.time_slot_count);
@@ -328,8 +337,11 @@ impl ProtoBatch for TpoSpotResponse {
         let mut time_slot_counts = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             time_slot_counts.push(event.time_slot_count);
@@ -382,8 +394,11 @@ impl ProtoBatch for VolumeProfileSpotResponse {
         let mut number_of_sell_trades = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             base_volumes.push(event.base_volume);
@@ -436,15 +451,12 @@ fn empty_lf(schema: &Schema) -> LazyFrame {
     DataFrame::empty_with_schema(schema).lazy()
 }
 
-fn extract_timestamp(ts: &Option<Timestamp>, field: &str) -> ChapatyResult<i64> {
-    ts.as_ref()
-        .map(timestamp_to_micro)
-        .transpose()?
-        .ok_or_else(|| {
-            ChapatyError::Data(DataError::TimestampConversion(format!(
-                "Missing {field} in microseconds"
-            )))
-        })
+fn extract_timestamp(ts: Option<&Timestamp>, field: &str) -> ChapatyResult<i64> {
+    ts.map(timestamp_to_micro).transpose()?.ok_or_else(|| {
+        ChapatyError::Data(DataError::TimestampConversion(format!(
+            "Missing {field} in microseconds"
+        )))
+    })
 }
 
 fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
@@ -1183,7 +1195,7 @@ mod tests {
 
     #[test]
     fn extract_timestamp_missing_returns_error() {
-        let result = extract_timestamp(&None, "test_field");
+        let result = extract_timestamp(None, "test_field");
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1200,7 +1212,7 @@ mod tests {
             nanos: 1_000_000, // 1ms = 1000 micros
         };
 
-        let result = extract_timestamp(&Some(ts), "test_field");
+        let result = extract_timestamp(Some(&ts), "test_field");
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1_000_001_000);

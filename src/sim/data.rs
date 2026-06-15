@@ -8,7 +8,7 @@ use crate::{
         EconomicCalendarId, MarketEvent, MarketId, OhlcvId, StreamId, TpoId, TradesId,
         VolumeProfileId,
     },
-    error::{ChapatyResult, IoError, SystemError},
+    error::{ChapatyResult, DataError, IoError, SystemError},
     gym::trading::config::EnvConfig,
     indicator::batch::event::{
         AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
@@ -321,7 +321,8 @@ impl SimulationData {
         let result = tokio::task::spawn_blocking(move || match format {
             SerdeFormat::Postcard => {
                 const MB: u64 = 1024 * 1024;
-                let capacity = file_size.unwrap_or(100 * MB) as usize;
+                let capacity =
+                    usize::try_from(file_size.unwrap_or(100 * MB)).map_err(DataError::from)?;
                 let mut data = Vec::with_capacity(capacity);
 
                 reader

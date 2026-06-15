@@ -74,7 +74,7 @@ impl ToSchema for Leaderboard {
         let fields = LeaderboardCol::iter()
             .map(|col| {
                 let dtype = match col {
-                    LeaderboardCol::Rank => DataType::UInt32,
+                    LeaderboardCol::Rank => DataType::UInt64,
                     LeaderboardCol::AgentUid => DataType::UInt64,
 
                     LeaderboardCol::AgentParameterization
@@ -312,7 +312,7 @@ where
                 let param_str = serde_json::to_string(agent).map_err(IoError::Json)?;
 
                 metric_col.push(metric.to_string());
-                rank_col.push((i + 1) as u32);
+                rank_col.push((i + 1) as u64);
                 agent_uid_col.push(uid);
                 value_col.push(entry.denormalized_reward());
                 agent_parameterization_col.push(param_str);
@@ -337,7 +337,7 @@ enum HeapAction {
 
 struct LeaderboardSoA {
     portofolio_performance_metric: Vec<String>,
-    rank: Vec<u32>,
+    rank: Vec<u64>,
     value: Vec<f64>,
     agent_uid: Vec<u64>,
     agent_parameterization: Vec<String>,
@@ -794,7 +794,7 @@ mod tests {
         let ranks = filtered
             .column(LeaderboardCol::Rank.as_str())
             .unwrap()
-            .u32()
+            .u64()
             .unwrap()
             .into_no_null_iter()
             .collect::<Vec<_>>();

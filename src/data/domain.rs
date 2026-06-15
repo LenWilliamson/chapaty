@@ -998,21 +998,58 @@ pub trait Instrument {
 
     /// Converts a raw USD `PnL` target into discrete Tick steps.
     /// Uses `round` to snap to the nearest valid grid point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the calculated value is `NaN`, or if it falls outside the
+    /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     fn usd_to_ticks(&self, usd: f64) -> Tick {
-        let ticks = (usd / self.tick_value_usd()).round() as i64;
+        let raw_ticks = (usd / self.tick_value_usd()).round();
+
+        assert!(
+            raw_ticks.is_finite()
+                && raw_ticks >= (i64::MIN as f64)
+                && raw_ticks <= (i64::MAX as f64),
+            "USD conversion overflowed signed i64 bounds or resulted in NaN"
+        );
+
+        let ticks = raw_ticks as i64;
         Tick(ticks)
     }
 
     /// Converts discrete Ticks back into a USD value.
     /// This is the safest way to calculate realized `PnL`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal tick count exceeds standard i32 ranges.
     fn ticks_to_usd(&self, ticks: Tick) -> f64 {
         let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
         f64::from(tick_count) * self.tick_value_usd()
     }
 
     /// Converts a raw price distance (e.g., target - entry) into Ticks.
+    /// Uses `round` to snap to the nearest valid grid point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the calculated value is `NaN`, or if it falls outside the
+    /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     fn price_to_ticks(&self, price_dist: Price) -> Tick {
-        let ticks = (price_dist.0 / self.tick_size()).round() as i64;
+        let raw_ticks = (price_dist.0 / self.tick_size()).round();
+
+        assert!(
+            raw_ticks.is_finite()
+                && raw_ticks >= (i64::MIN as f64)
+                && raw_ticks <= (i64::MAX as f64),
+            "Price distance conversion overflowed signed i64 bounds or resulted in NaN"
+        );
+
+        let ticks = raw_ticks as i64;
         Tick(ticks)
     }
 

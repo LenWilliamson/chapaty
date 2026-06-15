@@ -20,7 +20,7 @@ use crate::{
             action::{Action, Command},
             context::{ActionCtx, ActionSummary, UpdateCtx},
             state::{State, States},
-            types::{RiskRewardRatio, StateKind, TerminationReason, TradeType},
+            types::{RiskRewardRatio, StateKind, TerminationReason, TradeKind},
         },
     },
     report::{equity_curve::EquityCurveCol, journal::JournalCol},
@@ -190,12 +190,12 @@ impl Ledger {
             .map(|ec| ec.timestamps.len())
             .sum();
 
-        let mut episode_ids = Vec::<u32>::with_capacity(total_rows);
+        let mut episode_ids = Vec::<u64>::with_capacity(total_rows);
         let mut timestamps = Vec::<i64>::with_capacity(total_rows);
         let mut pnls = Vec::<f64>::with_capacity(total_rows);
 
         for (ep_idx, curve) in self.equity_curves.iter().enumerate() {
-            let ep_id = ep_idx as u32;
+            let ep_id = ep_idx as u64;
             let len = curve.timestamps.len();
             let offset = pnls.last().copied().unwrap_or(0.0);
 
@@ -333,7 +333,7 @@ struct JournalEntry {
     exchange: Exchange,
     symbol: Symbol,
     market_type: MarketType,
-    trade_type: TradeType,
+    trade_type: TradeKind,
     entry_price: Price,
     stop_loss: Option<Price>,
     take_profit: Option<Price>,
@@ -365,7 +365,7 @@ struct JournalSoA {
     exchange: Vec<Exchange>,
     symbol: Vec<Symbol>,
     market_type: Vec<MarketType>,
-    trade_type: Vec<TradeType>,
+    trade_type: Vec<TradeKind>,
     entry_price: Vec<Price>,
     stop_loss: Vec<Option<Price>>,
     take_profit: Vec<Option<Price>>,
@@ -851,6 +851,8 @@ mod test {
 
     /// Creates a minimal `JournalEntry` for testing transformations.
     /// This is the core helper for white-box testing of `JournalSoA`.
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     fn sample_journal_entry(
         episode: usize,
         trade_id: i64,
@@ -866,7 +868,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(50000.0),
             stop_loss: Some(Price(49000.0)),
             take_profit: Some(Price(52000.0)),
@@ -1022,7 +1024,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::EthUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Short,
+            trade_type: TradeKind::Short,
             entry_price: Price(3000.0),
             stop_loss: None,
             take_profit: None,
@@ -1098,7 +1100,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(48000.0), // Limit price
             stop_loss: None,
             take_profit: None,
@@ -1161,7 +1163,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(47000.0),
             stop_loss: None,
             take_profit: None,
@@ -1599,7 +1601,7 @@ mod test {
         let invalid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(0.0), // <-- Invalid: will fail validate()
             entry_price: None,
             stop_loss: None,
@@ -1609,7 +1611,7 @@ mod test {
         let valid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(2),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),           // <-- Valid quantity
             entry_price: Some(Price(50000.0)), // Limit order to avoid price lookup
             stop_loss: Some(Price(49000.0)),
@@ -1926,8 +1928,8 @@ mod test {
     #[test]
     fn test_journal_soa_trade_types() {
         let mut soa = JournalSoA::default();
-        soa.trade_type.push(TradeType::Long);
-        soa.trade_type.push(TradeType::Short);
+        soa.trade_type.push(TradeKind::Long);
+        soa.trade_type.push(TradeKind::Short);
 
         let result = soa.trade_types();
 

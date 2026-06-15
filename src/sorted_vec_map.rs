@@ -259,7 +259,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
                 Ordering::Equal => {
                     return Some(std::mem::replace(v, value));
                 }
-                Ordering::Greater => continue,
+                Ordering::Greater => {}
             }
         }
         // Key is greater than all existing keys
@@ -369,6 +369,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let merged = map1.merge(map2);
     /// assert_eq!(merged.len(), 2);
     /// ```
+    #[must_use]
     pub fn merge(mut self, mut other: Self) -> Self
     where
         K: Eq,
@@ -602,6 +603,7 @@ impl<'a, K: Ord, V> Entry<'a, K, V> {
     ///    .or_insert(42);
     /// assert_eq!(map[&"poneyland"], 42);
     /// ```
+    #[must_use]
     pub fn and_modify<F: FnOnce(&mut V)>(mut self, f: F) -> Self {
         match &mut self {
             Entry::Occupied(e) => f(e.get_mut()),
