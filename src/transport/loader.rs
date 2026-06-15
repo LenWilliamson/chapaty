@@ -329,7 +329,7 @@ mod processor {
                 break Ok(());
             }
             res = rx.recv() => {
-                let (fetcher, batch) = if let Ok((f, b)) = res { (f, b) } else {
+                let Ok((fetcher, batch)) = res else {
                     // This happens if the sender side is dropped/closed, meaning
                     // the generator has shut down. The processor should also stop.
                     tracing::info!("No more jobs; processor exiting.");
@@ -343,7 +343,7 @@ mod processor {
                     let _ = send.send(result);
                 });
 
-                let lf_res = if let Ok(result) = recv.await { result } else {
+                let Ok(lf_res) = recv.await else {
                     error!(?fetcher, "Rayon thread panicked while converting batch to LazyFrame");
                     return Err(IoError::ReadFailed("Rayon worker panicked during batch conversion".to_string()).into());
                 };

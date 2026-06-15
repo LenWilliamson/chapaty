@@ -65,6 +65,10 @@ use std::{
 use tracing::{debug, info, warn};
 
 /// Builds a trading environment from this configuration.
+///
+/// # Errors
+/// Returns an error if validation fails, data loading/building fails, or the
+/// environment cannot be finalized.
 #[tracing::instrument(skip(cfg), fields(hash = tracing::field::Empty))]
 pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
     let env_cfg = cfg.into();
@@ -86,6 +90,9 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
 }
 
 /// Loads a pre-built environment from storage, or builds a new one on cache miss.
+///
+/// # Errors
+/// Returns an error if cache load fails and fallback build also fails.
 #[tracing::instrument(skip(env_cfg, io_cfg))]
 pub async fn load<'a>(
     env_cfg: impl Into<EnvConfig>,
@@ -118,7 +125,7 @@ pub async fn load<'a>(
         equity_curve_length: sim_data.max_capacity_hint(),
     });
 
-    let cursor = CursorGroup::new(&sim_data)?;
+    let cursor = CursorGroup::new(&sim_data);
 
     tracing::debug!("Hydrating environment from cached SimulationData");
 
@@ -180,7 +187,9 @@ impl BuildCtx {
     #[tracing::instrument]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
-        next_async_fn(|ctx| Box::pin(async move { ctx.fetch_data().await }))
+        Ok(next_async_fn(|ctx| {
+            Box::pin(async move { ctx.fetch_data().await })
+        }))
     }
 
     #[tracing::instrument(skip_all)]
@@ -532,26 +541,26 @@ impl BuildCtx {
         tracing::info!("Finalizing data order: Sorting all datasets by timestamp");
 
         if let Some(map) = self.ohlcv_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.ohlcv_future_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.trade_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.tpo_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.tpo_future_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.vp_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
 
         if let Some(map) = self.economic_calendar_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
 
         tracing::info!("Sorting applied successfully");
@@ -784,7 +793,7 @@ impl BuildCtx {
             .build()?;
 
         debug!("Building final Environment");
-        let env = Environment::new(CursorGroup::new(&sim_data)?, sim_data, ep_log, episode)
+        let env = Environment::new(CursorGroup::new(&sim_data), sim_data, ep_log, episode)
             .with_invalid_action_penalty(self.env_cfg.invalid_action_penalty())
             .with_execution_bias(ExecutionBias::default())
             .with_risk_metrics_cfg(self.env_cfg.risk_metrics_cfg());
@@ -799,7 +808,7 @@ impl BuildCtx {
 // Helper Functions
 // ================================================================================================
 
-fn next_async_fn<'a, F>(f: F) -> ChapatyResult<StateFn<'a, BuildCtx>>
+fn next_async_fn<'a, F>(f: F) -> StateFn<'a, BuildCtx>
 where
     F: for<'ctx> FnOnce(
             &'ctx mut BuildCtx,
@@ -808,7 +817,7 @@ where
         > + Send
         + 'a,
 {
-    Ok(StateFn::NextAsync(Box::new(f)))
+    StateFn::NextAsync(Box::new(f))
 }
 
 /// Generic helper to fetch data from a list of `SourceGroups`.
@@ -888,14 +897,13 @@ fn apply_filter<T>(
     }
 }
 
-fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) -> ChapatyResult<()> {
+fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) {
     for (_id, (_schema, lf)) in map.iter_mut() {
         *lf = lf.clone().sort(
             [CanonicalCol::PointInTime],
             SortMultipleOptions::default().with_maintain_order(false),
         );
     }
-    Ok(())
 }
 
 /// Generic helper to materialize and transform a map of `LazyFrames`.
@@ -1693,9 +1701,8 @@ where
     let mut events = Vec::with_capacity(len);
 
     for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
-        let price_val = match price_opt {
-            Some(v) => v,
-            None => continue,
+        let Some(price_val) = price_opt else {
+            continue;
         };
 
         let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
@@ -2335,7 +2342,7 @@ mod test {
         );
 
         // ACTION
-        apply_sort(&mut lf_map).expect("failed to apply sort");
+        apply_sort(&mut lf_map);
 
         // ASSERTION
         let result = unwrap_map(lf_map);
@@ -2498,7 +2505,7 @@ mod test {
             CanonicalCol::Close.as_str()          => &[152.0],
             CanonicalCol::Volume.as_str()         => &[1000.0],
             // Optionals
-            CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(152000.0)],
+            CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(152_000.0)],
             CanonicalCol::NumberOfTrades.as_str()             => &[Some(50i64)],
             CanonicalCol::TakerBuyBaseAssetVolume.as_str()  => &[Some(600.0)],
             CanonicalCol::TakerBuyQuoteAssetVolume.as_str() => &[None::<f64>],
@@ -2533,7 +2540,7 @@ mod test {
         assert_eq!(candle.volume, Quantity(1000.0));
 
         // Optional Fields
-        assert_eq!(candle.quote_asset_volume, Some(Quantity(152000.0)));
+        assert_eq!(candle.quote_asset_volume, Some(Quantity(152_000.0)));
         assert_eq!(candle.number_of_trades, Some(Count(50)));
         assert_eq!(candle.taker_buy_base_asset_volume, Some(Quantity(600.0)));
         assert_eq!(candle.taker_buy_quote_asset_volume, None);

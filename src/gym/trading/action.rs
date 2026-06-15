@@ -18,6 +18,9 @@ use strum::{Display, EnumCount, EnumIter, EnumString};
 pub trait Command {
     /// Performs intrinsic validation (stateless checks).
     /// Returns `Ok(())` if the command parameters are self-consistent.
+    ///
+    /// # Errors
+    /// Returns an error when command fields violate domain constraints.
     fn validate(&self) -> ChapatyResult<()>;
 }
 

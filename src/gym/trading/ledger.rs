@@ -839,7 +839,7 @@ mod test {
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }

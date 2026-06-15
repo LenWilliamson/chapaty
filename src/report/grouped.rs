@@ -29,14 +29,26 @@ impl GroupedJournal<'_> {
         self.journal.as_df().clone().lazy().group_by(group_cols)
     }
 
+    /// Computes grouped cumulative-return reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to cumulative returns fails.
     pub fn cumulative_returns(&self) -> ChapatyResult<CumulativeReturns> {
         self.try_into()
     }
 
+    /// Computes grouped portfolio-performance reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to portfolio performance fails.
     pub fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
         self.try_into()
     }
 
+    /// Computes grouped trade-statistics reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to trade statistics fails.
     pub fn trade_stats(&self) -> ChapatyResult<TradeStatistics> {
         self.try_into()
     }

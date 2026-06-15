@@ -208,6 +208,9 @@ impl PivotPoint {
     ///
     /// Returns a zero-allocation closure that takes a target bar index (usize)
     /// and returns the interpolated/extrapolated price at that index.
+    ///
+    /// # Panics
+    /// Panics if any involved bar index cannot be represented as `u32`.
     pub fn price_line_by_index(&self, target: &PivotPoint) -> impl Fn(usize) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
@@ -233,6 +236,9 @@ impl PivotPoint {
     /// Returns a zero-allocation closure that takes a target point in time
     /// (`DateTime<Utc>`) and returns the interpolated/extrapolated price.
     /// Uses `chrono::Duration` to safely compute the time deltas in milliseconds.
+    ///
+    /// # Panics
+    /// Panics if millisecond deltas cannot be losslessly formatted/parsing into `f64`.
     pub fn price_line_by_point_in_time(
         &self,
         target: &PivotPoint,
@@ -862,7 +868,6 @@ mod tests {
             },
         }
     }
-
 
     fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {
         let indicator = StreamingHhll::default()

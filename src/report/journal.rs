@@ -202,14 +202,26 @@ impl Report for Journal {
 }
 
 impl Journal {
+    /// Computes cumulative-return metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`CumulativeReturns`] fails.
     pub fn cumulative_returns(&self) -> ChapatyResult<CumulativeReturns> {
         self.try_into()
     }
 
+    /// Computes portfolio-performance metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`PortfolioPerformance`] fails.
     pub fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
         self.try_into()
     }
 
+    /// Computes trade-statistics metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`TradeStatistics`] fails.
     pub fn trade_stats(&self) -> ChapatyResult<TradeStatistics> {
         self.try_into()
     }

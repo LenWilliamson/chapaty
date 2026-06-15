@@ -329,6 +329,10 @@ pub trait MarketProfile {
     /// Converts the efficient binary snapshot into a Polars `DataFrame` for complex analysis.
     ///
     /// This unpacks the `Box<[Bin]>` structure into Series.
+    ///
+    /// # Errors
+    /// Returns an error when one or more required columns cannot be materialized
+    /// or cast into the expected schema.
     fn as_dataframe(&self) -> ChapatyResult<DataFrame>;
 }
 
@@ -936,7 +940,7 @@ mod test {
                     volume: Quantity(2500.0),
                     taker_buy_base_asset_volume: Some(Quantity(1200.0)),
                     taker_sell_base_asset_volume: Some(Quantity(1300.0)),
-                    quote_asset_volume: Some(Quantity(125000.0)),
+                    quote_asset_volume: Some(Quantity(125_000.0)),
                     taker_buy_quote_asset_volume: Some(Quantity(60000.0)),
                     taker_sell_quote_asset_volume: Some(Quantity(65000.0)),
                     number_of_trades: Some(Count(120)),
@@ -1023,11 +1027,11 @@ mod test {
 
         // 4. Undershoots / Misses
         assert!(
-            !mock_ohlcv(49000.0, 49999.999999).price_reached(target, TradeType::Long),
+            !mock_ohlcv(49000.0, 49_999.999_999).price_reached(target, TradeType::Long),
             "Wick high barely misses"
         );
         assert!(
-            !mock_ohlcv(50000.000001, 51000.0).price_reached(target, TradeType::Short),
+            !mock_ohlcv(50_000.000_001, 51000.0).price_reached(target, TradeType::Short),
             "Wick low barely misses"
         );
     }
@@ -1037,7 +1041,7 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't dropped enough.
-        assert!(!mock_trade(50000.000001).price_reached(target, TradeType::Long));
+        assert!(!mock_trade(50_000.000_001).price_reached(target, TradeType::Long));
 
         // 2. Exact Touch: Market prints exactly at our limit.
         assert!(mock_trade(50000.0).price_reached(target, TradeType::Long));
@@ -1051,7 +1055,7 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't risen enough.
-        assert!(!mock_trade(49999.999999).price_reached(target, TradeType::Short));
+        assert!(!mock_trade(49_999.999_999).price_reached(target, TradeType::Short));
 
         // 2. Exact Touch: Market prints exactly at our limit.
         assert!(mock_trade(50000.0).price_reached(target, TradeType::Short));

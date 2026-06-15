@@ -13,6 +13,10 @@ pub struct StreamingRsi {
 }
 
 impl StreamingRsi {
+    /// Creates a streaming RSI with Wilder smoothing over `window_size`.
+    ///
+    /// # Panics
+    /// Panics if `window_size` cannot be represented as `u32`.
     #[must_use]
     pub fn new(window_size: RsiWindow) -> Self {
         let size = window_size.0 as usize;
@@ -34,9 +38,7 @@ impl StreamingIndicator for StreamingRsi {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
-        let prev = if let Some(p) = self.prev_price {
-            p
-        } else {
+        let Some(prev) = self.prev_price else {
             self.prev_price = Some(value);
             return None;
         };

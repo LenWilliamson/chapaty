@@ -129,13 +129,13 @@ impl Trade<Active> {
             return Err(AgentError::InvalidInput("Close qty > Open qty".to_string()).into());
         }
 
-        self.execute_close(&CloseParams {
+        Ok(self.execute_close(&CloseParams {
             qty,
             exit_price,
             ts,
             reason: TerminationReason::MarketClose,
             symbol,
-        })
+        }))
     }
 
     /// Advances an Active trade by one market step.
@@ -201,7 +201,7 @@ impl Trade<Active> {
                 ts,
                 reason,
                 symbol,
-            })?;
+            });
 
             match outcome {
                 CloseOutcome::FullyClosed(c) => Ok((State::Closed(c), step_delta)),
@@ -233,7 +233,7 @@ impl Trade<Active> {
     /// previous mark", and a close is just a final mark at the exit price. The
     /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
     /// still stores the _absolute_ realized `PnL` for the journal.
-    fn execute_close(self, close_params: &CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
+    fn execute_close(self, close_params: &CloseParams) -> (CloseOutcome, f64) {
         let CloseParams {
             qty,
             exit_price,
@@ -261,7 +261,7 @@ impl Trade<Active> {
                 termination_reason: *reason,
                 realized_pnl,
             });
-            Ok((CloseOutcome::FullyClosed(closed), step_delta))
+            (CloseOutcome::FullyClosed(closed), step_delta)
         } else {
             // Split the booked unrealized between the closed slice and the survivor,
             // proportional to quantity.
@@ -294,10 +294,10 @@ impl Trade<Active> {
                 })
             };
 
-            Ok((
+            (
                 CloseOutcome::PartiallyClosed { closed, remaining },
                 step_delta,
-            ))
+            )
         }
     }
 }
@@ -409,7 +409,7 @@ mod tests {
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }
@@ -482,9 +482,8 @@ mod tests {
         let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Extract new trade
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         // New unrealized should be positive (price went up, long position)
@@ -516,9 +515,8 @@ mod tests {
         };
         let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -546,9 +544,8 @@ mod tests {
         };
         let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -576,9 +573,8 @@ mod tests {
         };
         let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -606,9 +602,8 @@ mod tests {
         };
         let (state1, delta1) = trade.update(m_id, &ctx1).unwrap();
 
-        let trade1 = match state1 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(trade1) = state1 else {
+            panic!("Expected Active");
         };
         let pnl1 = trade1.state.unrealized_pnl;
 
@@ -621,9 +616,8 @@ mod tests {
         };
         let (state2, delta2) = trade1.update(m_id, &ctx2).unwrap();
 
-        let trade2 = match state2 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(trade2) = state2 else {
+            panic!("Expected Active");
         };
         let pnl2 = trade2.state.unrealized_pnl;
 
@@ -769,11 +763,11 @@ mod tests {
                 agent_id: AgentIdentifier::Random,
                 trade_type: TradeType::Long,
                 quantity: Quantity(1.0),
-                stop_loss: Some(Price(1.095567)),   // Off-grid
-                take_profit: Some(Price(1.105123)), // Off-grid
+                stop_loss: Some(Price(1.095_567)),   // Off-grid
+                take_profit: Some(Price(1.105_123)), // Off-grid
                 entry_price: None,
             },
-            Price(1.100789), // Off-grid entry
+            Price(1.100_789), // Off-grid entry
             ts("2026-01-19T10:00:00Z"),
             symbol,
         )
@@ -886,7 +880,8 @@ mod tests {
         // Diff: 0.00500 -> 100 ticks
         // Value: 100 ticks * $6.25 * 0.5 qty = $312.50
         assert_f64_eq!(
-            reward, 312.5,
+            reward,
+            312.5,
             "Reward calculation incorrect for partial close"
         );
 
@@ -895,7 +890,8 @@ mod tests {
                 // Check Closed Portion
                 assert_eq!(closed.quantity, Quantity(0.5));
                 assert_f64_eq!(
-                    closed.state.realized_pnl, 312.5,
+                    closed.state.realized_pnl,
+                    312.5,
                     "Closed state PnL mismatch"
                 );
                 assert_eq!(
@@ -1024,9 +1020,8 @@ mod tests {
             bias: ExecutionBias::Optimistic,
         };
         let (state, mark_delta) = trade.update(m_id, &ctx).unwrap();
-        let marked = match state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active after marking"),
+        let State::Active(marked) = state else {
+            panic!("Expected Active after marking");
         };
         assert_f64_eq!(marked.state.unrealized_pnl, 375.0);
         assert_f64_eq!(mark_delta, 375.0);
@@ -1041,9 +1036,8 @@ mod tests {
             .market_close(&cmd, Price(1.105), ts("2026-01-19T10:02:00Z"), symbol)
             .unwrap();
 
-        let closed = match outcome {
-            CloseOutcome::FullyClosed(c) => c,
-            _ => panic!("Expected FullyClosed"),
+        let CloseOutcome::FullyClosed(closed) = outcome else {
+            panic!("Expected FullyClosed");
         };
         // Absolute realized is preserved for the journal.
         assert_f64_eq!(closed.state.realized_pnl, 625.0);
@@ -1067,9 +1061,8 @@ mod tests {
             bias: ExecutionBias::Optimistic,
         };
         let (s1, d1) = trade.update(m_id, &c1).unwrap();
-        let marked = match s1 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(marked) = s1 else {
+            panic!("Expected Active");
         };
         assert_f64_eq!(marked.state.unrealized_pnl, 250.0);
         assert_f64_eq!(d1, 250.0);
@@ -1084,9 +1077,8 @@ mod tests {
             .market_close(&cmd, Price(1.105), ts("2026-01-19T10:02:00Z"), symbol)
             .unwrap();
 
-        let (closed, remaining) = match outcome {
-            CloseOutcome::PartiallyClosed { closed, remaining } => (closed, remaining),
-            _ => panic!("Expected PartiallyClosed"),
+        let CloseOutcome::PartiallyClosed { closed, remaining } = outcome else {
+            panic!("Expected PartiallyClosed");
         };
         assert_eq!(closed.quantity, Quantity(0.5));
         assert_f64_eq!(closed.state.realized_pnl, 312.5);
@@ -1105,9 +1097,8 @@ mod tests {
             bias: ExecutionBias::Optimistic,
         };
         let (s2, d2) = remaining.update(m_id, &c2).unwrap();
-        let marked2 = match s2 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(marked2) = s2 else {
+            panic!("Expected Active");
         };
         assert_f64_eq!(marked2.state.unrealized_pnl, 187.5);
         assert_f64_eq!(d2, 62.5); // 187.5 - 125.0, not polluted by the stale 250 baseline

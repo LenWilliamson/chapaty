@@ -455,9 +455,9 @@ mod test {
         let target = Price(100.5);
 
         // Test precision boundaries often encountered in floating-point math
-        assert!(!mock_ema(100.50000001).price_reached(target, TradeType::Long));
+        assert!(!mock_ema(100.500_000_01).price_reached(target, TradeType::Long));
         assert!(mock_ema(100.5).price_reached(target, TradeType::Long));
-        assert!(mock_ema(100.49999999).price_reached(target, TradeType::Long));
+        assert!(mock_ema(100.499_999_99).price_reached(target, TradeType::Long));
     }
 
     #[test]
@@ -465,7 +465,7 @@ mod test {
         let target = Price(100.5);
 
         assert!(
-            !mock_ema(100.49999999).price_reached(target, TradeType::Short),
+            !mock_ema(100.499_999_99).price_reached(target, TradeType::Short),
             "EMA is just below target"
         );
         assert!(
@@ -473,7 +473,7 @@ mod test {
             "EMA exactly hits target"
         );
         assert!(
-            mock_ema(100.50000001).price_reached(target, TradeType::Short),
+            mock_ema(100.500_000_01).price_reached(target, TradeType::Short),
             "EMA spikes just above target"
         );
     }

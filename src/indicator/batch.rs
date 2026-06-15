@@ -212,8 +212,8 @@ mod tests {
             .collect()
     }
 
-    fn some(date: &str) -> Option<String> {
-        Some(date.to_string())
+    fn date(value: &str) -> String {
+        value.to_string()
     }
 
     /// Intraday window (`start_mins < end_mins`): US core session 09:30–16:00 ET.
@@ -235,9 +235,9 @@ mod tests {
             session_dates(window, &timestamps),
             vec![
                 None,
-                some("2026-06-13"),
-                some("2026-06-13"),
-                some("2026-06-13"),
+                Some(date("2026-06-13")),
+                Some(date("2026-06-13")),
+                Some(date("2026-06-13")),
                 None,
                 None,
             ]
@@ -264,10 +264,10 @@ mod tests {
             session_dates(window, &timestamps),
             vec![
                 None,
-                some("2026-06-13"),
-                some("2026-06-13"),
-                some("2026-06-13"),
-                some("2026-06-13"),
+                Some(date("2026-06-13")),
+                Some(date("2026-06-13")),
+                Some(date("2026-06-13")),
+                Some(date("2026-06-13")),
                 None,
                 None,
             ]

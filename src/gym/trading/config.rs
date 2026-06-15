@@ -1221,6 +1221,9 @@ impl EnvConfig {
     /// Computes a deterministic hash of this configuration.
     ///
     /// Used for caching and versioning environment configs.
+    ///
+    /// # Errors
+    /// Returns an error if the configuration cannot be serialized for hashing.
     pub fn hash(&self) -> ChapatyResult<String> {
         let mut hasher = blake3::Hasher::new();
         let bytes = postcard::to_stdvec(self).map_err(EnvError::Encoding)?;

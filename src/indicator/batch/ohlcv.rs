@@ -40,14 +40,14 @@ pub enum BatchOhlcvIndicator {
 impl BatchCompute for BatchOhlcvIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            BatchOhlcvIndicator::Ema(ema) => pre_compute_ema(*ema, lf),
-            BatchOhlcvIndicator::Sma(sma) => pre_compute_sma(*sma, lf),
-            BatchOhlcvIndicator::Rsi(rsi) => pre_compute_rsi(*rsi, lf),
+            BatchOhlcvIndicator::Ema(ema) => Ok(pre_compute_ema(*ema, lf)),
+            BatchOhlcvIndicator::Sma(sma) => Ok(pre_compute_sma(*sma, lf)),
+            BatchOhlcvIndicator::Rsi(rsi) => Ok(pre_compute_rsi(*rsi, lf)),
             BatchOhlcvIndicator::Atr(atr) => pre_compute_atr(*atr, lf),
             BatchOhlcvIndicator::RateOfChange(lb) => pre_compute_rate_of_change(*lb, lf),
-            BatchOhlcvIndicator::Vwap(vwap) => pre_compute_vwap(*vwap, lf),
+            BatchOhlcvIndicator::Vwap(vwap) => Ok(pre_compute_vwap(*vwap, lf)),
             BatchOhlcvIndicator::OvernightRange(session) => {
-                pre_compute_overnight_range(*session, lf)
+                Ok(pre_compute_overnight_range(*session, lf))
             }
         }
     }
@@ -157,7 +157,7 @@ impl OhlcvIndicatorExprExt for Expr {
     }
 }
 
-fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> LazyFrame {
     let window = ema.0;
     let alpha = 2.0 / (f64::from(window) + 1.0);
 
@@ -169,10 +169,10 @@ fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         ignore_nulls: true,
     };
 
-    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).ewm_mean(options)))
+    lf.into_price_timeseries(col(CanonicalCol::Close).ewm_mean(options))
 }
 
-fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> LazyFrame {
     let window = sma.0;
     let options = RollingOptionsFixedWindow {
         window_size: window as usize,
@@ -182,11 +182,11 @@ fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         fn_params: None,
     };
 
-    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).rolling_mean(options)))
+    lf.into_price_timeseries(col(CanonicalCol::Close).rolling_mean(options))
 }
 
-fn pre_compute_rsi(rsi: RsiWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.into_price_timeseries(col(CanonicalCol::Close).rsi(rsi)))
+fn pre_compute_rsi(rsi: RsiWindow, lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(col(CanonicalCol::Close).rsi(rsi))
 }
 
 fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
@@ -205,8 +205,8 @@ fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
     Ok(lf.into_price_timeseries(tr_expr.ewm_mean(options)))
 }
 
-fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.into_price_timeseries(agg.to_expr().vwap_with_volume(col(CanonicalCol::Volume))))
+fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(agg.to_expr().vwap_with_volume(col(CanonicalCol::Volume)))
 }
 
 fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
@@ -286,7 +286,7 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
     }
 }
 
-fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> LazyFrame {
     let SessionCfg {
         window,
         price_aggregation,
@@ -294,7 +294,9 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<
 
     let session_date_col = col(CanonicalCol::PointInTime).session_date(window);
 
-    let out_lf = lf
+    
+
+    lf
         .with_column(session_date_col.alias(CanonicalCol::Date))
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
@@ -330,9 +332,7 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> ChapatyResult<
             col(CanonicalCol::SessionLowestClose),
             col(CanonicalCol::SessionVolume),
             col(CanonicalCol::SessionVwap),
-        ]);
-
-    Ok(out_lf)
+        ])
 }
 
 #[cfg(test)]

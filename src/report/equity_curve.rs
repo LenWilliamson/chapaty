@@ -86,6 +86,9 @@ impl EquityCurveReport {
     /// we use Polars' `DynamicGroupOptions` with `ClosedWindow::Right`. This `(start, end]`
     /// inclusivity ensures the midnight tick is strictly evaluated as the terminal state of `T`
     /// without duplicating the row into `T+1`.
+    ///
+    /// # Errors
+    /// Returns an error if Polars cannot group, aggregate, or collect the transformed frame.
     pub fn into_eod(self) -> ChapatyResult<Self> {
         const BUCKET_ALIAS: &str = "_bucket_ts";
         let eod_df = self

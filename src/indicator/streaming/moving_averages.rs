@@ -124,6 +124,10 @@ pub struct StreamingEma {
 }
 
 impl StreamingEma {
+    /// Creates a streaming EMA with the given window size.
+    ///
+    /// # Panics
+    /// Panics if `window_size` cannot be represented as `u32`.
     #[must_use]
     pub fn new(window_size: EmaWindow) -> Self {
         let size = window_size.0 as usize;

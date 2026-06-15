@@ -104,10 +104,17 @@ impl Environment {
     ///
     /// This allows subsequent runs to use `chapaty::load` with the same configuration
     /// to skip the expensive data fetching and building steps.
+    ///
+    /// # Errors
+    /// Returns an error if serialization or storage I/O fails.
     pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
         self.sim_data.clone().write(cfg).await
     }
 
+    /// Runs one full episode for `agent` and returns its trading journal.
+    ///
+    /// # Errors
+    /// Returns an error if reset, stepping, or report materialization fails.
     pub fn evaluate_agent<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<Journal> {
         self.reset()?;
         self.eval(agent)?;
@@ -139,6 +146,10 @@ impl Environment {
     /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU Cores`.
     ///
     /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks instead of 2 hours.
+    ///
+    /// # Errors
+    /// Returns an error when any worker fails to evaluate, aggregate, or convert
+    /// intermediate results into the final leaderboard.
     pub fn evaluate_agents<T>(
         &mut self,
         agents: Vec<(usize, T)>,
@@ -176,6 +187,10 @@ impl Environment {
         self.ep
     }
 
+    /// Returns cumulative `PnL` for the given episode.
+    ///
+    /// # Errors
+    /// Returns an error if the episode does not exist in the ledger.
     pub fn episode_pnl(&self, ep: &Episode) -> ChapatyResult<f64> {
         self.ledger.episode_pnl(ep)
     }
@@ -185,11 +200,19 @@ impl Environment {
         self.env_status
     }
 
+    /// Materializes the journal report for all completed and active trades.
+    ///
+    /// # Errors
+    /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
         let df = self.ledger.journal_df()?;
         Journal::new(&df, self.risk_metrics_cfg)
     }
 
+    /// Materializes the equity-curve report from the ledger.
+    ///
+    /// # Errors
+    /// Returns an error if ledger extraction or report construction fails.
     pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
         let df = self.ledger.equity_curve_df()?;
         EquityCurveReport::new(&df)
@@ -262,7 +285,7 @@ impl Env for Environment {
         let (outcome, total_reward) = self.transition(&episode, summary)?;
 
         // 4. Update Status
-        self.update_env_status(outcome)?;
+        self.update_env_status(outcome);
 
         // 5. Observe S(t+1)
         let market_final = MarketView::new(&self.sim_data, &self.cursor)?;
@@ -291,7 +314,7 @@ impl Environment {
         ep: &Episode,
         summary: ActionSummary,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
-        self.advance_market()?;
+        self.advance_market();
         let market_after = MarketView::new(&self.sim_data, &self.cursor)?;
 
         let update_ctx = UpdateCtx {
@@ -383,8 +406,8 @@ impl Environment {
         }
     }
 
-    fn advance_market(&mut self) -> ChapatyResult<()> {
-        self.cursor.step(&self.sim_data, &self.ep)
+    fn advance_market(&mut self) {
+        self.cursor.step(&self.sim_data, &self.ep);
     }
 
     fn evaluate_outcome(&self, ep: &Episode) -> ChapatyResult<StepOutcome> {
@@ -401,7 +424,7 @@ impl Environment {
         }
     }
 
-    fn update_env_status(&mut self, outcome: StepOutcome) -> ChapatyResult<()> {
+    fn update_env_status(&mut self, outcome: StepOutcome) {
         if outcome.is_terminal() {
             self.env_status = if self.cursor.is_end_of_data(&self.sim_data) {
                 EnvStatus::Done
@@ -409,7 +432,6 @@ impl Environment {
                 EnvStatus::EpisodeDone
             };
         }
-        Ok(())
     }
 }
 

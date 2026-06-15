@@ -19,9 +19,9 @@ pub enum BatchTradesIndicator {
 impl BatchCompute for BatchTradesIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            BatchTradesIndicator::Vwap => pre_compute_trades_vwap(lf),
+            BatchTradesIndicator::Vwap => Ok(pre_compute_trades_vwap(lf)),
             BatchTradesIndicator::OvernightRange(session) => {
-                pre_compute_overnight_range(*session, lf)
+                Ok(pre_compute_overnight_range(*session, lf))
             }
         }
     }
@@ -48,16 +48,16 @@ impl BatchCompute for BatchTradesIndicator {
 // LazyFrame Pre-Computations
 // ================================================================================================
 
-fn pre_compute_trades_vwap(lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    Ok(lf.into_price_timeseries(
-        col(CanonicalCol::Price).vwap_with_volume(col(CanonicalCol::Volume)),
-    ))
+fn pre_compute_trades_vwap(lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(col(CanonicalCol::Price).vwap_with_volume(col(CanonicalCol::Volume)))
 }
 
-fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
+fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> LazyFrame {
     let session_date_col = col(CanonicalCol::PointInTime).session_date(session);
 
-    let out_lf = lf
+    
+
+    lf
         .with_column(session_date_col.alias(CanonicalCol::Date))
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
@@ -86,7 +86,5 @@ fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> Chapaty
             col(CanonicalCol::SessionLow),
             col(CanonicalCol::SessionVolume),
             col(CanonicalCol::SessionVwap),
-        ]);
-
-    Ok(out_lf)
+        ])
 }

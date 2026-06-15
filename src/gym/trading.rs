@@ -26,6 +26,14 @@ pub use state::*;
 pub use types::*;
 
 pub trait Env {
+    /// Resets environment state and returns the initial observation tuple.
+    ///
+    /// # Errors
+    /// Returns an error when episode initialization fails.
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
+    /// Applies an action batch and advances the environment by one step.
+    ///
+    /// # Errors
+    /// Returns an error when action execution or market advancement fails.
     fn step(&mut self, actions: Actions) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)>;
 }

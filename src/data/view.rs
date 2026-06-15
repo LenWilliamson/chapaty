@@ -272,6 +272,10 @@ impl<'env> MarketView<'env> {
     }
 
     /// Resolves the most recent, non-leaky close price.
+    ///
+    /// # Errors
+    /// Returns an error when no close-price-capable stream has data for
+    /// `target_symbol` at or before the current cursor timestamp.
     pub fn try_resolved_close_price(&self, target_symbol: Symbol) -> ChapatyResult<Price> {
         let best_price = self
             .close_price_views()

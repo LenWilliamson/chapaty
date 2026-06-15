@@ -26,7 +26,7 @@ impl ProtoBatch for EconomicCalendarResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&economic_calendar_schema()),
+            None => return Ok(empty_lf(&economic_calendar_schema())),
         };
 
         let len = events.len();
@@ -98,7 +98,7 @@ impl ProtoBatch for OhlcvFutureResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&ohlcv_future_schema()),
+            None => return Ok(empty_lf(&ohlcv_future_schema())),
         };
 
         let len = events.len();
@@ -153,7 +153,7 @@ impl ProtoBatch for OhlcvSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&ohlcv_spot_schema()),
+            None => return Ok(empty_lf(&ohlcv_spot_schema())),
         };
 
         let len = events.len();
@@ -220,7 +220,7 @@ impl ProtoBatch for TradesSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&trades_spot_schema()),
+            None => return Ok(empty_lf(&trades_spot_schema())),
         };
 
         let len = events.len();
@@ -271,7 +271,7 @@ impl ProtoBatch for TpoFutureResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&tpo_future_schema()),
+            None => return Ok(empty_lf(&tpo_future_schema())),
         };
 
         let len = events.len();
@@ -317,7 +317,7 @@ impl ProtoBatch for TpoSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&tpo_spot_schema()),
+            None => return Ok(empty_lf(&tpo_spot_schema())),
         };
 
         let len = events.len();
@@ -363,7 +363,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&volume_profile_spot_schema()),
+            None => return Ok(empty_lf(&volume_profile_spot_schema())),
         };
 
         let len = events.len();
@@ -432,8 +432,8 @@ impl ProtoBatch for VolumeProfileSpotResponse {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
-fn empty_lf(schema: &Schema) -> ChapatyResult<LazyFrame> {
-    Ok(DataFrame::empty_with_schema(schema).lazy())
+fn empty_lf(schema: &Schema) -> LazyFrame {
+    DataFrame::empty_with_schema(schema).lazy()
 }
 
 fn extract_timestamp(ts: &Option<Timestamp>, field: &str) -> ChapatyResult<i64> {
@@ -719,7 +719,7 @@ mod tests {
             low: 90.0,
             close: 105.0,
             volume: 1000.0,
-            quote_asset_volume: 105000.0,
+            quote_asset_volume: 105_000.0,
             number_of_trades: 50,
             taker_buy_base_asset_volume: 600.0,
             taker_buy_quote_asset_volume: 63000.0,
@@ -742,7 +742,7 @@ mod tests {
         assert_f64_eq!(get_f64(&df, CanonicalCol::Low, 0), 90.0);
         assert_f64_eq!(get_f64(&df, CanonicalCol::Close, 0), 105.0);
         assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 1000.0);
-        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105_000.0);
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfTrades, 0), 50);
         assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyBaseAssetVolume, 0),
@@ -778,7 +778,7 @@ mod tests {
         let trade_ts = make_timestamp(4, 12);
 
         let event = TradesSpotEvent {
-            trade_id: 999888,
+            trade_id: 999_888,
             price: 200.50,
             quantity: 2.0,
             quote_quantity: 401.0,
@@ -799,7 +799,7 @@ mod tests {
         assert_eq!(*df.schema(), trades_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 999888);
+        assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 999_888);
         assert_f64_eq!(get_f64(&df, CanonicalCol::Price, 0), 200.50);
         assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 2.0);
         assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
@@ -960,7 +960,7 @@ mod tests {
             base_volume: 5000.0,
             taker_buy_base_volume: 2500.0,
             taker_sell_base_volume: 2500.0,
-            quote_volume: 125000.0,
+            quote_volume: 125_000.0,
             taker_buy_quote_volume: 62500.0,
             taker_sell_quote_volume: 62500.0,
             number_of_trades: 100,
@@ -991,7 +991,7 @@ mod tests {
             get_f64(&df, CanonicalCol::TakerSellBaseAssetVolume, 0),
             2500.0
         );
-        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125_000.0);
         assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyQuoteAssetVolume, 0),
             62500.0
@@ -1149,8 +1149,8 @@ mod tests {
     #[test]
     fn timestamp_to_micro_converts_correctly() {
         let ts = Timestamp {
-            seconds: 1735689600, // 2025-01-01 00:00:00 UTC
-            nanos: 500_000_000,  // 0.5 seconds
+            seconds: 1_735_689_600, // 2025-01-01 00:00:00 UTC
+            nanos: 500_000_000,     // 0.5 seconds
         };
 
         let micros = timestamp_to_micro(&ts).unwrap();

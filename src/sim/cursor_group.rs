@@ -86,7 +86,7 @@ macro_rules! map_cursors {
 }
 
 impl CursorGroup {
-    pub fn new(sim_data: &SimulationData) -> ChapatyResult<Self> {
+    pub fn new(sim_data: &SimulationData) -> Self {
         let start_ts = sim_data.global_availability_start();
 
         let mut group = Self {
@@ -108,7 +108,7 @@ impl CursorGroup {
             current_ts: start_ts,
         };
         group.advance_all(sim_data, start_ts);
-        Ok(group)
+        group
     }
 
     pub fn current_ts(&self) -> DateTime<Utc> {
@@ -189,22 +189,21 @@ impl CursorGroup {
     /// This method is idempotent when called at the end of available data or at an episode boundary:
     /// - When there are no more events, calling this method multiple times has no effect.
     /// - When at the episode's end, further calls will not advance beyond the episode boundary.
-    pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) -> ChapatyResult<()> {
+    pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) {
         let Some(mut next_ts) = self.peek(sim_data) else {
-            return Ok(());
+            return;
         };
 
         // Don't step past episode boundary
         next_ts = next_ts.min(ep.end());
 
         if next_ts <= self.current_ts {
-            return Ok(());
+            return;
         }
 
         self.previous_ts = Some(self.current_ts);
         self.current_ts = next_ts;
         self.advance_all(sim_data, next_ts);
-        Ok(())
     }
 
     /// Resets the cursor to the beginning of the next chronological episode.
@@ -477,7 +476,7 @@ mod test {
         let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
         let ep = episode(ts("2025-03-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // INITIAL STATE: First available event is trade at 00:02
         assert_eq!(
@@ -490,7 +489,7 @@ mod test {
         assert_eq!(cursor_group.ohlcv.0.get(&oid).unwrap(), &(0..0));
 
         // STEP 1: Next event is OHLCV at 00:05
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-03-01T00:05:00Z"));
         // Now OHLCV cursor has consumed first event
         assert_eq!(
@@ -505,7 +504,7 @@ mod test {
         );
 
         // STEP 2: Next event is trade at 00:07
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-03-01T00:07:00Z"));
         assert_eq!(
             cursor_group.trade.0.get(&tid).unwrap(),
@@ -519,7 +518,7 @@ mod test {
         );
 
         // STEP 3: Next event is OHLCV at 00:10
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-03-01T00:10:00Z"));
         assert_eq!(
             cursor_group.ohlcv.0.get(&oid).unwrap(),
@@ -548,7 +547,7 @@ mod test {
         ];
 
         let sim_data = sim_data_with_ohlcv(oid, events);
-        let cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let cursor_group = CursorGroup::new(&sim_data);
 
         // Should start at first available event (00:03:00)
         assert_eq!(
@@ -587,11 +586,11 @@ mod test {
         let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
         let ep = episode(ts("2025-05-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Advance past some events
-        cursor_group.step(&sim_data, &ep).unwrap();
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
+        cursor_group.step(&sim_data, &ep);
 
         // Verify cursors have advanced
         assert!(cursor_group.ohlcv.0.get(&oid).unwrap().end > 0);
@@ -630,7 +629,7 @@ mod test {
         let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
         let ep = episode(ts("2025-06-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Initial: at 00:03 (OHLCV first)
         assert!(
@@ -639,7 +638,7 @@ mod test {
         );
 
         // Step to 00:05 (trade)
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-06-01T00:05:00Z"));
 
         // Now OHLCV is exhausted but trade was just consumed
@@ -669,19 +668,19 @@ mod test {
         // Note: EpisodeLength::Day is the closest we have to a short test episode
         // Let's use a real Day and just step to the boundary
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Step until end of data
-        cursor_group.step(&sim_data, &ep).unwrap();
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
+        cursor_group.step(&sim_data, &ep);
 
         let ts_before = cursor_group.current_ts;
         let prev_before = cursor_group.previous_ts;
         let range_before = cursor_group.ohlcv.0.get(&oid).unwrap().clone();
 
         // Additional steps should be idempotent
-        cursor_group.step(&sim_data, &ep).unwrap();
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
+        cursor_group.step(&sim_data, &ep);
 
         assert_eq!(
             cursor_group.current_ts, ts_before,
@@ -714,10 +713,10 @@ mod test {
         let sim_data = sim_data_with_ohlcv(oid, events);
         let ep1 = episode(ts("2025-08-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Step in episode 1 to set previous_ts
-        cursor_group.step(&sim_data, &ep1).unwrap();
+        cursor_group.step(&sim_data, &ep1);
         assert!(
             cursor_group.previous_ts.is_some(),
             "previous_ts should be set after step"
@@ -753,7 +752,7 @@ mod test {
         let sim_data = sim_data_with_ohlcv(oid, events);
         let ep = episode(ts("2025-09-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Try to advance to next episode when no more data exists
         let next_ep = cursor_group.advance_to_next_episode(&sim_data, ep).unwrap();
@@ -783,7 +782,7 @@ mod test {
         let sim_data = sim_data_with_ohlcv(oid, events);
         let ep1 = episode(ts("2025-10-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Advance to next episode (should skip 14 days of missing data)
         let ep2 = cursor_group
@@ -820,19 +819,19 @@ mod test {
         let sim_data = sim_data_with_ohlcv(oid, events);
         let ep = episode(ts("2025-11-01T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Initial state
         assert_eq!(cursor_group.current_ts, ts("2025-11-01T00:03:00Z"));
         assert_eq!(cursor_group.previous_ts, None);
 
         // Step 1
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-11-01T00:06:00Z"));
         assert_eq!(cursor_group.previous_ts, Some(ts("2025-11-01T00:03:00Z")));
 
         // Step 2
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-11-01T00:09:00Z"));
         assert_eq!(cursor_group.previous_ts, Some(ts("2025-11-01T00:06:00Z")));
     }
@@ -855,7 +854,7 @@ mod test {
         let trade_events = vec![trade(ts("2025-12-01T00:05:00Z"))];
 
         let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
-        let cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let cursor_group = CursorGroup::new(&sim_data);
 
         // Both events at exactly 00:05 should be consumed on initialization
         assert_eq!(
@@ -902,19 +901,19 @@ mod test {
         let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
         let ep1 = episode(ts("2026-01-05T00:00:00Z"), EpisodeLength::Day);
 
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // Episode 1: Initial (trade at 00:03)
         assert_eq!(cursor_group.current_ts, ts("2026-01-05T00:03:00Z"));
 
         // Step through Episode 1
-        cursor_group.step(&sim_data, &ep1).unwrap(); // OHLCV 00:05
+        cursor_group.step(&sim_data, &ep1); // OHLCV 00:05
         assert_eq!(cursor_group.current_ts, ts("2026-01-05T00:05:00Z"));
 
-        cursor_group.step(&sim_data, &ep1).unwrap(); // Trade 00:08
+        cursor_group.step(&sim_data, &ep1); // Trade 00:08
         assert_eq!(cursor_group.current_ts, ts("2026-01-05T00:08:00Z"));
 
-        cursor_group.step(&sim_data, &ep1).unwrap(); // OHLCV 00:10
+        cursor_group.step(&sim_data, &ep1); // OHLCV 00:10
         assert_eq!(cursor_group.current_ts, ts("2026-01-05T00:10:00Z"));
 
         // Advance to Episode 2
@@ -929,7 +928,7 @@ mod test {
         assert_eq!(cursor_group.previous_ts, None);
 
         // Step to OHLCV 00:05
-        cursor_group.step(&sim_data, &ep2).unwrap();
+        cursor_group.step(&sim_data, &ep2);
         assert_eq!(cursor_group.current_ts, ts("2026-01-06T00:05:00Z"));
         assert_eq!(cursor_group.previous_ts, Some(ts("2026-01-06T00:02:00Z")));
 
@@ -969,7 +968,7 @@ mod test {
             .unwrap();
 
         let ep = episode(ts("2025-01-01T00:00:00Z"), EpisodeLength::Day);
-        let mut cursor_group = CursorGroup::new(&sim_data).unwrap();
+        let mut cursor_group = CursorGroup::new(&sim_data);
 
         // 1. Init -> 10:00 (BTC)
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:00:00Z"));
@@ -977,7 +976,7 @@ mod test {
         assert_eq!(cursor_group.trade.0.get(&eth_id).unwrap(), &(0..0));
 
         // 2. Step -> 10:01 (ETH)
-        cursor_group.step(&sim_data, &ep).unwrap();
+        cursor_group.step(&sim_data, &ep);
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:01:00Z"));
 
         // Both consumed

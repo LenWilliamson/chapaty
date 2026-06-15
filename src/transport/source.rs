@@ -217,6 +217,10 @@ pub struct ApiKeyInterceptor {
 }
 
 impl ApiKeyInterceptor {
+    /// Creates an interceptor that injects the optional API key into request metadata.
+    ///
+    /// # Panics
+    /// Panics if the provided API key cannot be parsed into ASCII metadata.
     #[must_use]
     pub fn new(api_key: Option<ApiKey>) -> Self {
         let metadata_value = api_key.map(|key| {

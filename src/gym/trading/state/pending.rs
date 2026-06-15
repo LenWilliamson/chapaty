@@ -248,7 +248,7 @@ mod test {
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }
@@ -711,11 +711,11 @@ mod test {
                 agent_id: AgentIdentifier::Random,
                 trade_type: TradeType::Long,
                 quantity: Quantity(1.0),
-                stop_loss: Some(Price(1.085567)),
-                take_profit: Some(Price(1.095123)),
-                entry_price: Some(Price(1.090789)),
+                stop_loss: Some(Price(1.085_567)),
+                take_profit: Some(Price(1.095_123)),
+                entry_price: Some(Price(1.090_789)),
             },
-            Price(1.090789),
+            Price(1.090_789),
             ts("2026-01-19T10:00:00Z"),
             symbol,
         )
@@ -821,9 +821,8 @@ mod test {
         };
         let (state1, reward1) = trade.update(m_id, &ctx1).unwrap();
 
-        let trade1 = match state1 {
-            State::Pending(t) => t,
-            _ => panic!("Should stay Pending"),
+        let State::Pending(trade1) = state1 else {
+            panic!("Should stay Pending");
         };
         assert_f64_eq!(reward1, 0.0);
 

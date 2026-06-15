@@ -32,6 +32,10 @@ impl<'env> ActionSpace<'env> {
         }
     }
 
+    /// Samples one action per market according to the configured policy.
+    ///
+    /// # Errors
+    /// Returns an error when a sampled command fails intrinsic validation.
     pub fn sample(&mut self) -> ChapatyResult<Actions> {
         let mut action_list = Vec::new();
 
@@ -273,7 +277,7 @@ mod tests {
             .expect("Failed to build sim data");
 
         // Cursor initializes at the start of data
-        let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+        let cursor = CursorGroup::new(&sim_data);
 
         (sim_data, cursor)
     }

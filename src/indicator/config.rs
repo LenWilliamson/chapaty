@@ -30,6 +30,9 @@ impl AtrConfig {
     /// # Arguments
     ///
     /// * `window` - The window size for the ATR calculation.
+    ///
+    /// # Panics
+    /// Panics if `window == 0`.
     #[must_use]
     pub fn new(window: u16) -> Self {
         assert!(window > 0, "window must be > 0, but got {window} <= 0");
@@ -76,6 +79,9 @@ pub enum LookbackWindow {
 
 impl LookbackWindow {
     /// Create a time-based window in seconds.
+    ///
+    /// # Panics
+    /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn seconds(secs: u64) -> Self {
         Self::Time(
@@ -85,6 +91,9 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in minutes.
+    ///
+    /// # Panics
+    /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn minutes(mins: u64) -> Self {
         Self::Time(
@@ -94,6 +103,9 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in hours.
+    ///
+    /// # Panics
+    /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn hours(hours: u64) -> Self {
         Self::Time(
@@ -103,6 +115,9 @@ impl LookbackWindow {
     }
 
     /// Create a time-based window in days.
+    ///
+    /// # Panics
+    /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn days(days: u64) -> Self {
         Self::Time(

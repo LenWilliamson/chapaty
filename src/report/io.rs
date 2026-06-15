@@ -146,6 +146,9 @@ pub trait AsFormattedLazyFrame {
 pub trait ToJson {
     /// Serializes the report to a generic JSON Value.
     /// Returns a `Value::Array` containing row objects.
+    ///
+    /// # Errors
+    /// Returns an error if `DataFrame` rows cannot be converted to JSON.
     fn to_json(&self) -> ChapatyResult<serde_json::Value>;
 }
 
@@ -154,6 +157,9 @@ pub trait ExportSync {
     ///
     /// - Creates directories if they do not exist.
     /// - Automatically generates a file name if one is not provided in `FileConfig`.
+    ///
+    /// # Errors
+    /// Returns an error if path resolution, serialization, or file writing fails.
     fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()>;
 }
 

@@ -49,6 +49,10 @@ impl ExprExt for Expr {
 }
 
 pub trait DataFrameExt {
+    /// Converts each `DataFrame` row into a JSON object map.
+    ///
+    /// # Errors
+    /// Returns an error if intermediate serialization or JSON parsing fails.
     fn to_json_rows(&self) -> ChapatyResult<Vec<serde_json::Map<String, Value>>>;
 }
 

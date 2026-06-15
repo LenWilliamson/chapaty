@@ -124,6 +124,10 @@ impl Default for ProfileAggregation {
 
 impl ProfileAggregation {
     /// Returns the size of the bin in quote currency as a mathematically exact string.
+    ///
+    /// # Errors
+    /// Propagates the same errors as [`Self::calculate_bin_decimal`] when the
+    /// aggregation configuration is invalid for the given instrument.
     pub fn actual_price_bin_string<I: Instrument>(&self, instrument: &I) -> ChapatyResult<String> {
         self.calculate_bin_decimal(instrument)
             .map(|d| d.normalize().to_string())
@@ -235,8 +239,8 @@ impl Default for RiskMetricsConfig {
 impl RiskMetricsConfig {
     /// Creates a new config with the mandatory initial capital.
     ///
-    /// # Validation
-    /// Returns error if `initial_portfolio_value` is 0.
+    /// # Errors
+    /// Returns an error if `initial_portfolio_value` is `0`.
     pub fn new(initial_portfolio_value: u32) -> ChapatyResult<Self> {
         if initial_portfolio_value == 0 {
             return Err(EnvError::InvalidRiskMetricsConfig(

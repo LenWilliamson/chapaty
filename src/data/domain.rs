@@ -1058,7 +1058,7 @@ impl Instrument for FutureRoot {
                 0.00005
             }
             FutureRoot::GbpUsd => 0.0001,
-            FutureRoot::JpyUsd => 0.0000005,
+            FutureRoot::JpyUsd => 0.000_000_5,
             FutureRoot::Btc => 5.0,
             FutureRoot::EminiSp500 | FutureRoot::EminiNasdaq100 => 0.25,
         }
@@ -1227,6 +1227,10 @@ impl SessionWindow {
     }
 
     /// Classifies a UTC timestamp against the window, resolving the session it belongs to when inside.
+    ///
+    /// # Panics
+    /// Panics when classifying overnight windows if the local date is Chrono's
+    /// minimum representable date and cannot be decremented (`pred_opt` is `None`).
     #[must_use]
     pub fn classify(&self, utc_ts: DateTime<Utc>) -> WindowPosition {
         let local = utc_ts.with_timezone(&self.timezone);
@@ -1664,7 +1668,7 @@ mod tests {
 
         // Case 1: Artifact just ABOVE the valid price (e.g. 1.10000001)
         // Should round DOWN to 1.10000
-        let dirty_high = valid_price + 0.00000001;
+        let dirty_high = valid_price + 0.000_000_01;
         let norm_high = eur.normalize_price(dirty_high);
 
         assert!(
@@ -1674,7 +1678,7 @@ mod tests {
 
         // Case 2: Artifact just BELOW the valid price (e.g. 1.09999999)
         // Should round UP to 1.10000
-        let dirty_low = valid_price - 0.00000001;
+        let dirty_low = valid_price - 0.000_000_01;
         let norm_low = eur.normalize_price(dirty_low);
 
         assert!(
@@ -1693,7 +1697,7 @@ mod tests {
         let expected_ticks = 10;
 
         // Test with positive noise (0.00050001 -> 10.0002 -> round to 10)
-        let noisy_dist = Price(clean_dist + 0.00000001);
+        let noisy_dist = Price(clean_dist + 0.000_000_01);
         let ticks = eur.price_to_ticks(noisy_dist);
         assert_eq!(
             ticks.0, expected_ticks,
@@ -1701,7 +1705,7 @@ mod tests {
         );
 
         // Test with negative noise (0.00049999 -> 9.9998 -> round to 10)
-        let noisy_dist_neg = Price(clean_dist - 0.00000001);
+        let noisy_dist_neg = Price(clean_dist - 0.000_000_01);
         let ticks_neg = eur.price_to_ticks(noisy_dist_neg);
         assert_eq!(
             ticks_neg.0, expected_ticks,

@@ -152,7 +152,9 @@ pub struct GridAxis {
 
 impl GridAxis {
     /// Create a new axis from string parameters.
-    /// Returns a Result instead of panicking.
+    ///
+    /// # Errors
+    /// Returns an error when any bound/step string cannot be parsed as `f64`.
     pub fn new(start: &str, end: &str, step: &str) -> ChapatyResult<Self> {
         let start_f = f64::from_str(start).map_err(DataError::from)?;
         let end_f = f64::from_str(end).map_err(DataError::from)?;

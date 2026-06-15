@@ -47,6 +47,10 @@ impl TradeType {
 }
 
 impl TradeType {
+    /// Validates `stop_loss`, `entry`, and `take_profit` ordering for the trade side.
+    ///
+    /// # Errors
+    /// Returns an error when the provided prices violate long/short ordering constraints.
     pub fn price_ordering_validation(
         &self,
         stop_loss: Option<Price>,
@@ -507,7 +511,7 @@ mod tests {
         // Expected PnL: 10 ticks * $6.25 = $62.50
 
         // CASE 1: Dirty Long Exit (Price is slightly too high: 1.10050 + 0.00000001)
-        let dirty_exit = Price(1.10050001);
+        let dirty_exit = Price(1.100_500_01);
 
         let pnl = TradeType::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), eur);
 
@@ -517,7 +521,7 @@ mod tests {
 
         // CASE 2: Dirty Short Entry (Price is slightly too low: 1.10050 - 0.00000001)
         // Shorting from here down to 1.10000 should still yield 10 ticks
-        let dirty_entry = Price(1.09949999); // Target 10 ticks below is ~1.09900
+        let dirty_entry = Price(1.099_499_99); // Target 10 ticks below is ~1.09900
         let clean_exit = Price(1.09900);
 
         let pnl_short = TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);

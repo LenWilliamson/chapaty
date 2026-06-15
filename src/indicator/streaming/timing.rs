@@ -97,6 +97,10 @@ impl Default for StreamingTdXSequential {
 }
 
 impl StreamingTdXSequential {
+    /// Creates a TD setup detector with the given lookback and target count.
+    ///
+    /// # Panics
+    /// Panics if `target_count == 0`.
     #[must_use]
     pub fn new(lookback: usize, target_count: usize) -> Self {
         assert!(
