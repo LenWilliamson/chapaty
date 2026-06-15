@@ -224,7 +224,10 @@ impl<T> AgentLeaderboard<T> {
         self.garbage_collect(new_entries[0].agent_uid, &potentially_evicted);
     }
 
-    #[expect(clippy::expect_used, reason = "every metric heap is registered at construction, so a merged metric is always present")]
+    #[expect(
+        clippy::expect_used,
+        reason = "every metric heap is registered at construction, so a merged metric is always present"
+    )]
     pub(crate) fn merge(mut self, other: Self) -> Self {
         for (metric, other_heap) in other.top_per_metric {
             let heap = self.top_per_metric.get_mut(&metric).expect(
@@ -258,7 +261,10 @@ impl<T> AgentLeaderboard<T> {
             .any(|heap| heap.iter().any(|entry| entry.0.agent_uid == uid))
     }
 
-    #[expect(clippy::expect_used, reason = "every metric heap is registered at construction, so the looked-up metric is always present")]
+    #[expect(
+        clippy::expect_used,
+        reason = "every metric heap is registered at construction, so the looked-up metric is always present"
+    )]
     fn process_entry(&mut self, entry: &LeaderboardEntry) -> HeapAction {
         let heap = self
             .top_per_metric

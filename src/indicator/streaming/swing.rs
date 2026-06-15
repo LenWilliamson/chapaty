@@ -211,7 +211,10 @@ impl PivotPoint {
     ///
     /// # Panics
     /// Panics if any involved bar index cannot be represented as `u32`.
-    #[expect(clippy::expect_used, reason = "candle indices are bounded by the in-memory series length and always fit in u32")]
+    #[expect(
+        clippy::expect_used,
+        reason = "candle indices are bounded by the in-memory series length and always fit in u32"
+    )]
     pub fn price_line_by_index(&self, target: &Self) -> impl Fn(usize) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
@@ -240,7 +243,10 @@ impl PivotPoint {
     ///
     /// # Panics
     /// Panics if millisecond deltas cannot be losslessly formatted/parsing into `f64`.
-    #[expect(clippy::expect_used, reason = "the decimal string of a millisecond timestamp always parses back into an f64")]
+    #[expect(
+        clippy::expect_used,
+        reason = "the decimal string of a millisecond timestamp always parses back into an f64"
+    )]
     pub fn price_line_by_point_in_time(&self, target: &Self) -> impl Fn(DateTime<Utc>) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;

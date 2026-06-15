@@ -957,14 +957,20 @@ impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V> {
 impl<K: Ord, V> Index<&K> for SortedVecMap<K, V> {
     type Output = V;
 
-    #[expect(clippy::expect_used, reason = "Index panics on a missing key by contract, mirroring the standard library map types")]
+    #[expect(
+        clippy::expect_used,
+        reason = "Index panics on a missing key by contract, mirroring the standard library map types"
+    )]
     fn index(&self, key: &K) -> &Self::Output {
         self.get(key).expect("key not found")
     }
 }
 
 impl<K: Ord, V> IndexMut<&K> for SortedVecMap<K, V> {
-    #[expect(clippy::expect_used, reason = "IndexMut panics on a missing key by contract, mirroring the standard library map types")]
+    #[expect(
+        clippy::expect_used,
+        reason = "IndexMut panics on a missing key by contract, mirroring the standard library map types"
+    )]
     fn index_mut(&mut self, key: &K) -> &mut Self::Output {
         self.get_mut(key).expect("key not found")
     }

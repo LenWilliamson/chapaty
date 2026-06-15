@@ -10,7 +10,10 @@ use crate::{
     clippy::too_many_lines,
     reason = "single cohesive value-area and POC computation kept together for readability of the market-profile algorithm"
 )]
-#[expect(clippy::expect_used, reason = "candidate bin indices are bounded by the input slice length and always fit in u32")]
+#[expect(
+    clippy::expect_used,
+    reason = "candidate bin indices are bounded by the input slice length and always fit in u32"
+)]
 pub fn compute_profile_stats<T: ProfileBinStats>(
     bins: &[T],
     va_pct: f64,
@@ -165,7 +168,10 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::expect_used, reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test")]
+    #![expect(
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
+    )]
 
     use super::*;
 

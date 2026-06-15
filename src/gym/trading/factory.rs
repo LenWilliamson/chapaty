@@ -1562,10 +1562,17 @@ fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
         abs_ca.iter(),
         roc_ca.iter()
     ) {
+        let (Some(abs_val), Some(roc_val)) = (abs_opt, roc_opt) else {
+            debug!(
+                absolute = CanonicalCol::RocAbsolute.as_str(),
+                percentage = CanonicalCol::Roc.as_str(),
+                "Skipping rate-of-change row with null value during extraction"
+            );
+            continue;
+        };
+
         let window_start = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
         let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
-        let abs_val = abs_opt.ok_or_else(|| DataError::DataFrame("Missing RocAbsolute".into()))?;
-        let roc_val = roc_opt.ok_or_else(|| DataError::DataFrame("Missing Roc".into()))?;
 
         events.push(Roc {
             timestamp,
@@ -1605,25 +1612,25 @@ fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>>
         vol_ca.iter(),
         vwap_ca.iter()
     ) {
+        let (Some(high_val), Some(low_val), Some(vol_val), Some(vwap_val)) =
+            (high_opt, low_opt, vol_opt, vwap_opt)
+        else {
+            debug!("Skipping trades-session row with null aggregate value during extraction");
+            continue;
+        };
+
         let session = parse_session_date(date_opt)?;
         let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
         let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
-        let high =
-            Price(high_opt.ok_or_else(|| DataError::DataFrame("Missing SessionHigh".into()))?);
-        let low = Price(low_opt.ok_or_else(|| DataError::DataFrame("Missing SessionLow".into()))?);
-        let volume =
-            Quantity(vol_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVolume".into()))?);
-        let vwap =
-            Price(vwap_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVwap".into()))?);
 
         events.push(TradesSession {
             session,
             open_timestamp,
             close_timestamp,
-            high,
-            low,
-            volume,
-            vwap,
+            high: Price(high_val),
+            low: Price(low_val),
+            volume: Quantity(vol_val),
+            vwap: Price(vwap_val),
         });
     }
 
@@ -1671,6 +1678,26 @@ fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
         vol_ca.iter(),
         vwap_ca.iter()
     ) {
+        let (
+            Some(high_val),
+            Some(low_val),
+            Some(highest_close_val),
+            Some(lowest_close_val),
+            Some(vol_val),
+            Some(vwap_val),
+        ) = (
+            high_opt,
+            low_opt,
+            highest_close_opt,
+            lowest_close_opt,
+            vol_opt,
+            vwap_opt,
+        )
+        else {
+            debug!("Skipping ohlcv-session row with null aggregate value during extraction");
+            continue;
+        };
+
         let session = parse_session_date(date_opt)?;
         let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
         let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
@@ -1679,24 +1706,12 @@ fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
             session,
             open_timestamp,
             close_timestamp,
-            high: Price(
-                high_opt.ok_or_else(|| DataError::DataFrame("Missing SessionHigh".into()))?,
-            ),
-            low: Price(low_opt.ok_or_else(|| DataError::DataFrame("Missing SessionLow".into()))?),
-            highest_close: Price(
-                highest_close_opt
-                    .ok_or_else(|| DataError::DataFrame("Missing SessionHighestClose".into()))?,
-            ),
-            lowest_close: Price(
-                lowest_close_opt
-                    .ok_or_else(|| DataError::DataFrame("Missing SessionLowestClose".into()))?,
-            ),
-            volume: Quantity(
-                vol_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVolume".into()))?,
-            ),
-            vwap: Price(
-                vwap_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVwap".into()))?,
-            ),
+            high: Price(high_val),
+            low: Price(low_val),
+            highest_close: Price(highest_close_val),
+            lowest_close: Price(lowest_close_val),
+            volume: Quantity(vol_val),
+            vwap: Price(vwap_val),
         });
     }
 
@@ -1720,6 +1735,10 @@ where
 
     for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
         let Some(price_val) = price_opt else {
+            debug!(
+                column = CanonicalCol::Price.as_str(),
+                "Skipping row with null indicator value during extraction"
+            );
             continue;
         };
 
@@ -2441,7 +2460,7 @@ mod test {
     }
 
     #[test]
-    fn test_extract_technical_indicator() {
+    fn test_extract_price_timeseries() {
         // 1. Setup Data
         let df = df!(
             CanonicalCol::PointInTime.as_str() => &[
@@ -2475,7 +2494,7 @@ mod test {
     }
 
     #[test]
-    fn test_extract_technical_indicator_skips_warmup_nones() {
+    fn test_extract_price_timeseries_skips_warmup_nones() {
         // 1. Setup Data
         // Simulate a "Price" column that is actually an Indicator (e.g., SMA)
         // Row 1: None (Warming up)
@@ -2519,6 +2538,233 @@ mod test {
             Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).unwrap()
         );
         assert_eq!(events[1].price, Price(101.0));
+    }
+
+    #[test]
+    fn test_extract_atr_maps_range_and_skips_warmup_nones() {
+        // ATR maps the `Price` column onto a `PriceDelta` range. The first row is a
+        // warm-up null and must be skipped defensively.
+        let df = df!(
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+                ts_micros("2026-01-01T12:00:00Z"),
+            ],
+            CanonicalCol::Price.as_str() => &[None::<f64>, Some(12.5), Some(9.0)],
+        )
+        .unwrap();
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+
+        let events = extract_atr(&df).expect("failed to extract atr");
+
+        assert_eq!(events.len(), 2, "warm-up null row should be skipped");
+        assert_eq!(
+            events[0].timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 1, 11, 0, 0).unwrap()
+        );
+        assert_eq!(events[0].range, PriceDelta(12.5));
+        assert_eq!(events[1].range, PriceDelta(9.0));
+    }
+
+    #[test]
+    fn test_extract_vwap_ohlcv_and_trades() {
+        // Both VWAP extractors share the price-timeseries path: map `Price` -> `Price`
+        // and skip null rows.
+        let df = df!(
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+            ],
+            CanonicalCol::Price.as_str() => &[Some(100.0), None::<f64>],
+        )
+        .unwrap();
+        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+
+        let ohlcv_vwap = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
+        assert_eq!(ohlcv_vwap.len(), 1, "null row should be skipped");
+        assert_eq!(ohlcv_vwap[0].price, Price(100.0));
+
+        let trades_vwap = extract_trades_vwap(&df).expect("failed to extract trades vwap");
+        assert_eq!(trades_vwap.len(), 1, "null row should be skipped");
+        assert_eq!(trades_vwap[0].price, Price(100.0));
+    }
+
+    #[test]
+    fn test_extract_roc_full_mapping_and_skips_nulls() {
+        // Row 0 is a warm-up row (null absolute/percentage) and must be skipped, while
+        // row 1 maps every field.
+        let df = df!(
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-01T09:00:00Z"),
+                ts_micros("2026-01-01T10:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+            ],
+            CanonicalCol::RocAbsolute.as_str() => &[None::<f64>, Some(5.0)],
+            CanonicalCol::Roc.as_str() => &[None::<f64>, Some(0.05)],
+        )
+        .unwrap();
+        let df = with_ts_cols(
+            df,
+            &[
+                CanonicalCol::OpenTimestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
+            ],
+        );
+
+        let events = extract_roc(&df).expect("failed to extract roc");
+
+        assert_eq!(events.len(), 1, "warm-up null row should be skipped");
+        let roc = &events[0];
+        assert_eq!(
+            roc.window_start,
+            Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap()
+        );
+        assert_eq!(
+            roc.timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 1, 11, 0, 0).unwrap()
+        );
+        assert_eq!(roc.absolute_change, PriceDelta(5.0));
+        assert!((roc.percentage - 0.05).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_extract_trades_session_full_mapping_and_skips_nulls() {
+        // Row 1 carries a null aggregate (`SessionVwap`) and must be skipped.
+        let df = df!(
+            CanonicalCol::Date.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-02T08:00:00Z"),
+                ts_micros("2026-01-03T08:00:00Z"),
+            ],
+            CanonicalCol::SessionHigh.as_str() => &[Some(110.0), Some(120.0)],
+            CanonicalCol::SessionLow.as_str() => &[Some(90.0), Some(95.0)],
+            CanonicalCol::SessionVolume.as_str() => &[Some(1000.0), Some(2000.0)],
+            CanonicalCol::SessionVwap.as_str() => &[Some(100.0), None::<f64>],
+        )
+        .unwrap();
+        let df = with_ts_cols(
+            df,
+            &[
+                CanonicalCol::Date.as_str(),
+                CanonicalCol::OpenTimestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
+            ],
+        );
+
+        let events = extract_trades_session(&df).expect("failed to extract trades session");
+
+        assert_eq!(events.len(), 1, "row with null aggregate should be skipped");
+        let session = &events[0];
+        assert_eq!(
+            session.session,
+            SessionDate(
+                Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0)
+                    .unwrap()
+                    .date_naive()
+            )
+        );
+        assert_eq!(
+            session.open_timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap()
+        );
+        assert_eq!(
+            session.close_timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 2, 8, 0, 0).unwrap()
+        );
+        assert_eq!(session.high, Price(110.0));
+        assert_eq!(session.low, Price(90.0));
+        assert_eq!(session.volume, Quantity(1000.0));
+        assert_eq!(session.vwap, Price(100.0));
+    }
+
+    #[test]
+    fn test_extract_ohlcv_session_full_mapping_and_skips_nulls() {
+        // Row 1 carries a null aggregate (`SessionLowestClose`) and must be skipped.
+        let df = df!(
+            CanonicalCol::Date.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-02T08:00:00Z"),
+                ts_micros("2026-01-03T08:00:00Z"),
+            ],
+            CanonicalCol::SessionHigh.as_str() => &[Some(110.0), Some(120.0)],
+            CanonicalCol::SessionLow.as_str() => &[Some(90.0), Some(95.0)],
+            CanonicalCol::SessionHighestClose.as_str() => &[Some(108.0), Some(118.0)],
+            CanonicalCol::SessionLowestClose.as_str() => &[Some(92.0), None::<f64>],
+            CanonicalCol::SessionVolume.as_str() => &[Some(1000.0), Some(2000.0)],
+            CanonicalCol::SessionVwap.as_str() => &[Some(100.0), Some(110.0)],
+        )
+        .unwrap();
+        let df = with_ts_cols(
+            df,
+            &[
+                CanonicalCol::Date.as_str(),
+                CanonicalCol::OpenTimestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
+            ],
+        );
+
+        let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
+
+        assert_eq!(events.len(), 1, "row with null aggregate should be skipped");
+        let session = &events[0];
+        assert_eq!(
+            session.session,
+            SessionDate(
+                Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0)
+                    .unwrap()
+                    .date_naive()
+            )
+        );
+        assert_eq!(session.high, Price(110.0));
+        assert_eq!(session.low, Price(90.0));
+        assert_eq!(session.highest_close, Price(108.0));
+        assert_eq!(session.lowest_close, Price(92.0));
+        assert_eq!(session.volume, Quantity(1000.0));
+        assert_eq!(session.vwap, Price(100.0));
+    }
+
+    #[test]
+    fn test_extract_roc_missing_column_errors_gracefully() {
+        // A structurally invalid frame (missing the `Roc` column) must surface a
+        // recoverable error rather than panicking.
+        let df = df!(
+            CanonicalCol::OpenTimestamp.as_str() => &[ts_micros("2026-01-01T09:00:00Z")],
+            CanonicalCol::PointInTime.as_str()   => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::RocAbsolute.as_str()   => &[5.0],
+            // `Roc` column intentionally absent.
+        )
+        .unwrap();
+        let df = with_ts_cols(
+            df,
+            &[
+                CanonicalCol::OpenTimestamp.as_str(),
+                CanonicalCol::PointInTime.as_str(),
+            ],
+        );
+
+        let result = extract_roc(&df);
+
+        assert!(matches!(
+            result,
+            Err(ChapatyError::Data(DataError::DataFrame(_)))
+        ));
     }
 
     #[test]
@@ -3021,6 +3267,18 @@ mod test {
         let events = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
         assert!(events.is_empty());
         let events = extract_vp(&df, &default_agg()).expect("failed to extract vp");
+        assert!(events.is_empty());
+        let events = extract_atr(&df).expect("failed to extract atr");
+        assert!(events.is_empty());
+        let events = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
+        assert!(events.is_empty());
+        let events = extract_trades_vwap(&df).expect("failed to extract trades vwap");
+        assert!(events.is_empty());
+        let events = extract_roc(&df).expect("failed to extract roc");
+        assert!(events.is_empty());
+        let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
+        assert!(events.is_empty());
+        let events = extract_trades_session(&df).expect("failed to extract trades session");
         assert!(events.is_empty());
     }
 }

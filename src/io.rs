@@ -170,7 +170,10 @@ impl Default for CloudWriteConfig {
     /// - 8 MiB chunk size
     /// - Maximum concurrency of 8
     /// - No I/O metrics tracking
-    #[expect(clippy::expect_used, reason = "the literal 8 is a non-zero constant, so the NonZeroUsize conversion cannot fail")]
+    #[expect(
+        clippy::expect_used,
+        reason = "the literal 8 is a non-zero constant, so the NonZeroUsize conversion cannot fail"
+    )]
     fn default() -> Self {
         Self {
             upload_chunk_size: 8 * 1024 * 1024,

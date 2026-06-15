@@ -1632,18 +1632,19 @@ mod tests {
         check_invariants(&states);
 
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ignored = states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
-                assert_eq!(state.trade_id().0, 20);
+            let _ignored =
+                states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
+                    assert_eq!(state.trade_id().0, 20);
 
-                panic!(
-                    "\n\n\
+                    panic!(
+                        "\n\n\
                         ┌───────────────────────────────────────────────────────┐\n\
                         │ **[TEST EXPECTED]:** Intentional Panic Triggered.     │\n\
                         │ PURPOSE: Simulating crash to verify Clone Safety.     │\n\
                         │ STATUS: If you see this, the test harness is working. │\n\
                         └───────────────────────────────────────────────────────┘\n\n"
-                );
-            });
+                    );
+                });
         }));
 
         assert!(result.is_err(), "Should have caught the panic");
