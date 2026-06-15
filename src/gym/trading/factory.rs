@@ -1970,6 +1970,8 @@ mod test {
     #![expect(
         clippy::unwrap_used,
         clippy::expect_used,
+        clippy::print_stdout,
+        clippy::similar_names,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
     use super::*;
@@ -2056,10 +2058,6 @@ mod test {
     }
 
     #[test]
-    #[expect(
-        clippy::print_stdout,
-        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
-    )]
     fn test_overlay_economic_calendar_policy() {
         let test_cases = vec![
             OverlayTestCase {
@@ -2160,10 +2158,6 @@ mod test {
     }
 
     #[test]
-    #[expect(
-        clippy::print_stdout,
-        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
-    )]
     fn test_overlay_empty_calendar_edge_case() {
         println!("Running edge case: OnlyWithEvents with empty calendar");
 
@@ -2637,10 +2631,6 @@ mod test {
     }
 
     #[test]
-    #[expect(
-        clippy::similar_names,
-        reason = "test fixture uses closely related column names that read clearly in context"
-    )]
     fn test_extract_economic() {
         let df = df!(
             CanonicalCol::PointInTime.as_str()            => &[

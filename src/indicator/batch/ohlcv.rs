@@ -331,6 +331,8 @@ mod tests {
     #![expect(
         clippy::unwrap_used,
         clippy::expect_used,
+        clippy::print_stdout,
+        clippy::similar_names,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
     use super::*;
@@ -402,14 +404,6 @@ mod tests {
     /// do NOT guarantee mathematical correctness against an external standard
     /// (like TA-Lib or `TradingView`).
     #[test]
-    #[expect(
-        clippy::similar_names,
-        reason = "regression test uses closely related indicator fixture names that read clearly in context"
-    )]
-    #[expect(
-        clippy::print_stdout,
-        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
-    )]
     fn test_indicators_regression_consistency() {
         let test_cases = vec![
             IndicatorTestCase {
