@@ -542,12 +542,12 @@ mod tests {
         }
 
         /// True if the indicator was reset before `open` (zero accumulated updates).
-        fn is_fresh(&self) -> bool {
+        fn is_fresh(self) -> bool {
             matches!(self, Self::Fresh)
         }
 
         /// True if the indicator still carried prior-session state into `open`.
-        fn is_carried(&self) -> bool {
+        fn is_carried(self) -> bool {
             matches!(self, Self::Carried)
         }
     }

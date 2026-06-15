@@ -23,7 +23,10 @@ pub enum PivotType {
 
 impl From<MarketStructureSequence> for PivotType {
     fn from(sequence: MarketStructureSequence) -> Self {
-        use MarketStructureSequence::{LowerHigh, HigherHigh, EqualHigh, UnclassifiedHigh, HigherLow, LowerLow, EqualLow, UnclassifiedLow};
+        use MarketStructureSequence::{
+            EqualHigh, EqualLow, HigherHigh, HigherLow, LowerHigh, LowerLow, UnclassifiedHigh,
+            UnclassifiedLow,
+        };
         match sequence {
             LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => PivotType::High,
             HigherLow | LowerLow | EqualLow | UnclassifiedLow => PivotType::Low,
@@ -39,13 +42,12 @@ impl PivotType {
             (PriceSource::HighLow, PivotType::High, _) => candle.high,
             (PriceSource::HighLow, PivotType::Low, _) => candle.low,
 
-            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bullish) => candle.close,
-            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish) => candle.open,
-            (PriceSource::OpenClose, PivotType::High, CandleDirection::Doji) => candle.close,
-
-            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
-            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bearish) => candle.close,
-            (PriceSource::OpenClose, PivotType::Low, CandleDirection::Doji) => candle.close,
+            (PriceSource::OpenClose, PivotType::High,
+CandleDirection::Bullish | CandleDirection::Doji) |
+(PriceSource::OpenClose, PivotType::Low,
+CandleDirection::Bearish | CandleDirection::Doji) => candle.close,
+            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish)
+            | (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
         }
     }
 }
@@ -277,11 +279,11 @@ impl ZigZagPeriod {
         }
     }
 
-    fn buffer_size(&self) -> usize {
+    fn buffer_size(self) -> usize {
         (self.left_bars + self.right_bars + 1) as usize
     }
 
-    fn mid_index(&self) -> usize {
+    fn mid_index(self) -> usize {
         self.left_bars as usize
     }
 }
@@ -513,7 +515,10 @@ impl StreamingHhll {
         let (trend, event) = match self.anchor_high {
             Some(anchor) => match current_high_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Greater) => {
-                    use MarketStructureSequence::{LowerLow, HigherLow, EqualLow, UnclassifiedLow, HigherHigh, LowerHigh, EqualHigh, UnclassifiedHigh};
+                    use MarketStructureSequence::{
+                        EqualHigh, EqualLow, HigherHigh, HigherLow, LowerHigh, LowerLow,
+                        UnclassifiedHigh, UnclassifiedLow,
+                    };
 
                     let market_structure_event = match self.anchor_low.map(|l| l.trend) {
                         Some(LowerLow) => MarketStructureEvent::MarketStructureShift,
@@ -631,7 +636,10 @@ impl StreamingHhll {
         let (trend, event) = match self.anchor_low {
             Some(anchor) => match current_low_price.partial_cmp(&anchor.price) {
                 Some(Ordering::Less) => {
-                    use MarketStructureSequence::{HigherHigh, LowerHigh, EqualHigh, UnclassifiedHigh, HigherLow, LowerLow, EqualLow, UnclassifiedLow};
+                    use MarketStructureSequence::{
+                        EqualHigh, EqualLow, HigherHigh, HigherLow, LowerHigh, LowerLow,
+                        UnclassifiedHigh, UnclassifiedLow,
+                    };
 
                     // Explicitly match all variants to prevent black holes
                     let market_structure_event = match self.anchor_high.map(|h| h.trend) {
@@ -840,10 +848,7 @@ mod tests {
 
     /// Helper to assert floats with epsilon tolerance
     fn assert_f64_eq(a: f64, b: f64) {
-        assert!(
-            (a - b).abs() < f64::EPSILON,
-            "Expected {a} to equal {b}"
-        );
+        assert!((a - b).abs() < f64::EPSILON, "Expected {a} to equal {b}");
     }
 
     fn create_indicator(left: u16, right: u16, tiebreaker: ExtremeTiebreaker) -> StreamingHhll {

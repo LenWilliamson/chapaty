@@ -654,7 +654,7 @@ mod tests {
         .collect()
         .expect("Failed to collect DataFrame");
 
-        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
     }
 
     // ========================================================================
@@ -1208,7 +1208,7 @@ mod tests {
     #[test]
     fn test_empty_journal() {
         let empty_df = DataFrame::empty_with_schema(&Journal::to_schema());
-        let journal = Journal::new(empty_df, RiskMetricsConfig::default())
+        let journal = Journal::new(&empty_df, RiskMetricsConfig::default())
             .expect("Failed to create empty Journal");
 
         let result = TradeStatistics::try_from(&journal);

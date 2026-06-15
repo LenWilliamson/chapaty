@@ -126,6 +126,7 @@ impl Read for CloudReader {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn map_object_store_err(err: object_store::Error) -> ChapatyError {
     IoError::ReadBytesFailed(err.to_string()).into()
 }
@@ -226,9 +227,10 @@ impl StorageLocation<'_> {
 
             Self::Local { path } => {
                 if !path.exists() {
+                    let path_display = path.display();
                     std::fs::create_dir_all(path).map_err(|e| {
                         ChapatyError::Io(IoError::WriterCreation(format!(
-                            "Failed to create directory {path:?}: {e}"
+                            "Failed to create directory {path_display}: {e}"
                         )))
                     })?;
                 }
@@ -272,7 +274,10 @@ impl StorageLocation<'_> {
                 open_local_file(&full_path, buffer_size)
             }
             Self::HuggingFace { version } => {
-                let revision = version.map_or_else(|| format!("v{}", crate::VERSION), std::string::ToString::to_string);
+                let revision = version.map_or_else(
+                    || format!("v{}", crate::VERSION),
+                    std::string::ToString::to_string,
+                );
 
                 let api = hf_hub::api::tokio::Api::new().map_err(|e| {
                     ChapatyError::Io(IoError::ReaderCreation(format!(

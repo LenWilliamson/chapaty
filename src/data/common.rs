@@ -124,7 +124,7 @@ impl Default for ProfileAggregation {
 
 impl ProfileAggregation {
     /// Returns the size of the bin in quote currency as a mathematically exact string.
-    pub fn actual_price_bin_string<I: Instrument>(&self, instrument: I) -> ChapatyResult<String> {
+    pub fn actual_price_bin_string<I: Instrument>(&self, instrument: &I) -> ChapatyResult<String> {
         self.calculate_bin_decimal(instrument)
             .map(|d| d.normalize().to_string())
     }
@@ -134,7 +134,7 @@ impl ProfileAggregation {
     /// # Errors
     /// Returns `SystemError::InvariantViolation` if the calculated decimal cannot be
     /// represented as an f64 (e.g. overflow), which implies corrupted inputs.
-    pub fn actual_price_bin<I: Instrument>(&self, instrument: I) -> ChapatyResult<f64> {
+    pub fn actual_price_bin<I: Instrument>(&self, instrument: &I) -> ChapatyResult<f64> {
         self.calculate_bin_decimal(instrument)?
             .to_f64()
             .ok_or_else(|| {
@@ -157,7 +157,7 @@ impl ProfileAggregation {
 impl ProfileAggregation {
     /// Internal helper: Calculates bin size as Decimal.
     /// Fails if the instrument tick size is NaN or Infinity.
-    fn calculate_bin_decimal<I: Instrument>(&self, instrument: I) -> ChapatyResult<Decimal> {
+    fn calculate_bin_decimal<I: Instrument>(&self, instrument: &I) -> ChapatyResult<Decimal> {
         let multiplier = self.ticks_per_bin.unwrap_or(1);
         let tick_size = instrument.tick_size();
 

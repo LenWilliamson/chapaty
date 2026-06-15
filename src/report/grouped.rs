@@ -208,15 +208,10 @@ impl GroupCol {
             | Self::TradeType
             | Self::ExitReason => col(source_col),
 
-            // === Virtual Time Columns (Entry) ===
-            Self::EntryYear => col(source_col).dt().year(),
-            Self::EntryQuarter => col(source_col).dt().quarter(),
-            Self::EntryMonth => col(source_col).dt().month(),
-
-            // === Virtual Time Columns (Exit) ===
-            Self::ExitYear => col(source_col).dt().year(),
-            Self::ExitQuarter => col(source_col).dt().quarter(),
-            Self::ExitMonth => col(source_col).dt().month(),
+            // === Virtual Time Columns ===
+            Self::EntryYear | Self::ExitYear => col(source_col).dt().year(),
+            Self::EntryQuarter | Self::ExitQuarter => col(source_col).dt().quarter(),
+            Self::EntryMonth | Self::ExitMonth => col(source_col).dt().month(),
         };
 
         expr.alias(*self)
@@ -271,7 +266,7 @@ mod tests {
             .expect("Failed to cast dates");
 
         let journal =
-            Journal::new(df, RiskMetricsConfig::default()).expect("Failed to instantiate Journal");
+            Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to instantiate Journal");
 
         // 2. Create Grouped Journal
         // Grouping by Symbol AND EntryYear
@@ -360,7 +355,7 @@ mod tests {
         .expect("Failed to collect DataFrame");
 
         let journal =
-            Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal");
+            Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal");
 
         // ========================================================================
         // 2. Group by Symbol + Entry Year
@@ -466,7 +461,10 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let non_null_count = peak_values.iter().filter(std::option::Option::is_some).count();
+        let non_null_count = peak_values
+            .iter()
+            .filter(std::option::Option::is_some)
+            .count();
         assert_eq!(
             non_null_count, 3,
             "All BTC/2025 rows should have calculated metrics"

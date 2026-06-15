@@ -56,6 +56,7 @@ impl Ledger {
             .all_closed())
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn with_capacity(capacity: LedgerCapacityHint) -> Self {
         let mut states = Vec::with_capacity(capacity.expected_episodes);
         let mut equity_curves = Vec::with_capacity(capacity.expected_episodes);
@@ -102,9 +103,9 @@ impl Ledger {
             // C. Application
             let result = match action {
                 Action::Open(cmd) => states.open(market_id, cmd, &market_view),
-                Action::Modify(cmd) => states.modify(cmd),
-                Action::MarketClose(cmd) => states.market_close(cmd, &market_view),
-                Action::Cancel(cmd) => states.cancel(cmd, &market_view),
+                Action::Modify(cmd) => states.modify(&cmd),
+                Action::MarketClose(cmd) => states.market_close(&cmd, &market_view),
+                Action::Cancel(cmd) => states.cancel(&cmd, &market_view),
             };
 
             // D. Trace the Outcome
@@ -132,9 +133,9 @@ impl Ledger {
 
     /// Performs Mark-to-Market updates on all active and pending positions.
     #[tracing::instrument(skip(self, ctx), fields(ep_id = %ep.id().0, ts = %ctx.market.current_timestamp()))]
-    pub fn apply_updates(&mut self, ep: &Episode, ctx: UpdateCtx) -> ChapatyResult<()> {
+    pub fn apply_updates(&mut self, ep: &Episode, ctx: &UpdateCtx) -> ChapatyResult<()> {
         self.states_mut(ep)?
-            .update_all_live_trades(&ctx, |m_id, result| {
+            .update_all_live_trades(ctx, |m_id, result| {
                 match result {
                     Ok(exit_event) => {
                         // Log Lifecycle Events
@@ -199,7 +200,12 @@ impl Ledger {
             let offset = pnls.last().copied().unwrap_or(0.0);
 
             episode_ids.extend(std::iter::repeat_n(ep_id, len));
-            timestamps.extend(curve.timestamps.iter().map(chrono::DateTime::timestamp_micros));
+            timestamps.extend(
+                curve
+                    .timestamps
+                    .iter()
+                    .map(chrono::DateTime::timestamp_micros),
+            );
             pnls.extend(curve.cumulative_pnl.iter().map(|&ep_pnl| offset + ep_pnl));
         }
 
@@ -747,6 +753,7 @@ impl TryFrom<JournalSoA> for DataFrame {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
     DataError::DataFrame(e.to_string()).into()
 }
@@ -828,7 +835,7 @@ mod test {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)

@@ -396,7 +396,7 @@ fn trade_sharpe_ratio_expr(
     trade_state_col: JournalCol,
     cfg: RiskMetricsConfig,
 ) -> Expr {
-    let excess = excess_return_expr(return_col, trade_state_col, &cfg);
+    let excess = excess_return_expr(return_col, trade_state_col, cfg);
     let std =
         annualized_return_std_expr(return_col, trade_state_col, cfg.initial_portfolio_value());
     excess.safe_div(std, None)
@@ -412,7 +412,7 @@ fn trade_sortino_ratio_expr(
     trade_state_col: JournalCol,
     cfg: RiskMetricsConfig,
 ) -> Expr {
-    let excess = excess_return_expr(return_col, trade_state_col, &cfg);
+    let excess = excess_return_expr(return_col, trade_state_col, cfg);
     let std = annualized_downside_return_std_expr(
         return_col,
         trade_state_col,
@@ -711,6 +711,7 @@ fn mae_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
+#[derive(Clone, Copy)]
 enum TradeSubset {
     All,
     Wins,
@@ -786,7 +787,7 @@ fn annualized_downside_return_std_expr(
 fn excess_return_expr(
     return_col: JournalCol,
     trade_state_col: JournalCol,
-    cfg: &RiskMetricsConfig,
+    cfg: RiskMetricsConfig,
 ) -> Expr {
     annualized_mean_return_expr(return_col, trade_state_col, cfg.initial_portfolio_value())
         - lit(cfg.risk_free_rate_f64())
@@ -914,64 +915,56 @@ impl PortfolioPerformanceCol {
     #[must_use]
     pub fn direction(&self) -> OptimizationDirection {
         use OptimizationDirection::{Maximize, Minimize};
-        use PortfolioPerformanceCol::{NetProfit, AvgTradeProfit, ExpectedValuePerTrade, TotalWinProfit, TotalLoss, TotalWinProfitByTotalLoss, TradeSharpeRatio, TradeSortinoRatio, TradeOmegaRatio, TradeCalmarRatio, TradeRecoveryFactor, MaxRealizedDrawdownUsd, MaxRealizedDrawdownPct, WinRate, AvgWinToAvgLossRatio, TradeReturnStdDev, TradeReturnVariance, LowerQuantileTradeReturn, MedianTradeReturn, UpperQuantileTradeReturn, AvgWinReturn, LowerQuantileWinReturn, MedianWinReturn, UpperQuantileWinReturn, AvgLossReturn, LowerQuantileLossReturn, MedianLossReturn, UpperQuantileLossReturn, LargestWin, LargestLoss, UnrealizedWinProfit, UnrealizedLoss, CleanWinProfit, CleanLoss, RootMeanSquareDeviation, MeanAbsoluteError};
+        use PortfolioPerformanceCol::{
+            AvgLossReturn, AvgTradeProfit, AvgWinReturn, AvgWinToAvgLossRatio, CleanLoss,
+            CleanWinProfit, ExpectedValuePerTrade, LargestLoss, LargestWin,
+            LowerQuantileLossReturn, LowerQuantileTradeReturn, LowerQuantileWinReturn,
+            MaxRealizedDrawdownPct, MaxRealizedDrawdownUsd, MeanAbsoluteError, MedianLossReturn,
+            MedianTradeReturn, MedianWinReturn, NetProfit, RootMeanSquareDeviation, TotalLoss,
+            TotalWinProfit, TotalWinProfitByTotalLoss, TradeCalmarRatio, TradeOmegaRatio,
+            TradeRecoveryFactor, TradeReturnStdDev, TradeReturnVariance, TradeSharpeRatio,
+            TradeSortinoRatio, UnrealizedLoss, UnrealizedWinProfit, UpperQuantileLossReturn,
+            UpperQuantileTradeReturn, UpperQuantileWinReturn, WinRate,
+        };
 
         match self {
-            // === Profitability ===
-            NetProfit => Maximize,
-            AvgTradeProfit => Maximize,
-            ExpectedValuePerTrade => Maximize,
-            TotalWinProfit => Maximize,
-            TotalLoss => Minimize,
-            TotalWinProfitByTotalLoss => Maximize,
+            NetProfit
+            | AvgTradeProfit
+            | ExpectedValuePerTrade
+            | TotalWinProfit
+            | TotalWinProfitByTotalLoss
+            | TradeSharpeRatio
+            | TradeSortinoRatio
+            | TradeOmegaRatio
+            | TradeCalmarRatio
+            | TradeRecoveryFactor
+            | WinRate
+            | AvgWinToAvgLossRatio
+            | LowerQuantileTradeReturn
+            | MedianTradeReturn
+            | UpperQuantileTradeReturn
+            | AvgWinReturn
+            | LowerQuantileWinReturn
+            | MedianWinReturn
+            | UpperQuantileWinReturn
+            | LargestWin
+            | UnrealizedWinProfit
+            | CleanWinProfit => Maximize,
 
-            // === Risk-adjusted returns ===
-            TradeSharpeRatio => Maximize,
-            TradeSortinoRatio => Maximize,
-            TradeOmegaRatio => Maximize,
-            TradeCalmarRatio => Maximize,
-            TradeRecoveryFactor => Maximize,
-
-            // === Risk measures ===
-            MaxRealizedDrawdownUsd => Minimize,
-            MaxRealizedDrawdownPct => Minimize,
-
-            // === Win/loss structure ===
-            WinRate => Maximize,
-            AvgWinToAvgLossRatio => Maximize,
-
-            // === Trade return distribution ===
-            TradeReturnStdDev => Minimize,
-            TradeReturnVariance => Minimize,
-            LowerQuantileTradeReturn => Maximize,
-            MedianTradeReturn => Maximize,
-            UpperQuantileTradeReturn => Maximize,
-
-            // === Winning trade return distribution ===
-            AvgWinReturn => Maximize,
-            LowerQuantileWinReturn => Maximize,
-            MedianWinReturn => Maximize,
-            UpperQuantileWinReturn => Maximize,
-
-            // === Losing trade return distribution ===
-            AvgLossReturn => Minimize,
-            LowerQuantileLossReturn => Minimize,
-            MedianLossReturn => Minimize,
-            UpperQuantileLossReturn => Minimize,
-
-            // === Extremes ===
-            LargestWin => Maximize,
-            LargestLoss => Minimize,
-
-            // === Unrealized ===
-            UnrealizedWinProfit => Maximize,
-            UnrealizedLoss => Minimize,
-            CleanWinProfit => Maximize,
-            CleanLoss => Minimize,
-
-            // === Curve deviation from target or benchmark ===
-            RootMeanSquareDeviation => Minimize,
-            MeanAbsoluteError => Minimize,
+            TotalLoss
+            | MaxRealizedDrawdownUsd
+            | MaxRealizedDrawdownPct
+            | TradeReturnStdDev
+            | TradeReturnVariance
+            | AvgLossReturn
+            | LowerQuantileLossReturn
+            | MedianLossReturn
+            | UpperQuantileLossReturn
+            | LargestLoss
+            | UnrealizedLoss
+            | CleanLoss
+            | RootMeanSquareDeviation
+            | MeanAbsoluteError => Minimize,
         }
     }
 }
@@ -1136,7 +1129,7 @@ mod tests {
         .collect()
         .expect("Failed to collect DataFrame");
 
-        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
     }
 
     // ========================================================================
@@ -1624,7 +1617,7 @@ mod tests {
     #[test]
     fn test_empty_journal() {
         let empty_df = DataFrame::empty_with_schema(&Journal::to_schema());
-        let journal = Journal::new(empty_df, RiskMetricsConfig::default())
+        let journal = Journal::new(&empty_df, RiskMetricsConfig::default())
             .expect("Failed to create empty Journal");
 
         let result = PortfolioPerformance::try_from(&journal);

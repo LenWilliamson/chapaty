@@ -501,8 +501,9 @@ mod tests {
     fn get_i64(df: &DataFrame, col: CanonicalCol, row: usize) -> i64 {
         let series = df.column(col.as_str()).expect("Column not found");
         match series.get(row).expect("Row not found").into_static() {
-            AnyValue::Int64(v) => v,
-            AnyValue::Datetime(v, _, _) | AnyValue::DatetimeOwned(v, _, _) => v,
+            AnyValue::Int64(v) | AnyValue::Datetime(v, _, _) | AnyValue::DatetimeOwned(v, _, _) => {
+                v
+            }
             other => panic!("Expected i64-compatible value, got {other:?}"),
         }
     }

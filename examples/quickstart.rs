@@ -58,7 +58,7 @@ impl Agent for NoOpAgent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _guard = init_tracing()?;
+    let guard = init_tracing()?;
     info!("Starting evaluation example...");
 
     let build_start = Instant::now();
@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
     );
 
     // The WorkerGuard ensures all buffered logs are flushed when dropped.
-    drop(_guard);
+    drop(guard);
     Ok(())
 }
 

@@ -832,44 +832,42 @@ impl States {
         Ok(())
     }
 
-    pub(super) fn modify(&mut self, cmd: ModifyCmd) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+    pub(super) fn modify(&mut self, cmd: &ModifyCmd) -> ChapatyResult<()> {
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
 
         self.modify_state_at(m_id, loc, |state| match state {
             State::Active(t) => {
-                let modifed_trade = t.modify(&cmd, m_id.symbol)?;
+                let modifed_trade = t.modify(cmd, m_id.symbol)?;
                 Ok(Transition {
                     new_state: State::Active(modifed_trade),
                     output: (),
                 })
             }
             State::Pending(t) => {
-                let modifed_trade = t.modify(&cmd, m_id.symbol)?;
+                let modifed_trade = t.modify(cmd, m_id.symbol)?;
                 Ok(Transition {
                     new_state: State::Pending(modifed_trade),
                     output: (),
                 })
             }
             // Modifying a Closed/Canceled trade is generally invalid
-            other => {
-                Err(AgentError::InvalidInput(format!("Cannot modify state {other:?}")).into())
-            }
+            other => Err(AgentError::InvalidInput(format!("Cannot modify state {other:?}")).into()),
         })
     }
 
     pub(super) fn market_close(
         &mut self,
-        cmd: MarketCloseCmd,
+        cmd: &MarketCloseCmd,
         market: &MarketView,
     ) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
         let ts = market.current_timestamp();
         let symbol = m_id.symbol;
         let exit_price = market.try_resolved_close_price(symbol)?;
 
         let (reward, trade_to_archive) = self.modify_state_at(m_id, loc, |state| {
             let t: Trade<Active> = state.try_into()?;
-            let (outcome, reward) = t.market_close(&cmd, Price(exit_price.0), ts, symbol)?;
+            let (outcome, reward) = t.market_close(cmd, Price(exit_price.0), ts, symbol)?;
 
             match outcome {
                 // Case A: Full Close
@@ -902,13 +900,13 @@ impl States {
         Ok(())
     }
 
-    pub(super) fn cancel(&mut self, cmd: CancelCmd, market: &MarketView) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+    pub(super) fn cancel(&mut self, cmd: &CancelCmd, market: &MarketView) -> ChapatyResult<()> {
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
         let ts = market.current_timestamp();
 
         self.modify_state_at(m_id, loc, |state| {
             let t: Trade<Pending> = state.try_into()?;
-            let canceled = t.cancel(&cmd, ts)?;
+            let canceled = t.cancel(cmd, ts)?;
 
             // State changes to Canceled.
             // Guard::commit() will automatically move it from Active -> Archive.
@@ -972,9 +970,8 @@ impl States {
 
             // 2. Capture the outcome (Did it close?)
             let is_closed = match &update_result {
-                Ok(Some(_)) => true, // Closed/Canceled
-                Ok(None) => false,   // Still Active
-                Err(_) => false,     // Error (state didn't change)
+                Ok(Some(_)) => true,        // Closed/Canceled
+                Ok(None) | Err(_) => false, // Still Active or error (state didn't change)
             };
 
             // 3. Notify the caller (Ledger) so it can log/react
@@ -1006,8 +1003,8 @@ impl States {
         let (reward, exit) = self.modify_state_at(m_id, idx, |state| {
             // 1. Delegate Logic
             let (new_state, r) = match state {
-                State::Active(t) => t.update(&m_id, ctx)?,
-                State::Pending(t) => t.update(&m_id, ctx)?,
+                State::Active(t) => t.update(m_id, ctx)?,
+                State::Pending(t) => t.update(m_id, ctx)?,
                 other => {
                     // This branch implies data corruption (Cold trade in Hot vec)
                     warn!(
@@ -1072,9 +1069,9 @@ impl States {
     // Index Management
     // ============================================================================
 
-    fn get_index(&self, uid: &TradeId) -> ChapatyResult<(MarketId, usize)> {
+    fn get_index(&self, uid: TradeId) -> ChapatyResult<(MarketId, usize)> {
         self.live_index
-            .get(uid)
+            .get(&uid)
             .copied()
             .ok_or_else(|| ChapatyError::Data(DataError::KeyNotFound(format!("Trade {uid:?}"))))
     }
@@ -1394,7 +1391,7 @@ mod tests {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
@@ -1487,7 +1484,7 @@ mod tests {
         assert_eq!(vec[1].quantity().0, 999.0, "Update was lost!");
 
         // CHECK 4: Index Map unchanged
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
 
         check_invariants(&states);
     }
@@ -1526,9 +1523,9 @@ mod tests {
 
         // CHECK 3: Indices updated
         // Trade 30 swapped to index 1
-        assert_eq!(states.get_index(&TradeId(30)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(30)).unwrap().1, 1);
         // Trade 20 removed from index (archived trades are NOT indexed)
-        assert!(states.get_index(&TradeId(20)).is_err());
+        assert!(states.get_index(TradeId(20)).is_err());
 
         check_invariants(&states);
     }
@@ -1572,18 +1569,18 @@ mod tests {
         // CHECK 2: Index Integrity
         // Trade 30 must now point to Index 0
         assert_eq!(
-            states.get_index(&TradeId(30)).unwrap().1,
+            states.get_index(TradeId(30)).unwrap().1,
             0,
             "Index for 30 not updated"
         );
         // Trade 20 must still point to Index 1
         assert_eq!(
-            states.get_index(&TradeId(20)).unwrap().1,
+            states.get_index(TradeId(20)).unwrap().1,
             1,
             "Index for 20 should be stable"
         );
         // Trade 10 must be gone
-        assert!(states.get_index(&TradeId(10)).is_err());
+        assert!(states.get_index(TradeId(10)).is_err());
 
         // CHECK 3: Archive
         let archive_vec = states.archive.get(&m_id).unwrap();
@@ -1599,7 +1596,7 @@ mod tests {
 
         // PRE-CHECK: Confirm it starts at Index 1
         assert_eq!(
-            states.get_index(&TradeId(20)).unwrap().1,
+            states.get_index(TradeId(20)).unwrap().1,
             1,
             "Pre-condition: Trade 20 must start at idx 1"
         );
@@ -1629,7 +1626,7 @@ mod tests {
         assert_eq!(state.quantity(), original_qty);
 
         // CHECK: It is STILL at index 1
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
         check_invariants(&states);
     }
 
@@ -1727,10 +1724,10 @@ mod tests {
         assert_eq!(archive_vec[0].trade_id().0, 30);
 
         // CHECK 4: Indices
-        assert_eq!(states.get_index(&TradeId(10)).unwrap().1, 0);
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(10)).unwrap().1, 0);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
         // Trade 30 removed from index
-        assert!(states.get_index(&TradeId(30)).is_err());
+        assert!(states.get_index(TradeId(30)).is_err());
 
         check_invariants(&states);
     }
@@ -1937,7 +1934,7 @@ mod tests {
         assert!(trade.is_pending(), "Limit order should be Pending");
 
         // Verify it's in Hot Path (live) - index exists
-        let (_, idx) = states.get_index(&TradeId(1)).unwrap();
+        let (_, idx) = states.get_index(TradeId(1)).unwrap();
         assert_eq!(idx, 0, "Should be at index 0");
         check_invariants(&states);
     }
@@ -1960,7 +1957,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result = states.modify(modify_cmd);
+        let result = states.modify(&modify_cmd);
         assert!(result.is_ok(), "Modifying Pending trade should succeed");
 
         // Verify the entry price was updated
@@ -1976,7 +1973,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result2 = states.modify(bad_cmd);
+        let result2 = states.modify(&bad_cmd);
         assert!(result2.is_err(), "Modifying non-existent trade should fail");
 
         // Case 3: Modify archived (Canceled) trade - should fail
@@ -1999,7 +1996,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result3 = states.modify(archived_cmd);
+        let result3 = states.modify(&archived_cmd);
         assert!(
             result3.is_err(),
             "Modifying archived (Canceled) trade should fail"
@@ -2027,7 +2024,7 @@ mod tests {
             trade_id: TradeId(20),
         };
 
-        let result = states.cancel(cancel_cmd, &market);
+        let result = states.cancel(&cancel_cmd, &market);
         assert!(result.is_ok(), "Cancel should succeed");
 
         // Verify: Live should have 2, Archive should have 1
@@ -2043,7 +2040,7 @@ mod tests {
         assert_eq!(archive_vec[0].trade_id().0, 20);
 
         // Verify trade is NO LONGER indexed (archived trades are not indexed)
-        assert!(states.get_index(&TradeId(20)).is_err());
+        assert!(states.get_index(TradeId(20)).is_err());
 
         check_invariants(&states);
     }
@@ -2097,7 +2094,7 @@ mod tests {
         assert_eq!(active_trade.state().entry_price().0, 100.0);
 
         // 4. Index is correct
-        assert_eq!(states.get_index(&TradeId(1)).unwrap().1, 0);
+        assert_eq!(states.get_index(TradeId(1)).unwrap().1, 0);
         check_invariants(&states);
     }
 
@@ -2135,7 +2132,7 @@ mod tests {
         };
 
         // Action
-        let result = states.market_close(cmd, &market);
+        let result = states.market_close(&cmd, &market);
         assert!(result.is_ok());
 
         // VERIFY
@@ -2186,7 +2183,7 @@ mod tests {
         };
 
         // Action
-        let result = states.market_close(cmd, &market);
+        let result = states.market_close(&cmd, &market);
         assert!(result.is_ok());
 
         // VERIFY 1: The Remainder stays in Live (Hot Path)

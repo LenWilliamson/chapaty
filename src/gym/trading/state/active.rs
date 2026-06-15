@@ -129,7 +129,7 @@ impl Trade<Active> {
             return Err(AgentError::InvalidInput("Close qty > Open qty".to_string()).into());
         }
 
-        self.execute_close(CloseParams {
+        self.execute_close(&CloseParams {
             qty,
             exit_price,
             ts,
@@ -149,7 +149,7 @@ impl Trade<Active> {
     /// SL/TP price, not the bar close, so `self.state.unrealized_pnl` is left at the
     /// previous mark and `execute_close` reads it as the baseline. The current-bar
     /// mark is only meaningful (and only applied) when the trade survives.
-    pub(super) fn update(self, m_id: &MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
+    pub(super) fn update(self, m_id: MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
         let symbol = m_id.symbol;
 
         // 1. Capture START value.
@@ -195,7 +195,7 @@ impl Trade<Active> {
 
             // `self.state.unrealized_pnl` is still `prev` (we never re-marked), so
             // `execute_close` reads the correct baseline off the trade itself.
-            let (outcome, step_delta) = self.execute_close(CloseParams {
+            let (outcome, step_delta) = self.execute_close(&CloseParams {
                 qty,
                 exit_price,
                 ts,
@@ -233,7 +233,7 @@ impl Trade<Active> {
     /// previous mark", and a close is just a final mark at the exit price. The
     /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
     /// still stores the _absolute_ realized `PnL` for the journal.
-    fn execute_close(self, close_params: CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
+    fn execute_close(self, close_params: &CloseParams) -> ChapatyResult<(CloseOutcome, f64)> {
         let CloseParams {
             qty,
             exit_price,
@@ -241,12 +241,12 @@ impl Trade<Active> {
             reason,
             symbol,
         } = close_params;
-        let clean_exit_price = Price(sanitize_price(symbol, exit_price.0, "exit"));
+        let clean_exit_price = Price(sanitize_price(*symbol, exit_price.0, "exit"));
         let last_marked_unrealized_pnl = self.state.unrealized_pnl;
 
         let realized_pnl =
             self.trade_type
-                .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
+                .calculate_pnl(self.state.entry_price, clean_exit_price, *qty, *symbol);
         let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
 
         if is_full_close {
@@ -256,9 +256,9 @@ impl Trade<Active> {
             let closed = self.map(|s| Closed {
                 entry_ts: s.entry_ts,
                 entry_price: s.entry_price,
-                exit_ts: ts,
+                exit_ts: *ts,
                 exit_price: clean_exit_price,
-                termination_reason: reason,
+                termination_reason: *reason,
                 realized_pnl,
             });
             Ok((CloseOutcome::FullyClosed(closed), step_delta))
@@ -273,7 +273,7 @@ impl Trade<Active> {
             let step_delta = realized_pnl - closed_booked_unrealized;
 
             let remaining = Trade {
-                quantity: self.quantity - qty,
+                quantity: self.quantity - *qty,
                 state: Active {
                     // The survivor must carry only its share of the unrealized PnL.
                     unrealized_pnl: remaining_booked_unrealized,
@@ -283,13 +283,13 @@ impl Trade<Active> {
             };
 
             let closed = Trade {
-                quantity: qty,
+                quantity: *qty,
                 ..self.map(|s| Closed {
                     entry_ts: s.entry_ts,
                     entry_price: s.entry_price,
-                    exit_ts: ts,
+                    exit_ts: *ts,
                     exit_price: clean_exit_price,
-                    termination_reason: reason,
+                    termination_reason: *reason,
                     realized_pnl,
                 })
             };
@@ -405,7 +405,7 @@ mod tests {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
@@ -479,7 +479,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Extract new trade
         let updated = match new_state {
@@ -514,7 +514,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -544,7 +544,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -574,7 +574,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         let updated = match new_state {
             State::Active(t) => t,
@@ -604,7 +604,7 @@ mod tests {
             market: &view1,
             bias: ExecutionBias::Optimistic,
         };
-        let (state1, delta1) = trade.update(&m_id, &ctx1).unwrap();
+        let (state1, delta1) = trade.update(m_id, &ctx1).unwrap();
 
         let trade1 = match state1 {
             State::Active(t) => t,
@@ -619,7 +619,7 @@ mod tests {
             market: &view2,
             bias: ExecutionBias::Optimistic,
         };
-        let (state2, delta2) = trade1.update(&m_id, &ctx2).unwrap();
+        let (state2, delta2) = trade1.update(m_id, &ctx2).unwrap();
 
         let trade2 = match state2 {
             State::Active(t) => t,
@@ -650,7 +650,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Must close with StopLoss
         match new_state {
@@ -676,7 +676,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _step_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Must close with TakeProfit
         match new_state {
@@ -701,7 +701,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -723,7 +723,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -745,7 +745,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -1023,7 +1023,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (state, mark_delta) = trade.update(&m_id, &ctx).unwrap();
+        let (state, mark_delta) = trade.update(m_id, &ctx).unwrap();
         let marked = match state {
             State::Active(t) => t,
             _ => panic!("Expected Active after marking"),
@@ -1066,7 +1066,7 @@ mod tests {
             market: &v1,
             bias: ExecutionBias::Optimistic,
         };
-        let (s1, d1) = trade.update(&m_id, &c1).unwrap();
+        let (s1, d1) = trade.update(m_id, &c1).unwrap();
         let marked = match s1 {
             State::Active(t) => t,
             _ => panic!("Expected Active"),
@@ -1104,7 +1104,7 @@ mod tests {
             market: &v2,
             bias: ExecutionBias::Optimistic,
         };
-        let (s2, d2) = remaining.update(&m_id, &c2).unwrap();
+        let (s2, d2) = remaining.update(m_id, &c2).unwrap();
         let marked2 = match s2 {
             State::Active(t) => t,
             _ => panic!("Expected Active"),

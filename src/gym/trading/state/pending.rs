@@ -116,7 +116,7 @@ impl Trade<Pending> {
     }
 
     /// Updates a Pending trade. Checks for Limit activation.
-    pub(super) fn update(self, m_id: &MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
+    pub(super) fn update(self, m_id: MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
         let limit_price = self.state.limit_price;
         let hit_entry = ctx
             .market
@@ -244,7 +244,7 @@ mod test {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
@@ -313,7 +313,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Pending(t) => {
@@ -341,7 +341,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -372,7 +372,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -405,7 +405,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -430,7 +430,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         // UPDATED EXPECTATION:
         // Optimistic bias assumes SL happened *before* Entry (or we got lucky).
@@ -458,7 +458,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         // EXPECTATION:
         // Pessimistic bias assumes Entry happened -> Then Price fell to SL.
@@ -487,7 +487,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         // Should close on SL (TP was "missed")
         match new_state {
@@ -511,7 +511,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -535,7 +535,7 @@ mod test {
             bias: ExecutionBias::Pessimistic, // Will blind TP temporarily
         };
 
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         // The bug: TP was left as None because it fell through to the `other` match arm.
         // Expectation: Trade is Closed on SL, but TP is successfully restored.
@@ -571,7 +571,7 @@ mod test {
             bias: ExecutionBias::Optimistic, // Will blind SL temporarily
         };
 
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         // Expectation: Trade is Closed on TP, but SL is successfully restored.
         match new_state {
@@ -744,7 +744,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -769,7 +769,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, reward) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, reward) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -793,7 +793,7 @@ mod test {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = trade.update(&m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Active(t) => {
@@ -816,7 +816,7 @@ mod test {
             market: &view1,
             bias: ExecutionBias::Optimistic,
         };
-        let (state1, reward1) = trade.update(&m_id, &ctx1).unwrap();
+        let (state1, reward1) = trade.update(m_id, &ctx1).unwrap();
 
         let trade1 = match state1 {
             State::Pending(t) => t,
@@ -831,7 +831,7 @@ mod test {
             market: &view2,
             bias: ExecutionBias::Optimistic,
         };
-        let (state2, reward2) = trade1.update(&m_id, &ctx2).unwrap();
+        let (state2, reward2) = trade1.update(m_id, &ctx2).unwrap();
 
         match state2 {
             State::Pending(t) => {

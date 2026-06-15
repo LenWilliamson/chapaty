@@ -455,7 +455,7 @@ mod tests {
             .collect()
             .expect("failed to collect DataFrame from LazyFrame");
 
-        let journal = Journal::new(df, RiskMetricsConfig::default())
+        let journal = Journal::new(&df, RiskMetricsConfig::default())
             .expect("failed to create Journal from DataFrame");
 
         let have = journal

@@ -227,7 +227,7 @@ impl Journal {
 }
 
 impl Journal {
-    pub(crate) fn new(df: DataFrame, config: RiskMetricsConfig) -> ChapatyResult<Self> {
+    pub(crate) fn new(df: &DataFrame, config: RiskMetricsConfig) -> ChapatyResult<Self> {
         let sorted_df = df
             .sort(
                 [JournalCol::EntryTimestamp.as_str()],
@@ -270,8 +270,6 @@ impl ToSchema for Journal {
                 let dtype = match col {
                     JournalCol::RowId | JournalCol::EpisodeId => DataType::UInt32,
 
-                    JournalCol::TradeId => DataType::Int64,
-
                     JournalCol::TradeState
                     | JournalCol::AgentId
                     | JournalCol::DataBroker
@@ -291,7 +289,8 @@ impl ToSchema for Journal {
                     | JournalCol::ExitPrice
                     | JournalCol::RealizedReturnDollars => DataType::Float64,
 
-                    JournalCol::ExpectedLossInTicks
+                    JournalCol::TradeId
+                    | JournalCol::ExpectedLossInTicks
                     | JournalCol::ExpectedProfitInTicks
                     | JournalCol::RealizedReturnInTicks => DataType::Int64,
 
@@ -375,7 +374,7 @@ mod test {
         .collect()
         .expect("Failed to collect DataFrame");
 
-        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
     }
 
     #[test]

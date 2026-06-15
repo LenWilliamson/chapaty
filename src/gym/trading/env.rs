@@ -187,19 +187,19 @@ impl Environment {
 
     pub fn journal(&self) -> ChapatyResult<Journal> {
         let df = self.ledger.journal_df()?;
-        Journal::new(df, self.risk_metrics_cfg)
+        Journal::new(&df, self.risk_metrics_cfg)
     }
 
     pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
         let df = self.ledger.equity_curve_df()?;
-        EquityCurveReport::new(df)
+        EquityCurveReport::new(&df)
     }
 }
 
 impl Env for Environment {
     #[tracing::instrument(skip(self), fields(ep_id = %self.ep.id().0))]
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)> {
-        use EnvStatus::{EpisodeDone, Ready, Done, Running};
+        use EnvStatus::{Done, EpisodeDone, Ready, Running};
 
         match self.env_status {
             EpisodeDone => {
@@ -298,7 +298,7 @@ impl Environment {
             market: &market_after,
             bias: self.bias,
         };
-        self.ledger.apply_updates(ep, update_ctx)?;
+        self.ledger.apply_updates(ep, &update_ctx)?;
 
         let reward_delta = self.ledger.pop_step_reward(ep)?;
         let penalty = self.penalty(summary);
@@ -364,7 +364,7 @@ impl Environment {
     }
 
     fn check_step_status(&self) -> ChapatyResult<()> {
-        use EnvStatus::{Running, Ready, EpisodeDone, Done};
+        use EnvStatus::{Done, EpisodeDone, Ready, Running};
         match self.env_status {
             Running => Ok(()),
             Ready => Err(EnvError::InvalidState(

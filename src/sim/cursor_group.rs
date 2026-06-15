@@ -405,7 +405,7 @@ mod test {
         let streams = Streams::default().with_ohlcv(ohlcv_map);
 
         SimulationDataBuilder::new(streams)
-            .build(EnvConfig::default())
+            .build(&EnvConfig::default())
             .unwrap()
     }
 
@@ -427,7 +427,7 @@ mod test {
             .with_trade(trade_map);
 
         SimulationDataBuilder::new(streams)
-            .build(EnvConfig::default())
+            .build(&EnvConfig::default())
             .unwrap()
     }
 
@@ -965,7 +965,7 @@ mod test {
             .with_trade(trade_map);
 
         let sim_data = SimulationDataBuilder::new(streams)
-            .build(EnvConfig::default())
+            .build(&EnvConfig::default())
             .unwrap();
 
         let ep = episode(ts("2025-01-01T00:00:00Z"), EpisodeLength::Day);

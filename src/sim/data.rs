@@ -465,7 +465,7 @@ impl SimulationDataBuilder {
         Self { streams }
     }
 
-    pub(crate) fn build(self, env_cfg: EnvConfig) -> ChapatyResult<SimulationData> {
+    pub(crate) fn build(self, env_cfg: &EnvConfig) -> ChapatyResult<SimulationData> {
         let hash = env_cfg.hash()?;
         let global_availability_start = self.global_availability_start();
         let global_open_start = self.global_open_start();
@@ -824,7 +824,7 @@ mod tests {
     }
 
     /// Creates `SimulationData` with some test OHLCV and economic calendar events.
-    fn make_test_simulation_data(env_cfg: EnvConfig) -> SimulationData {
+    fn make_test_simulation_data(env_cfg: &EnvConfig) -> SimulationData {
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
         let ohlcv_id = make_ohlcv_id(symbol);
 
@@ -856,7 +856,7 @@ mod tests {
     async fn file_based_roundtrip_succeeds() {
         // 1. Create test data
         let env_cfg = make_test_env_config();
-        let sim_data = Arc::new(make_test_simulation_data(env_cfg.clone()));
+        let sim_data = Arc::new(make_test_simulation_data(&env_cfg));
 
         // 2. Set up temp directory for cache
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache");
@@ -905,7 +905,7 @@ mod tests {
 
         // 1. Create test data
         let env_cfg = make_test_env_config();
-        let sim_data = Arc::new(make_test_simulation_data(env_cfg.clone()));
+        let sim_data = Arc::new(make_test_simulation_data(&env_cfg));
 
         // 2. Set up temp directory with a custom file stem
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache_custom");

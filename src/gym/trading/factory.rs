@@ -766,7 +766,7 @@ impl BuildCtx {
             .with_atr(atr_res?)
             .with_roc(roc_res?);
 
-        let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(self.env_cfg.clone())?);
+        let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(&self.env_cfg)?);
         let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
 
         info!("SimulationData built successfully");
@@ -909,7 +909,7 @@ fn process_map<Id, Event, F>(
 where
     Id: StreamId + Hash + Send + Sync,
     Event: Send,
-    F: Fn(DataFrame, &Id) -> ChapatyResult<Box<[Event]>> + Sync + Send,
+    F: Fn(&DataFrame, &Id) -> ChapatyResult<Box<[Event]>> + Sync + Send,
 {
     // Early return: No data to process
     let Some(map) = map else {
@@ -934,7 +934,7 @@ where
             })?;
             debug!("Collected dataframe for {:?}: {} rows", id, df.height());
 
-            let events = extractor(df, id)?;
+            let events = extractor(&df, id)?;
             debug!("Extracted {} events for {:?}", events.len(), id);
 
             Ok((*id, events))
@@ -948,7 +948,7 @@ where
 // ================================================================================================
 // Extractor Functions
 // ================================================================================================
-fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
+fn extract_ohlcv(df: &DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1034,7 +1034,7 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_trades(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
+fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1100,7 +1100,7 @@ fn extract_trades(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
+fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1231,7 +1231,7 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tpo]>> {
+fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tpo]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1325,7 +1325,7 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     Ok(profiles.into_boxed_slice())
 }
 
-fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
+fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1472,49 +1472,49 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     Ok(profiles.into_boxed_slice())
 }
 
-fn extract_ema(df: DataFrame) -> ChapatyResult<Box<[Ema]>> {
+fn extract_ema(df: &DataFrame) -> ChapatyResult<Box<[Ema]>> {
     extract_price_timeseries(df, |timestamp, price| Ema {
         timestamp,
         price: Price(price),
     })
 }
 
-fn extract_rsi(df: DataFrame) -> ChapatyResult<Box<[Rsi]>> {
+fn extract_rsi(df: &DataFrame) -> ChapatyResult<Box<[Rsi]>> {
     extract_price_timeseries(df, |timestamp, price| Rsi {
         timestamp,
         price: Price(price),
     })
 }
 
-fn extract_sma(df: DataFrame) -> ChapatyResult<Box<[Sma]>> {
+fn extract_sma(df: &DataFrame) -> ChapatyResult<Box<[Sma]>> {
     extract_price_timeseries(df, |timestamp, price| Sma {
         timestamp,
         price: Price(price),
     })
 }
 
-fn extract_trades_vwap(df: DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
+fn extract_trades_vwap(df: &DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
     extract_price_timeseries(df, |timestamp, price| TradesVwap {
         timestamp,
         price: Price(price),
     })
 }
 
-fn extract_ohlcv_vwap(df: DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
+fn extract_ohlcv_vwap(df: &DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
     extract_price_timeseries(df, |timestamp, price| OhlcvVwap {
         timestamp,
         price: Price(price),
     })
 }
 
-fn extract_atr(df: DataFrame) -> ChapatyResult<Box<[Atr]>> {
+fn extract_atr(df: &DataFrame) -> ChapatyResult<Box<[Atr]>> {
     extract_price_timeseries(df, |timestamp, value| Atr {
         timestamp,
         range: PriceDelta(value),
     })
 }
 
-fn extract_roc(df: DataFrame) -> ChapatyResult<Box<[Roc]>> {
+fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1551,7 +1551,7 @@ fn extract_roc(df: DataFrame) -> ChapatyResult<Box<[Roc]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_trades_session(df: DataFrame) -> ChapatyResult<Box<[TradesSession]>> {
+fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1603,7 +1603,7 @@ fn extract_trades_session(df: DataFrame) -> ChapatyResult<Box<[TradesSession]>> 
     Ok(events.into_boxed_slice())
 }
 
-fn extract_ohlcv_session(df: DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
+fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1677,7 +1677,7 @@ fn extract_ohlcv_session(df: DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
 }
 
 #[must_use]
-fn extract_price_timeseries<T, F>(df: DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
+fn extract_price_timeseries<T, F>(df: &DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
 where
     F: Fn(DateTime<Utc>, f64) -> T,
 {
@@ -2420,7 +2420,7 @@ mod test {
         let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
         // 2. Extract
-        let events = extract_ema(df).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
 
         // 3. Verify
         assert_eq!(events.len(), 2);
@@ -2466,7 +2466,7 @@ mod test {
 
         // 2. Extract
         // We use extract_ema as a proxy for any technical indicator extractor
-        let events = extract_ema(df).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
 
         // 3. Verify
         // We entered 3 rows, but expect 2 events because the first one was None
@@ -2512,7 +2512,7 @@ mod test {
             ],
         );
 
-        let events = extract_ohlcv(df).expect("failed to extract ohlcv");
+        let events = extract_ohlcv(&df).expect("failed to extract ohlcv");
 
         assert_eq!(events.len(), 1);
         let candle = &events[0];
@@ -2557,7 +2557,7 @@ mod test {
         .unwrap();
         let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
-        let events = extract_trades(df).expect("failed to extract trade");
+        let events = extract_trades(&df).expect("failed to extract trade");
 
         assert_eq!(events.len(), 2);
 
@@ -2622,7 +2622,7 @@ mod test {
         .unwrap();
         let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
 
-        let events = extract_economic(df).expect("failed to extract economic");
+        let events = extract_economic(&df).expect("failed to extract economic");
 
         assert_eq!(events.len(), 2);
 
@@ -2705,7 +2705,7 @@ mod test {
             &[10, 50],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 1);
         let tpo = &profiles[0];
@@ -2763,7 +2763,7 @@ mod test {
             ],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 2, "Failed to flush distinct TPO windows");
 
@@ -2798,7 +2798,7 @@ mod test {
             ],
         );
 
-        let result = extract_tpo(df, &default_agg());
+        let result = extract_tpo(&df, &default_agg());
 
         assert!(result.is_err());
         match result {
@@ -2821,7 +2821,7 @@ mod test {
             &[0, 10, 0],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
         let tpo = &profiles[0];
 
         assert_eq!(tpo.poc, Price(101.0));
@@ -2861,7 +2861,7 @@ mod test {
             ],
         );
 
-        let profiles = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
 
         assert_eq!(profiles.len(), 1);
         let vp = &profiles[0];
@@ -2912,7 +2912,7 @@ mod test {
             ],
         );
 
-        let profiles = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
         let bin = &profiles[0].bins[0];
 
         // Ensure required fields exist
@@ -2953,7 +2953,7 @@ mod test {
             ],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 2, "Should have flushed 2 distinct profiles");
 
@@ -2972,21 +2972,21 @@ mod test {
     #[test]
     fn test_empty_dataframe_returns_empty_slice() {
         let df = DataFrame::empty();
-        let events = extract_economic(df.clone()).expect("failed to extract economic");
+        let events = extract_economic(&df).expect("failed to extract economic");
         assert!(events.is_empty());
-        let events = extract_ema(df.clone()).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
         assert!(events.is_empty());
-        let events = extract_ohlcv(df.clone()).expect("failed to extract ohlcv");
+        let events = extract_ohlcv(&df).expect("failed to extract ohlcv");
         assert!(events.is_empty());
-        let events = extract_rsi(df.clone()).expect("failed to extract rsi");
+        let events = extract_rsi(&df).expect("failed to extract rsi");
         assert!(events.is_empty());
-        let events = extract_sma(df.clone()).expect("failed to extract sma");
+        let events = extract_sma(&df).expect("failed to extract sma");
         assert!(events.is_empty());
-        let events = extract_trades(df.clone()).expect("failed to extract trade");
+        let events = extract_trades(&df).expect("failed to extract trade");
         assert!(events.is_empty());
-        let events = extract_tpo(df.clone(), &default_agg()).expect("failed to extract tpo");
+        let events = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
         assert!(events.is_empty());
-        let events = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let events = extract_vp(&df, &default_agg()).expect("failed to extract vp");
         assert!(events.is_empty());
     }
 }

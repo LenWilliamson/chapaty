@@ -202,7 +202,7 @@ impl EpisodeLength {
 
     #[must_use]
     pub fn max_episodes(&self) -> usize {
-        use EpisodeLength::{Day, Week, Month, Quarter, SemiAnnual, Annual, Infinite};
+        use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
 
         match self {
             Day => 366,
@@ -229,8 +229,8 @@ impl EpisodeLength {
     ///
     /// The `DateTime<Utc>` marking the beginning of the next period, which is the
     /// exclusive end of the current episode. For `Infinite` length, it returns `DateTime::MAX_UTC`.
-    fn calculate_end(&self, start: DateTime<Utc>) -> DateTime<Utc> {
-        use EpisodeLength::{Infinite, Day, Week, Month, Quarter, SemiAnnual, Annual};
+    fn calculate_end(self, start: DateTime<Utc>) -> DateTime<Utc> {
+        use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
         match self {
             Infinite => DateTime::<Utc>::MAX_UTC,
             Day => {

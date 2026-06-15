@@ -161,6 +161,7 @@ impl LazyFrameIndicatorExt for LazyFrame {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
     ChapatyError::Data(DataError::DataFrame(format!(
         "Error while building batch indicator: {e}"

@@ -616,10 +616,7 @@ mod tests {
 
     /// Helper to assert floats with epsilon tolerance
     fn assert_f64_eq(a: f64, b: f64) {
-        assert!(
-            (a - b).abs() < f64::EPSILON,
-            "Expected {a} to equal {b}"
-        );
+        assert!((a - b).abs() < f64::EPSILON, "Expected {a} to equal {b}");
     }
 
     // ==========================================

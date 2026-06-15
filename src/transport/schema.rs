@@ -146,15 +146,15 @@ impl From<CanonicalCol> for PlSmallStr {
 }
 
 impl CanonicalCol {
-    pub fn name(&self) -> PlSmallStr {
-        (*self).into()
-    }
-
-    pub fn as_str(&self) -> &'static str {
+    pub fn name(self) -> PlSmallStr {
         self.into()
     }
 
-    pub fn dtype(&self) -> DataType {
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
+
+    pub fn dtype(self) -> DataType {
         match self {
             // Strings
             Self::DataSource
@@ -214,7 +214,7 @@ impl CanonicalCol {
         }
     }
 
-    pub fn field(&self) -> Field {
+    pub fn field(self) -> Field {
         Field::new(self.name(), self.dtype())
     }
 }

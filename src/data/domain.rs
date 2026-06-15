@@ -764,10 +764,9 @@ impl FromStr for FutureContract {
         // e.g., "6ez5" = 6e (EurUsd) + z (December) + 5 (Year 5)
 
         if s.len() < 3 {
-            return Err(DataError::InvalidSymbol(format!(
-                "Future contract string too short: {s}"
-            ))
-            .into());
+            return Err(
+                DataError::InvalidSymbol(format!("Future contract string too short: {s}")).into(),
+            );
         }
 
         // Find where the root ends by trying to parse progressively longer prefixes
@@ -1215,7 +1214,8 @@ impl SessionWindow {
 
     #[must_use]
     pub fn end_nanos_since_midnight(&self) -> i64 {
-        (i64::from(self.end.num_seconds_from_midnight()) * 1_000_000_000) + i64::from(self.end.nanosecond())
+        (i64::from(self.end.num_seconds_from_midnight()) * 1_000_000_000)
+            + i64::from(self.end.nanosecond())
     }
 
     #[must_use]
@@ -1583,10 +1583,7 @@ mod tests {
             let original = Symbol::Future(contract);
             let serialized = original.to_string();
             let deserialized: Symbol = serialized.parse().unwrap();
-            assert_eq!(
-                original, deserialized,
-                "Round-trip failed for {contract:?}"
-            );
+            assert_eq!(original, deserialized, "Round-trip failed for {contract:?}");
         }
     }
 

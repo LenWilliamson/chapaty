@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 pub mod chapaty {
     pub mod bq_exporter {
         pub mod v1 {

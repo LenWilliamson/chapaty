@@ -269,7 +269,7 @@ mod tests {
 
         let streams = Streams::default().with_ohlcv(map);
         let sim_data = SimulationDataBuilder::new(streams)
-            .build(EnvConfig::default())
+            .build(&EnvConfig::default())
             .expect("Failed to build sim data");
 
         // Cursor initializes at the start of data

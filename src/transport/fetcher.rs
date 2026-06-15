@@ -184,7 +184,7 @@ impl Fetchable for TpoSpotQuery {
                         .as_ref()
                         .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
-                    price_bin: agg.actual_price_bin_string(self.symbol)?,
+                    price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
             .transpose()?;
@@ -237,7 +237,7 @@ impl Fetchable for TpoFutureQuery {
                         .as_ref()
                         .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
-                    price_bin: agg.actual_price_bin_string(self.symbol)?,
+                    price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
             .transpose()?;
@@ -290,7 +290,7 @@ impl Fetchable for VolumeProfileSpotQuery {
                         .as_ref()
                         .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
-                    price_bin: agg.actual_price_bin_string(self.symbol)?,
+                    price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
             .transpose()?;

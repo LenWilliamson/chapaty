@@ -120,7 +120,7 @@ impl EquityCurveReport {
             .with_row_index(EquityCurveCol::RowId.into(), None)
             .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
 
-        Self::new(eod_df)
+        Self::new(&eod_df)
     }
 }
 
@@ -141,7 +141,7 @@ impl Report for EquityCurveReport {
 }
 
 impl EquityCurveReport {
-    pub(crate) fn new(df: DataFrame) -> ChapatyResult<Self> {
+    pub(crate) fn new(df: &DataFrame) -> ChapatyResult<Self> {
         let sorted_df = df
             .sort([EquityCurveCol::Timestamp], SortMultipleOptions::default())
             .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
@@ -234,7 +234,7 @@ mod test {
             .expect("Failed to collect DataFrame from LazyFrame");
 
         let equity_curve =
-            EquityCurveReport::new(df).expect("Failed to create EquityCurveReport from DataFrame");
+            EquityCurveReport::new(&df).expect("Failed to create EquityCurveReport from DataFrame");
         let df = &equity_curve.as_df();
 
         let current_schema = df.schema();
@@ -314,7 +314,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -371,7 +371,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -416,7 +416,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -461,7 +461,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
