@@ -2097,7 +2097,7 @@ mod test {
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
-                col(CanonicalCol::PointInTime).cast(DataType::Datetime(
+                col("timestamp").cast(DataType::Datetime(
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
@@ -2164,7 +2164,7 @@ mod test {
         // Tue 10:00 (Fail day)
         // Wed 15:00 (Pass Wed window)
         let df = df!(
-            "timestamp" => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-05T08:00:00Z"), // Mon - Too early
                 ts_micros("2026-01-05T10:00:00Z"), // Mon - OK
                 ts_micros("2026-01-05T17:00:00Z"), // Mon - Too late (if 9-17)
@@ -2174,7 +2174,8 @@ mod test {
             "open" => &[100.0, 101.0, 102.0, 103.0, 104.0]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map =
+            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
 
         // Define Rules
         let mut allowed = BTreeMap::new();
@@ -2220,10 +2221,11 @@ mod test {
     #[test]
     fn test_filter_empty_rules_drops_all() {
         let df = df!(
-            "timestamp" => &[ts_micros("2026-01-01T10:00:00Z")]
+            CanonicalCol::PointInTime.as_str() => &[ts_micros("2026-01-01T10:00:00Z")]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map =
+            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
 
         let allowed = BTreeMap::new(); // Empty rules
 
@@ -2237,14 +2239,15 @@ mod test {
     fn test_filter_multi_window_same_day() {
         // Split sessions (e.g., Morning 0-4, Evening 20-24)
         let df = df!(
-            "timestamp" => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-06T02:00:00Z"), // Tue 02:00 (Pass)
                 ts_micros("2026-01-06T12:00:00Z"), // Tue 12:00 (Fail - Lunch)
                 ts_micros("2026-01-06T21:00:00Z"), // Tue 21:00 (Pass)
             ]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map =
+            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
 
         let mut allowed = BTreeMap::new();
         allowed.insert(
@@ -2260,7 +2263,11 @@ mod test {
 
         assert_eq!(result.height(), 2);
         // Verify the 12:00 entry is gone
-        let times = result.column("timestamp").unwrap().datetime().unwrap();
+        let times = result
+            .column(CanonicalCol::PointInTime.as_str())
+            .unwrap()
+            .datetime()
+            .unwrap();
         assert!(times.physical().get(0).is_some());
         // We rely on height=2 and inputs to know 12:00 is the one missing
     }
@@ -2298,15 +2305,23 @@ mod test {
         // - Middle: ID 2 & 3 (10:00) -> The Collision
         // - Tail: ID 4 (11:00)
         let df_shuffled = df!(
-            "id"             => &[4,      3,      1,      2     ],
-            "timestamp"      => &[t_1100, t_1000, t_0900, t_1000], // Close Time
-            "open_timestamp" => &[t_1000, t_0930, t_0800, t_0900]  // Open Time (Ignored)
+            "id"                                 => &[4,      3,      1,      2     ],
+            CanonicalCol::PointInTime.as_str()   => &[t_1100, t_1000, t_0900, t_1000], // Close Time
+            CanonicalCol::OpenTimestamp.as_str() => &[t_1000, t_0930, t_0800, t_0900]  // Open Time (Ignored)
         )
         .unwrap();
 
         // Wrap for the function under test
-        let mut lf_map =
-            wrap_in_map(with_ts_cols(df_shuffled, &["timestamp", "open_timestamp"]).lazy());
+        let mut lf_map = wrap_in_map(
+            with_ts_cols(
+                df_shuffled,
+                &[
+                    CanonicalCol::PointInTime.as_str(),
+                    CanonicalCol::OpenTimestamp.as_str(),
+                ],
+            )
+            .lazy(),
+        );
 
         // ACTION
         apply_sort(&mut lf_map).expect("failed to apply sort");
@@ -2322,7 +2337,7 @@ mod test {
             .collect::<Vec<_>>();
 
         let times = result
-            .column("timestamp")
+            .column(CanonicalCol::PointInTime.as_str())
             .unwrap()
             .datetime()
             .unwrap()

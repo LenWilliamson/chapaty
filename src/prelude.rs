@@ -28,6 +28,7 @@ pub use crate::indicator::config::*;
 
 // 6.b Batch Indicators (Polars / O(1))
 pub use crate::indicator::batch::WithBatchIndicators;
+pub use crate::indicator::batch::event::*;
 pub use crate::indicator::batch::ohlcv::*;
 pub use crate::indicator::batch::trades::*;
 

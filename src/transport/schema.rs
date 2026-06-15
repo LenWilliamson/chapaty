@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use polars::prelude::{DataType, Field, PlSmallStr, Schema, SchemaRef, TimeUnit, TimeZone};
-use strum::{Display, EnumString, IntoStaticStr};
+use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
 /// The standardized vocabulary for all Chapaty market data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum CanonicalCol {
     // ========================================================================
