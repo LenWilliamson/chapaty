@@ -315,6 +315,7 @@ impl CursorGroup {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use crate::{
         data::{
@@ -944,7 +945,7 @@ mod test {
     fn test_cursor_group_multi_symbol_same_type() {
         // Scenario: BTC Trades and ETH Trades occurring interleaved.
         let btc_id = trade_id();
-        let eth_id = trade_id_alt(); // The previously unused helper
+        let eth_id = trade_id_alt();
 
         let btc_events = vec![trade(ts("2025-01-01T10:00:00Z"))];
         let eth_events = vec![trade(ts("2025-01-01T10:01:00Z"))];

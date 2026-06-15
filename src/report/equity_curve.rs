@@ -190,6 +190,7 @@ impl ToSchema for EquityCurveReport {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::path::PathBuf;
 
     use chrono::{DateTime, Utc};

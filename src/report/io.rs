@@ -397,6 +397,7 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::path::PathBuf;
 
     use polars::{

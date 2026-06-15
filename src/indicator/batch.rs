@@ -172,6 +172,7 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use crate::transport::schema::CanonicalCol;
     use chrono::{TimeZone, Utc};

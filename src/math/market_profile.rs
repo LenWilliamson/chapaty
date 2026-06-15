@@ -59,16 +59,25 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
             if candidates.len() == 1 {
                 candidates[0]
             } else {
-                let sum_indices: usize = candidates.iter().sum();
-                let sum_indices =
-                    u32::try_from(sum_indices).expect("sum of candidate indices exceeds u32");
-                let candidate_count =
-                    u32::try_from(candidates.len()).expect("candidate count exceeds u32");
+                let sum_indices = candidates.iter().sum::<usize>();
+                let sum_indices = u32::try_from(sum_indices).map_err(DataError::from)?;
+                let candidate_count = u32::try_from(candidates.len()).map_err(DataError::from)?;
                 let avg_idx = f64::from(sum_indices) / f64::from(candidate_count);
-                *candidates
+                candidates
                     .iter()
-                    .min_by(|&&a, &&b| {
+                    .copied()
+                    .min_by(|&a, &b| {
+                        #[allow(
+                            clippy::unwrap_used,
+                            reason = "Safe because `sum_indices` and `candidates.len()` have already been successfully \
+                                      converted to `u32` earlier in this block, ensuring all element indices fit in `u32`."
+                        )]
                         let a = u32::try_from(a).expect("candidate index exceeds u32");
+                        #[allow(
+                            clippy::unwrap_used,
+                            reason = "Safe because `sum_indices` and `candidates.len()` have already been successfully \
+                                      converted to `u32` earlier in this block, ensuring all element indices fit in `u32`."
+                        )]
                         let b = u32::try_from(b).expect("candidate index exceeds u32");
                         let diff_a = (f64::from(a) - avg_idx).abs();
                         let diff_b = (f64::from(b) - avg_idx).abs();

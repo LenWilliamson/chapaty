@@ -162,7 +162,7 @@ impl Trade<Pending> {
 
 #[cfg(test)]
 mod test {
-
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::sync::Arc;
 
     use super::*;

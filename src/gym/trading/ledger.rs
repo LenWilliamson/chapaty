@@ -766,6 +766,7 @@ fn ep_not_found_err(episode: &Episode) -> ChapatyError {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use std::collections::HashSet;
 
     use polars::prelude::SchemaExt;

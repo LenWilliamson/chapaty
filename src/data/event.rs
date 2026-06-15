@@ -846,6 +846,7 @@ impl From<TradesId> for MarketId {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     /// Parse RFC3339 timestamp string to `DateTime`<Utc>.

@@ -325,6 +325,7 @@ struct CloseParams {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use crate::{
         data::{
             domain::{

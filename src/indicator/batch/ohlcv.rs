@@ -328,6 +328,7 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> LazyFrame {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use polars::prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit};
     use std::path::PathBuf;

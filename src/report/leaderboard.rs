@@ -431,6 +431,7 @@ impl Ord for LeaderboardEntry {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use polars::prelude::{IntoLazy, col, lit};
     use serde::{Deserialize, Serialize};
 
