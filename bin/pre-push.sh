@@ -59,23 +59,23 @@ echo -e "\n${YELLOW}[6/10] Building Workspace...${NC}"
 cargo build --all-features
 echo -e "${GREEN}[OK] Workspace compiled successfully.${NC}"
 
-echo -e "\n${YELLOW}[7/10] Running Unit & Integration Tests...${NC}"
+echo -e "\n${YELLOW}[7/11] Running Unit & Integration Tests...${NC}"
 cargo test --all-features --tests
 echo -e "${GREEN}[OK] All unit tests passed.${NC}"
 
-echo -e "\n${YELLOW}[7.5/10] Running Strict Documentation Tests...${NC}"
+echo -e "\n${YELLOW}[8/11] Running Strict Documentation Tests...${NC}"
 # Evaluates code snippets in docstrings strictly
 export RUSTDOCFLAGS="-D warnings"
 cargo test --all-features --doc
 echo -e "${GREEN}[OK] All documentation tests passed.${NC}"
 
-echo -e "\n${YELLOW}[8/10] Verifying Documentation Layout...${NC}"
+echo -e "\n${YELLOW}[9/11] Verifying Documentation Layout...${NC}"
 # Ensure documentation builds without layout/link warnings
 export RUSTDOCFLAGS="-D warnings"
 cargo doc --no-deps --document-private-items
 echo -e "${GREEN}[OK] Documentation builds successfully.${NC}"
 
-echo -e "\n${YELLOW}[9/10] Verifying Docs.rs Compatibility (Nightly)...${NC}"
+echo -e "\n${YELLOW}[10/11] Verifying Docs.rs Compatibility (Nightly)...${NC}"
 # docs.rs strictly uses the nightly compiler. We run a soft-fail check here.
 if rustup toolchain list | grep -q nightly; then
     # We suppress stdout to keep it clean, but let stderr show if it fails.
@@ -97,7 +97,7 @@ fi
 # Build & Dry-Run the Quickstart Example
 # ==============================================================================
 
-echo -e "\n${YELLOW}[10/10] Building & Dry-Running Quickstart Example...${NC}"
+echo -e "\n${YELLOW}[11/11] Building & Dry-Running Quickstart Example...${NC}"
 # Compile first so a build error is distinct from a runtime error.
 cargo build --example quickstart
 # Then run it to verify the full logic path (environment load, eval, export) works.
@@ -105,3 +105,4 @@ cargo run --release --example quickstart > /dev/null
 echo -e "${GREEN}[OK] Quickstart example ran successfully.${NC}"
 
 echo -e "\n${GREEN}>>> SUCCESS! All checks passed. Ready to push.${NC}"
+
