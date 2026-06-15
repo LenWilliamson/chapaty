@@ -149,17 +149,18 @@ fn init_tracing() -> Result<Option<WorkerGuard>> {
         Ok(None)
     } else {
         // Local mode: log to file
-        let log_dir = dirs::state_dir()
-            .map(|mut p| {
-                p.push(app_name);
-                p.push("logs");
-                p
-            })
-            .unwrap_or_else(|| {
+        let log_dir = dirs::state_dir().map_or_else(
+            || {
                 let mut home = dirs::home_dir().expect("Failed to find home directory");
                 home.push(format!(".local/state/{app_name}/logs"));
                 home
-            });
+            },
+            |mut p| {
+                p.push(app_name);
+                p.push("logs");
+                p
+            },
+        );
         fs::create_dir_all(&log_dir)?;
 
         let timestamp = time::OffsetDateTime::now_utc()
