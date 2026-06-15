@@ -154,6 +154,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "window must be > 0")]
     fn atr_cfg_new_panics_on_zero_window() {
-        let _ = AtrConfig::new(0);
+        let _config = AtrConfig::new(0);
     }
 }

@@ -2056,6 +2056,10 @@ mod test {
     }
 
     #[test]
+    #[allow(
+        clippy::print_stdout,
+        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
+    )]
     fn test_overlay_economic_calendar_policy() {
         let test_cases = vec![
             OverlayTestCase {
@@ -2156,6 +2160,10 @@ mod test {
     }
 
     #[test]
+    #[allow(
+        clippy::print_stdout,
+        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
+    )]
     fn test_overlay_empty_calendar_edge_case() {
         println!("Running edge case: OnlyWithEvents with empty calendar");
 

@@ -90,28 +90,19 @@ tonic-prost-build = "0.14"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-restriction = { level = "warn", priority = -2 }
+nursery  = { level = "warn", priority = -1 }
 
-# Environment lints we explicitly allow
-std_instead_of_alloc = "allow"
-alloc_instead_of_core = "allow"
-std_instead_of_core = "allow"
+# Individually opted-in restriction lints
+clone_on_ref_ptr        = "warn"
+let_underscore_must_use = "warn"
+print_stdout            = "warn"
+print_stderr            = "warn"
+unwrap_used             = "warn"
+expect_used             = "warn"
 
-# API & Design lints we explicitly allow
-exhaustive_structs = "allow"
-exhaustive_enums = "allow"
-
-# Styling & Restriction lints we explicitly allow
-absolute_paths = "allow"
-arbitrary_source_item_ordering = "allow"
-implicit_return = "allow"
-missing_inline_in_public_items = "allow"
-pub_with_shorthand = "allow"
-self_named_module_files = "allow"
-single_char_lifetime_names = "allow"
-float_arithmetic = "allow"
-question_mark_used = "allow"
+# Attributes & Code Discipline lints
+allow_attributes        = "warn"
+allow_attributes_without_reason = "warn"
 
 [dev-dependencies]
 dirs = "6.0"

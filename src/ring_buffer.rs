@@ -237,7 +237,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "capacity must be strictly greater than 0")]
     fn new_zero_capacity_panics() {
-        let _: RingBuffer<i32> = RingBuffer::new(0);
+        drop(RingBuffer::<i32>::new(0));
     }
 
     #[test]

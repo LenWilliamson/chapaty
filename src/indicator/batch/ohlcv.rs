@@ -406,6 +406,10 @@ mod tests {
         clippy::similar_names,
         reason = "regression test uses closely related indicator fixture names that read clearly in context"
     )]
+    #[allow(
+        clippy::print_stdout,
+        reason = "table-driven test prints the active case name so a failing subcase is identifiable"
+    )]
     fn test_indicators_regression_consistency() {
         let test_cases = vec![
             IndicatorTestCase {

@@ -38,9 +38,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/proto_gen")
         .compile_protos(&proto_files, &[proto_root])?;
 
-    let _ = std::process::Command::new("cargo")
+    // Formatting the generated protobuf code is a best-effort cosmetic step: surface
+    // failures as build warnings rather than silently discarding the command's status.
+    match std::process::Command::new("cargo")
         .args(["fmt", "--", "src/proto_gen/*.rs"])
-        .status();
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => println!("cargo:warning=rustfmt on generated protos exited with {status}"),
+        Err(e) => println!("cargo:warning=failed to run rustfmt on generated protos: {e}"),
+    }
 
     Ok(())
 }

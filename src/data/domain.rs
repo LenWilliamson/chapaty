@@ -757,6 +757,12 @@ impl FromStr for FutureContract {
         // Expected format: root + month + year
         // e.g., "6ez5" = 6e (EurUsd) + z (December) + 5 (Year 5)
 
+        if !s.is_ascii() {
+            return Err(
+                DataError::InvalidSymbol(format!("Future contract string is not ASCII: {s}")).into(),
+            );
+        }
+
         if s.len() < 3 {
             return Err(
                 DataError::InvalidSymbol(format!("Future contract string too short: {s}")).into(),

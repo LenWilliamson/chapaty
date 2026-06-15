@@ -108,7 +108,7 @@ impl Environment {
     /// # Errors
     /// Returns an error if serialization or storage I/O fails.
     pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
-        self.sim_data.clone().write(cfg).await
+        Arc::clone(&self.sim_data).write(cfg).await
     }
 
     /// Runs one full episode for `agent` and returns its trading journal.

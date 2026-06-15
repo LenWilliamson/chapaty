@@ -269,7 +269,7 @@ mod test {
     fn test_equity_curve_into_eod_empty_dataframe() {
         // 1. Create a perfectly valid but empty report using the Default trait
         let report = EquityCurveReport::default();
-        let initial_schema = report.as_df().schema().clone();
+        let initial_schema = Arc::clone(report.as_df().schema());
 
         // 2. Apply EOD downsampling
         let eod_report = report.into_eod().expect("Failed to downsample empty DF");
@@ -280,7 +280,7 @@ mod test {
         assert_eq!(eod_df.height(), 0, "Empty input should yield empty output");
 
         // The schema should remain perfectly perfectly intact
-        let final_schema = eod_df.schema().clone();
+        let final_schema = Arc::clone(eod_df.schema());
         assert_eq!(
             initial_schema, final_schema,
             "Schema mutated during empty EOD aggregation"

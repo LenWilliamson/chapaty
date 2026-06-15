@@ -250,7 +250,7 @@ impl<'env> MarketView<'env> {
     }
     #[must_use]
     pub fn market_ids(&self) -> Arc<[MarketId]> {
-        self.market_ids.clone()
+        Arc::clone(&self.market_ids)
     }
 
     /// Finds the candle active at the specific timestamp (Search: Newest to Oldest).

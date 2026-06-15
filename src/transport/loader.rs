@@ -103,7 +103,7 @@ mod generator {
         error::ChapatyResult,
         transport::loader::{Fetchable, Year},
     };
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use tokio_util::sync::CancellationToken;
 
     pub struct Args<T: Fetchable> {
@@ -122,7 +122,7 @@ mod generator {
             tx,
         } = args;
 
-        let mut unique_jobs = HashMap::new();
+        let mut unique_jobs = BTreeMap::new();
         for spec in specs {
             let id = match spec.to_id() {
                 Ok(id) => id,
@@ -340,7 +340,7 @@ mod processor {
                 let (send, recv) = tokio::sync::oneshot::channel();
                 rayon::spawn(move || {
                     let result = batch.into_lazyframe();
-                    let _ = send.send(result);
+                    drop(send.send(result));
                 });
 
                 let Ok(lf_res) = recv.await else {

@@ -237,7 +237,7 @@ impl SimulationData {
     }
 
     pub fn market_ids(&self) -> Arc<[MarketId]> {
-        self.market_ids.clone()
+        Arc::clone(&self.market_ids)
     }
 
     /// Returns the absolute earliest moment any data becomes available.
@@ -384,10 +384,11 @@ impl SimulationData {
                     .map_err(|e| IoError::WriteFailed(e.to_string()).into()),
             };
 
-            if res.is_ok() {
-                let _ = writer.flush();
-            }
-            res
+            res.and_then(|_| {
+                writer
+                    .flush()
+                    .map_err(|e| IoError::WriteFailed(e.to_string()).into())
+            })
         })
         .await
         .map_err(|e| SystemError::Generic(e.to_string()))?;
@@ -870,8 +871,7 @@ mod tests {
         let io_cfg = IoConfig::new(storage);
 
         // 3. Write to file using SimulationData::write()
-        sim_data
-            .clone()
+        Arc::clone(&sim_data)
             .write(&io_cfg)
             .await
             .expect("write() failed");
@@ -919,8 +919,7 @@ mod tests {
         let io_cfg = IoConfig::new(storage).with_file_stem(CUSTOM_NAME);
 
         // 3. Write using the custom filename
-        sim_data
-            .clone()
+        Arc::clone(&sim_data)
             .write(&io_cfg)
             .await
             .expect("write() failed");

@@ -1632,7 +1632,7 @@ mod tests {
         check_invariants(&states);
 
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ = states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
+            let _ignored = states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
                 assert_eq!(state.trade_id().0, 20);
 
                 panic!(
@@ -1674,7 +1674,7 @@ mod tests {
         check_invariants(&states);
 
         // Action: Attempt modification that fails
-        let _ = states.modify_state_at(m_id, 0, |mut s| -> ChapatyResult<Transition<()>> {
+        let _ignored = states.modify_state_at(m_id, 0, |mut s| -> ChapatyResult<Transition<()>> {
             // Mutate the local CLONE
             if let State::Pending(ref mut t) = s {
                 t.quantity = Quantity(99999.0);
@@ -2293,7 +2293,7 @@ mod tests {
 
         // 4. Action: Update Loop
         let mut seen_markets: Vec<MarketId> = Vec::new();
-        let _ = states.update_all_live_trades(&ctx, |market_id, _result| {
+        let _ignored = states.update_all_live_trades(&ctx, |market_id, _result| {
             seen_markets.push(market_id);
             Ok(())
         });
