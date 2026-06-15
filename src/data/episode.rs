@@ -226,6 +226,12 @@ impl EpisodeLength {
     ///
     /// The `DateTime<Utc>` marking the beginning of the next period, which is the
     /// exclusive end of the current episode. For `Infinite` length, it returns `DateTime::MAX_UTC`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if internal calendar arithmetic produces an invalid date or time,
+    /// which should not occur given the hardcoded valid calendar values used (months 1–12, day 1, midnight 00:00:00).
+    #[allow(clippy::expect_used)]
     fn calculate_end(self, start: DateTime<Utc>) -> DateTime<Utc> {
         use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
         match self {
@@ -233,16 +239,15 @@ impl EpisodeLength {
             Day => {
                 let start_of_next_day = (start.date_naive() + Duration::days(1))
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_day, Utc)
             }
             Week => {
-                // Calculates the start of the next week (Monday).
                 let days_to_next_monday = 7 - start.weekday().num_days_from_monday();
                 let start_of_next_week = (start.date_naive()
                     + Duration::days(i64::from(days_to_next_monday)))
                 .and_hms_opt(0, 0, 0)
-                .unwrap();
+                .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_week, Utc)
             }
             Month => {
@@ -253,9 +258,9 @@ impl EpisodeLength {
                     (year, month + 1)
                 };
                 let start_of_next_month = NaiveDate::from_ymd_opt(next_month_year, next_month, 1)
-                    .unwrap()
+                    .expect("month is always 1-12 and day is 1")
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_month, Utc)
             }
             Quarter => {
@@ -266,13 +271,13 @@ impl EpisodeLength {
                     4..=6 => (year, 7),
                     7..=9 => (year, 10),
                     10..=12 => (year + 1, 1),
-                    _ => unreachable!(),
+                    _ => unreachable!("month is always 1-12"),
                 };
                 let start_of_next_quarter =
                     NaiveDate::from_ymd_opt(next_quarter_start_year, next_quarter_start_month, 1)
-                        .unwrap()
+                        .expect("quarter start month is always valid")
                         .and_hms_opt(0, 0, 0)
-                        .unwrap();
+                        .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_quarter, Utc)
             }
             SemiAnnual => {
@@ -282,21 +287,22 @@ impl EpisodeLength {
                     if month <= 6 { (year, 7) } else { (year + 1, 1) };
                 let start_of_next_period =
                     NaiveDate::from_ymd_opt(next_period_start_year, next_period_start_month, 1)
-                        .unwrap()
+                        .expect("semi-annual start month is always valid")
                         .and_hms_opt(0, 0, 0)
-                        .unwrap();
+                        .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_period, Utc)
             }
             Annual => {
                 let start_of_next_year = NaiveDate::from_ymd_opt(start.year() + 1, 1, 1)
-                    .unwrap()
+                    .expect("year + 1 with month 1 day 1 is always valid")
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_year, Utc)
             }
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
