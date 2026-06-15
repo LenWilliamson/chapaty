@@ -47,7 +47,7 @@ trait IndicatorExprExt {
     ///
     /// **Shape:** Yields a Scalar (`f64`).
     /// **Usage:** Use this strictly inside `.group_by().agg()` blocks.
-    /// Using the standard [`IndicatorExprExt::vwap`] method in an aggregation context will incorrectly
+    /// Using the standard [`Self::vwap_with_volume`] method in an aggregation context will incorrectly
     /// yield a `List<f64>` instead of a singular value.
     fn agg_vwap_with_volume(self, volume: Expr) -> Expr;
 

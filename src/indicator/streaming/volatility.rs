@@ -178,7 +178,7 @@ impl KahanAccumulator {
 /// Accumulates `price * volume` and `volume` from the anchor onward and never
 /// discards past data. The anchor is reset by [`reset`](StreamingIndicator::reset).
 ///
-/// The per-bar price fed into the average is chosen via [`VwapPriceSource`].
+/// The per-bar price fed into the average is chosen via [`AggregatedPrice`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingOhlcvVwap {
     source: AggregatedPrice,
@@ -240,7 +240,7 @@ impl StreamingIndicator for StreamingOhlcvVwap {
 /// A streaming, Volume-Weighted Average Price over [`TradeEvent`]s.
 ///
 /// Same accumulation semantics and anchoring as [`StreamingOhlcvVwap`], but a
-/// trade carries a single execution price, so there is no [`VwapPriceSource`]
+/// trade carries a single execution price, so there is no [`AggregatedPrice`]
 /// to configure. The trade's `quantity` is the volume.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct StreamingTradesVwap {

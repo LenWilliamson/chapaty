@@ -221,7 +221,7 @@ impl From<LiquiditySide> for bool {
 
 /// Selects which aggregated price of a bar is used for calculations.
 ///
-/// Only meaningful for bar-like data that spans a range (e.g. [`Ohlcv`]).
+/// Only meaningful for bar-like data that spans a range (e.g. [`crate::data::event::Ohlcv`]).
 #[derive(
     Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]

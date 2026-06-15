@@ -126,7 +126,7 @@ impl ProfileAggregation {
     /// Returns the size of the bin in quote currency as a mathematically exact string.
     ///
     /// # Errors
-    /// Propagates the same errors as [`Self::calculate_bin_decimal`] when the
+    /// Propagates the same errors as `calculate_bin_decimal` when the
     /// aggregation configuration is invalid for the given instrument.
     pub fn actual_price_bin_string<I: Instrument>(&self, instrument: &I) -> ChapatyResult<String> {
         self.calculate_bin_decimal(instrument)
