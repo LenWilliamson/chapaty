@@ -25,8 +25,8 @@
 *.tmp
 *.bak
 
-# Cargo local config with secrets
-/.cargo/config.toml
+# Secrets and local environment overrides
+.env
 
 # Generated example reports (keep the dir, ignore contents)
 /examples/reports/*

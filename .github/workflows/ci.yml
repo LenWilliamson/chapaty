@@ -24,11 +24,11 @@ jobs:
           cache: false
 
       # 1. Secret Leak Prevention
-      - name: Security - Check for Leaked Secrets
+      - name: Security - Check for Leaked Environment Files
         run: |
           # --error-unmatch exits with 0 if file IS found (bad), 1 if NOT found (good)
-          if git ls-files --error-unmatch .cargo/config.toml > /dev/null 2>&1; then
-            echo "::error::CRITICAL: .cargo/config.toml is being tracked by git! Remove it immediately.";
+          if git ls-files --error-unmatch .env > /dev/null 2>&1; then
+            echo "::error::CRITICAL: .env file is being tracked by git! Remove it immediately.";
             exit 1;
           fi
           echo "No secrets found in git index."
@@ -73,17 +73,23 @@ jobs:
       - name: Build Workspace
         run: cargo build --all-features --verbose
 
-      # 5. Unit Tests (Includes Doctests)
-      - name: Run Tests
-        run: cargo test --all-features --verbose
+      # 5. Unit Tests (Excludes Doctests)
+      - name: Run Unit and Integration Tests
+        run: cargo test --all-features --tests --verbose
 
-      # 6. Build Documentation (Stable)
-      - name: Verify Documentation Build
-        run: cargo doc --no-deps --document-private-items
+      # 6. Strict Documentation Tests (Doctests)
+      - name: Run Strict Documentation Tests
+        run: cargo test --all-features --doc --verbose
         env:
           RUSTDOCFLAGS: "-D warnings"
 
-      # 7 Verify docs.rs Compatibility (Nightly - SOFT FAIL)
+      # 7. Build Documentation (Stable Layout & Linting)
+      - name: Verify Documentation Layout
+        run: cargo doc --no-deps --document-private-items --verbose
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+      # 8. Verify docs.rs Compatibility (Nightly - SOFT FAIL)
       # docs.rs uses the nightly compiler. Upstream crates frequently break here.
       # We use continue-on-error so a nightly upstream break doesn't block our PRs.
       - name: Check Nightly Docs Compatibility
@@ -96,6 +102,6 @@ jobs:
           # new experimental lints that we don't want to enforce yet.
           RUSTDOCFLAGS: ""
 
-      # 8. Check Example (Compilation Only)
-      - name: Check Example Compiles
+      # 9. Check Examples (Compilation Only)
+      - name: Check Examples Compile
         run: cargo build --examples --verbose

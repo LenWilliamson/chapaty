@@ -16,12 +16,12 @@ echo -e "${BLUE}>>> Starting Local CI Pipeline for Chapaty...${NC}"
 # ==============================================================================
 
 echo -e "\n${YELLOW}[1/10] Checking Security (Secrets)...${NC}"
-# Check if .cargo/config.toml is tracked by git
-if git ls-files --error-unmatch .cargo/config.toml > /dev/null 2>&1; then
-    echo -e "${RED}[FAIL] CRITICAL: .cargo/config.toml is being tracked by git! Remove it immediately.${NC}"
+# Check if .env is tracked by git
+if git ls-files --error-unmatch .env > /dev/null 2>&1; then
+    echo -e "${RED}[FAIL] CRITICAL: .env file is being tracked by git! Remove it immediately.${NC}"
     exit 1
 fi
-echo -e "${GREEN}[OK] No leaked secrets in git index.${NC}"
+echo -e "${GREEN}[OK] No leaked environment files in git index.${NC}"
 
 echo -e "\n${YELLOW}[2/10] Checking Formatting...${NC}"
 # Fails if code is not formatted. Remove '--check' to auto-format instead.
@@ -59,12 +59,18 @@ echo -e "\n${YELLOW}[6/10] Building Workspace...${NC}"
 cargo build --all-features
 echo -e "${GREEN}[OK] Workspace compiled successfully.${NC}"
 
-echo -e "\n${YELLOW}[7/10] Running Unit Tests...${NC}"
-cargo test --all-features
-echo -e "${GREEN}[OK] All tests passed.${NC}"
+echo -e "\n${YELLOW}[7/10] Running Unit & Integration Tests...${NC}"
+cargo test --all-features --tests
+echo -e "${GREEN}[OK] All unit tests passed.${NC}"
 
-echo -e "\n${YELLOW}[8/10] Verifying Documentation...${NC}"
-# Ensure documentation builds without warnings (broken links, etc.)
+echo -e "\n${YELLOW}[7.5/10] Running Strict Documentation Tests...${NC}"
+# Evaluates code snippets in docstrings strictly
+export RUSTDOCFLAGS="-D warnings"
+cargo test --all-features --doc
+echo -e "${GREEN}[OK] All documentation tests passed.${NC}"
+
+echo -e "\n${YELLOW}[8/10] Verifying Documentation Layout...${NC}"
+# Ensure documentation builds without layout/link warnings
 export RUSTDOCFLAGS="-D warnings"
 cargo doc --no-deps --document-private-items
 echo -e "${GREEN}[OK] Documentation builds successfully.${NC}"
