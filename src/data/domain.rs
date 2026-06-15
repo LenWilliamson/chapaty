@@ -1022,10 +1022,14 @@ pub trait Instrument {
     ///
     /// Panics if the internal tick count exceeds standard i32 ranges.
     fn ticks_to_usd(&self, ticks: Tick) -> f64 {
+        #[expect(
+            clippy::expect_used,
+            reason = "Tick spaces for valid assets realistically never exceed i32 max (~2.1B ticks); \
+                      a panic here implies highly corrupted input data."
+        )]
         let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
         f64::from(tick_count) * self.tick_value_usd()
     }
-
     /// Converts a raw price distance (e.g., target - entry) into Ticks.
     /// Uses `round` to snap to the nearest valid grid point.
     ///
@@ -1033,8 +1037,16 @@ pub trait Instrument {
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
     /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
-    #[expect(clippy::cast_precision_loss)]
-    #[expect(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "The standard i64 bounds (±9.22e18) fit completely within the safe \
+                      lossless precision range of an f64 (~±9.0e15) for all realistic financial prices."
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "The upstream `.round()` call ensures the floating-point value is an exact \
+                      mathematical integer, meaning no fractional data is truncated during the `as i64` cast."
+    )]
     fn price_to_ticks(&self, price_dist: Price) -> Tick {
         let raw_ticks = (price_dist.0 / self.tick_size()).round();
 
@@ -1051,6 +1063,11 @@ pub trait Instrument {
 
     /// Converts Ticks into a valid price distance.
     fn ticks_to_price(&self, ticks: Tick) -> Price {
+        #[expect(
+            clippy::expect_used,
+            reason = "Tick movements never realistically exceed i32 max (~2.1B ticks); \
+                          an overflow here implies critical data corruption."
+        )]
         let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
         Price(f64::from(tick_count) * self.tick_size())
     }
@@ -1149,6 +1166,11 @@ impl Ord for SessionWindow {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "Used inside a `const fn` constructor where inputs are hardcoded, static literals. \
+              Any out-of-bounds inputs (e.g., hour > 23) will fail to compile immediately at build time."
+)]
 const fn hm(h: u32, m: u32) -> NaiveTime {
     NaiveTime::from_hms_opt(h, m, 0).expect("invalid hour or minute")
 }
@@ -1277,6 +1299,11 @@ impl SessionWindow {
                 if now >= self.start {
                     WindowPosition::Within(SessionDate(date))
                 } else if now < self.end {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "Active trading market data timestamps are bound to modern historical/real-time \
+                                      eras and cannot reasonably trigger Chrono's absolute minimum date boundary."
+                    )]
                     let anchor_date = date.pred_opt().expect(
                         "Market data timestamp violates Chrono's minimum representable date",
                     );

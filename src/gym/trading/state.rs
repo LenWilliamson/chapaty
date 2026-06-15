@@ -1150,6 +1150,10 @@ impl<'a> StateGuard<'a> {
     }
 
     const fn get(&self) -> &State {
+        #[expect(
+            clippy::expect_used,
+            reason = "StateGuard enforces an structural invariant where `working_state` must be valid."
+        )]
         self.working_state
             .as_ref()
             .expect("StateGuard invariant violated: state missing")

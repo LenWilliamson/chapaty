@@ -116,11 +116,11 @@ impl IndicatorExprExt for Expr {
     fn ts_as_microseconds(self) -> Expr {
         let ts = self.cast(DataType::Int64);
 
-        when(ts.clone().lt(lit(100_000_000_000i64))) // < 10^11 -> Seconds
+        when(ts.clone().lt(lit(100_000_000_000_i64))) // < 10^11 -> Seconds
             .then(ts.clone() * lit(1_000_000))
-            .when(ts.clone().lt(lit(100_000_000_000_000i64))) // < 10^14 -> Millis
+            .when(ts.clone().lt(lit(100_000_000_000_000_i64))) // < 10^14 -> Millis
             .then(ts.clone() * lit(1_000))
-            .when(ts.clone().gt(lit(100_000_000_000_000_000i64))) // > 10^17 -> Nanos
+            .when(ts.clone().gt(lit(100_000_000_000_000_000_i64))) // > 10^17 -> Nanos
             .then(ts.clone() / lit(1000)) // Drop nano remainder by integer division
             .otherwise(ts) // Already Micros
             .cast(DataType::Datetime(

@@ -84,6 +84,11 @@ impl LookbackWindow {
     /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn seconds(secs: u64) -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "Trading lookback durations specified in seconds are highly bounded, \
+                      and will never realistically approach Chrono's maximum limit of ~292,000 years."
+        )]
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(secs))
                 .expect("Duration exceeds Chrono limit"),
@@ -96,6 +101,11 @@ impl LookbackWindow {
     /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn minutes(mins: u64) -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "Trading lookback durations specified in minutes are highly bounded, \
+                      and will never realistically approach Chrono's maximum limit of ~292,000 years."
+        )]
         Self::Time(
             Duration::from_std(std::time::Duration::from_secs(mins * 60))
                 .expect("Duration exceeds Chrono limit"),
@@ -108,6 +118,11 @@ impl LookbackWindow {
     /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn hours(hours: u64) -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "Trading lookback durations specified in hours are highly bounded, \
+                      and will never realistically approach Chrono's maximum limit of ~292,000 years."
+        )]
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(hours))
                 .expect("Duration exceeds Chrono limit"),
@@ -120,6 +135,11 @@ impl LookbackWindow {
     /// Panics if the duration cannot be represented by `chrono::Duration`.
     #[must_use]
     pub fn days(days: u64) -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "Trading lookback durations specified in days are highly bounded, \
+                      and will never realistically approach Chrono's maximum limit of ~292,000 years."
+        )]
         Self::Time(
             Duration::from_std(std::time::Duration::from_hours(days * 24))
                 .expect("Duration exceeds Chrono limit"),

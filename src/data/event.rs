@@ -466,7 +466,11 @@ impl MarketProfile for Tpo {
 
 impl ProfileBinStats for TpoBin {
     fn get_value(&self) -> f64 {
-        // TPO Count acts as "Volume" for Market Profile calculations
+        #[expect(
+            clippy::expect_used,
+            reason = "A TPO block counter tracks discrete periods within a single session window, \
+                              meaning counts mathematically remain tiny integers that should not realistically overflow an i32."
+        )]
         let time_slot_count =
             i32::try_from(self.time_slot_count.0).expect("time slot count exceeds i32 range");
         f64::from(time_slot_count)

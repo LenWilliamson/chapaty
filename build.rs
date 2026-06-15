@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let proto_root_path = std::fs::canonicalize("../chapaty-bq-export-proto/proto")?;
-    let proto_root = proto_root_path.to_str().ok_or("Invalid path")?.to_string();
+    let proto_root = proto_root_path.to_str().ok_or("Invalid path")?.to_owned();
 
     let proto_files = [
         format!("{proto_root}/chapaty/bq_exporter/v1/service.proto"),
@@ -38,10 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/proto_gen")
         .compile_protos(&proto_files, &[proto_root])?;
 
-    std::process::Command::new("cargo")
+    let _ = std::process::Command::new("cargo")
         .args(["fmt", "--", "src/proto_gen/*.rs"])
-        .status()
-        .ok();
+        .status();
 
     Ok(())
 }
