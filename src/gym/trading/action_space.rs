@@ -325,7 +325,7 @@ mod tests {
                     Action::MarketClose(_) | Action::Modify(_) => {
                         panic!("Generated Close/Modify command for empty state!");
                     }
-                    _ => {}
+                    Action::Cancel(_) => {}
                 }
             }
         }
@@ -374,7 +374,7 @@ mod tests {
                     Action::Open(_) => {
                         panic!("Generated Open command when position already exists!");
                     }
-                    _ => {}
+                    Action::Cancel(_) => {}
                 }
             }
         }

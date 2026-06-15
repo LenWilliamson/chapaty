@@ -74,8 +74,7 @@ impl ToSchema for Leaderboard {
         let fields = LeaderboardCol::iter()
             .map(|col| {
                 let dtype = match col {
-                    LeaderboardCol::Rank => DataType::UInt64,
-                    LeaderboardCol::AgentUid => DataType::UInt64,
+                    LeaderboardCol::Rank | LeaderboardCol::AgentUid => DataType::UInt64,
 
                     LeaderboardCol::AgentParameterization
                     | LeaderboardCol::PortfolioPerformanceMetric => DataType::String,

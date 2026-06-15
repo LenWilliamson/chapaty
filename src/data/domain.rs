@@ -1576,7 +1576,7 @@ mod tests {
                 .unwrap_or_else(|_| panic!("Failed to parse '{input}'"));
             match parsed {
                 Symbol::Future(contract) => assert_eq!(contract.root, expected_root),
-                _ => panic!("Expected Future variant for '{input}'"),
+                Symbol::Spot(_) => panic!("Expected Future variant for '{input}'"),
             }
         }
     }

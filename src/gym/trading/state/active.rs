@@ -202,7 +202,7 @@ impl Trade<Active> {
 
             match outcome {
                 CloseOutcome::FullyClosed(c) => Ok((State::Closed(c), step_delta)),
-                _ => Err(SystemError::InvariantViolation(
+                CloseOutcome::PartiallyClosed { .. } => Err(SystemError::InvariantViolation(
                     "execute_close(full_qty) returned Partial. Logic Error.".to_string(),
                 )
                 .into()),
