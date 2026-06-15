@@ -107,7 +107,7 @@ impl Trade<Pending> {
 
         Ok(self.map(|s| Canceled {
             created_at: s.created_at,
-            canceled_at: ts,
+            cancel_ts: ts,
             limit_price: s.limit_price,
         }))
     }
@@ -677,7 +677,7 @@ mod test {
         );
         assert_eq!(canceled.state.limit_price, Price(1.09000));
         assert_eq!(canceled.state.created_at, ts("2026-01-19T10:00:00Z"));
-        assert_eq!(canceled.state.canceled_at, ts("2026-01-19T12:00:00Z"));
+        assert_eq!(canceled.state.cancel_ts, ts("2026-01-19T12:00:00Z"));
     }
 
     #[test]

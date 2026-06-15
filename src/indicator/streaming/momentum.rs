@@ -29,6 +29,11 @@ struct HistoricalBuffer {
 }
 
 impl HistoricalBuffer {
+    /// Creates a new `HistoricalBuffer`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the time window duration is too large to fit in a `usize` capacity.
     fn new(window: LookbackWindow) -> ChapatyResult<Self> {
         // Adding +2 prevents reallocation because we push BEFORE we pop in the update loop.
         let capacity = match window {
@@ -108,7 +113,11 @@ pub struct StreamingRateOfChange {
 }
 
 impl StreamingRateOfChange {
-    #[must_use]
+    /// Creates a new `StreamingRateOfChange`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the time window duration is too large to fit in a `usize` capacity.
     pub fn new(window: LookbackWindow) -> ChapatyResult<Self> {
         Ok(Self {
             buffer: HistoricalBuffer::new(window)?,

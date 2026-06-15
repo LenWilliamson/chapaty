@@ -138,7 +138,7 @@ impl TradeState for Closed {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Canceled {
     created_at: DateTime<Utc>,
-    canceled_at: DateTime<Utc>,
+    cancel_ts: DateTime<Utc>,
     limit_price: Price,
 }
 
@@ -150,7 +150,7 @@ impl Canceled {
 
     #[must_use]
     pub fn canceled_at(&self) -> DateTime<Utc> {
-        self.canceled_at
+        self.cancel_ts
     }
 
     #[must_use]
@@ -481,7 +481,7 @@ impl State {
     pub fn exit_ts(&self) -> Option<DateTime<Utc>> {
         match self {
             State::Closed(t) => Some(t.state.exit_ts),
-            State::Canceled(t) => Some(t.state.canceled_at),
+            State::Canceled(t) => Some(t.state.cancel_ts),
             _ => None,
         }
     }
@@ -1319,7 +1319,7 @@ mod tests {
             take_profit: None,
             state: Canceled {
                 created_at: t0(),
-                canceled_at: t0() + Duration::minutes(10),
+                cancel_ts: t0() + Duration::minutes(10),
                 limit_price: Price(100.0),
             },
         })

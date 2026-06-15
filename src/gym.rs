@@ -147,7 +147,7 @@ pub struct GridAxis {
     end: f64,
     step: f64,
     /// Number of decimal places to round to, inferred from the `step` string.
-    precision: u32,
+    precision: i32,
 }
 
 impl GridAxis {
@@ -163,7 +163,7 @@ impl GridAxis {
         let precision = step
             .split('.')
             .nth(1)
-            .map(|s| u32::try_from(s.len()).map_err(DataError::from))
+            .map(|s| i32::try_from(s.len()).map_err(DataError::from))
             .transpose()?
             .unwrap_or(0);
 
@@ -177,7 +177,7 @@ impl GridAxis {
 
     #[must_use]
     pub fn generate(&self) -> Vec<f64> {
-        let factor = 10_f64.powi(self.precision as i32);
+        let factor = 10_f64.powi(self.precision);
 
         Array::range(self.start, self.end, self.step)
             .iter()
