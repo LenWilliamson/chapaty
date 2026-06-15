@@ -999,8 +999,11 @@ pub trait Instrument {
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
     /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
-    #[expect(clippy::cast_precision_loss)]
-    #[expect(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "raw_ticks is rounded and asserted to be finite and within i64 bounds before the cast, so the conversion is exact"
+    )]
     fn usd_to_ticks(&self, usd: f64) -> Tick {
         let raw_ticks = (usd / self.tick_value_usd()).round();
 
@@ -1350,7 +1353,10 @@ pub struct SessionDate(pub NaiveDate);
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
+    )]
 
     use super::*;
     use chrono::TimeZone;

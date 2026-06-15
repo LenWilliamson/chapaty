@@ -397,7 +397,10 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
     use polars::{

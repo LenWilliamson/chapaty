@@ -523,7 +523,11 @@ impl StreamingIndicator for StreamingTdSequential {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use chrono::{DateTime, Utc};
 
     use crate::data::domain::{Price, Quantity};
@@ -869,7 +873,7 @@ mod tests {
         let mut cd = Countdown::new(TdDirection::BullishReversal);
 
         // Counts 1..=7 carry distinct closes, but the qualifier must stay unset.
-        for count in 1..=7u64 {
+        for count in 1..=7_u64 {
             let count_f64 =
                 f64::from(u32::try_from(count).expect("countdown count exceeds u32 range"));
             cd = step(cd, buy_ctx(13, count_f64, 0.0, 1000.0));

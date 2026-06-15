@@ -56,7 +56,10 @@ impl Ledger {
             .all_closed())
     }
 
-    #[expect(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "constructor consumes the capacity hint to pre-size the ledger's internal vectors"
+    )]
     pub fn with_capacity(capacity: LedgerCapacityHint) -> Self {
         let mut states = Vec::with_capacity(capacity.expected_episodes);
         let mut equity_curves = Vec::with_capacity(capacity.expected_episodes);
@@ -753,7 +756,10 @@ impl TryFrom<JournalSoA> for DataFrame {
     }
 }
 
-#[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
     DataError::DataFrame(e.to_string()).into()
 }
@@ -766,7 +772,11 @@ fn ep_not_found_err(episode: &Episode) -> ChapatyError {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::collections::HashSet;
 
     use polars::prelude::SchemaExt;
@@ -852,8 +862,10 @@ mod test {
 
     /// Creates a minimal `JournalEntry` for testing transformations.
     /// This is the core helper for white-box testing of `JournalSoA`.
-    #[expect(clippy::cast_precision_loss)]
-    #[expect(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "test helper converts a small f64 pnl into integer ticks; fixture values are tiny and exact"
+    )]
     fn sample_journal_entry(
         episode: usize,
         trade_id: i64,
@@ -1763,7 +1775,7 @@ mod test {
 
         let result = soa.episode_ids().expect("Conversion should succeed");
 
-        assert_eq!(result, vec![0u32, 1, 100]);
+        assert_eq!(result, vec![0_u32, 1, 100]);
     }
 
     #[test]
@@ -1861,7 +1873,7 @@ mod test {
         let ticks = soa.realized_return_ticks();
         let dollars = soa.realized_return_usd();
 
-        assert_eq!(ticks, vec![100i64, -50, 0]);
+        assert_eq!(ticks, vec![100_i64, -50, 0]);
         assert_eq!(dollars, vec![1000.0, -500.0, 0.0]);
     }
 
@@ -1897,8 +1909,8 @@ mod test {
         let loss_usd = soa.expected_loss_usd();
         let profit_usd = soa.expected_profit_usd();
 
-        assert_eq!(loss_ticks, vec![Some(100i64), None]);
-        assert_eq!(profit_ticks, vec![Some(200i64), None]);
+        assert_eq!(loss_ticks, vec![Some(100_i64), None]);
+        assert_eq!(profit_ticks, vec![Some(200_i64), None]);
         assert_eq!(loss_usd, vec![Some(1000.0), None]);
         assert_eq!(profit_usd, vec![Some(2000.0), None]);
     }
@@ -2158,8 +2170,8 @@ mod test {
         // terminal value (100.0), bridging over the empty Partition 1 entirely.
         // =========================================================================
         let expected_df = df![
-            EquityCurveCol::RowId.as_str() => [0u32, 1, 2, 3],
-            EquityCurveCol::EpisodeId.as_str() => [0u32, 0, 2, 2],
+            EquityCurveCol::RowId.as_str() => [0_u32, 1, 2, 3],
+            EquityCurveCol::EpisodeId.as_str() => [0_u32, 0, 2, 2],
             EquityCurveCol::Timestamp.as_str() => [
                 ts("2026-01-01T10:00:00Z").timestamp_micros(),
                 ts("2026-01-01T11:00:00Z").timestamp_micros(),
@@ -2209,8 +2221,8 @@ mod test {
         let df = ledger.equity_curve_df().expect("Failed to generate DF");
 
         let expected_df = df![
-            EquityCurveCol::RowId.as_str()         => [0u32, 1], // RowIds must be assigned AFTER sorting
-            EquityCurveCol::EpisodeId.as_str()     => [0u32, 0],
+            EquityCurveCol::RowId.as_str()         => [0_u32, 1], // RowIds must be assigned AFTER sorting
+            EquityCurveCol::EpisodeId.as_str()     => [0_u32, 0],
             EquityCurveCol::Timestamp.as_str()     => [
                 ts("2026-01-01T10:00:00Z").timestamp_micros(), // Earlier time should be index 0
                 ts("2026-01-01T12:00:00Z").timestamp_micros(),

@@ -6,7 +6,10 @@ use crate::{
     error::{ChapatyResult, DataError, SystemError},
 };
 
-#[expect(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single cohesive value-area and POC computation kept together for readability of the market-profile algorithm"
+)]
 pub fn compute_profile_stats<T: ProfileBinStats>(
     bins: &[T],
     va_pct: f64,
@@ -88,7 +91,10 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
     let mut low_idx = poc_idx;
     let mut high_idx = poc_idx;
 
-    #[expect(clippy::while_float)]
+    #[expect(
+        clippy::while_float,
+        reason = "value-area expansion accumulates f64 volume until it reaches the target percentage; the loop genuinely iterates over floating-point volume"
+    )]
     while current_vol < target_vol {
         // Look at neighbors
         let vol_below = if low_idx > 0 {

@@ -523,8 +523,14 @@ fn self_hosted_source() -> DataSource {
 }
 
 impl From<EnvPreset> for EnvConfig {
-    #[expect(clippy::similar_names)]
-    #[expect(clippy::too_many_lines)]
+    #[expect(
+        clippy::similar_names,
+        reason = "preset construction binds many closely related source and config variables that are clearer with their natural names"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "builds the full environment configuration for a preset in one declarative block"
+    )]
     fn from(preset: EnvPreset) -> Self {
         let source = self_hosted_source();
         match preset {

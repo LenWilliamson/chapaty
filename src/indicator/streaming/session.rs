@@ -453,7 +453,11 @@ impl TradesSessionData {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
     use chrono_tz::{America::New_York, Tz};

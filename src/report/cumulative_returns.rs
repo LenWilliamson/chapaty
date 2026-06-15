@@ -356,7 +356,11 @@ impl CumulativeReturnCol {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::{collections::HashSet, path::PathBuf};
 
     use crate::data::common::RiskMetricsConfig;

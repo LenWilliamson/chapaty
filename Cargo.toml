@@ -91,7 +91,17 @@ tonic-prost-build = "0.14"
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
-# restriction lints we explicitly allow
+
+# Environment lints we explicitly allow
+std_instead_of_alloc = "allow"
+alloc_instead_of_core = "allow"
+
+# API & Design lints we explicitly allow
+exhaustive_structs = "allow"
+exhaustive_enums = "allow"
+
+# Styling & Restriction lints we explicitly allow
+arbitrary_source_item_ordering = "allow"
 implicit_return = "allow"
 missing_inline_in_public_items = "allow"
 pub_with_shorthand = "allow"

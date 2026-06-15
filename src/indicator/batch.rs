@@ -163,7 +163,10 @@ impl LazyFrameIndicatorExt for LazyFrame {
     }
 }
 
-#[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
     ChapatyError::Data(DataError::DataFrame(format!(
         "Error while building batch indicator: {e}"
@@ -172,7 +175,11 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use crate::transport::schema::CanonicalCol;
     use chrono::{TimeZone, Utc};

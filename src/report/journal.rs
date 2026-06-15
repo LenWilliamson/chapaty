@@ -355,7 +355,11 @@ impl JournalExprExt for Expr {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
     use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, col};

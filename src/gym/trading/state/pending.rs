@@ -162,7 +162,11 @@ impl Trade<Pending> {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::sync::Arc;
 
     use super::*;

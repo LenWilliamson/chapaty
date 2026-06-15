@@ -130,7 +130,10 @@ impl Read for CloudReader {
     }
 }
 
-#[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 fn map_object_store_err(err: object_store::Error) -> ChapatyError {
     IoError::ReadBytesFailed(err.to_string()).into()
 }

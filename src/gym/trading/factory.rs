@@ -185,7 +185,10 @@ impl BuildCtx {
 
 impl BuildCtx {
     #[tracing::instrument]
-    #[expect(clippy::large_futures)]
+    #[expect(
+        clippy::large_futures,
+        reason = "environment-construction future holds the full builder state; it is awaited once during setup, not in a hot loop"
+    )]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
         Ok(next_async_fn(|ctx| {
@@ -222,7 +225,10 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
-    #[expect(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "computes the full suite of batch OHLCV indicators in one pass; splitting would scatter tightly coupled column logic"
+    )]
     fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
         tracing::info!("Computing derived batch technical ohlcv indicators");
 
@@ -570,7 +576,10 @@ impl BuildCtx {
     }
 
     #[tracing::instrument(skip_all)]
-    #[expect(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "environment finalization assembles all components in one sequential pass that mirrors the build order"
+    )]
     fn finish<'a>(&mut self) -> NextState<'a, Self> {
         info!("Starting environment finalization");
 
@@ -639,7 +648,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing Trade data");
                 trade_res = process_map(self.trade_spot_map.as_ref(), |df, _id| extract_trades(df));
-                if let Ok(ref map) = trade_res {
+                if let Ok(map) = &trade_res {
                     info!("Trade: extracted {} streams", map.len());
                 }
             });
@@ -650,7 +659,7 @@ impl BuildCtx {
                 vp_res = process_map(self.vp_spot_map.as_ref(), |df, id| {
                     extract_vp(df, &id.aggregation)
                 });
-                if let Ok(ref map) = vp_res {
+                if let Ok(map) = &vp_res {
                     info!("Volume Profile: extracted {} streams", map.len());
                 }
             });
@@ -661,7 +670,7 @@ impl BuildCtx {
                 cal_res = process_map(self.economic_calendar_map.as_ref(), |df, _id| {
                     extract_economic(df)
                 });
-                if let Ok(ref map) = cal_res {
+                if let Ok(map) = &cal_res {
                     info!("Economic: extracted {} streams", map.len());
                 }
             });
@@ -670,7 +679,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing EMA indicators");
                 ema_res = process_map(self.ema_map.as_ref(), |df, _id| extract_ema(df));
-                if let Ok(ref map) = ema_res {
+                if let Ok(map) = &ema_res {
                     info!("EMA: extracted {} streams", map.len());
                 }
             });
@@ -679,7 +688,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing RSI indicators");
                 rsi_res = process_map(self.rsi_map.as_ref(), |df, _id| extract_rsi(df));
-                if let Ok(ref map) = rsi_res {
+                if let Ok(map) = &rsi_res {
                     info!("RSI: extracted {} streams", map.len());
                 }
             });
@@ -688,7 +697,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing SMA indicators");
                 sma_res = process_map(self.sma_map.as_ref(), |df, _id| extract_sma(df));
-                if let Ok(ref map) = sma_res {
+                if let Ok(map) = &sma_res {
                     info!("SMA: extracted {} streams", map.len());
                 }
             });
@@ -699,7 +708,7 @@ impl BuildCtx {
                 trades_vwap_res = process_map(self.trades_vwap_map.as_ref(), |df, _id| {
                     extract_trades_vwap(df)
                 });
-                if let Ok(ref map) = trades_vwap_res {
+                if let Ok(map) = &trades_vwap_res {
                     info!("Trades VWAP: extracted {} streams", map.len());
                 }
             });
@@ -710,7 +719,7 @@ impl BuildCtx {
                 ohlcv_vwap_res = process_map(self.ohlcv_vwap_map.as_ref(), |df, _id| {
                     extract_ohlcv_vwap(df)
                 });
-                if let Ok(ref map) = ohlcv_vwap_res {
+                if let Ok(map) = &ohlcv_vwap_res {
                     info!("OHLCV VWAP: extracted {} streams", map.len());
                 }
             });
@@ -721,7 +730,7 @@ impl BuildCtx {
                 trades_session_res = process_map(self.trades_session_map.as_ref(), |df, _id| {
                     extract_trades_session(df)
                 });
-                if let Ok(ref map) = trades_session_res {
+                if let Ok(map) = &trades_session_res {
                     info!("Trades session: extracted {} streams", map.len());
                 }
             });
@@ -732,7 +741,7 @@ impl BuildCtx {
                 ohlcv_session_res = process_map(self.ohlcv_session_map.as_ref(), |df, _id| {
                     extract_ohlcv_session(df)
                 });
-                if let Ok(ref map) = ohlcv_session_res {
+                if let Ok(map) = &ohlcv_session_res {
                     info!("OHLCV session: extracted {} streams", map.len());
                 }
             });
@@ -741,7 +750,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing ATR indicators");
                 atr_res = process_map(self.atr_map.as_ref(), |df, _id| extract_atr(df));
-                if let Ok(ref map) = atr_res {
+                if let Ok(map) = &atr_res {
                     info!("ATR: extracted {} streams", map.len());
                 }
             });
@@ -750,7 +759,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing ROC indicators");
                 roc_res = process_map(self.roc_map.as_ref(), |df, _id| extract_roc(df));
-                if let Ok(ref map) = roc_res {
+                if let Ok(map) = &roc_res {
                     info!("ROC: extracted {} streams", map.len());
                 }
             });
@@ -1110,7 +1119,10 @@ fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-#[expect(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "extracts every economic-event column from the DataFrame in one linear pass"
+)]
 fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
@@ -1336,7 +1348,10 @@ fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[T
     Ok(profiles.into_boxed_slice())
 }
 
-#[expect(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "extracts every volume-profile column from the DataFrame in one linear pass"
+)]
 fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
@@ -1927,7 +1942,10 @@ impl DataFrameExt for DataFrame {
 
 type NextState<'a, Ctx> = ChapatyResult<StateFn<'a, Ctx>>;
 
-#[expect(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the boxed async state-transition function type is irreducibly complex; a type alias would not clarify the state-machine intent"
+)]
 enum StateFn<'a, Ctx> {
     Next(fn(&mut Ctx) -> NextState<'a, Ctx>),
     NextAsync(
@@ -1949,7 +1967,11 @@ enum StateFn<'a, Ctx> {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use chrono::{TimeZone, Timelike};
     use polars::{
@@ -2509,7 +2531,7 @@ mod test {
             CanonicalCol::Volume.as_str()         => &[1000.0],
             // Optionals
             CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(152_000.0)],
-            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50i64)],
+            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50_i64)],
             CanonicalCol::TakerBuyBaseAssetVolume.as_str()  => &[Some(600.0)],
             CanonicalCol::TakerBuyQuoteAssetVolume.as_str() => &[None::<f64>],
         )
@@ -2559,7 +2581,7 @@ mod test {
             CanonicalCol::Price.as_str()              => &[20000.0, 20001.0],
             CanonicalCol::Volume.as_str()             => &[0.5, 1.0], // Maps to quantity
             // Optionals
-            CanonicalCol::TradeId.as_str()            => &[Some(12345i64), None],
+            CanonicalCol::TradeId.as_str()            => &[Some(12345_i64), None],
             CanonicalCol::QuoteAssetVolume.as_str()   => &[Some(10000.0), None],
             CanonicalCol::IsBuyerMaker.as_str()       => &[Some(true), Some(false)],
             CanonicalCol::IsBestMatch.as_str()        => &[Some(true), None],
@@ -2607,7 +2629,10 @@ mod test {
     }
 
     #[test]
-    #[expect(clippy::similar_names)]
+    #[expect(
+        clippy::similar_names,
+        reason = "test fixture uses closely related column names that read clearly in context"
+    )]
     fn test_extract_economic() {
         let df = df!(
             CanonicalCol::PointInTime.as_str()            => &[
@@ -2619,7 +2644,7 @@ mod test {
             CanonicalCol::NewsName.as_str()             => &["Non-Farm Payrolls", "Minor Index"],
             CanonicalCol::CountryCode.as_str()          => &["US", "EZ"],
             CanonicalCol::CurrencyCode.as_str()         => &["USD", "EUR"],
-            CanonicalCol::EconomicImpact.as_str()       => &[3i64, 1i64], // 3=High, 1=Low
+            CanonicalCol::EconomicImpact.as_str()       => &[3_i64, 1_i64], // 3=High, 1=Low
 
             // Optionals
             CanonicalCol::NewsType.as_str()             => &[Some("NFP"), None],
@@ -2763,7 +2788,7 @@ mod test {
             CanonicalCol::PointInTime.as_str()       => &[t1 + 1000, t2 + 1000],
             CanonicalCol::PriceBinStart.as_str() => &[100.0, 200.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0, 201.0],
-            CanonicalCol::TimeSlotCount.as_str() => &[5i64, 10i64],
+            CanonicalCol::TimeSlotCount.as_str() => &[5_i64, 10_i64],
         )
         .unwrap();
         let df = with_ts_cols(
@@ -2859,9 +2884,9 @@ mod test {
             CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(100_000.0)],
             CanonicalCol::TakerBuyQuoteAssetVolume.as_str() => &[Some(60_000.0)],
             CanonicalCol::TakerSellQuoteAssetVolume.as_str()=> &[Some(40_000.0)],
-            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50i64)],
-            CanonicalCol::NumberOfBuyTrades.as_str()         => &[Some(30i64)],
-            CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20i64)],
+            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50_i64)],
+            CanonicalCol::NumberOfBuyTrades.as_str()         => &[Some(30_i64)],
+            CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20_i64)],
         )
         .unwrap();
         let df = with_ts_cols(
@@ -2953,7 +2978,7 @@ mod test {
             ],
             CanonicalCol::PriceBinStart.as_str() => &[100.0, 101.0, 200.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0, 102.0, 201.0],
-            CanonicalCol::TimeSlotCount.as_str() => &[10i64, 20, 5],
+            CanonicalCol::TimeSlotCount.as_str() => &[10_i64, 20, 5],
         )
         .unwrap();
         let df = with_ts_cols(

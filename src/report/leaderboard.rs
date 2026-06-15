@@ -431,7 +431,11 @@ impl Ord for LeaderboardEntry {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use polars::prelude::{IntoLazy, col, lit};
     use serde::{Deserialize, Serialize};
 
@@ -660,7 +664,7 @@ mod tests {
 
         // Board A: agents with rewards 10, 20, 30
         let mut board_a = AgentLeaderboard::<TestAgent>::new(k);
-        for i in 1..=3u64 {
+        for i in 1..=3_u64 {
             let rank = u32::try_from(i).expect("rank index exceeds u32 range");
             let entry = make_entry(i, metric, f64::from(rank) * 10.0);
             board_a.update(&[entry], TestAgent::new(i));
@@ -668,7 +672,7 @@ mod tests {
 
         // Board B: agents with rewards 25, 35, 45
         let mut board_b = AgentLeaderboard::<TestAgent>::new(k);
-        for i in 1..=3u64 {
+        for i in 1..=3_u64 {
             let uid = 100 + i;
             let rank = u32::try_from(i).expect("rank index exceeds u32 range");
             let entry = make_entry(uid, metric, f64::from(rank).mul_add(10.0, 15.0));
@@ -765,9 +769,9 @@ mod tests {
 
         // Insert agents with known rewards (out of order to test sorting)
         let entries = [
-            (42u64, 50.0),
-            (17u64, 100.0), // Best
-            (99u64, 75.0),
+            (42_u64, 50.0),
+            (17_u64, 100.0), // Best
+            (99_u64, 75.0),
         ];
 
         for (uid, reward) in entries {

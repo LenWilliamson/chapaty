@@ -472,7 +472,11 @@ fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
 }
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use crate::generated::chapaty::data::v1::{
         EconomicCalendarBatch, EconomicCalendarEvent, OhlcvFutureBatch, OhlcvFutureEvent,

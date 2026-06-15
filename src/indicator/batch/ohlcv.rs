@@ -328,7 +328,11 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> LazyFrame {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use polars::prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit};
     use std::path::PathBuf;
@@ -398,7 +402,10 @@ mod tests {
     /// do NOT guarantee mathematical correctness against an external standard
     /// (like TA-Lib or `TradingView`).
     #[test]
-    #[expect(clippy::similar_names)]
+    #[expect(
+        clippy::similar_names,
+        reason = "regression test uses closely related indicator fixture names that read clearly in context"
+    )]
     fn test_indicators_regression_consistency() {
         let test_cases = vec![
             IndicatorTestCase {

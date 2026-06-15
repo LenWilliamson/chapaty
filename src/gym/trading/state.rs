@@ -796,8 +796,11 @@ impl States {
     /// Consumes and resets the accumulated step reward.
     /// Clamps overflows safely to `i64::MAX` or `i64::MIN` and logs warnings.
     #[tracing::instrument(skip(self))]
-    #[expect(clippy::cast_precision_loss)]
-    #[expect(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "reward is rounded and explicitly checked for NaN and saturated against i64::MIN/MAX before the cast, so no meaningful range or precision is lost"
+    )]
     pub(super) fn pop_reward(&mut self) -> Reward {
         let r = self.step_reward;
         self.step_reward = 0.0;
@@ -1229,7 +1232,11 @@ struct Transition<T> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use chrono::Duration;
 
     use super::*;

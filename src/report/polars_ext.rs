@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use crate::error::{ChapatyError, ChapatyResult, DataError, IoError};
 
-#[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 pub(super) fn polars_to_chapaty_error(report: &str, e: polars::error::PolarsError) -> ChapatyError {
     ChapatyError::Data(DataError::DataFrame(format!(
         "Error while building {report} from journal DataFrame: {e}"
@@ -126,7 +129,10 @@ impl LazyFrameExt for LazyFrame {
 // Helper Functions
 // ================================================================================================
 
-#[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Polars elementwise UDF signature requires taking the Column by value"
+)]
 fn fmt_duration_udf(c: Column) -> PolarsResult<Column> {
     let ca = c.duration()?;
     let unit = ca.time_unit();

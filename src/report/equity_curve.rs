@@ -190,7 +190,11 @@ impl ToSchema for EquityCurveReport {
 
 #[cfg(test)]
 mod test {
-    #![expect(clippy::unwrap_used, clippy::expect_used)]
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
     use chrono::{DateTime, Utc};
@@ -287,8 +291,8 @@ mod test {
     fn test_equity_curve_into_eod() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3, 4],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3, 4],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T00:00:00Z"), // Day 0 Boundary
                     ts_micros("2026-04-19T12:00:00Z"),
@@ -303,8 +307,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1],
                 EquityCurveCol::Timestamp => [
                     // The Day 0 Boundary (Technically April 18 EOD)
                     ts_micros("2026-04-19T00:00:00Z"),
@@ -332,9 +336,9 @@ mod test {
     fn test_equity_curve_into_eod_episode_boundary() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3, 4, 5],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3, 4, 5],
                 EquityCurveCol::EpisodeId => [
-                    1u32, // Ep 1
+                    1_u32, // Ep 1
                     1,    // Ep 1
                     2,    // Ep 2 (New Episode starts mid-day!)
                     2,    // Ep 2
@@ -363,8 +367,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2],
-                EquityCurveCol::EpisodeId => [1u32, 2, 2],
+                EquityCurveCol::RowId => [0_u32, 1, 2],
+                EquityCurveCol::EpisodeId => [1_u32, 2, 2],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T00:00:00Z"), // Day 0 Boundary
                     ts_micros("2026-04-20T00:00:00Z"), // Day 1 EOD
@@ -392,8 +396,8 @@ mod test {
         // but 00:00:00.000001 strictly belongs to the current day.
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T23:59:59.999999Z"), // 1µs BEFORE midnight
                     ts_micros("2026-04-20T00:00:00.000000Z"), // EXACTLY midnight (Day 1 Terminal Flush)
@@ -407,8 +411,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1],
-                EquityCurveCol::EpisodeId => [1u32, 1],
+                EquityCurveCol::RowId => [0_u32, 1],
+                EquityCurveCol::EpisodeId => [1_u32, 1],
                 EquityCurveCol::Timestamp => [
                     // Correctly picks the exact 00:00:00.000000 boundary for Day 1
                     ts_micros("2026-04-20T00:00:00.000000Z"),
@@ -437,8 +441,8 @@ mod test {
     fn test_equity_curve_into_eod_sparse_data() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-24T10:00:00Z"), // Friday
                     ts_micros("2026-04-24T15:00:00Z"), // Friday EOD
@@ -454,8 +458,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1],
-                EquityCurveCol::EpisodeId => [1u32, 1],
+                EquityCurveCol::RowId => [0_u32, 1],
+                EquityCurveCol::EpisodeId => [1_u32, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-24T15:00:00Z"),
                     ts_micros("2026-04-27T16:00:00Z"),
