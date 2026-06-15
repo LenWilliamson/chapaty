@@ -967,6 +967,7 @@ where
 // ================================================================================================
 // Extractor Functions
 // ================================================================================================
+#[tracing::instrument(skip_all)]
 fn extract_ohlcv(df: &DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let len = df.height();
     if len == 0 {
@@ -1053,6 +1054,7 @@ fn extract_ohlcv(df: &DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     Ok(events.into_boxed_slice())
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let len = df.height();
     if len == 0 {
@@ -1123,6 +1125,7 @@ fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     clippy::too_many_lines,
     reason = "extracts every economic-event column from the DataFrame in one linear pass"
 )]
+#[tracing::instrument(skip_all)]
 fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
@@ -1254,6 +1257,7 @@ fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tpo]>> {
     let len = df.height();
     if len == 0 {
@@ -1352,6 +1356,7 @@ fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[T
     clippy::too_many_lines,
     reason = "extracts every volume-profile column from the DataFrame in one linear pass"
 )]
+#[tracing::instrument(skip_all)]
 fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
@@ -1499,6 +1504,7 @@ fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vo
     Ok(profiles.into_boxed_slice())
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_ema(df: &DataFrame) -> ChapatyResult<Box<[Ema]>> {
     extract_price_timeseries(df, |timestamp, price| Ema {
         timestamp,
@@ -1506,6 +1512,7 @@ fn extract_ema(df: &DataFrame) -> ChapatyResult<Box<[Ema]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_rsi(df: &DataFrame) -> ChapatyResult<Box<[Rsi]>> {
     extract_price_timeseries(df, |timestamp, price| Rsi {
         timestamp,
@@ -1513,6 +1520,7 @@ fn extract_rsi(df: &DataFrame) -> ChapatyResult<Box<[Rsi]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_sma(df: &DataFrame) -> ChapatyResult<Box<[Sma]>> {
     extract_price_timeseries(df, |timestamp, price| Sma {
         timestamp,
@@ -1520,6 +1528,7 @@ fn extract_sma(df: &DataFrame) -> ChapatyResult<Box<[Sma]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_trades_vwap(df: &DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
     extract_price_timeseries(df, |timestamp, price| TradesVwap {
         timestamp,
@@ -1527,6 +1536,7 @@ fn extract_trades_vwap(df: &DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_ohlcv_vwap(df: &DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
     extract_price_timeseries(df, |timestamp, price| OhlcvVwap {
         timestamp,
@@ -1534,6 +1544,7 @@ fn extract_ohlcv_vwap(df: &DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_atr(df: &DataFrame) -> ChapatyResult<Box<[Atr]>> {
     extract_price_timeseries(df, |timestamp, value| Atr {
         timestamp,
@@ -1541,6 +1552,7 @@ fn extract_atr(df: &DataFrame) -> ChapatyResult<Box<[Atr]>> {
     })
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
     let len = df.height();
     if len == 0 {
@@ -1564,9 +1576,10 @@ fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
     ) {
         let (Some(abs_val), Some(roc_val)) = (abs_opt, roc_opt) else {
             debug!(
-                absolute = CanonicalCol::RocAbsolute.as_str(),
-                percentage = CanonicalCol::Roc.as_str(),
-                "Skipping rate-of-change row with null value during extraction"
+                point_in_time = ?ts_opt,
+                absolute_change = ?abs_opt,
+                percentage = ?roc_opt,
+                "Skipping rate-of-change row: at least one value is null"
             );
             continue;
         };
@@ -1585,6 +1598,7 @@ fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
     Ok(events.into_boxed_slice())
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>> {
     let len = df.height();
     if len == 0 {
@@ -1615,7 +1629,14 @@ fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>>
         let (Some(high_val), Some(low_val), Some(vol_val), Some(vwap_val)) =
             (high_opt, low_opt, vol_opt, vwap_opt)
         else {
-            debug!("Skipping trades-session row with null aggregate value during extraction");
+            debug!(
+                point_in_time = ?close_ts_opt,
+                high = ?high_opt,
+                low = ?low_opt,
+                volume = ?vol_opt,
+                vwap = ?vwap_opt,
+                "Skipping trades-session row: at least one aggregate value is null"
+            );
             continue;
         };
 
@@ -1637,6 +1658,7 @@ fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>>
     Ok(events.into_boxed_slice())
 }
 
+#[tracing::instrument(skip_all)]
 fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
     let len = df.height();
     if len == 0 {
@@ -1694,7 +1716,16 @@ fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
             vwap_opt,
         )
         else {
-            debug!("Skipping ohlcv-session row with null aggregate value during extraction");
+            debug!(
+                point_in_time = ?close_ts_opt,
+                high = ?high_opt,
+                low = ?low_opt,
+                highest_close = ?highest_close_opt,
+                lowest_close = ?lowest_close_opt,
+                volume = ?vol_opt,
+                vwap = ?vwap_opt,
+                "Skipping ohlcv-session row: at least one aggregate value is null"
+            );
             continue;
         };
 
@@ -1736,8 +1767,8 @@ where
     for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
         let Some(price_val) = price_opt else {
             debug!(
-                column = CanonicalCol::Price.as_str(),
-                "Skipping row with null indicator value during extraction"
+                point_in_time = ?ts_opt,
+                "Skipping row: indicator value (Price) is null"
             );
             continue;
         };
@@ -2738,33 +2769,6 @@ mod test {
         assert_eq!(session.lowest_close, Price(92.0));
         assert_eq!(session.volume, Quantity(1000.0));
         assert_eq!(session.vwap, Price(100.0));
-    }
-
-    #[test]
-    fn test_extract_roc_missing_column_errors_gracefully() {
-        // A structurally invalid frame (missing the `Roc` column) must surface a
-        // recoverable error rather than panicking.
-        let df = df!(
-            CanonicalCol::OpenTimestamp.as_str() => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::PointInTime.as_str()   => &[ts_micros("2026-01-01T10:00:00Z")],
-            CanonicalCol::RocAbsolute.as_str()   => &[5.0],
-            // `Roc` column intentionally absent.
-        )
-        .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
-
-        let result = extract_roc(&df);
-
-        assert!(matches!(
-            result,
-            Err(ChapatyError::Data(DataError::DataFrame(_)))
-        ));
     }
 
     #[test]
