@@ -256,7 +256,7 @@ pub fn trades_spot_schema() -> SchemaRef {
         CanonicalCol::TradeId.field(),
         CanonicalCol::Price.field(),
         CanonicalCol::Volume.field(),           // Maps to 'quantity'
-        CanonicalCol::QuoteAssetVolume.field(), // Maps to 'quote_quantity'
+        CanonicalCol::QuoteAssetVolume.field(), // Maps to 'quote_asset_quantity'
         CanonicalCol::PointInTime.field(),      // Maps to 'trade_timestamp'
         CanonicalCol::IsBuyerMaker.field(),
         CanonicalCol::IsBestMatch.field(),

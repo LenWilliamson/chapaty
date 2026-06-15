@@ -57,7 +57,9 @@ fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> LazyFra
         .filter(col(CanonicalCol::Date).is_not_null())
         .group_by([col(CanonicalCol::Date)])
         .agg([
-            col(CanonicalCol::OpenTimestamp).min(),
+            col(CanonicalCol::PointInTime)
+                .min()
+                .alias(CanonicalCol::OpenTimestamp),
             col(CanonicalCol::PointInTime).max(),
             col(CanonicalCol::Price)
                 .max()
@@ -72,7 +74,10 @@ fn pre_compute_overnight_range(session: SessionWindow, lf: LazyFrame) -> LazyFra
                 .sum()
                 .alias(CanonicalCol::SessionVolume),
         ])
-        .sort([CanonicalCol::PointInTime], SortMultipleOptions::default())
+        .sort(
+            [CanonicalCol::OpenTimestamp],
+            SortMultipleOptions::default(),
+        )
         .select([
             col(CanonicalCol::Date),
             col(CanonicalCol::OpenTimestamp),
@@ -94,13 +99,7 @@ mod tests {
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
     use super::*;
-    use polars::{
-        io::{
-            SerWriter,
-            csv::{read::CsvReadOptions, write::CsvWriter},
-        },
-        prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit},
-    };
+    use polars::prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit};
     use std::path::PathBuf;
 
     // ============================================================================
@@ -124,14 +123,14 @@ mod tests {
                 col("trade_id").alias(CanonicalCol::TradeId.as_str()),
                 col("price").alias(CanonicalCol::Price.as_str()),
                 col("quantity").alias(CanonicalCol::Volume.as_str()),
-                col("quote_quantity").alias(CanonicalCol::QuoteAssetVolume.as_str()),
+                col("quote_asset_quantity").alias(CanonicalCol::QuoteAssetVolume.as_str()),
                 col("trade_timestamp")
                     .cast(DataType::Datetime(
                         TimeUnit::Microseconds,
                         Some(polars::prelude::TimeZone::UTC),
                     ))
                     .alias(CanonicalCol::PointInTime.as_str()),
-                col("is_buyer_maker").alias(CanonicalCol::IsBestMatch.as_str()),
+                col("is_buyer_maker").alias(CanonicalCol::IsBuyerMaker.as_str()),
                 col("is_best_match").alias(CanonicalCol::IsBestMatch.as_str()),
             ])
     }
@@ -159,19 +158,19 @@ mod tests {
     fn test_indicators_regression_consistency() {
         let test_cases = vec![
             IndicatorTestCase {
-                name: "EMA-20",
+                name: "Trades-VWAP",
                 indicator: BatchTradesIndicator::Vwap,
-                expected_file: "ema_20_daily.csv",
+                expected_file: "trades_vwap_daily.csv",
             },
             IndicatorTestCase {
-                name: "SMA-14",
+                name: "Overnight-Range-Core",
                 indicator: BatchTradesIndicator::OvernightRange(SessionWindow::us_core_session()),
-                expected_file: "sma_14_daily.csv",
+                expected_file: "trades_overnight_range_core_daily.csv",
             },
             IndicatorTestCase {
-                name: "RSI-14",
+                name: "Overnight-Range-Night",
                 indicator: BatchTradesIndicator::OvernightRange(SessionWindow::us_overnight()),
-                expected_file: "rsi_14_daily.csv",
+                expected_file: "trades_overnight_range_night_daily.csv",
             },
         ];
 
@@ -197,7 +196,7 @@ mod tests {
             .with_has_header(true)
             .finish()
             .unwrap()
-            .with_column(col("timestamp").cast(DataType::Datetime(
+            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )))
@@ -210,9 +209,5 @@ mod tests {
                 case.name
             );
         }
-
-        // let mut df = lf.collect().unwrap();
-        // let mut file = std::fs::File::create("binance-btc-usdt-trades.csv").unwrap();
-        // CsvWriter::new(&mut file).finish(&mut df).unwrap();
     }
 }

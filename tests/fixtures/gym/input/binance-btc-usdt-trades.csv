@@ -1,4 +1,4 @@
-trade_id,price,volume,quote_asset_volume,point_in_time,is_buyer_maker,is_best_match
+trade_id,price,quantity,quote_asset_quantity,trade_timestamp,is_buyer_maker,is_best_match
 6406895424,64458.01,0.00031,19.9819831,2026-06-14T00:00:00.192907+0000,false,true
 6406895425,64458.01,0.00015,9.6687015,2026-06-14T00:00:00.344736+0000,false,true
 6406895426,64458.0,0.02,1289.16,2026-06-14T00:00:00.405638+0000,true,true

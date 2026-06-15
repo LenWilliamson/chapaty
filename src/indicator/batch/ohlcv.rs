@@ -421,6 +421,37 @@ mod tests {
                 indicator: BatchOhlcvIndicator::Rsi(RsiWindow(14)),
                 expected_file: "rsi_14_daily.csv",
             },
+            IndicatorTestCase {
+                name: "ATR-14",
+                indicator: BatchOhlcvIndicator::Atr(AtrConfig::new(14)),
+                expected_file: "atr_14_daily.csv",
+            },
+            IndicatorTestCase {
+                name: "ROC-20",
+                indicator: BatchOhlcvIndicator::RateOfChange(LookbackWindow::Bars(20)),
+                expected_file: "roc_20_daily.csv",
+            },
+            IndicatorTestCase {
+                name: "VWAP-HLC3",
+                indicator: BatchOhlcvIndicator::Vwap(AggregatedPrice::Hlc3),
+                expected_file: "vwap_hlc3_daily.csv",
+            },
+            IndicatorTestCase {
+                name: "Overnight-Range-Core-HLC3",
+                indicator: BatchOhlcvIndicator::OvernightRange(SessionCfg {
+                    window: SessionWindow::us_core_session(),
+                    price_aggregation: AggregatedPrice::Hlc3,
+                }),
+                expected_file: "overnight_range_core_hlc3_daily.csv",
+            },
+            IndicatorTestCase {
+                name: "Overnight-Range-Night-HLC3",
+                indicator: BatchOhlcvIndicator::OvernightRange(SessionCfg {
+                    window: SessionWindow::us_overnight(),
+                    price_aggregation: AggregatedPrice::Hlc3,
+                }),
+                expected_file: "overnight_range_night_hlc3_daily.csv",
+            },
         ];
 
         for case in test_cases {
