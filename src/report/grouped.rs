@@ -412,7 +412,7 @@ mod tests {
             .unwrap()
             .get(0)
             .unwrap();
-        assert_eq!(net_profit, 2500.0, "ETH/2026 net profit should be 2500");
+        assert_f64_eq!(net_profit, 2500.0, "ETH/2026 net profit should be 2500");
 
         // ========================================================================
         // 5. Test Cumulative Returns (Transformation: N -> N, no aggregation)

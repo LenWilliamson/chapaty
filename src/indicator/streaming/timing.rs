@@ -865,7 +865,9 @@ mod tests {
 
         // Counts 1..=7 carry distinct closes, but the qualifier must stay unset.
         for count in 1..=7u64 {
-            cd = step(cd, buy_ctx(13, count as f64, 0.0, 1000.0));
+            let count_f64 =
+                f64::from(u32::try_from(count).expect("countdown count exceeds u32 range"));
+            cd = step(cd, buy_ctx(13, count_f64, 0.0, 1000.0));
             assert_eq!(cd.count as u64, count);
             assert_eq!(cd.qualifier_close, None, "qualifier set before bar 8");
         }

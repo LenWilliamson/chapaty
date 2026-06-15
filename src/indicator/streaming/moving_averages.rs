@@ -100,7 +100,9 @@ impl StreamingIndicator for StreamingSma {
         }
 
         if self.buffer.len() >= self.window_size {
-            Some(self.sum / self.buffer.len() as f64)
+            let len_u32 =
+                u32::try_from(self.buffer.len()).expect("SMA window length exceeds u32 range");
+            Some(self.sum / f64::from(len_u32))
         } else {
             None
         }
@@ -126,7 +128,8 @@ impl StreamingEma {
     pub fn new(window_size: EmaWindow) -> Self {
         let size = window_size.0 as usize;
         // Standard EMA Alpha = 2 / (Span + 1)
-        let alpha = 2.0 / (size as f64 + 1.0);
+        let size_u32 = u32::try_from(size).expect("EMA window size exceeds u32 range");
+        let alpha = 2.0 / (f64::from(size_u32) + 1.0);
         Self {
             inner: StreamingEwm::new(alpha, size),
         }

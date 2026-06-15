@@ -1246,8 +1246,9 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(
-            net_profit, 2000.0,
+        assert_f64_eq!(
+            net_profit,
+            2000.0,
             "Net profit should be 2000 (sum of all returns)"
         );
 
@@ -1286,7 +1287,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(win_rate, 0.5, "Win rate should be 0.5 (50%)");
+        assert_f64_eq!(win_rate, 0.5, "Win rate should be 0.5 (50%)");
 
         // Total win profit: 2000 + 500 + 1000 = 3500
         let total_wins = df
@@ -1297,7 +1298,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(total_wins, 3500.0, "Total win profit should be 3500");
+        assert_f64_eq!(total_wins, 3500.0, "Total win profit should be 3500");
 
         // Total loss: abs(-1000 + -500 + 0) = 1500
         let total_loss = df
@@ -1308,7 +1309,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(total_loss, 1500.0, "Total loss should be 1500");
+        assert_f64_eq!(total_loss, 1500.0, "Total loss should be 1500");
     }
 
     // ========================================================================
@@ -1330,7 +1331,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median, 250.0, "Median trade return should be 250");
+        assert_f64_eq!(median, 250.0, "Median trade return should be 250");
 
         // Largest win: 2000
         let largest_win = df
@@ -1341,7 +1342,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(largest_win, 2000.0, "Largest win should be 2000");
+        assert_f64_eq!(largest_win, 2000.0, "Largest win should be 2000");
 
         // Largest loss: abs(-1000) = 1000
         let largest_loss = df
@@ -1352,7 +1353,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(largest_loss, 1000.0, "Largest loss should be 1000");
+        assert_f64_eq!(largest_loss, 1000.0, "Largest loss should be 1000");
     }
 
     // ========================================================================
@@ -1429,8 +1430,9 @@ mod tests {
         // peak at each step: [9000, 9000, 9000, 10500, 11000, 12000]
         // drawdowns: [0, 500, 500, 0, 0, 0]
         // Max drawdown: 500
-        assert_eq!(
-            max_dd_usd, 500.0,
+        assert_f64_eq!(
+            max_dd_usd,
+            500.0,
             "Max drawdown USD should be 500 (peak 9000, trough 8500)"
         );
 
@@ -1511,7 +1513,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median_win, 1000.0, "Median win return should be 1000");
+        assert_f64_eq!(median_win, 1000.0, "Median win return should be 1000");
     }
 
     // ========================================================================
@@ -1534,7 +1536,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(avg_loss, 500.0, "Average loss return should be 500");
+        assert_f64_eq!(avg_loss, 500.0, "Average loss return should be 500");
 
         // Median losing trade: abs(-500)
         let median_loss = df
@@ -1545,7 +1547,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median_loss, 500.0, "Median loss return should be 500");
+        assert_f64_eq!(median_loss, 500.0, "Median loss return should be 500");
     }
 
     // ========================================================================
@@ -1567,8 +1569,9 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(
-            unrealized_win, 1000.0,
+        assert_f64_eq!(
+            unrealized_win,
+            1000.0,
             "Unrealized win profit should be 1000"
         );
 
@@ -1580,7 +1583,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(unrealized_loss, 0.0, "Unrealized loss should be 0");
+        assert_f64_eq!(unrealized_loss, 0.0, "Unrealized loss should be 0");
 
         // Clean win profit = total wins - unrealized wins = 3500 - 1000 = 2500
         let clean_wins = df
@@ -1591,7 +1594,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(clean_wins, 2500.0, "Clean win profit should be 2500");
+        assert_f64_eq!(clean_wins, 2500.0, "Clean win profit should be 2500");
     }
 
     // ========================================================================
@@ -1607,7 +1610,7 @@ mod tests {
             .first(PortfolioPerformanceCol::NetProfit)
             .expect("Net profit should be available");
 
-        assert_eq!(net_profit, 2000.0, "Net profit via accessor should be 2000");
+        assert_f64_eq!(net_profit, 2000.0, "Net profit via accessor should be 2000");
     }
 
     // ========================================================================
@@ -1715,8 +1718,9 @@ mod tests {
             .expect("Missing value");
 
         // Recovery factor = net_profit / max_drawdown = 2000 / 500 = 4.0
-        assert_eq!(
-            recovery, 4.0,
+        assert_f64_eq!(
+            recovery,
+            4.0,
             "Recovery factor should be 4.0 (2000 profit / 500 drawdown)"
         );
     }

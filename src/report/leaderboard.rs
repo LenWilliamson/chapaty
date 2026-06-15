@@ -541,7 +541,8 @@ mod tests {
         // Act: Insert K entries
         for i in 0..k {
             let uid = i as u64;
-            let entry = make_entry(uid, metric, (i + 1) as f64 * 10.0);
+            let rank = u32::try_from(i + 1).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, f64::from(rank) * 10.0);
             let agent = TestAgent::new(uid);
             board.update(&[entry], agent);
         }
@@ -564,7 +565,8 @@ mod tests {
         // Fill with rewards 10.0, 20.0, 30.0 (agents 1, 2, 3)
         for i in 1..=k {
             let uid = i as u64;
-            let entry = make_entry(uid, metric, i as f64 * 10.0);
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, f64::from(rank) * 10.0);
             board.update(&[entry], TestAgent::new(uid));
         }
 
@@ -659,7 +661,8 @@ mod tests {
         // Board A: agents with rewards 10, 20, 30
         let mut board_a = AgentLeaderboard::<TestAgent>::new(k);
         for i in 1..=3u64 {
-            let entry = make_entry(i, metric, i as f64 * 10.0);
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(i, metric, f64::from(rank) * 10.0);
             board_a.update(&[entry], TestAgent::new(i));
         }
 
@@ -667,7 +670,8 @@ mod tests {
         let mut board_b = AgentLeaderboard::<TestAgent>::new(k);
         for i in 1..=3u64 {
             let uid = 100 + i;
-            let entry = make_entry(uid, metric, (i as f64 * 10.0) + 15.0);
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, (f64::from(rank) * 10.0) + 15.0);
             board_b.update(&[entry], TestAgent::new(uid));
         }
 
@@ -804,8 +808,9 @@ mod tests {
             .unwrap()
             .into_no_null_iter()
             .collect::<Vec<_>>();
-        assert_eq!(
-            values[0], 100.0,
+        assert_f64_eq!(
+            values[0],
+            100.0,
             "Rank 1 should have the highest reward value"
         );
         assert!(

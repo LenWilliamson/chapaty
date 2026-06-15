@@ -1008,7 +1008,8 @@ pub trait Instrument {
     /// Converts discrete Ticks back into a USD value.
     /// This is the safest way to calculate realized `PnL`.
     fn ticks_to_usd(&self, ticks: Tick) -> f64 {
-        ticks.0 as f64 * self.tick_value_usd()
+        let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
+        f64::from(tick_count) * self.tick_value_usd()
     }
 
     /// Converts a raw price distance (e.g., target - entry) into Ticks.
@@ -1019,7 +1020,8 @@ pub trait Instrument {
 
     /// Converts Ticks into a valid price distance.
     fn ticks_to_price(&self, ticks: Tick) -> Price {
-        Price(ticks.0 as f64 * self.tick_size())
+        let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
+        Price(f64::from(tick_count) * self.tick_size())
     }
 
     /// Converts a USD target directly to a Price distance.
@@ -1619,8 +1621,8 @@ mod tests {
         let eur = future_sym(FutureRoot::EurUsd);
 
         // 1. Tick Size & Value Check
-        assert_eq!(eur.tick_size(), 0.00005);
-        assert_eq!(eur.tick_value_usd(), 6.25);
+        assert_f64_eq!(eur.tick_size(), 0.00005);
+        assert_f64_eq!(eur.tick_value_usd(), 6.25);
 
         // 2. Risk Calculation: "I want to risk $100"
         // $100 / $6.25 = 16 ticks
@@ -1651,7 +1653,7 @@ mod tests {
         let pnl = btc.ticks_to_usd(ticks);
 
         assert_eq!(ticks.0, 20);
-        assert_eq!(pnl, 500.0);
+        assert_f64_eq!(pnl, 500.0);
     }
 
     #[test]

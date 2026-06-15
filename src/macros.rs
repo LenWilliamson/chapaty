@@ -119,3 +119,22 @@ macro_rules! impl_min_max_primitive {
         }
     };
 }
+
+#[macro_export]
+macro_rules! assert_f64_eq {
+    ($left:expr, $right:expr $(,)?) => {
+        let left_val = $left;
+        let right_val = $right;
+        assert!(
+            (left_val - right_val).abs() < f64::EPSILON,
+            "assertion failed: `(left == right)`\n  left: `{:?}`,\n right: `{:?}`",
+            left_val,
+            right_val
+        );
+    };
+    ($left:expr, $right:expr, $($arg:tt)+) => {
+        let left_val = $left;
+        let right_val = $right;
+        assert!((left_val - right_val).abs() < f64::EPSILON, $($arg)+);
+    };
+}

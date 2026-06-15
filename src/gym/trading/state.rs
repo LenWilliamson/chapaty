@@ -1416,7 +1416,7 @@ mod tests {
         // We know from setup that Qty is 1.0, but let's be explicit.
         let original_ptr = states.live.get(&m_id).unwrap().as_ptr();
         let original_val = states.get_by_id(&TradeId(20)).unwrap().clone();
-        assert_eq!(original_val.quantity().0, 1.0);
+        assert_f64_eq!(original_val.quantity().0, 1.0);
         check_invariants(&states);
 
         // Action: Checkout Trade(20) at index 1.
@@ -1425,13 +1425,13 @@ mod tests {
 
             // CHECK 1: Guard holds a perfect CLONE
             assert_eq!(guard.get().trade_id().0, 20);
-            assert_eq!(guard.get().quantity().0, 1.0);
+            assert_f64_eq!(guard.get().quantity().0, 1.0);
 
             // CHECK 2: Vector is UNTOUCHED
             // The original state "20" is still sitting in the vector.
             assert_eq!(guard.live_vec.len(), 3);
             assert_eq!(guard.live_vec[1].trade_id().0, 20);
-            assert_eq!(guard.live_vec[1].quantity().0, 1.0); // Data integrity check
+            assert_f64_eq!(guard.live_vec[1].quantity().0, 1.0); // Data integrity check
 
             // CHECK 3: Memory Stability (Optional but powerful)
             // Prove that the vector didn't reallocate or shift
@@ -1447,7 +1447,7 @@ mod tests {
 
         // Final sanity check: The data is still there after drop
         let final_state = states.get_by_id(&TradeId(20)).unwrap();
-        assert_eq!(final_state.quantity().0, 1.0);
+        assert_f64_eq!(final_state.quantity().0, 1.0);
         check_invariants(&states);
     }
 
@@ -1457,7 +1457,7 @@ mod tests {
 
         // PRE-CHECK: Verify initial quantity is 1.0
         let original = states.get_by_id(&TradeId(20)).unwrap();
-        assert_eq!(original.quantity().0, 1.0, "Pre-condition failed");
+        assert_f64_eq!(original.quantity().0, 1.0, "Pre-condition failed");
         check_invariants(&states);
 
         // Checkout Trade(20) at index 1
@@ -1481,7 +1481,7 @@ mod tests {
         assert_eq!(vec[2].trade_id().0, 30);
 
         // CHECK 3: Data was actually mutated
-        assert_eq!(vec[1].quantity().0, 999.0, "Update was lost!");
+        assert_f64_eq!(vec[1].quantity().0, 999.0, "Update was lost!");
 
         // CHECK 4: Index Map unchanged
         assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
@@ -1637,7 +1637,7 @@ mod tests {
         // PRE-CHECK: Establish the Baseline
         // We must prove it starts at 1.0 to prove it was 'restored' to 1.0
         let original = states.live.get(&m_id).unwrap().first().unwrap();
-        assert_eq!(
+        assert_f64_eq!(
             original.quantity().0,
             1.0,
             "Pre-condition: Quantity must start at 1.0"
@@ -1660,13 +1660,12 @@ mod tests {
         let current = states.live.get(&m_id).unwrap().first().unwrap();
 
         // It should NOT be the mutated value
-        assert_ne!(
-            current.quantity().0,
-            99999.0,
+        assert!(
+            (current.quantity().0 - 99999.0).abs() > f64::EPSILON,
             "Transaction should not have committed"
         );
         // It SHOULD be the original value
-        assert_eq!(
+        assert_f64_eq!(
             current.quantity().0,
             1.0,
             "State should have rolled back to 1.0"
@@ -1758,24 +1757,24 @@ mod tests {
         let (mut states, _) = setup_ledger(vec![]);
 
         // PRE-CHECK: Start at absolute zero
-        assert_eq!(states.step_reward, 0.0);
-        assert_eq!(states.cumulative_pnl, 0.0);
+        assert_f64_eq!(states.step_reward, 0.0);
+        assert_f64_eq!(states.cumulative_pnl, 0.0);
         check_invariants(&states);
 
         // Record first PnL change
         states.record_pnl_change(100.0);
-        assert_eq!(states.step_reward, 100.0);
-        assert_eq!(states.cumulative_pnl, 100.0);
+        assert_f64_eq!(states.step_reward, 100.0);
+        assert_f64_eq!(states.cumulative_pnl, 100.0);
 
         // Record second PnL change - both accumulate
         states.record_pnl_change(50.5);
-        assert_eq!(states.step_reward, 150.5);
-        assert_eq!(states.cumulative_pnl, 150.5);
+        assert_f64_eq!(states.step_reward, 150.5);
+        assert_f64_eq!(states.cumulative_pnl, 150.5);
 
         // Record negative PnL (loss)
         states.record_pnl_change(-30.0);
-        assert_eq!(states.step_reward, 120.5);
-        assert_eq!(states.cumulative_pnl, 120.5);
+        assert_f64_eq!(states.step_reward, 120.5);
+        assert_f64_eq!(states.cumulative_pnl, 120.5);
 
         check_invariants(&states);
     }
@@ -1788,8 +1787,8 @@ mod tests {
         states.record_pnl_change(400.6);
 
         // PRE-CHECK: Verify float state before pop
-        assert_eq!(states.step_reward, 400.6);
-        assert_eq!(states.cumulative_pnl, 400.6);
+        assert_f64_eq!(states.step_reward, 400.6);
+        assert_f64_eq!(states.cumulative_pnl, 400.6);
         check_invariants(&states);
 
         // Action: Pop the reward
@@ -1801,10 +1800,10 @@ mod tests {
         assert_eq!(reward.0, 401, "Reward should round to nearest integer");
 
         // CHECK 2: Step Reset (Transient)
-        assert_eq!(states.step_reward, 0.0);
+        assert_f64_eq!(states.step_reward, 0.0);
 
         // CHECK 3: Persistence (Cumulative is UNTOUCHED)
-        assert_eq!(states.cumulative_pnl, 400.6);
+        assert_f64_eq!(states.cumulative_pnl, 400.6);
 
         // Action 2: Pop empty
         let reward2 = states.pop_reward();
@@ -1881,7 +1880,7 @@ mod tests {
 
         // PRE-CHECK 2: Confirm first trade is settled
         let trade = states.get_by_id(&TradeId(42)).unwrap();
-        assert_eq!(trade.quantity().0, 1.0);
+        assert_f64_eq!(trade.quantity().0, 1.0);
         check_invariants(&states);
 
         // Second open with SAME UID 42 - should FAIL
@@ -1900,7 +1899,7 @@ mod tests {
 
         // Verify original trade is untouched
         let trade_after = states.get_by_id(&TradeId(42)).unwrap();
-        assert_eq!(trade_after.quantity().0, 1.0);
+        assert_f64_eq!(trade_after.quantity().0, 1.0);
         check_invariants(&states);
     }
 
@@ -1945,7 +1944,7 @@ mod tests {
 
         // PRE-CHECK: Verify original entry price
         let original = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(original.anticipated_entry_price().0, 100.0); // Based on mock default
+        assert_f64_eq!(original.anticipated_entry_price().0, 100.0); // Based on mock default
         check_invariants(&states);
 
         // Case 1: Modify existing Pending trade - should succeed
@@ -1962,7 +1961,7 @@ mod tests {
 
         // Verify the entry price was updated
         let trade = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(trade.anticipated_entry_price().0, 105.0);
+        assert_f64_eq!(trade.anticipated_entry_price().0, 105.0);
 
         // Case 2: Modify non-existent trade - should fail
         let bad_cmd = ModifyCmd {
@@ -2091,7 +2090,7 @@ mod tests {
 
         // 3. Entry Price matches Market Close (100.0)
         let active_trade: Trade<Active> = trade.clone().try_into().unwrap();
-        assert_eq!(active_trade.state().entry_price().0, 100.0);
+        assert_f64_eq!(active_trade.state().entry_price().0, 100.0);
 
         // 4. Index is correct
         assert_eq!(states.get_index(TradeId(1)).unwrap().1, 0);
@@ -2121,7 +2120,7 @@ mod tests {
         );
 
         // PRE-CHECK 3: PnL must be zero
-        assert_eq!(states.pnl(), 0.0, "PnL must start at zero");
+        assert_f64_eq!(states.pnl(), 0.0, "PnL must start at zero");
         check_invariants(&states);
 
         // 2. Command: Close at Market
@@ -2146,10 +2145,10 @@ mod tests {
 
         // 3. Exit Price matches Market (110.0)
         let close_trade: Trade<Closed> = closed.clone().try_into().unwrap();
-        assert_eq!(close_trade.state().exit_price().0, 110.0);
+        assert_f64_eq!(close_trade.state().exit_price().0, 110.0);
 
         // 4. PnL captured correctly (Long: 110 - 100 = 10)
-        assert_eq!(states.pnl(), 10.0);
+        assert_f64_eq!(states.pnl(), 10.0);
         check_invariants(&states);
     }
 
@@ -2171,8 +2170,8 @@ mod tests {
 
         // PRE-CHECK: Verify baseline
         let initial = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(initial.quantity().0, 2.0);
-        assert_eq!(states.pnl(), 0.0);
+        assert_f64_eq!(initial.quantity().0, 2.0);
+        assert_f64_eq!(states.pnl(), 0.0);
         check_invariants(&states);
 
         // 2. Command: Close 0.5 Units (Partial)
@@ -2189,7 +2188,7 @@ mod tests {
         // VERIFY 1: The Remainder stays in Live (Hot Path)
         // Original Qty 2.0 - Closed 0.5 = 1.5
         let live_trade = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(live_trade.quantity().0, 1.5, "Live trade should shrink");
+        assert_f64_eq!(live_trade.quantity().0, 1.5, "Live trade should shrink");
         assert!(live_trade.is_active());
 
         // VERIFY 2: The Closed Portion goes to Archive (Cold Path)
@@ -2198,7 +2197,7 @@ mod tests {
         let closed_portion = &archive[0];
 
         assert_eq!(closed_portion.trade_id().0, 10, "UIDs match");
-        assert_eq!(
+        assert_f64_eq!(
             closed_portion.quantity().0,
             0.5,
             "Archived qty matches command"
@@ -2206,7 +2205,7 @@ mod tests {
 
         // VERIFY 3: PnL Calculation
         // Profit = (Exit 110 - Entry 100) * Closed Qty 0.5 = 5.0
-        assert_eq!(
+        assert_f64_eq!(
             states.pnl(),
             5.0,
             "PnL should only reflect the closed portion"

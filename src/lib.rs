@@ -1,6 +1,9 @@
 /// The current version of the chapaty crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[macro_use]
+mod macros;
+
 // === Public Modules (The Canonical Paths) ===
 pub mod data;
 pub mod error;
@@ -11,7 +14,6 @@ pub mod report;
 // === Private Implementation Details ===
 mod generated;
 mod io;
-mod macros;
 mod math;
 mod sim;
 mod transport;

@@ -17,7 +17,8 @@ impl StreamingRsi {
     pub fn new(window_size: RsiWindow) -> Self {
         let size = window_size.0 as usize;
         // Wilder's Smoothing Alpha = 1 / N
-        let alpha = 1.0 / (size as f64);
+        let size_u32 = u32::try_from(size).expect("RSI window size exceeds u32 range");
+        let alpha = 1.0 / f64::from(size_u32);
         let win = size;
 
         Self {

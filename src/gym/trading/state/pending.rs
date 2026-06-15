@@ -322,7 +322,7 @@ mod test {
             _ => panic!("Expected to remain Pending"),
         }
 
-        assert_eq!(reward, 0.0, "No reward when pending");
+        assert_f64_eq!(reward, 0.0, "No reward when pending");
     }
 
     // ============================================================================
@@ -347,7 +347,10 @@ mod test {
             State::Active(t) => {
                 assert_eq!(t.state.entry_price, Price(1.09500));
                 // Reward should be based on closing at 1.09800 vs entry at 1.09500
-                assert!(reward != 0.0, "Should have some PnL from price movement");
+                assert!(
+                    (reward - 0.0).abs() > f64::EPSILON,
+                    "Should have some PnL from price movement"
+                );
             }
             _ => panic!("Expected Active state"),
         }
@@ -385,7 +388,7 @@ mod test {
                 // Entry 1.09500 -> Current 1.09800 = +0.00300
                 // Ticks: 0.00300 / 0.00005 = 60 ticks
                 // Value: 60 * 6.25 = 375.0
-                assert_eq!(reward, 375.0);
+                assert_f64_eq!(reward, 375.0);
             }
             _ => panic!("Expected Active state (missed TP opportunity)"),
         }
@@ -719,9 +722,9 @@ mod test {
         .expect("invalid trade configuration");
 
         // Verify limit price was sanitized
-        assert_eq!(trade.state.limit_price.0, 1.0908);
-        assert_eq!(trade.stop_loss.unwrap().0, 1.08555);
-        assert_eq!(trade.take_profit.unwrap().0, 1.09510);
+        assert_f64_eq!(trade.state.limit_price.0, 1.0908);
+        assert_f64_eq!(trade.stop_loss.unwrap().0, 1.08555);
+        assert_f64_eq!(trade.take_profit.unwrap().0, 1.09510);
 
         // Check it's on grid
         let remainder = (trade.state.limit_price.0 / 0.00005) % 1.0;
@@ -750,8 +753,8 @@ mod test {
             State::Active(t) => {
                 assert_eq!(t.state.entry_price, Price(1.09500));
                 assert_eq!(t.state.current_price, Price(1.09500));
-                assert_eq!(t.state.unrealized_pnl, 0.0);
-                assert_eq!(reward, 0.0, "No PnL when entry == close");
+                assert_f64_eq!(t.state.unrealized_pnl, 0.0);
+                assert_f64_eq!(reward, 0.0, "No PnL when entry == close");
             }
             _ => panic!("Should become Active"),
         }
@@ -822,7 +825,7 @@ mod test {
             State::Pending(t) => t,
             _ => panic!("Should stay Pending"),
         };
-        assert_eq!(reward1, 0.0);
+        assert_f64_eq!(reward1, 0.0);
 
         // Step 2: Still no trigger
         let fixture2 = MarketFixture::new(ts("2026-01-19T10:02:00Z"), 1.09500, 1.10500, 1.10000);
@@ -839,7 +842,7 @@ mod test {
             }
             _ => panic!("Should stay Pending"),
         }
-        assert_eq!(reward2, 0.0);
+        assert_f64_eq!(reward2, 0.0);
     }
 
     // ============================================================================

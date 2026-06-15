@@ -1355,8 +1355,8 @@ mod test {
         let pnl0 = ledger.episode_pnl(&ep0).expect("Episode 0 should exist");
         let pnl1 = ledger.episode_pnl(&ep1).expect("Episode 1 should exist");
 
-        assert_eq!(pnl0, 0.0, "Initial PnL should be 0");
-        assert_eq!(pnl1, 0.0, "Initial PnL should be 0");
+        assert_f64_eq!(pnl0, 0.0, "Initial PnL should be 0");
+        assert_f64_eq!(pnl1, 0.0, "Initial PnL should be 0");
     }
 
     #[test]

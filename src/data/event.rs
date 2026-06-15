@@ -463,7 +463,9 @@ impl MarketProfile for Tpo {
 impl ProfileBinStats for TpoBin {
     fn get_value(&self) -> f64 {
         // TPO Count acts as "Volume" for Market Profile calculations
-        self.time_slot_count.0 as f64
+        let time_slot_count =
+            i32::try_from(self.time_slot_count.0).expect("time slot count exceeds i32 range");
+        f64::from(time_slot_count)
     }
 
     fn get_price(&self) -> Price {

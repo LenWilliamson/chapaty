@@ -513,8 +513,9 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = cum_returns.get(i).expect("Missing value at index");
-            assert_eq!(
-                actual, *expected_val,
+            assert_f64_eq!(
+                actual,
+                *expected_val,
                 "Cumulative return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
@@ -542,8 +543,9 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = peaks.get(i).expect("Missing value");
-            assert_eq!(
-                actual, *expected_val,
+            assert_f64_eq!(
+                actual,
+                *expected_val,
                 "Peak return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
@@ -571,8 +573,9 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = drawdowns.get(i).expect("Missing value");
-            assert_eq!(
-                actual, *expected_val,
+            assert_f64_eq!(
+                actual,
+                *expected_val,
                 "Drawdown mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
@@ -674,7 +677,7 @@ mod tests {
         assert!(val_0.is_infinite(), "Row 0 should be inf (no drawdown)");
 
         let val_1 = recovery_factors.get(1).expect("Missing value");
-        assert_eq!(val_1, 17.0, "Row 1 recovery factor mismatch");
+        assert_f64_eq!(val_1, 17.0, "Row 1 recovery factor mismatch");
 
         let val_3 = recovery_factors.get(3).expect("Missing value");
         assert!(val_3.is_infinite(), "Row 3 should be inf (at peak)");

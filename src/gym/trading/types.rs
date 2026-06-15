@@ -513,7 +513,7 @@ mod tests {
 
         // Without grid snapping, this would result in ~$62.50125
         // With snapping, it must be exactly 62.5
-        assert_eq!(pnl, 62.5, "Long PnL failed to snap dirty input to grid");
+        assert_f64_eq!(pnl, 62.5, "Long PnL failed to snap dirty input to grid");
 
         // CASE 2: Dirty Short Entry (Price is slightly too low: 1.10050 - 0.00000001)
         // Shorting from here down to 1.10000 should still yield 10 ticks
@@ -522,8 +522,9 @@ mod tests {
 
         let pnl_short = TradeType::Short.calculate_pnl(dirty_entry, clean_exit, Quantity(1.0), eur);
 
-        assert_eq!(
-            pnl_short, 62.5,
+        assert_f64_eq!(
+            pnl_short,
+            62.5,
             "Short PnL failed to snap dirty input to grid"
         );
     }
@@ -537,40 +538,40 @@ mod tests {
         // Case 1: Favorable trade (Risk $50, Reward $100)
         // Ratio = 50 / 100 = 0.5
         let favorable = RiskRewardRatio::new(50.0, 100.0);
-        assert_eq!(favorable.ratio(), 0.5);
+        assert_f64_eq!(favorable.ratio(), 0.5);
 
         // Case 2: Unfavorable trade (Risk $100, Reward $50)
         // Ratio = 100 / 50 = 2.0
         let unfavorable = RiskRewardRatio::new(100.0, 50.0);
-        assert_eq!(unfavorable.ratio(), 2.0);
+        assert_f64_eq!(unfavorable.ratio(), 2.0);
 
         // Case 3: Break-even setup (Risk $100, Reward $100)
         let neutral = RiskRewardRatio::new(100.0, 100.0);
-        assert_eq!(neutral.ratio(), 1.0);
+        assert_f64_eq!(neutral.ratio(), 1.0);
     }
 
     #[test]
     fn handles_negative_inputs_gracefully() {
         // Inputs should be absolute-valued automatically
         let rrr = RiskRewardRatio::new(-50.0, -100.0);
-        assert_eq!(rrr.risk, 50.0);
-        assert_eq!(rrr.reward, 100.0);
-        assert_eq!(rrr.ratio(), 0.5);
+        assert_f64_eq!(rrr.risk, 50.0);
+        assert_f64_eq!(rrr.reward, 100.0);
+        assert_f64_eq!(rrr.ratio(), 0.5);
     }
 
     #[test]
     fn handles_edge_cases() {
         // 1. Zero Risk (Free money) -> Ratio 0.0
         let zero_risk = RiskRewardRatio::new(0.0, 100.0);
-        assert_eq!(zero_risk.ratio(), 0.0);
+        assert_f64_eq!(zero_risk.ratio(), 0.0);
 
         // 2. Zero Reward (All risk) -> Ratio Infinity
         let zero_reward = RiskRewardRatio::new(100.0, 0.0);
-        assert_eq!(zero_reward.ratio(), f64::INFINITY);
+        assert!(zero_reward.ratio().is_infinite());
 
         // 3. Zero Risk AND Zero Reward -> Ratio 0.0 (Undefined, treated as neutral/safe)
         let zero_zero = RiskRewardRatio::new(0.0, 0.0);
-        assert_eq!(zero_zero.ratio(), 0.0);
+        assert_f64_eq!(zero_zero.ratio(), 0.0);
     }
 
     #[test]

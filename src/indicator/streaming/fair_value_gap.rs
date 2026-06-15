@@ -685,8 +685,8 @@ mod tests {
         assert_eq!(indicator.active_gaps.len(), 1);
         let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bullish);
-        assert_eq!(gap.bottom().0, 10.0);
-        assert_eq!(gap.top().0, 15.0);
+        assert_f64_eq(gap.bottom().0, 10.0);
+        assert_f64_eq(gap.top().0, 15.0);
         assert_f64_eq(gap.gap_size(), 5.0);
 
         indicator.reset();
@@ -699,8 +699,8 @@ mod tests {
         assert_eq!(indicator.active_gaps.len(), 1);
         let gap = indicator.active_gaps[0];
         assert_eq!(gap.direction(), FairValueGapDirection::Bearish);
-        assert_eq!(gap.top().0, 20.0);
-        assert_eq!(gap.bottom().0, 15.0);
+        assert_f64_eq(gap.top().0, 20.0);
+        assert_f64_eq(gap.bottom().0, 15.0);
         assert_f64_eq(gap.gap_size(), 5.0);
     }
 
@@ -725,8 +725,8 @@ mod tests {
         );
         let initial_gap = indicator.active_gaps()[0];
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
-        assert_eq!(initial_gap.top().0, 15.0);
-        assert_eq!(initial_gap.bottom().0, 10.0);
+        assert_f64_eq(initial_gap.top().0, 15.0);
+        assert_f64_eq(initial_gap.bottom().0, 10.0);
         assert_f64_eq(initial_gap.gap_size(), 5.0);
 
         // 2. Partial Fill: Wick down to 12.5 (50% fill)
@@ -764,8 +764,8 @@ mod tests {
         );
         let initial_gap = indicator.active_gaps()[0];
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bearish);
-        assert_eq!(initial_gap.top().0, 20.0);
-        assert_eq!(initial_gap.bottom().0, 15.0);
+        assert_f64_eq(initial_gap.top().0, 20.0);
+        assert_f64_eq(initial_gap.bottom().0, 15.0);
         assert_eq!(indicator.closed_gaps().len(), 0);
 
         // 2. Miss (Price drops further away from the gap)
@@ -811,8 +811,8 @@ mod tests {
             "Assumption failed: Bullish gap was not created"
         );
         assert_eq!(initial_gap.direction(), FairValueGapDirection::Bullish);
-        assert_eq!(initial_gap.top().0, 15.0);
-        assert_eq!(initial_gap.bottom().0, 10.0);
+        assert_f64_eq(initial_gap.top().0, 15.0);
+        assert_f64_eq(initial_gap.bottom().0, 10.0);
 
         // Send a candle that wicks to EXACTLY 15.0
         // Because process_candle uses `candle.low < self.top`, this evaluates to false.
@@ -847,8 +847,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
-        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
 
         // 2. Create Bullish Gap B (25 -> 30) further up the trend
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 25., 25., 20., 22.));
@@ -865,8 +865,8 @@ mod tests {
             indicator.active_gaps()[1].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[1].top().0, 30.0);
-        assert_eq!(indicator.active_gaps()[1].bottom().0, 25.0);
+        assert_f64_eq(indicator.active_gaps()[1].top().0, 30.0);
+        assert_f64_eq(indicator.active_gaps()[1].bottom().0, 25.0);
 
         // 3. Price drops to 20. This completely fills Gap B (25->30), but only misses Gap A (10->15)
         indicator.update(candle(7, "2026-05-26T10:07:00Z", 30., 30., 20., 25.));
@@ -880,14 +880,14 @@ mod tests {
 
         // Verify Gap A is still active and untouched (passed by value since it is Copy)
         let active_gap = indicator.active_gaps()[0];
-        assert_eq!(active_gap.bottom().0, 10.0);
-        assert_eq!(active_gap.top().0, 15.0);
+        assert_f64_eq(active_gap.bottom().0, 10.0);
+        assert_f64_eq(active_gap.top().0, 15.0);
         assert_eq!(active_gap.state().touch_count(), 0);
 
         // Verify Gap B is closed (passed by value)
         let closed_gap = indicator.closed_gaps()[0];
-        assert_eq!(closed_gap.bottom().0, 25.0);
-        assert_eq!(closed_gap.top().0, 30.0);
+        assert_f64_eq(closed_gap.bottom().0, 25.0);
+        assert_f64_eq(closed_gap.top().0, 30.0);
         assert_eq!(closed_gap.state().touch_count(), 1);
         assert_f64_eq(closed_gap.state().max_fill_percentage(), 1.0);
     }
@@ -1086,7 +1086,7 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
 
         // 2. Einen gewaltigen Sprung in die Zukunft simulieren (Index 1000, 10 Stunden später)
         // Der Preis bleibt weit über der Lücke, sodass sie nicht gefüllt wird.
@@ -1127,8 +1127,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
-        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,
@@ -1187,8 +1187,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
-        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,
@@ -1244,8 +1244,8 @@ mod tests {
             indicator.active_gaps()[0].direction(),
             FairValueGapDirection::Bullish
         );
-        assert_eq!(indicator.active_gaps()[0].top().0, 15.0);
-        assert_eq!(indicator.active_gaps()[0].bottom().0, 10.0);
+        assert_f64_eq(indicator.active_gaps()[0].top().0, 15.0);
+        assert_f64_eq(indicator.active_gaps()[0].bottom().0, 10.0);
         assert_eq!(
             indicator.closed_gaps().len(),
             0,

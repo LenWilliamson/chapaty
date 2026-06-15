@@ -59,12 +59,18 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
                 candidates[0]
             } else {
                 let sum_indices: usize = candidates.iter().sum();
-                let avg_idx = sum_indices as f64 / candidates.len() as f64;
+                let sum_indices =
+                    u32::try_from(sum_indices).expect("sum of candidate indices exceeds u32");
+                let candidate_count =
+                    u32::try_from(candidates.len()).expect("candidate count exceeds u32");
+                let avg_idx = f64::from(sum_indices) / f64::from(candidate_count);
                 *candidates
                     .iter()
                     .min_by(|&&a, &&b| {
-                        let diff_a = (a as f64 - avg_idx).abs();
-                        let diff_b = (b as f64 - avg_idx).abs();
+                        let a = u32::try_from(a).expect("candidate index exceeds u32");
+                        let b = u32::try_from(b).expect("candidate index exceeds u32");
+                        let diff_a = (f64::from(a) - avg_idx).abs();
+                        let diff_b = (f64::from(b) - avg_idx).abs();
                         diff_a.total_cmp(&diff_b)
                     })
                     .ok_or_else(|| {
@@ -190,7 +196,7 @@ mod test {
             .iter()
             .enumerate()
             .map(|(i, &v)| SimpleBin {
-                price: 100.0 + i as f64,
+                price: 100.0 + f64::from(u32::try_from(i).expect("auto-price index exceeds u32")),
                 volume: v,
             })
             .collect()

@@ -403,8 +403,9 @@ mod tests {
                 .expect("sampling action space should succeed");
 
             if let Some((_, Action::Open(cmd))) = actions.into_sorted_iter().next() {
-                assert_eq!(
-                    cmd.quantity.0, 1.0,
+                assert_f64_eq!(
+                    cmd.quantity.0,
+                    1.0,
                     "Futures should clamp to min 1.0 contract"
                 );
                 found = true;

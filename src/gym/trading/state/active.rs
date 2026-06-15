@@ -470,7 +470,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves up to 1.105
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.105, 1.105);
@@ -496,7 +496,7 @@ mod tests {
         );
 
         // step_delta should equal new_unrealized - prev_unrealized
-        assert_eq!(step_delta, new_unrealized - 0.0);
+        assert_f64_eq!(step_delta, new_unrealized - 0.0);
     }
 
     #[test]
@@ -505,7 +505,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves down to 1.095
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.095, 1.1, 1.095);
@@ -526,7 +526,7 @@ mod tests {
             new_unrealized < 0.0,
             "Long should have negative PnL when price falls"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -535,7 +535,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves up to 1.105 (unfavorable for short)
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.105, 1.105);
@@ -556,7 +556,7 @@ mod tests {
             new_unrealized < 0.0,
             "Short should have negative PnL when price rises"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -565,7 +565,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves down to 1.095 (favorable for short)
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.095, 1.1, 1.095);
@@ -586,7 +586,7 @@ mod tests {
             new_unrealized > 0.0,
             "Short should have positive PnL when price falls"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -595,7 +595,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Step 1: Price moves to 1.102
         let fixture1 = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.102, 1.102);
@@ -628,8 +628,8 @@ mod tests {
         let pnl2 = trade2.state.unrealized_pnl;
 
         // Verify delta is incremental
-        assert_eq!(delta1, pnl1 - 0.0, "First delta should be pnl1 - 0");
-        assert_eq!(delta2, pnl2 - pnl1, "Second delta should be pnl2 - pnl1");
+        assert_f64_eq!(delta1, pnl1 - 0.0, "First delta should be pnl1 - 0");
+        assert_f64_eq!(delta2, pnl2 - pnl1, "Second delta should be pnl2 - pnl1");
     }
 
     // ============================================================================
@@ -785,9 +785,9 @@ mod tests {
         // 1.095567 -> 1.09555
         // 1.105123 -> 1.10510
 
-        assert_eq!(trade.state.entry_price.0, 1.10080);
-        assert_eq!(trade.stop_loss.unwrap().0, 1.09555);
-        assert_eq!(trade.take_profit.unwrap().0, 1.10510);
+        assert_f64_eq!(trade.state.entry_price.0, 1.10080);
+        assert_f64_eq!(trade.stop_loss.unwrap().0, 1.09555);
+        assert_f64_eq!(trade.take_profit.unwrap().0, 1.10510);
         // Check they're on grid (divisible by tick_size with some tolerance)
         let remainder = (trade.state.entry_price.0 / 0.00005) % 1.0;
         assert!(remainder.abs() < f64::EPSILON, "Entry price not on grid");
@@ -859,7 +859,7 @@ mod tests {
             CloseOutcome::FullyClosed(c) => {
                 assert_eq!(c.state.termination_reason, TerminationReason::MarketClose);
                 assert!(reward > 0.0, "Should have positive PnL");
-                assert_eq!(reward, 625.0);
+                assert_f64_eq!(reward, 625.0);
             }
             _ => panic!("Expected FullyClosed"),
         }
@@ -885,7 +885,7 @@ mod tests {
         // Verification: Reward Logic
         // Diff: 0.00500 -> 100 ticks
         // Value: 100 ticks * $6.25 * 0.5 qty = $312.50
-        assert_eq!(
+        assert_f64_eq!(
             reward, 312.5,
             "Reward calculation incorrect for partial close"
         );
@@ -894,7 +894,7 @@ mod tests {
             CloseOutcome::PartiallyClosed { closed, remaining } => {
                 // Check Closed Portion
                 assert_eq!(closed.quantity, Quantity(0.5));
-                assert_eq!(
+                assert_f64_eq!(
                     closed.state.realized_pnl, 312.5,
                     "Closed state PnL mismatch"
                 );
@@ -1028,8 +1028,8 @@ mod tests {
             State::Active(t) => t,
             _ => panic!("Expected Active after marking"),
         };
-        assert_eq!(marked.state.unrealized_pnl, 375.0);
-        assert_eq!(mark_delta, 375.0);
+        assert_f64_eq!(marked.state.unrealized_pnl, 375.0);
+        assert_f64_eq!(mark_delta, 375.0);
 
         // Market close at 1.105: realized = 100 ticks * $6.25 * 1.0 = $625.
         let cmd = MarketCloseCmd {
@@ -1046,11 +1046,11 @@ mod tests {
             _ => panic!("Expected FullyClosed"),
         };
         // Absolute realized is preserved for the journal.
-        assert_eq!(closed.state.realized_pnl, 625.0);
+        assert_f64_eq!(closed.state.realized_pnl, 625.0);
         // Reward channel reports only the increment beyond the last mark.
-        assert_eq!(close_delta, 625.0 - 375.0);
+        assert_f64_eq!(close_delta, 625.0 - 375.0);
         // Telescoping invariant: marks + close == realized, booked exactly once.
-        assert_eq!(mark_delta + close_delta, 625.0);
+        assert_f64_eq!(mark_delta + close_delta, 625.0);
     }
 
     #[test]
@@ -1071,8 +1071,8 @@ mod tests {
             State::Active(t) => t,
             _ => panic!("Expected Active"),
         };
-        assert_eq!(marked.state.unrealized_pnl, 250.0);
-        assert_eq!(d1, 250.0);
+        assert_f64_eq!(marked.state.unrealized_pnl, 250.0);
+        assert_f64_eq!(d1, 250.0);
 
         // Close 0.5 @ 1.105: realized = 100 ticks * $6.25 * 0.5 = $312.5.
         let cmd = MarketCloseCmd {
@@ -1089,12 +1089,12 @@ mod tests {
             _ => panic!("Expected PartiallyClosed"),
         };
         assert_eq!(closed.quantity, Quantity(0.5));
-        assert_eq!(closed.state.realized_pnl, 312.5);
+        assert_f64_eq!(closed.state.realized_pnl, 312.5);
         // Closed slice's prior share was 250 * 0.5 = 125; increment = 312.5 - 125.
-        assert_eq!(close_delta, 187.5);
+        assert_f64_eq!(close_delta, 187.5);
         // FIX: survivor carries only its 0.5 share of the unrealized, not the full 250.
         assert_eq!(remaining.quantity, Quantity(0.5));
-        assert_eq!(remaining.state.unrealized_pnl, 125.0);
+        assert_f64_eq!(remaining.state.unrealized_pnl, 125.0);
 
         // Survivor must mark correctly off its own baseline, not a stale full-position one.
         // Mark to 1.103: +60 ticks * $6.25 * 0.5 = $187.5.
@@ -1109,10 +1109,10 @@ mod tests {
             State::Active(t) => t,
             _ => panic!("Expected Active"),
         };
-        assert_eq!(marked2.state.unrealized_pnl, 187.5);
-        assert_eq!(d2, 62.5); // 187.5 - 125.0, not polluted by the stale 250 baseline
+        assert_f64_eq!(marked2.state.unrealized_pnl, 187.5);
+        assert_f64_eq!(d2, 62.5); // 187.5 - 125.0, not polluted by the stale 250 baseline
 
         // End-to-end: every recorded delta sums to realized(closed) + unrealized(survivor).
-        assert_eq!(d1 + close_delta + d2, 312.5 + 187.5);
+        assert_f64_eq!(d1 + close_delta + d2, 312.5 + 187.5);
     }
 }

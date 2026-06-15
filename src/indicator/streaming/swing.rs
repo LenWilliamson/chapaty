@@ -42,10 +42,16 @@ impl PivotType {
             (PriceSource::HighLow, PivotType::High, _) => candle.high,
             (PriceSource::HighLow, PivotType::Low, _) => candle.low,
 
-            (PriceSource::OpenClose, PivotType::High,
-CandleDirection::Bullish | CandleDirection::Doji) |
-(PriceSource::OpenClose, PivotType::Low,
-CandleDirection::Bearish | CandleDirection::Doji) => candle.close,
+            (
+                PriceSource::OpenClose,
+                PivotType::High,
+                CandleDirection::Bullish | CandleDirection::Doji,
+            )
+            | (
+                PriceSource::OpenClose,
+                PivotType::Low,
+                CandleDirection::Bearish | CandleDirection::Doji,
+            ) => candle.close,
             (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish)
             | (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
         }
@@ -205,14 +211,19 @@ impl PivotPoint {
     pub fn price_line_by_index(&self, target: &PivotPoint) -> impl Fn(usize) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
-        let x0 = self.indexed_candle.index as f64;
-        let x1 = target.indexed_candle.index as f64;
+        let x0 = f64::from(
+            u32::try_from(self.indexed_candle.index).expect("pivot index exceeds u32 range"),
+        );
+        let x1 = f64::from(
+            u32::try_from(target.indexed_candle.index).expect("pivot index exceeds u32 range"),
+        );
 
         let dx = x1 - x0;
         let m = if dx == 0.0 { 0.0 } else { (p1 - p0) / dx };
 
         move |x: usize| -> Price {
-            let current_dx = (x as f64) - x0;
+            let x = f64::from(u32::try_from(x).expect("target index exceeds u32 range"));
+            let current_dx = x - x0;
             Price(p0 + m * current_dx)
         }
     }
@@ -232,11 +243,17 @@ impl PivotPoint {
         let t0 = self.point_in_time();
         let t1 = target.point_in_time();
 
-        let dx = (t1 - t0).num_milliseconds() as f64;
+        let millis_to_f64 = |millis: i64| {
+            millis
+                .to_string()
+                .parse::<f64>()
+                .expect("failed to parse milliseconds to f64")
+        };
+        let dx = millis_to_f64((t1 - t0).num_milliseconds());
         let m = if dx == 0.0 { 0.0 } else { (p1 - p0) / dx };
 
         move |t: DateTime<Utc>| -> Price {
-            let current_dx = (t - t0).num_milliseconds() as f64;
+            let current_dx = millis_to_f64((t - t0).num_milliseconds());
             Price(p0 + m * current_dx)
         }
     }
@@ -1323,7 +1340,7 @@ mod tests {
         // Assert: Bullish Mega Bar routes to `process_high`
         assert!(event_bullish.is_some());
         assert_eq!(event_bullish.unwrap().1.pivot_type(), PivotType::High);
-        assert_eq!(event_bullish.unwrap().1.price.0, 30.0);
+        assert_f64_eq(event_bullish.unwrap().1.price.0, 30.0);
 
         hhll.reset();
 
@@ -1336,7 +1353,7 @@ mod tests {
         // Assert: Bearish Mega Bar routes to `process_low`
         assert!(event_bearish.is_some());
         assert_eq!(event_bearish.unwrap().1.pivot_type(), PivotType::Low);
-        assert_eq!(event_bearish.unwrap().1.price.0, 5.0);
+        assert_f64_eq(event_bearish.unwrap().1.price.0, 5.0);
     }
 
     // ==========================================
@@ -1369,7 +1386,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(event.1.pivot_type(), PivotType::High);
-        assert_eq!(event.1.price.0, 20.0);
+        assert_f64_eq(event.1.price.0, 20.0);
         assert_eq!(event.1.point_in_time(), ts("2026-05-24T15:03:00Z"));
     }
 
@@ -1471,9 +1488,9 @@ mod tests {
             .1;
 
         // Assert strict initial state before the conflict
-        assert_eq!(p1_confirmed.price.0, 20.0);
+        assert_f64_eq(p1_confirmed.price.0, 20.0);
         assert_eq!(p1_confirmed.pivot_type(), PivotType::High);
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 20.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 20.0);
         assert!(
             hhll.history().is_empty(),
             "History must be empty before confirmation"
@@ -1495,12 +1512,12 @@ mod tests {
             .1;
 
         // Because Alternation is active and no Trough fired, P2 replaces P1.
-        assert_eq!(p2_confirmed.price.0, 30.0);
+        assert_f64_eq(p2_confirmed.price.0, 30.0);
         assert_eq!(p2_confirmed.pivot_type(), PivotType::High);
 
         // Ensure the lesser peak was successfully overwritten and NOT pushed to history
         assert_eq!(hhll.history().len(), 0);
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 30.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 30.0);
     }
 
     /// Tests Macro Tiebreaker Resolution: Earliest.
@@ -1585,7 +1602,7 @@ mod tests {
         }
 
         // Active pivot is Peak 2.
-        assert_eq!(hhll.active_pivot.unwrap().price.0, 30.0);
+        assert_f64_eq(hhll.active_pivot.unwrap().price.0, 30.0);
 
         // History should be EMPTY. Peak 1 was discarded and never locked in.
         assert_eq!(
@@ -1600,7 +1617,7 @@ mod tests {
 
         // NOW Peak 2 should be safely locked in history.
         assert_eq!(hhll.history().len(), 1);
-        assert_eq!(hhll.history()[0].price.0, 30.0);
+        assert_f64_eq(hhll.history()[0].price.0, 30.0);
         assert_eq!(hhll.history()[0].pivot_type(), PivotType::High);
     }
 
@@ -1630,7 +1647,7 @@ mod tests {
         }
 
         // Active pivot is tracking Peak 3.
-        assert_eq!(hhll.active_pivot.unwrap().price.0, 40.0);
+        assert_f64_eq(hhll.active_pivot.unwrap().price.0, 40.0);
 
         // History should contain Peak 1 and Peak 2, despite them all being Highs.
         assert_eq!(
@@ -1638,8 +1655,8 @@ mod tests {
             2,
             "Consecutive mode should lock all previous peaks"
         );
-        assert_eq!(hhll.history()[0].price.0, 20.0);
-        assert_eq!(hhll.history()[1].price.0, 30.0);
+        assert_f64_eq(hhll.history()[0].price.0, 20.0);
+        assert_f64_eq(hhll.history()[1].price.0, 30.0);
     }
 
     // ==========================================
@@ -1667,7 +1684,7 @@ mod tests {
         // Assert natural setup is valid
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::High);
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 50.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 50.0);
 
         // 1. Push Left Window (prevents Low from firing)
         assert!(
@@ -1692,7 +1709,7 @@ mod tests {
         );
         let (_, pivot) = event.unwrap();
         assert_eq!(pivot.pivot_type(), PivotType::High);
-        assert_eq!(pivot.price.0, 60.0);
+        assert_f64_eq(pivot.price.0, 60.0);
     }
 
     /// # Scenario B: Mega Doji Extends a Low (Sweeps Liquidity)
@@ -1708,7 +1725,7 @@ mod tests {
         // Assert natural setup is valid
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 10.0);
 
         assert!(
             hhll.update(candle(3, "2026-05-24T15:01:00Z", 50., 50., 20., 50.))
@@ -1726,7 +1743,7 @@ mod tests {
         assert!(event.is_some(), "Expected Doji to extend the Low");
         let (_, pivot) = event.unwrap();
         assert_eq!(pivot.pivot_type(), PivotType::Low);
-        assert_eq!(pivot.price.0, 5.0);
+        assert_f64_eq(pivot.price.0, 5.0);
     }
 
     /// # Scenario C: Mega Doji Discarded as Internal Noise
@@ -1740,7 +1757,7 @@ mod tests {
         let p1 = hhll.update(candle(2, "2026-05-24T14:01:00Z", 50., 50., 20., 50.));
 
         assert!(p1.is_some());
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 1.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 1.0);
 
         assert!(
             hhll.update(candle(3, "2026-05-24T17:01:00Z", 50., 50., 20., 50.))
@@ -1793,7 +1810,7 @@ mod tests {
             event.is_some(),
             "Expected Doji to successfully extend the High under Earliest"
         );
-        assert_eq!(event.unwrap().1.price.0, 60.0);
+        assert_f64_eq(event.unwrap().1.price.0, 60.0);
     }
 
     /// # Scenario E: Mega Doji Exact Tie under Earliest (Discarded)
@@ -1845,7 +1862,7 @@ mod tests {
             "Expected exact tie Doji to overwrite under Latest tiebreaker"
         );
         let (_, pivot) = event.unwrap();
-        assert_eq!(pivot.price.0, 50.0);
+        assert_f64_eq(pivot.price.0, 50.0);
         // Ensure it is actually the NEW candle by checking the timestamp
         assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
     }
@@ -1862,7 +1879,7 @@ mod tests {
 
         assert!(p1.is_some());
         assert_eq!(hhll.active_pivot().unwrap().pivot_type(), PivotType::Low);
-        assert_eq!(hhll.active_pivot().unwrap().price.0, 10.0);
+        assert_f64_eq(hhll.active_pivot().unwrap().price.0, 10.0);
 
         // 1. Push Left Window (prevents High from firing)
         assert!(
@@ -1884,7 +1901,7 @@ mod tests {
             event.is_some(),
             "Expected Doji to successfully extend the Low under Earliest"
         );
-        assert_eq!(event.unwrap().1.price.0, 5.0);
+        assert_f64_eq(event.unwrap().1.price.0, 5.0);
     }
 
     /// # Scenario H: Mega Doji Exact Tie under Earliest (Discarded for Low)
@@ -1936,7 +1953,7 @@ mod tests {
             "Expected exact tie Doji to overwrite under Latest tiebreaker"
         );
         let (_, pivot) = event.unwrap();
-        assert_eq!(pivot.price.0, 10.0);
+        assert_f64_eq(pivot.price.0, 10.0);
         // Ensure it is actually the NEW candle by checking the timestamp
         assert_eq!(pivot.point_in_time(), ts("2026-05-24T15:02:00Z"));
     }

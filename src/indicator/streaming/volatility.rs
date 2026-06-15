@@ -534,8 +534,8 @@ mod tests {
             .value();
         let naive: f64 = values.iter().sum();
 
-        assert_eq!(kahan, truth); // exact
-        assert_eq!(naive, 1.0); // every tiny term lost
+        assert_f64_eq!(kahan, truth); // exact
+        assert_f64_eq!(naive, 1.0); // every tiny term lost
         assert!((kahan - truth).abs() < (naive - truth).abs());
     }
 }

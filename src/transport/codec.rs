@@ -595,7 +595,7 @@ mod tests {
         assert_eq!(get_string(&df, CanonicalCol::DataSource, 0), "investingcom");
         assert_eq!(get_string(&df, CanonicalCol::Category, 0), "employment");
         assert_eq!(get_string(&df, CanonicalCol::NewsType, 0), "nfp");
-        assert_eq!(get_f64(&df, CanonicalCol::NewsTypeConfidence, 0), 0.95);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::NewsTypeConfidence, 0), 0.95);
         assert_eq!(get_string(&df, CanonicalCol::NewsTypeSource, 0), "ml");
         assert_eq!(get_string(&df, CanonicalCol::Period, 0), "mom");
         assert_eq!(
@@ -680,11 +680,11 @@ mod tests {
         assert_eq!(*df.schema(), ohlcv_future_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::Open, 0), 50000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::High, 0), 51000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Low, 0), 49500.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Close, 0), 50500.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 100.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Open, 0), 50000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::High, 0), 51000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Low, 0), 49500.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Close, 0), 50500.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 100.0);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &open_ts);
         assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &close_ts);
     }
@@ -737,18 +737,18 @@ mod tests {
         assert_eq!(*df.schema(), ohlcv_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::Open, 0), 100.0);
-        assert_eq!(get_f64(&df, CanonicalCol::High, 0), 110.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Low, 0), 90.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Close, 0), 105.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 1000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Open, 0), 100.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::High, 0), 110.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Low, 0), 90.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Close, 0), 105.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 1000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105000.0);
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfTrades, 0), 50);
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyBaseAssetVolume, 0),
             600.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyQuoteAssetVolume, 0),
             63000.0
         );
@@ -800,9 +800,9 @@ mod tests {
         assert_eq!(df.height(), 1);
 
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 999888);
-        assert_eq!(get_f64(&df, CanonicalCol::Price, 0), 200.50);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 2.0);
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Price, 0), 200.50);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 2.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
         assert!(get_bool(&df, CanonicalCol::IsBuyerMaker, 0));
         assert!(get_bool(&df, CanonicalCol::IsBestMatch, 0));
         assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &trade_ts);
@@ -874,8 +874,8 @@ mod tests {
         assert_eq!(*df.schema(), tpo_future_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 40000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 40010.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 40000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 40010.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 15);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
         assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
@@ -923,8 +923,8 @@ mod tests {
         assert_eq!(*df.schema(), tpo_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 150.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 151.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 150.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 151.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 5);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
         assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
@@ -980,23 +980,23 @@ mod tests {
         assert_eq!(*df.schema(), volume_profile_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 25.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 25.5);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 5000.0);
-        assert_eq!(
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 25.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 25.5);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 5000.0);
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyBaseAssetVolume, 0),
             2500.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerSellBaseAssetVolume, 0),
             2500.0
         );
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125000.0);
-        assert_eq!(
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125000.0);
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyQuoteAssetVolume, 0),
             62500.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerSellQuoteAssetVolume, 0),
             62500.0
         );
@@ -1088,8 +1088,9 @@ mod tests {
         assert_eq!(df.height(), 5);
 
         for i in 0..5 {
-            let expected_open = (i + 1) as f64 * 100.0;
-            assert_eq!(get_f64(&df, CanonicalCol::Open, i), expected_open);
+            let expected_open =
+                f64::from(u32::try_from(i + 1).expect("row index exceeds u32 range")) * 100.0;
+            assert_f64_eq!(get_f64(&df, CanonicalCol::Open, i), expected_open);
         }
     }
 
