@@ -244,7 +244,7 @@ pub enum AggregatedPrice {
 
 impl AggregatedPrice {
     /// Converts the price aggregation type into its corresponding Polars Expression.
-    pub(crate) fn to_expr(&self) -> Expr {
+    pub(crate) fn to_expr(self) -> Expr {
         match self {
             Self::Close => col(CanonicalCol::Close),
             Self::Hl2 => (col(CanonicalCol::High) + col(CanonicalCol::Low)) / lit(2.0),
@@ -1266,7 +1266,7 @@ impl WindowKind {
 }
 
 /// Identifies one accumulation session by its anchor date.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SessionDate(pub NaiveDate);
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use crate::{
         common::ProfileAggregation,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
-            Price, Quantity, TradeId,
+            Price, PriceDelta, Quantity, SessionDate, TradeId,
         },
         episode::{EpisodeBuilder, EpisodeLength},
         event::{
@@ -23,8 +23,13 @@ use crate::{
     indicator::{
         batch::{
             BatchCompute,
-            event::{Ema, EmaId, Rsi, RsiId, Sma, SmaId},
+            event::{
+                Atr, AtrId, Ema, EmaId, OhlcvSession, OhlcvSessionId, OhlcvVwap, OhlcvVwapId, Roc,
+                RocId, Rsi, RsiId, Sma, SmaId, TradesSession, TradesSessionId, TradesVwap,
+                TradesVwapId,
+            },
             ohlcv::BatchOhlcvIndicator,
+            trades::BatchTradesIndicator,
         },
         config::{EmaWindow, RsiWindow, SmaWindow},
     },
@@ -45,13 +50,10 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use itertools::izip;
-use polars::{
-    frame::{DataFrame, UniqueKeepStrategy},
-    prelude::{
-        BooleanType, ChunkedArray, DataType, DatetimeType, Float64Type, Int64Type, JoinArgs,
-        JoinType, LazyFrame, Logical, PlSmallStr, Schema, SchemaRef, Selector, SortMultipleOptions,
-        StringType, TimeUnit, UnionArgs, col, lit,
-    },
+use polars::prelude::{
+    BooleanType, ChunkedArray, DataFrame, DataType, DatetimeType, Float64Type, Int64Type, JoinArgs,
+    JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector, SortMultipleOptions, StringType,
+    TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
@@ -80,7 +82,7 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
     };
 
     ctx.run().await?;
-    ctx.final_env.ok_or(EnvError::NotBuilt.into())
+    ctx.final_env.ok_or_else(|| EnvError::NotBuilt.into())
 }
 
 /// Loads a pre-built environment from storage, or builds a new one on cache miss.
@@ -150,6 +152,12 @@ struct BuildCtx {
     ema_map: Option<HashMap<EmaId, (SchemaRef, LazyFrame)>>,
     rsi_map: Option<HashMap<RsiId, (SchemaRef, LazyFrame)>>,
     sma_map: Option<HashMap<SmaId, (SchemaRef, LazyFrame)>>,
+    trades_vwap_map: Option<HashMap<TradesVwapId, (SchemaRef, LazyFrame)>>,
+    ohlcv_vwap_map: Option<HashMap<OhlcvVwapId, (SchemaRef, LazyFrame)>>,
+    trades_session_map: Option<HashMap<TradesSessionId, (SchemaRef, LazyFrame)>>,
+    ohlcv_session_map: Option<HashMap<OhlcvSessionId, (SchemaRef, LazyFrame)>>,
+    atr_map: Option<HashMap<AtrId, (SchemaRef, LazyFrame)>>,
+    roc_map: Option<HashMap<RocId, (SchemaRef, LazyFrame)>>,
 }
 
 impl BuildCtx {
@@ -210,24 +218,21 @@ impl BuildCtx {
     fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
         tracing::info!("Computing derived batch technical ohlcv indicators");
 
-        // 1. Initialize Indicator Maps
         let mut ema_map = HashMap::new();
         let mut sma_map = HashMap::new();
         let mut rsi_map = HashMap::new();
+        let mut ohlcv_vwap_map = HashMap::new();
+        let mut ohlcv_session_map = HashMap::new();
+        let mut atr_map = HashMap::new();
+        let mut roc_map = HashMap::new();
 
-        let s = Schema::from_iter(vec![
-            CanonicalCol::PointInTime.field(),
-            CanonicalCol::Price.field(),
-        ]);
-        let schema = Arc::new(s);
-
-        // 2. Define a helper to process indicators for a specific parent LazyFrame
         let mut process_indicators = |parent_id: OhlcvId,
                                       source_lf: LazyFrame,
                                       indicators: &[BatchOhlcvIndicator]|
          -> ChapatyResult<()> {
             for &ind in indicators {
                 let lf_result = ind.pre_compute(source_lf.clone())?;
+                let schema = ind.output_schema();
 
                 match ind {
                     BatchOhlcvIndicator::Ema(EmaWindow(w)) => {
@@ -235,29 +240,55 @@ impl BuildCtx {
                             parent: parent_id,
                             length: EmaWindow(w),
                         };
-                        ema_map.insert(id, (schema.clone(), lf_result));
+                        ema_map.insert(id, (schema, lf_result));
                     }
                     BatchOhlcvIndicator::Sma(SmaWindow(w)) => {
                         let id = SmaId {
                             parent: parent_id,
                             length: SmaWindow(w),
                         };
-                        sma_map.insert(id, (schema.clone(), lf_result));
+                        sma_map.insert(id, (schema, lf_result));
                     }
                     BatchOhlcvIndicator::Rsi(RsiWindow(w)) => {
                         let id = RsiId {
                             parent: parent_id,
                             length: RsiWindow(w),
                         };
-                        rsi_map.insert(id, (schema.clone(), lf_result));
+                        rsi_map.insert(id, (schema, lf_result));
                     }
-                    BatchOhlcvIndicator::Atr(_) => {}
+                    BatchOhlcvIndicator::Vwap(price_aggregation) => {
+                        let id = OhlcvVwapId {
+                            parent: parent_id,
+                            price_aggregation,
+                        };
+                        ohlcv_vwap_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::OvernightRange(cfg) => {
+                        let id = OhlcvSessionId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        ohlcv_session_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::Atr(cfg) => {
+                        let id = AtrId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        atr_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::RateOfChange(lookback) => {
+                        let id = RocId {
+                            parent: parent_id,
+                            lookback,
+                        };
+                        roc_map.insert(id, (schema, lf_result));
+                    }
                 }
             }
             Ok(())
         };
 
-        // 3. Process Spot Markets
         if let Some(spot_map) = &self.ohlcv_spot_map {
             for group in self.env_cfg.ohlcv_spot() {
                 for config in &group.items {
@@ -273,7 +304,6 @@ impl BuildCtx {
             }
         }
 
-        // 4. Process Futures Markets
         if let Some(future_map) = &self.ohlcv_future_map {
             for group in self.env_cfg.ohlcv_future() {
                 for config in &group.items {
@@ -289,10 +319,13 @@ impl BuildCtx {
             }
         }
 
-        // 5. Store Results in Context
         self.ema_map = Some(ema_map);
         self.sma_map = Some(sma_map);
         self.rsi_map = Some(rsi_map);
+        self.ohlcv_vwap_map = Some(ohlcv_vwap_map);
+        self.ohlcv_session_map = Some(ohlcv_session_map);
+        self.atr_map = Some(atr_map);
+        self.roc_map = Some(roc_map);
 
         Ok(StateFn::Next(|ctx: &mut BuildCtx| {
             ctx.compute_batch_trades_indicators()
@@ -302,6 +335,53 @@ impl BuildCtx {
     #[tracing::instrument(skip_all)]
     fn compute_batch_trades_indicators<'a>(&mut self) -> NextState<'a, Self> {
         tracing::info!("Computing derived batch technical trades indicators");
+
+        let mut trades_vwap_map = HashMap::new();
+        let mut trades_session_map = HashMap::new();
+
+        let mut process_indicators = |parent_id: TradesId,
+                                      source_lf: LazyFrame,
+                                      indicators: &[BatchTradesIndicator]|
+         -> ChapatyResult<()> {
+            for &ind in indicators {
+                let lf_result = ind.pre_compute(source_lf.clone())?;
+                let schema = ind.output_schema();
+
+                match ind {
+                    BatchTradesIndicator::Vwap => {
+                        let id = TradesVwapId { parent: parent_id };
+                        trades_vwap_map.insert(id, (schema, lf_result));
+                    }
+                    BatchTradesIndicator::OvernightRange(cfg) => {
+                        let id = TradesSessionId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        trades_session_map.insert(id, (schema, lf_result));
+                    }
+                }
+            }
+
+            Ok(())
+        };
+
+        if let Some(trade_map) = &self.trade_spot_map {
+            for group in self.env_cfg.trades_spot() {
+                for config in &group.items {
+                    if config.indicators.is_empty() {
+                        continue;
+                    }
+
+                    let parent_id = config.to_id()?;
+                    if let Some((_, lf)) = trade_map.get(&parent_id) {
+                        process_indicators(parent_id, lf.clone(), &config.indicators)?;
+                    }
+                }
+            }
+        }
+
+        self.trades_vwap_map = Some(trades_vwap_map);
+        self.trades_session_map = Some(trades_session_map);
 
         Ok(StateFn::Next(|ctx: &mut BuildCtx| {
             ctx.overlay_economic_calendar_policy()
@@ -497,6 +577,18 @@ impl BuildCtx {
         let mut ema_res: ChapatyResult<SortedVecMap<EmaId, Box<[Ema]>>> = Ok(SortedVecMap::new());
         let mut rsi_res: ChapatyResult<SortedVecMap<RsiId, Box<[Rsi]>>> = Ok(SortedVecMap::new());
         let mut sma_res: ChapatyResult<SortedVecMap<SmaId, Box<[Sma]>>> = Ok(SortedVecMap::new());
+        let mut trades_vwap_res: ChapatyResult<SortedVecMap<TradesVwapId, Box<[TradesVwap]>>> =
+            Ok(SortedVecMap::new());
+        let mut ohlcv_vwap_res: ChapatyResult<SortedVecMap<OhlcvVwapId, Box<[OhlcvVwap]>>> =
+            Ok(SortedVecMap::new());
+        let mut trades_session_res: ChapatyResult<
+            SortedVecMap<TradesSessionId, Box<[TradesSession]>>,
+        > = Ok(SortedVecMap::new());
+        let mut ohlcv_session_res: ChapatyResult<
+            SortedVecMap<OhlcvSessionId, Box<[OhlcvSession]>>,
+        > = Ok(SortedVecMap::new());
+        let mut atr_res: ChapatyResult<SortedVecMap<AtrId, Box<[Atr]>>> = Ok(SortedVecMap::new());
+        let mut roc_res: ChapatyResult<SortedVecMap<RocId, Box<[Roc]>>> = Ok(SortedVecMap::new());
 
         debug!("Spawning parallel data extraction tasks");
         rayon::scope(|s| {
@@ -591,6 +683,68 @@ impl BuildCtx {
                     info!("SMA: extracted {} streams", map.len());
                 }
             });
+
+            // === Trades VWAP ===
+            s.spawn(|_| {
+                debug!("Processing Trades VWAP indicators");
+                trades_vwap_res = process_map(self.trades_vwap_map.as_ref(), |df, _id| {
+                    extract_trades_vwap(df)
+                });
+                if let Ok(ref map) = trades_vwap_res {
+                    info!("Trades VWAP: extracted {} streams", map.len());
+                }
+            });
+
+            // === OHLCV VWAP ===
+            s.spawn(|_| {
+                debug!("Processing OHLCV VWAP indicators");
+                ohlcv_vwap_res = process_map(self.ohlcv_vwap_map.as_ref(), |df, _id| {
+                    extract_ohlcv_vwap(df)
+                });
+                if let Ok(ref map) = ohlcv_vwap_res {
+                    info!("OHLCV VWAP: extracted {} streams", map.len());
+                }
+            });
+
+            // === Trades Session ===
+            s.spawn(|_| {
+                debug!("Processing Trades session indicators");
+                trades_session_res = process_map(self.trades_session_map.as_ref(), |df, _id| {
+                    extract_trades_session(df)
+                });
+                if let Ok(ref map) = trades_session_res {
+                    info!("Trades session: extracted {} streams", map.len());
+                }
+            });
+
+            // === OHLCV Session ===
+            s.spawn(|_| {
+                debug!("Processing OHLCV session indicators");
+                ohlcv_session_res = process_map(self.ohlcv_session_map.as_ref(), |df, _id| {
+                    extract_ohlcv_session(df)
+                });
+                if let Ok(ref map) = ohlcv_session_res {
+                    info!("OHLCV session: extracted {} streams", map.len());
+                }
+            });
+
+            // === ATR ===
+            s.spawn(|_| {
+                debug!("Processing ATR indicators");
+                atr_res = process_map(self.atr_map.as_ref(), |df, _id| extract_atr(df));
+                if let Ok(ref map) = atr_res {
+                    info!("ATR: extracted {} streams", map.len());
+                }
+            });
+
+            // === ROC ===
+            s.spawn(|_| {
+                debug!("Processing ROC indicators");
+                roc_res = process_map(self.roc_map.as_ref(), |df, _id| extract_roc(df));
+                if let Ok(ref map) = roc_res {
+                    info!("ROC: extracted {} streams", map.len());
+                }
+            });
         });
 
         debug!("All extraction tasks completed, building SimulationData");
@@ -607,7 +761,13 @@ impl BuildCtx {
             .with_tpo(tpo_res?)
             .with_ema(ema_res?)
             .with_rsi(rsi_res?)
-            .with_sma(sma_res?);
+            .with_sma(sma_res?)
+            .with_trades_vwap(trades_vwap_res?)
+            .with_ohlcv_vwap(ohlcv_vwap_res?)
+            .with_trades_session(trades_session_res?)
+            .with_ohlcv_session(ohlcv_session_res?)
+            .with_atr(atr_res?)
+            .with_roc(roc_res?);
 
         let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(self.env_cfg.clone())?);
         let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
@@ -641,6 +801,7 @@ impl BuildCtx {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
+
 fn next_async_fn<'a, F>(f: F) -> ChapatyResult<StateFn<'a, BuildCtx>>
 where
     F: for<'ctx> FnOnce(
@@ -790,7 +951,6 @@ where
 // ================================================================================================
 // Extractor Functions
 // ================================================================================================
-
 fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let len = df.height();
     if len == 0 {
@@ -844,23 +1004,13 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
         tbbav_iter,
         tbqav_iter
     ) {
-        let open_ts_val = o_ts.ok_or(DataError::DataFrame("Missing OpenTimestamp".into()))?;
-        let open_timestamp = DateTime::<Utc>::from_timestamp_micros(open_ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert OpenTimestamp ({open_ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let open_val = o.ok_or(DataError::DataFrame("Missing Open".into()))?;
-        let high_val = h.ok_or(DataError::DataFrame("Missing High".into()))?;
-        let low_val = l.ok_or(DataError::DataFrame("Missing Low".into()))?;
-        let close_val = c.ok_or(DataError::DataFrame("Missing Close".into()))?;
-        let vol_val = v.ok_or(DataError::DataFrame("Missing Volume".into()))?;
+        let open_timestamp = micros_to_utc(o_ts, CanonicalCol::OpenTimestamp)?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
+        let open_val = o.ok_or_else(|| DataError::DataFrame("Missing Open".into()))?;
+        let high_val = h.ok_or_else(|| DataError::DataFrame("Missing High".into()))?;
+        let low_val = l.ok_or_else(|| DataError::DataFrame("Missing Low".into()))?;
+        let close_val = c.ok_or_else(|| DataError::DataFrame("Missing Close".into()))?;
+        let vol_val = v.ok_or_else(|| DataError::DataFrame("Missing Volume".into()))?;
 
         events.push(Ohlcv {
             // === Required ===
@@ -927,14 +1077,9 @@ fn extract_trades(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
         is_maker_iter,
         is_best_iter
     ) {
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let price_val = price.ok_or(DataError::DataFrame("Missing Price".into()))?;
-        let vol_val = vol.ok_or(DataError::DataFrame("Missing Volume".into()))?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
+        let price_val = price.ok_or_else(|| DataError::DataFrame("Missing Price".into()))?;
+        let vol_val = vol.ok_or_else(|| DataError::DataFrame("Missing Volume".into()))?;
 
         events.push(TradeEvent {
             timestamp,
@@ -1036,19 +1181,17 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
         forecast_iter,
         prev_iter
     ) {
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
 
-        let source_val = source.ok_or(DataError::DataFrame("Missing DataSource".into()))?;
-        let cat_val = cat.ok_or(DataError::DataFrame("Missing Category".into()))?;
-        let name_val = name.ok_or(DataError::DataFrame("Missing NewsName".into()))?;
-        let country_val = country.ok_or(DataError::DataFrame("Missing CountryCode".into()))?;
-        let currency_val = currency.ok_or(DataError::DataFrame("Missing CurrencyCode".into()))?;
-        let impact_val = impact.ok_or(DataError::DataFrame("Missing EconomicImpact".into()))?;
+        let source_val = source.ok_or_else(|| DataError::DataFrame("Missing DataSource".into()))?;
+        let cat_val = cat.ok_or_else(|| DataError::DataFrame("Missing Category".into()))?;
+        let name_val = name.ok_or_else(|| DataError::DataFrame("Missing NewsName".into()))?;
+        let country_val =
+            country.ok_or_else(|| DataError::DataFrame("Missing CountryCode".into()))?;
+        let currency_val =
+            currency.ok_or_else(|| DataError::DataFrame("Missing CurrencyCode".into()))?;
+        let impact_val =
+            impact.ok_or_else(|| DataError::DataFrame("Missing EconomicImpact".into()))?;
 
         let country_code = std::str::FromStr::from_str(country_val).unwrap_or(CountryCode::Us);
         let economic_impact = match impact_val {
@@ -1119,8 +1262,9 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
         count_ca.iter()
     ) {
         let ts_open_val =
-            ts_open.ok_or(DataError::DataFrame("Missing TPO Open Timestamp".into()))?;
-        let ts_val = ts_close.ok_or(DataError::DataFrame("Missing TPO Timestamp".into()))?;
+            ts_open.ok_or_else(|| DataError::DataFrame("Missing TPO Open Timestamp".into()))?;
+        let ts_val =
+            ts_close.ok_or_else(|| DataError::DataFrame("Missing TPO Timestamp".into()))?;
 
         if Some(ts_open_val) != current_window_start {
             if !current_bins.is_empty()
@@ -1129,16 +1273,8 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
 
                 profiles.push(Tpo {
-                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "TPO open timestamp out of range: {start}"
-                        )))
-                    })?,
-                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "TPO close timestamp out of range: {end}"
-                        )))
-                    })?,
+                    open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+                    close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1150,13 +1286,13 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
             current_bins = Vec::new();
         }
 
-        let count_val = count.ok_or(DataError::DataFrame("Missing TPO Count".into()))?;
+        let count_val = count.ok_or_else(|| DataError::DataFrame("Missing TPO Count".into()))?;
         current_bins.push(TpoBin {
             price_bin_start: Price(
-                p_start.ok_or(DataError::DataFrame("Missing TPO Price Start".into()))?,
+                p_start.ok_or_else(|| DataError::DataFrame("Missing TPO Price Start".into()))?,
             ),
             price_bin_end: Price(
-                p_end.ok_or(DataError::DataFrame("Missing TPO Price End".into()))?,
+                p_end.ok_or_else(|| DataError::DataFrame("Missing TPO Price End".into()))?,
             ),
             time_slot_count: Count(count_val),
         });
@@ -1167,16 +1303,8 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(Tpo {
-            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "TPO open timestamp out of range: {start}"
-                )))
-            })?,
-            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "TPO close timestamp out of range: {end}"
-                )))
-            })?,
+            open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+            close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1276,8 +1404,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
         n_sell_iter
     ) {
         let ts_open_val =
-            ts_open.ok_or(DataError::DataFrame("Missing VP Open Timestamp".into()))?;
-        let ts_val = ts_close.ok_or(DataError::DataFrame("Missing VP Timestamp".into()))?;
+            ts_open.ok_or_else(|| DataError::DataFrame("Missing VP Open Timestamp".into()))?;
+        let ts_val = ts_close.ok_or_else(|| DataError::DataFrame("Missing VP Timestamp".into()))?;
 
         if Some(ts_open_val) != current_window_start {
             if !current_bins.is_empty()
@@ -1285,16 +1413,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
             {
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
                 profiles.push(VolumeProfile {
-                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "VP open timestamp out of range: {start}"
-                        )))
-                    })?,
-                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "VP close timestamp out of range: {end}"
-                        )))
-                    })?,
+                    open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+                    close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1308,11 +1428,13 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
         current_bins.push(VolumeProfileBin {
             price_bin_start: Price(
-                p_start.ok_or(DataError::DataFrame("Missing VP Price Start".into()))?,
+                p_start.ok_or_else(|| DataError::DataFrame("Missing VP Price Start".into()))?,
             ),
-            price_bin_end: Price(p_end.ok_or(DataError::DataFrame("Missing VP Price End".into()))?),
+            price_bin_end: Price(
+                p_end.ok_or_else(|| DataError::DataFrame("Missing VP Price End".into()))?,
+            ),
             volume: vol
-                .ok_or(DataError::DataFrame("Missing VP Volume".into()))
+                .ok_or_else(|| DataError::DataFrame("Missing VP Volume".into()))
                 .map(Quantity)?,
             taker_buy_base_asset_volume: tb_base.map(Quantity),
             taker_sell_base_asset_volume: ts_base.map(Quantity),
@@ -1330,16 +1452,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(VolumeProfile {
-            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "VP open timestamp out of range: {start}"
-                )))
-            })?,
-            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "VP close timestamp out of range: {end}"
-                )))
-            })?,
+            open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+            close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1351,20 +1465,212 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 }
 
 fn extract_ema(df: DataFrame) -> ChapatyResult<Box<[Ema]>> {
-    extract_technical_indicator(df, |timestamp, price| Ema { timestamp, price })
+    extract_price_timeseries(df, |timestamp, price| Ema {
+        timestamp,
+        price: Price(price),
+    })
 }
 
 fn extract_rsi(df: DataFrame) -> ChapatyResult<Box<[Rsi]>> {
-    extract_technical_indicator(df, |timestamp, price| Rsi { timestamp, price })
+    extract_price_timeseries(df, |timestamp, price| Rsi {
+        timestamp,
+        price: Price(price),
+    })
 }
 
 fn extract_sma(df: DataFrame) -> ChapatyResult<Box<[Sma]>> {
-    extract_technical_indicator(df, |timestamp, price| Sma { timestamp, price })
+    extract_price_timeseries(df, |timestamp, price| Sma {
+        timestamp,
+        price: Price(price),
+    })
 }
 
-fn extract_technical_indicator<T, F>(df: DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
+fn extract_trades_vwap(df: DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
+    extract_price_timeseries(df, |timestamp, price| TradesVwap {
+        timestamp,
+        price: Price(price),
+    })
+}
+
+fn extract_ohlcv_vwap(df: DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
+    extract_price_timeseries(df, |timestamp, price| OhlcvVwap {
+        timestamp,
+        price: Price(price),
+    })
+}
+
+fn extract_atr(df: DataFrame) -> ChapatyResult<Box<[Atr]>> {
+    extract_price_timeseries(df, |timestamp, value| Atr {
+        timestamp,
+        range: PriceDelta(value),
+    })
+}
+
+fn extract_roc(df: DataFrame) -> ChapatyResult<Box<[Roc]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let ts_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let ts_ca = ts_dt_logical.physical();
+    let abs_ca = df.f64_ca(CanonicalCol::RocAbsolute)?;
+    let roc_ca = df.f64_ca(CanonicalCol::Roc)?;
+
+    let mut events = Vec::with_capacity(len);
+
+    for (open_ts_opt, ts_opt, abs_opt, roc_opt) in izip!(
+        open_ts_ca.iter(),
+        ts_ca.iter(),
+        abs_ca.iter(),
+        roc_ca.iter()
+    ) {
+        let window_start = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
+        let abs_val = abs_opt.ok_or_else(|| DataError::DataFrame("Missing RocAbsolute".into()))?;
+        let roc_val = roc_opt.ok_or_else(|| DataError::DataFrame("Missing Roc".into()))?;
+
+        events.push(Roc {
+            timestamp,
+            window_start,
+            absolute_change: PriceDelta(abs_val),
+            percentage: roc_val,
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+fn extract_trades_session(df: DataFrame) -> ChapatyResult<Box<[TradesSession]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let date_logical = df.dt_logical(CanonicalCol::Date)?;
+    let date_ca = date_logical.physical();
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let close_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let close_ts_ca = close_dt_logical.physical();
+    let high_ca = df.f64_ca(CanonicalCol::SessionHigh)?;
+    let low_ca = df.f64_ca(CanonicalCol::SessionLow)?;
+    let vol_ca = df.f64_ca(CanonicalCol::SessionVolume)?;
+    let vwap_ca = df.f64_ca(CanonicalCol::SessionVwap)?;
+
+    let mut events = Vec::with_capacity(len);
+    for (date_opt, open_ts_opt, close_ts_opt, high_opt, low_opt, vol_opt, vwap_opt) in izip!(
+        date_ca.iter(),
+        open_ts_ca.iter(),
+        close_ts_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        vol_ca.iter(),
+        vwap_ca.iter()
+    ) {
+        let session = parse_session_date(date_opt)?;
+        let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
+        let high =
+            Price(high_opt.ok_or_else(|| DataError::DataFrame("Missing SessionHigh".into()))?);
+        let low = Price(low_opt.ok_or_else(|| DataError::DataFrame("Missing SessionLow".into()))?);
+        let volume =
+            Quantity(vol_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVolume".into()))?);
+        let vwap =
+            Price(vwap_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVwap".into()))?);
+
+        events.push(TradesSession {
+            session,
+            open_timestamp,
+            close_timestamp,
+            high,
+            low,
+            volume,
+            vwap,
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+fn extract_ohlcv_session(df: DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let date_logical = df.dt_logical(CanonicalCol::Date)?;
+    let date_ca = date_logical.physical();
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let close_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let close_ts_ca = close_dt_logical.physical();
+    let high_ca = df.f64_ca(CanonicalCol::SessionHigh)?;
+    let low_ca = df.f64_ca(CanonicalCol::SessionLow)?;
+    let highest_close_ca = df.f64_ca(CanonicalCol::SessionHighestClose)?;
+    let lowest_close_ca = df.f64_ca(CanonicalCol::SessionLowestClose)?;
+    let vol_ca = df.f64_ca(CanonicalCol::SessionVolume)?;
+    let vwap_ca = df.f64_ca(CanonicalCol::SessionVwap)?;
+
+    let mut events = Vec::with_capacity(len);
+    for (
+        date_opt,
+        open_ts_opt,
+        close_ts_opt,
+        high_opt,
+        low_opt,
+        highest_close_opt,
+        lowest_close_opt,
+        vol_opt,
+        vwap_opt,
+    ) in izip!(
+        date_ca.iter(),
+        open_ts_ca.iter(),
+        close_ts_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        highest_close_ca.iter(),
+        lowest_close_ca.iter(),
+        vol_ca.iter(),
+        vwap_ca.iter()
+    ) {
+        let session = parse_session_date(date_opt)?;
+        let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
+
+        events.push(OhlcvSession {
+            session,
+            open_timestamp,
+            close_timestamp,
+            high: Price(
+                high_opt.ok_or_else(|| DataError::DataFrame("Missing SessionHigh".into()))?,
+            ),
+            low: Price(low_opt.ok_or_else(|| DataError::DataFrame("Missing SessionLow".into()))?),
+            highest_close: Price(
+                highest_close_opt
+                    .ok_or_else(|| DataError::DataFrame("Missing SessionHighestClose".into()))?,
+            ),
+            lowest_close: Price(
+                lowest_close_opt
+                    .ok_or_else(|| DataError::DataFrame("Missing SessionLowestClose".into()))?,
+            ),
+            volume: Quantity(
+                vol_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVolume".into()))?,
+            ),
+            vwap: Price(
+                vwap_opt.ok_or_else(|| DataError::DataFrame("Missing SessionVwap".into()))?,
+            ),
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+fn extract_price_timeseries<T, F>(df: DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
 where
-    F: Fn(DateTime<Utc>, Price) -> T,
+    F: Fn(DateTime<Utc>, f64) -> T,
 {
     let len = df.height();
     if len == 0 {
@@ -1378,22 +1684,32 @@ where
     let mut events = Vec::with_capacity(len);
 
     for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
-        let ts_val = ts_opt.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
         let price_val = match price_opt {
             Some(v) => v,
             None => continue,
         };
 
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
+        let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
 
-        events.push(constructor(timestamp, Price(price_val)));
+        events.push(constructor(timestamp, price_val));
     }
 
     Ok(events.into_boxed_slice())
+}
+
+fn parse_session_date(date_opt: Option<i64>) -> ChapatyResult<SessionDate> {
+    let dt = micros_to_utc(date_opt, CanonicalCol::Date)?;
+    Ok(SessionDate(dt.date_naive()))
+}
+
+fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTime<Utc>> {
+    let ts_val = ts_opt.ok_or_else(|| DataError::DataFrame(format!("Missing {col:?}")))?;
+    DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
+        DataError::TimestampConversion(format!(
+            "Failed to convert {col:?} ({ts_val}) from microseconds to UTC DateTime"
+        ))
+        .into()
+    })
 }
 
 // ================================================================================================

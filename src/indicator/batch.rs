@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use polars::{
     datatypes::{TimeUnit, TimeZone},
-    prelude::{DataType, Expr, LazyFrame, NULL, SortMultipleOptions, col, lit, when},
+    prelude::{DataType, Expr, LazyFrame, NULL, Schema, SortMultipleOptions, col, lit, when},
 };
 
 use crate::{
@@ -28,6 +30,7 @@ pub trait WithBatchIndicators: Sized {
 
 pub(crate) trait BatchCompute {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame>;
+    fn output_schema(&self) -> Arc<Schema>;
 }
 
 trait IndicatorExprExt {

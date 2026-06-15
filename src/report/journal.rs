@@ -322,14 +322,14 @@ impl ExprDefineExt for Expr {
 
 pub trait JournalExprExt {
     /// Evaluates to true if the expression resolves to an Active or Closed state.
-    fn is_executed(self) -> Expr;
+    fn trade_executed(self) -> Expr;
 
     /// Converts a boolean mask into a sum of occurrences.
     fn count_true(self) -> Expr;
 }
 
 impl JournalExprExt for Expr {
-    fn is_executed(self) -> Expr {
+    fn trade_executed(self) -> Expr {
         self.clone()
             .eq(lit(StateKind::Active.as_str()))
             .or(self.eq(lit(StateKind::Closed.as_str())))
@@ -411,7 +411,7 @@ mod test {
             .as_df()
             .clone()
             .lazy()
-            .filter(col(JournalCol::TradeState).is_executed())
+            .filter(col(JournalCol::TradeState).trade_executed())
             .collect()
             .expect("Failed to apply is_executed_expr filter");
 

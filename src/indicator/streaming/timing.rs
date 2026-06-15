@@ -133,7 +133,7 @@ impl StreamingTdXSequential {
     /// ensuring extreme trend breakouts continue to emit valid exhaustion signals
     /// rather than being silently ignored.
     fn is_setup_completion(&self, count: usize) -> bool {
-        count > 0 && count % self.target_count == 0
+        count > 0 && count.is_multiple_of(self.target_count)
     }
 }
 
@@ -143,9 +143,7 @@ impl StreamingIndicator for StreamingTdXSequential {
 
     fn update(&mut self, candle: Self::Input) -> Self::Output<'_> {
         let close = candle.close.0;
-        let Some(historical_close) = self.buffer.push(close) else {
-            return None;
-        };
+        let historical_close = self.buffer.push(close)?;
         let current_cmp = PriceRelationship::from(close.partial_cmp(&historical_close));
 
         self.state = match current_cmp {
@@ -172,10 +170,10 @@ impl StreamingIndicator for StreamingTdXSequential {
 
         self.last_cmp = current_cmp;
 
-        if let InternalSetupState::Tracking { direction, count } = self.state {
-            if self.is_setup_completion(count) {
-                return Some(direction);
-            }
+        if let InternalSetupState::Tracking { direction, count } = self.state
+            && self.is_setup_completion(count)
+        {
+            return Some(direction);
         }
 
         None
@@ -426,7 +424,7 @@ impl StreamingTdSequential {
             let is_new_trend = self
                 .countdown
                 .as_ref()
-                .map_or(true, |active| active.direction != direction);
+                .is_none_or(|active| active.direction != direction);
 
             if is_new_trend {
                 // Initialize a fresh Phase 2 engine for the new trend.

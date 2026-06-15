@@ -6,7 +6,10 @@ use crate::{
     data::event::{
         EconomicCalendarId, MarketEvent, OhlcvId, StreamId, TpoId, TradesId, VolumeProfileId,
     },
-    indicator::batch::event::{EmaId, RsiId, SmaId},
+    indicator::batch::event::{
+        AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
+        TradesVwapId,
+    },
     sim::data::EventMap,
     sorted_vec_map::SortedVecMap,
 };
@@ -49,6 +52,30 @@ impl StreamEntity for SmaId {
 }
 
 impl StreamEntity for RsiId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for TradesVwapId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for OhlcvVwapId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for TradesSessionId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for OhlcvSessionId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for AtrId {
+    type Storage = EventMap<Self>;
+}
+
+impl StreamEntity for RocId {
     type Storage = EventMap<Self>;
 }
 
@@ -109,6 +136,12 @@ pub type TpoCursor = Cursor<TpoId>;
 pub type EmaCursor = Cursor<EmaId>;
 pub type SmaCursor = Cursor<SmaId>;
 pub type RsiCursor = Cursor<RsiId>;
+pub type TradesVwapCursor = Cursor<TradesVwapId>;
+pub type OhlcvVwapCursor = Cursor<OhlcvVwapId>;
+pub type TradesSessionCursor = Cursor<TradesSessionId>;
+pub type OhlcvSessionCursor = Cursor<OhlcvSessionId>;
+pub type AtrCursor = Cursor<AtrId>;
+pub type RocCursor = Cursor<RocId>;
 
 impl<S> StreamCursor for Cursor<S>
 where

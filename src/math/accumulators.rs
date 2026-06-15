@@ -9,10 +9,6 @@ pub struct KahanSum {
 }
 
 impl KahanSum {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Consumes the current state and yields a new [`KahanSum`] containing the updated running totals.
     pub fn add(self, value: f64) -> Self {
         let y = value - self.c;

@@ -1,4 +1,6 @@
-use polars::prelude::{LazyFrame, SortMultipleOptions, col};
+use std::sync::Arc;
+
+use polars::prelude::{LazyFrame, Schema, SortMultipleOptions, col};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,6 +23,23 @@ impl BatchCompute for BatchTradesIndicator {
             BatchTradesIndicator::OvernightRange(session) => {
                 pre_compute_overnight_range(*session, lf)
             }
+        }
+    }
+    fn output_schema(&self) -> Arc<Schema> {
+        match self {
+            BatchTradesIndicator::Vwap => Arc::new(Schema::from_iter(vec![
+                CanonicalCol::PointInTime.field(),
+                CanonicalCol::Price.field(),
+            ])),
+            BatchTradesIndicator::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
+                CanonicalCol::Date.field(),
+                CanonicalCol::OpenTimestamp.field(),
+                CanonicalCol::PointInTime.field(),
+                CanonicalCol::SessionHigh.field(),
+                CanonicalCol::SessionLow.field(),
+                CanonicalCol::SessionVolume.field(),
+                CanonicalCol::SessionVwap.field(),
+            ])),
         }
     }
 }

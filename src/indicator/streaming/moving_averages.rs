@@ -126,7 +126,7 @@ impl StreamingEma {
         // Standard EMA Alpha = 2 / (Span + 1)
         let alpha = 2.0 / (size as f64 + 1.0);
         Self {
-            inner: StreamingEwm::new(alpha, size as usize),
+            inner: StreamingEwm::new(alpha, size),
         }
     }
 }

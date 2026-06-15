@@ -11,7 +11,10 @@ use crate::{
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
     gym::trading::types::TradeType,
-    indicator::batch::event::{EmaId, RsiId, SmaId},
+    indicator::batch::event::{
+        AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
+        TradesVwapId,
+    },
     sim::{
         cursor::{Cursor, StreamEntity},
         cursor_group::CursorGroup,
@@ -94,6 +97,12 @@ pub type TpoView<'env> = View<'env, TpoId>;
 pub type EmaView<'env> = View<'env, EmaId>;
 pub type SmaView<'env> = View<'env, SmaId>;
 pub type RsiView<'env> = View<'env, RsiId>;
+pub type TradesVwapView<'env> = View<'env, TradesVwapId>;
+pub type OhlcvVwapView<'env> = View<'env, OhlcvVwapId>;
+pub type TradesSessionView<'env> = View<'env, TradesSessionId>;
+pub type OhlcvSessionView<'env> = View<'env, OhlcvSessionId>;
+pub type AtrView<'env> = View<'env, AtrId>;
+pub type RocView<'env> = View<'env, RocId>;
 
 impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     type Id = S;
@@ -199,6 +208,24 @@ impl<'env> MarketView<'env> {
     pub fn rsi(&self) -> &RsiView<'env> {
         &self.rsi
     }
+    pub fn trades_vwap(&self) -> &TradesVwapView<'env> {
+        &self.trades_vwap
+    }
+    pub fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
+        &self.ohlcv_vwap
+    }
+    pub fn trades_session(&self) -> &TradesSessionView<'env> {
+        &self.trades_session
+    }
+    pub fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
+        &self.ohlcv_session
+    }
+    pub fn atr(&self) -> &AtrView<'env> {
+        &self.atr
+    }
+    pub fn roc(&self) -> &RocView<'env> {
+        &self.roc
+    }
     pub fn current_timestamp(&self) -> DateTime<Utc> {
         self.current_ts
     }
@@ -254,6 +281,12 @@ impl<'env> MarketView<'env> {
             ema: slice_map(sim_data.ema(), cursor.ema())?,
             sma: slice_map(sim_data.sma(), cursor.sma())?,
             rsi: slice_map(sim_data.rsi(), cursor.rsi())?,
+            trades_vwap: slice_map(sim_data.trades_vwap(), cursor.trades_vwap())?,
+            ohlcv_vwap: slice_map(sim_data.ohlcv_vwap(), cursor.ohlcv_vwap())?,
+            trades_session: slice_map(sim_data.trades_session(), cursor.trades_session())?,
+            ohlcv_session: slice_map(sim_data.ohlcv_session(), cursor.ohlcv_session())?,
+            atr: slice_map(sim_data.atr(), cursor.atr())?,
+            roc: slice_map(sim_data.roc(), cursor.roc())?,
             previous_ts: cursor.previous_ts(),
             current_ts: cursor.current_ts(),
             market_ids: sim_data.market_ids(),
@@ -263,8 +296,16 @@ impl<'env> MarketView<'env> {
 
 impl<'env> MarketView<'env> {
     /// Returns a stack-allocated array of all views that support price checking.
-    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 5] {
-        [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
+    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 7] {
+        [
+            &self.ohlcv,
+            &self.trades,
+            &self.ema,
+            &self.sma,
+            &self.rsi,
+            &self.trades_vwap,
+            &self.ohlcv_vwap,
+        ]
     }
 
     /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
@@ -392,6 +433,24 @@ mod test {
                 data: SortedVecMap::new(),
             },
             rsi: RsiView {
+                data: SortedVecMap::new(),
+            },
+            trades_vwap: TradesVwapView {
+                data: SortedVecMap::new(),
+            },
+            ohlcv_vwap: OhlcvVwapView {
+                data: SortedVecMap::new(),
+            },
+            trades_session: TradesSessionView {
+                data: SortedVecMap::new(),
+            },
+            ohlcv_session: OhlcvSessionView {
+                data: SortedVecMap::new(),
+            },
+            atr: AtrView {
+                data: SortedVecMap::new(),
+            },
+            roc: RocView {
                 data: SortedVecMap::new(),
             },
             previous_ts,

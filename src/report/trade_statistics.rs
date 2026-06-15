@@ -99,7 +99,7 @@ impl TryFrom<&Journal> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().shape_has_zero() {
+        if j.as_df().height() == 0 {
             return Ok(TradeStatistics::default());
         }
 
@@ -119,7 +119,7 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().shape_has_zero() {
+        if gj.source().as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -266,31 +266,32 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
 // ================================================================================================
 fn winning_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(return_col).gt(lit(0)))
         .count_true()
 }
 
 fn losing_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(return_col).lt_eq(lit(0)))
         .count_true()
 }
 
 pub(super) fn executed_trade_count_expr(trade_state_col: JournalCol) -> Expr {
-    col(trade_state_col).is_executed().count_true()
+    col(trade_state_col).trade_executed().count_true()
 }
 
 // ================================================================================================
 // === Trade streaks ===
 // ================================================================================================
+
 fn max_consecutive_wins_expr(
     return_col: JournalCol,
     trade_state_col: JournalCol,
 ) -> ChapatyResult<Expr> {
     let predicate = col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(return_col).gt(lit(0)));
     max_consecutive_streak_expr(predicate)
 }
@@ -300,7 +301,7 @@ fn max_consecutive_losses_expr(
     trade_state_col: JournalCol,
 ) -> ChapatyResult<Expr> {
     let predicate = col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(return_col).lt_eq(lit(0)));
     max_consecutive_streak_expr(predicate)
 }
@@ -332,37 +333,37 @@ fn max_consecutive_unrealized_losses_expr(
 // ================================================================================================
 fn avg_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .mean()
 }
 
 fn median_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .median()
 }
 
 fn min_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .min()
 }
 
 fn max_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .max()
 }
 
 fn lower_quantile_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .quantile(lit(0.25), QuantileMethod::Linear)
 }
 
 fn upper_quantile_trade_duration_expr(trade_state_col: JournalCol) -> Expr {
     trade_duration_expr()
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .quantile(lit(0.75), QuantileMethod::Linear)
 }
 
@@ -373,7 +374,7 @@ fn avg_win_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) ->
     trade_duration_expr()
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).gt(lit(0))),
         )
         .mean()
@@ -383,7 +384,7 @@ fn median_win_duration_expr(return_col: JournalCol, trade_state_col: JournalCol)
     trade_duration_expr()
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).gt(lit(0))),
         )
         .median()
@@ -401,7 +402,7 @@ fn avg_loss_duration_expr(return_col: JournalCol, trade_state_col: JournalCol) -
     trade_duration_expr()
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).lt_eq(lit(0))),
         )
         .mean()
@@ -411,7 +412,7 @@ fn median_loss_duration_expr(return_col: JournalCol, trade_state_col: JournalCol
     trade_duration_expr()
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).lt_eq(lit(0))),
         )
         .median()
@@ -462,14 +463,14 @@ fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Exp
 
 fn long_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(trade_type_col).eq(lit(TradeType::Long.as_str())))
         .count_true()
 }
 
 fn short_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
-        .is_executed()
+        .trade_executed()
         .and(col(trade_type_col).eq(lit(TradeType::Short.as_str())))
         .count_true()
 }
@@ -502,11 +503,11 @@ fn quantile_duration_expr(
 ) -> Expr {
     let filter_expr = if is_win {
         col(trade_state_col)
-            .is_executed()
+            .trade_executed()
             .and(col(return_col).gt(lit(0)))
     } else {
         col(trade_state_col)
-            .is_executed()
+            .trade_executed()
             .and(col(return_col).lt_eq(lit(0)))
     };
 

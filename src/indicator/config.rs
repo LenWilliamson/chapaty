@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 /// Defines the smoothing algorithm used to average the True Range.
 /// Traders often experiment with different smoothing types depending on their
 /// responsiveness requirements.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub enum AtrSmoothingType {
     /// J. Welles Wilder's original smoothing method (Running Moving Average / RMA).
     /// Formula: alpha = 1 / window_size
@@ -16,7 +18,7 @@ pub enum AtrSmoothingType {
     Ema,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct AtrConfig {
     pub(super) window: u16,
     pub(super) smoothing: AtrSmoothingType,
@@ -60,7 +62,7 @@ pub struct RsiWindow(pub u16);
 
 /// Defines how far back the indicator should look.
 /// Gives the trader the degree of freedom to mix time-based and bar-based strategies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LookbackWindow {
     /// A fixed number of bars/events (e.g., 14 periods).
     Bars(usize),

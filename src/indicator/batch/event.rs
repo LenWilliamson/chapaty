@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::{AggregatedPrice, Price, PriceDelta, SessionDate, Symbol, Volume},
+        domain::{AggregatedPrice, Price, PriceDelta, SessionDate, SessionWindow, Symbol, Volume},
         event::{MarketEvent, OhlcvId, PriceReachable, StreamId, SymbolProvider, TradesId},
     },
     gym::trading::TradeType,
     indicator::{
         batch::ohlcv::SessionCfg,
-        config::{EmaWindow, RsiWindow, SmaWindow},
+        config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
     },
 };
 
@@ -154,6 +154,7 @@ pub struct OhlcvVwapId {
     pub price_aggregation: AggregatedPrice,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OhlcvVwap {
     pub timestamp: DateTime<Utc>,
     pub price: Price,
@@ -195,6 +196,7 @@ pub struct TradesVwapId {
     pub parent: TradesId,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TradesVwap {
     pub timestamp: DateTime<Utc>,
     pub price: Price,
@@ -235,7 +237,7 @@ pub struct OhlcvSessionId {
     pub cfg: SessionCfg,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct OhlcvSession {
     pub session: SessionDate,
     pub open_timestamp: DateTime<Utc>,
@@ -274,10 +276,10 @@ impl SymbolProvider for OhlcvSessionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TradesSessionId {
     pub parent: TradesId,
-    pub cfg: SessionCfg,
+    pub cfg: SessionWindow,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TradesSession {
     pub session: SessionDate,
     pub open_timestamp: DateTime<Utc>,
@@ -314,6 +316,7 @@ impl SymbolProvider for TradesSessionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct AtrId {
     pub parent: OhlcvId,
+    pub cfg: AtrConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -345,6 +348,7 @@ impl SymbolProvider for AtrId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RocId {
     pub parent: OhlcvId,
+    pub lookback: LookbackWindow,
 }
 
 /// Represents the Rate of Change (ROC) over a specific lookback window.

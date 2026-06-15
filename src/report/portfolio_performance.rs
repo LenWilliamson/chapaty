@@ -125,7 +125,7 @@ impl TryFrom<&Journal> for PortfolioPerformance {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().shape_has_zero() {
+        if j.as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -146,7 +146,7 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().shape_has_zero() {
+        if gj.source().as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -324,19 +324,19 @@ fn exprs(cfg: RiskMetricsConfig) -> Vec<Expr> {
 // ================================================================================================
 fn net_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .sum()
 }
 
 pub fn avg_trade_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .mean()
 }
 
 pub fn expected_value_per_trade_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .mean()
 }
 
@@ -344,7 +344,7 @@ fn total_win_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) ->
     col(return_col)
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).gt(lit(0))),
         )
         .sum()
@@ -354,7 +354,7 @@ fn total_loss_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr 
     col(return_col)
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).lt_eq(lit(0))),
         )
         .sum()
@@ -459,7 +459,7 @@ fn trade_omega_ratio_expr(
 ) -> Expr {
     let pct_returns = pct_trade_returns_expr(return_col, cfg.initial_portfolio_value());
     let threshold_expr = lit(cfg.risk_free_rate_f64());
-    let executed = col(trade_state_col).is_executed();
+    let executed = col(trade_state_col).trade_executed();
 
     let gains = (pct_returns.clone() - threshold_expr.clone())
         .filter(
@@ -532,7 +532,7 @@ fn max_realized_drawdown_pct_expr(initial_value: u32) -> Expr {
 // ================================================================================================
 fn win_rate_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .gt(lit(0))
         .mean()
         .fill_null(lit(0.0))
@@ -549,13 +549,13 @@ fn avg_win_to_avg_loss_ratio_expr(return_col: JournalCol, trade_state_col: Journ
 // ================================================================================================
 fn trade_return_std_dev_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .std(0)
 }
 
 fn trade_return_variance_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .var(0)
 }
 
@@ -578,7 +578,7 @@ fn avg_win_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> E
     col(return_col)
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).gt(lit(0))),
         )
         .mean()
@@ -604,7 +604,7 @@ fn avg_loss_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> 
     col(return_col)
         .filter(
             col(trade_state_col)
-                .is_executed()
+                .trade_executed()
                 .and(col(return_col).lt_eq(lit(0))),
         )
         .mean()
@@ -629,13 +629,13 @@ fn upper_quantile_loss_return_expr(return_col: JournalCol, trade_state_col: Jour
 // ================================================================================================
 fn largest_win_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .max()
 }
 
 fn largest_loss_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .min()
         .abs()
 }
@@ -694,7 +694,7 @@ fn clean_loss_expr(
 fn rmsd_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     let mean_return = avg_trade_profit_expr(return_col, trade_state_col);
 
-    (col(return_col).filter(col(trade_state_col).is_executed()) - mean_return)
+    (col(return_col).filter(col(trade_state_col).trade_executed()) - mean_return)
         .pow(lit(2.0))
         .mean()
         .sqrt()
@@ -703,7 +703,7 @@ fn rmsd_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
 fn mae_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     let mean_return = avg_trade_profit_expr(return_col, trade_state_col);
 
-    (col(return_col).filter(col(trade_state_col).is_executed()) - mean_return)
+    (col(return_col).filter(col(trade_state_col).trade_executed()) - mean_return)
         .abs()
         .mean()
 }
@@ -723,7 +723,7 @@ fn mean_return_expr(
     initial_value: u32,
 ) -> Expr {
     pct_trade_returns_expr(return_col, initial_value)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .mean()
 }
 
@@ -741,7 +741,7 @@ fn return_std_expr(
     initial_value: u32,
 ) -> Expr {
     pct_trade_returns_expr(return_col, initial_value)
-        .filter(col(trade_state_col).is_executed())
+        .filter(col(trade_state_col).trade_executed())
         .std(1)
 }
 
@@ -761,7 +761,7 @@ fn downside_return_expr(
     let pct_returns = pct_trade_returns_expr(return_col, initial_value);
     pct_returns.clone().filter(
         col(trade_state_col)
-            .is_executed()
+            .trade_executed()
             .and(pct_returns.lt(lit(0.0))),
     )
 }
@@ -856,7 +856,7 @@ fn quantile_return_expr_by_subset(
     quantile: f64,
     subset: TradeSubset,
 ) -> Expr {
-    let executed = col(trade_state_col).is_executed();
+    let executed = col(trade_state_col).trade_executed();
     let filter = match subset {
         TradeSubset::All => Some(executed),
         TradeSubset::Wins => Some(executed.and(col(return_col).gt(lit(0)))),
@@ -886,7 +886,7 @@ fn unrealized_filtered_sum_expr_by_subset(
     let return_expr = col(return_col);
     let unrealized_filter = col(exit_reason_col)
         .is_null()
-        .and(col(trade_state_col).is_executed());
+        .and(col(trade_state_col).trade_executed());
 
     let combined_filter = match subset {
         TradeSubset::All => unrealized_filter,

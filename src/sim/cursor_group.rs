@@ -7,8 +7,9 @@ use crate::{
     error::{ChapatyResult, DataError},
     sim::{
         cursor::{
-            EconomicCalendarCursor, EmaCursor, OhlcvCursor, RsiCursor, SmaCursor, StreamCursor,
-            TpoCursor, TradeCursor, VolumeProfileCursor,
+            AtrCursor, EconomicCalendarCursor, EmaCursor, OhlcvCursor, OhlcvSessionCursor,
+            OhlcvVwapCursor, RocCursor, RsiCursor, SmaCursor, StreamCursor, TpoCursor, TradeCursor,
+            TradesSessionCursor, TradesVwapCursor, VolumeProfileCursor,
         },
         data::SimulationData,
     },
@@ -24,6 +25,12 @@ pub struct CursorGroup {
     ema: EmaCursor,
     sma: SmaCursor,
     rsi: RsiCursor,
+    trades_vwap: TradesVwapCursor,
+    ohlcv_vwap: OhlcvVwapCursor,
+    trades_session: TradesSessionCursor,
+    ohlcv_session: OhlcvSessionCursor,
+    atr: AtrCursor,
+    roc: RocCursor,
 
     // === Time State ===
     previous_ts: Option<DateTime<Utc>>,
@@ -43,6 +50,12 @@ impl CursorGroup {
             ema: EmaCursor::new(sim_data.ema()),
             sma: SmaCursor::new(sim_data.sma()),
             rsi: RsiCursor::new(sim_data.rsi()),
+            trades_vwap: TradesVwapCursor::new(sim_data.trades_vwap()),
+            ohlcv_vwap: OhlcvVwapCursor::new(sim_data.ohlcv_vwap()),
+            trades_session: TradesSessionCursor::new(sim_data.trades_session()),
+            ohlcv_session: OhlcvSessionCursor::new(sim_data.ohlcv_session()),
+            atr: AtrCursor::new(sim_data.atr()),
+            roc: RocCursor::new(sim_data.roc()),
             previous_ts: None,
             current_ts: start_ts,
         };
@@ -90,6 +103,30 @@ impl CursorGroup {
         &self.rsi
     }
 
+    pub fn trades_vwap(&self) -> &TradesVwapCursor {
+        &self.trades_vwap
+    }
+
+    pub fn ohlcv_vwap(&self) -> &OhlcvVwapCursor {
+        &self.ohlcv_vwap
+    }
+
+    pub fn trades_session(&self) -> &TradesSessionCursor {
+        &self.trades_session
+    }
+
+    pub fn ohlcv_session(&self) -> &OhlcvSessionCursor {
+        &self.ohlcv_session
+    }
+
+    pub fn atr(&self) -> &AtrCursor {
+        &self.atr
+    }
+
+    pub fn roc(&self) -> &RocCursor {
+        &self.roc
+    }
+
     pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
         [
             self.ohlcv.next_point_in_time(sim_data.ohlcv()),
@@ -101,6 +138,14 @@ impl CursorGroup {
             self.ema.next_point_in_time(sim_data.ema()),
             self.sma.next_point_in_time(sim_data.sma()),
             self.rsi.next_point_in_time(sim_data.rsi()),
+            self.trades_vwap.next_point_in_time(sim_data.trades_vwap()),
+            self.ohlcv_vwap.next_point_in_time(sim_data.ohlcv_vwap()),
+            self.trades_session
+                .next_point_in_time(sim_data.trades_session()),
+            self.ohlcv_session
+                .next_point_in_time(sim_data.ohlcv_session()),
+            self.atr.next_point_in_time(sim_data.atr()),
+            self.roc.next_point_in_time(sim_data.roc()),
         ]
         .into_iter()
         .flatten()
@@ -161,6 +206,18 @@ impl CursorGroup {
                 .find_first_open_at_or_after(sim_data.sma(), current_ep_end),
             self.rsi
                 .find_first_open_at_or_after(sim_data.rsi(), current_ep_end),
+            self.trades_vwap
+                .find_first_open_at_or_after(sim_data.trades_vwap(), current_ep_end),
+            self.ohlcv_vwap
+                .find_first_open_at_or_after(sim_data.ohlcv_vwap(), current_ep_end),
+            self.trades_session
+                .find_first_open_at_or_after(sim_data.trades_session(), current_ep_end),
+            self.ohlcv_session
+                .find_first_open_at_or_after(sim_data.ohlcv_session(), current_ep_end),
+            self.atr
+                .find_first_open_at_or_after(sim_data.atr(), current_ep_end),
+            self.roc
+                .find_first_open_at_or_after(sim_data.roc(), current_ep_end),
         ]
         .into_iter()
         .flatten()
@@ -190,6 +247,18 @@ impl CursorGroup {
                 .find_first_point_in_time_at_or_after(sim_data.sma(), next_start),
             self.rsi
                 .find_first_point_in_time_at_or_after(sim_data.rsi(), next_start),
+            self.trades_vwap
+                .find_first_point_in_time_at_or_after(sim_data.trades_vwap(), next_start),
+            self.ohlcv_vwap
+                .find_first_point_in_time_at_or_after(sim_data.ohlcv_vwap(), next_start),
+            self.trades_session
+                .find_first_point_in_time_at_or_after(sim_data.trades_session(), next_start),
+            self.ohlcv_session
+                .find_first_point_in_time_at_or_after(sim_data.ohlcv_session(), next_start),
+            self.atr
+                .find_first_point_in_time_at_or_after(sim_data.atr(), next_start),
+            self.roc
+                .find_first_point_in_time_at_or_after(sim_data.roc(), next_start),
         ]
         .into_iter()
         .flatten()
@@ -243,6 +312,12 @@ impl CursorGroup {
             && self.ema.is_done(sim_data.ema())
             && self.sma.is_done(sim_data.sma())
             && self.rsi.is_done(sim_data.rsi())
+            && self.trades_vwap.is_done(sim_data.trades_vwap())
+            && self.ohlcv_vwap.is_done(sim_data.ohlcv_vwap())
+            && self.trades_session.is_done(sim_data.trades_session())
+            && self.ohlcv_session.is_done(sim_data.ohlcv_session())
+            && self.atr.is_done(sim_data.atr())
+            && self.roc.is_done(sim_data.roc())
     }
 }
 
@@ -256,6 +331,12 @@ impl CursorGroup {
         self.ema.to_end(sim_data.ema());
         self.sma.to_end(sim_data.sma());
         self.rsi.to_end(sim_data.rsi());
+        self.trades_vwap.to_end(sim_data.trades_vwap());
+        self.ohlcv_vwap.to_end(sim_data.ohlcv_vwap());
+        self.trades_session.to_end(sim_data.trades_session());
+        self.ohlcv_session.to_end(sim_data.ohlcv_session());
+        self.atr.to_end(sim_data.atr());
+        self.roc.to_end(sim_data.roc());
     }
 
     fn rewind(&mut self) {
@@ -267,6 +348,12 @@ impl CursorGroup {
         self.ema.rewind();
         self.sma.rewind();
         self.rsi.rewind();
+        self.trades_vwap.rewind();
+        self.ohlcv_vwap.rewind();
+        self.trades_session.rewind();
+        self.ohlcv_session.rewind();
+        self.atr.rewind();
+        self.roc.rewind();
     }
 
     fn advance_all(&mut self, sim_data: &SimulationData, ts: DateTime<Utc>) {
@@ -278,6 +365,12 @@ impl CursorGroup {
         self.ema.advance(sim_data.ema(), ts);
         self.sma.advance(sim_data.sma(), ts);
         self.rsi.advance(sim_data.rsi(), ts);
+        self.trades_vwap.advance(sim_data.trades_vwap(), ts);
+        self.ohlcv_vwap.advance(sim_data.ohlcv_vwap(), ts);
+        self.trades_session.advance(sim_data.trades_session(), ts);
+        self.ohlcv_session.advance(sim_data.ohlcv_session(), ts);
+        self.atr.advance(sim_data.atr(), ts);
+        self.roc.advance(sim_data.roc(), ts);
     }
 }
 

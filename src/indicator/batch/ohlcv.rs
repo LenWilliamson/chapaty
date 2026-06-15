@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use polars::{
     lazy::dsl::max_horizontal,
     prelude::{
         DataType, EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
-        SortMultipleOptions, col, lit, when,
+        Schema, SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
 };
@@ -49,6 +51,36 @@ impl BatchCompute for BatchOhlcvIndicator {
             }
         }
     }
+
+    fn output_schema(&self) -> Arc<Schema> {
+        match self {
+            BatchOhlcvIndicator::Ema(_)
+            | BatchOhlcvIndicator::Sma(_)
+            | BatchOhlcvIndicator::Rsi(_)
+            | BatchOhlcvIndicator::Atr(_)
+            | BatchOhlcvIndicator::Vwap(_) => Arc::new(Schema::from_iter(vec![
+                CanonicalCol::PointInTime.field(),
+                CanonicalCol::Price.field(),
+            ])),
+            BatchOhlcvIndicator::RateOfChange(_) => Arc::new(Schema::from_iter(vec![
+                CanonicalCol::OpenTimestamp.field(),
+                CanonicalCol::PointInTime.field(),
+                CanonicalCol::RocAbsolute.field(),
+                CanonicalCol::Roc.field(),
+            ])),
+            BatchOhlcvIndicator::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
+                CanonicalCol::Date.field(),
+                CanonicalCol::OpenTimestamp.field(),
+                CanonicalCol::PointInTime.field(),
+                CanonicalCol::SessionHigh.field(),
+                CanonicalCol::SessionLow.field(),
+                CanonicalCol::SessionHighestClose.field(),
+                CanonicalCol::SessionLowestClose.field(),
+                CanonicalCol::SessionVolume.field(),
+                CanonicalCol::SessionVwap.field(),
+            ])),
+        }
+    }
 }
 
 // ================================================================================================
@@ -87,7 +119,7 @@ impl OhlcvIndicatorExprExt for Expr {
         let gain = delta.clone().clip(lit(0.0), lit(f64::MAX));
         let loss = delta.clip(lit(f64::MIN), lit(0.0)).abs();
 
-        let avg_gain = gain.ewm_mean(options.clone());
+        let avg_gain = gain.ewm_mean(options);
         let avg_loss = loss.ewm_mean(options);
 
         let is_flat = avg_gain

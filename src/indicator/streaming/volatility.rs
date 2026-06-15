@@ -151,7 +151,6 @@ impl KahanAccumulator {
     ///
     /// Non-positive or non-finite volume is skipped: it contributes nothing and a zero-volume
     /// bar must not pull the average or risk a zero-division once it's the only input.
-    #[inline]
     fn add(self, price: Price, volume: Volume) -> Self {
         let v = volume.0;
         if !v.is_finite() || v <= 0.0 {
@@ -165,10 +164,14 @@ impl KahanAccumulator {
     }
 
     /// Current VWAP, or `None` before any positive-volume input has arrived.
-    #[inline]
     fn value(self) -> Option<f64> {
         let total_v = self.sum_volume.value();
         (total_v > 0.0).then(|| self.sum_price_x_volume.value() / total_v)
+    }
+
+    fn reset(&mut self) {
+        self.sum_price_x_volume.reset();
+        self.sum_volume.reset();
     }
 }
 
@@ -230,7 +233,7 @@ impl StreamingIndicator for StreamingOhlcvVwap {
     }
 
     fn reset(&mut self) {
-        self.acc = KahanAccumulator::default();
+        self.acc.reset();
     }
 }
 
@@ -518,12 +521,12 @@ mod tests {
         // A leading 1.0 followed by many terms below its ULP: naive addition drops
         // each one, Kahan accumulates them.
         let mut values = vec![1.0];
-        values.extend(std::iter::repeat(1e-16).take(100));
+        values.extend(std::iter::repeat_n(1e-16, 100));
         let truth = 1.0 + 100.0 * 1e-16;
 
         let kahan = values
             .iter()
-            .fold(KahanSum::new(), |acc, &v| acc.add(v))
+            .fold(KahanSum::default(), |acc, &v| acc.add(v))
             .value();
         let naive: f64 = values.iter().sum();
 

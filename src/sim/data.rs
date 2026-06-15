@@ -10,7 +10,10 @@ use crate::{
     },
     error::{ChapatyResult, IoError, SystemError},
     gym::trading::config::EnvConfig,
-    indicator::batch::event::{EmaId, RsiId, SmaId},
+    indicator::batch::event::{
+        AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
+        TradesVwapId,
+    },
     io::{IoConfig, SerdeFormat},
     sorted_vec_map::SortedVecMap,
 };
@@ -24,6 +27,12 @@ pub type TpoEventMap = EventMap<TpoId>;
 pub type EmaEventMap = EventMap<EmaId>;
 pub type SmaEventMap = EventMap<SmaId>;
 pub type RsiEventMap = EventMap<RsiId>;
+pub type TradesVwapEventMap = EventMap<TradesVwapId>;
+pub type OhlcvVwapEventMap = EventMap<OhlcvVwapId>;
+pub type TradesSessionEventMap = EventMap<TradesSessionId>;
+pub type OhlcvSessionEventMap = EventMap<OhlcvSessionId>;
+pub type AtrEventMap = EventMap<AtrId>;
+pub type RocEventMap = EventMap<RocId>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Streams {
@@ -55,6 +64,12 @@ impl Default for Streams {
             ema: EmaEventMap::new(),
             sma: SmaEventMap::new(),
             rsi: RsiEventMap::new(),
+            trades_vwap: TradesVwapEventMap::new(),
+            ohlcv_vwap: OhlcvVwapEventMap::new(),
+            trades_session: TradesSessionEventMap::new(),
+            ohlcv_session: OhlcvSessionEventMap::new(),
+            atr: AtrEventMap::new(),
+            roc: RocEventMap::new(),
         }
     }
 }
@@ -97,12 +112,45 @@ impl Streams {
     pub(crate) fn with_rsi(self, rsi: RsiEventMap) -> Self {
         Self { rsi, ..self }
     }
+
+    pub(crate) fn with_trades_vwap(self, trades_vwap: TradesVwapEventMap) -> Self {
+        Self {
+            trades_vwap,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_ohlcv_vwap(self, ohlcv_vwap: OhlcvVwapEventMap) -> Self {
+        Self { ohlcv_vwap, ..self }
+    }
+
+    pub(crate) fn with_trades_session(self, trades_session: TradesSessionEventMap) -> Self {
+        Self {
+            trades_session,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_ohlcv_session(self, ohlcv_session: OhlcvSessionEventMap) -> Self {
+        Self {
+            ohlcv_session,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_atr(self, atr: AtrEventMap) -> Self {
+        Self { atr, ..self }
+    }
+
+    pub(crate) fn with_roc(self, roc: RocEventMap) -> Self {
+        Self { roc, ..self }
+    }
 }
 
 impl Streams {
     /// Returns a unified list of all data streams as trait objects.
     /// This allows generic iteration over "Time" without worrying about the underlying Types.
-    fn as_array(&self) -> [&dyn StreamTimeInfo; 8] {
+    fn as_array(&self) -> [&dyn StreamTimeInfo; 14] {
         [
             &self.ohlcv,
             &self.trade,
@@ -112,6 +160,12 @@ impl Streams {
             &self.ema,
             &self.sma,
             &self.rsi,
+            &self.trades_vwap,
+            &self.ohlcv_vwap,
+            &self.trades_session,
+            &self.ohlcv_session,
+            &self.atr,
+            &self.roc,
         ]
     }
 }
@@ -156,6 +210,30 @@ impl SimulationData {
 
     pub fn rsi(&self) -> &RsiEventMap {
         &self.streams.rsi
+    }
+
+    pub fn trades_vwap(&self) -> &TradesVwapEventMap {
+        &self.streams.trades_vwap
+    }
+
+    pub fn ohlcv_vwap(&self) -> &OhlcvVwapEventMap {
+        &self.streams.ohlcv_vwap
+    }
+
+    pub fn trades_session(&self) -> &TradesSessionEventMap {
+        &self.streams.trades_session
+    }
+
+    pub fn ohlcv_session(&self) -> &OhlcvSessionEventMap {
+        &self.streams.ohlcv_session
+    }
+
+    pub fn atr(&self) -> &AtrEventMap {
+        &self.streams.atr
+    }
+
+    pub fn roc(&self) -> &RocEventMap {
+        &self.streams.roc
     }
 
     pub fn market_ids(&self) -> Arc<[MarketId]> {

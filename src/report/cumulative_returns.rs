@@ -90,7 +90,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().shape_has_zero() {
+        if j.as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -99,7 +99,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
             .as_df()
             .clone()
             .lazy()
-            .filter(col(JournalCol::TradeState).is_executed())
+            .filter(col(JournalCol::TradeState).trade_executed())
             .select(exprs(init_val))
             .collect()
             .map_err(convert_err)?;
@@ -112,7 +112,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().shape_has_zero() {
+        if gj.source().as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -130,7 +130,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 
                 let lf = df
                     .lazy()
-                    .filter(col(JournalCol::TradeState).is_executed())
+                    .filter(col(JournalCol::TradeState).trade_executed())
                     .sort(
                         [JournalCol::EntryTimestamp.as_str()],
                         SortMultipleOptions::default(),

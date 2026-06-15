@@ -17,7 +17,7 @@ impl StreamingRsi {
         let size = window_size.0 as usize;
         // Wilder's Smoothing Alpha = 1 / N
         let alpha = 1.0 / (size as f64);
-        let win = size as usize;
+        let win = size;
 
         Self {
             prev_price: None,
