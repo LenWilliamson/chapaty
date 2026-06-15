@@ -183,7 +183,7 @@ impl Environment {
     }
 
     #[must_use]
-    pub fn episode(&self) -> Episode {
+    pub const fn episode(&self) -> Episode {
         self.ep
     }
 
@@ -196,7 +196,7 @@ impl Environment {
     }
 
     #[must_use]
-    pub fn status(&self) -> EnvStatus {
+    pub const fn status(&self) -> EnvStatus {
         self.env_status
     }
 

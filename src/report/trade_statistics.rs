@@ -29,7 +29,7 @@ pub struct TradeStatistics {
 
 impl Default for TradeStatistics {
     fn default() -> Self {
-        let df = DataFrame::empty_with_schema(&TradeStatistics::to_schema());
+        let df = DataFrame::empty_with_schema(&Self::to_schema());
         Self { df }
     }
 }
@@ -100,7 +100,7 @@ impl TryFrom<&Journal> for TradeStatistics {
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
         if j.as_df().height() == 0 {
-            return Ok(TradeStatistics::default());
+            return Ok(Self::default());
         }
 
         let df = j

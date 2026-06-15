@@ -91,7 +91,7 @@ impl IndicatorExprExt for Expr {
     fn session_date(self, session: SessionWindow) -> Expr {
         let local_ts = self.dt().convert_time_zone(session.pl_time_zone());
         let local_time = local_ts.clone().dt().time();
-        let local_date = local_ts.clone().dt().date();
+        let local_date = local_ts.dt().date();
 
         let start_time = lit(session.start_nanos_since_midnight());
         let end_time = lit(session.end_nanos_since_midnight());

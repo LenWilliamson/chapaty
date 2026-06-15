@@ -892,12 +892,8 @@ fn unrealized_filtered_sum_expr_by_subset(
 
     let combined_filter = match subset {
         TradeSubset::All => unrealized_filter,
-        TradeSubset::Wins => unrealized_filter
-            .clone()
-            .and(return_expr.clone().gt(lit(0))),
-        TradeSubset::Losses => unrealized_filter
-            .clone()
-            .and(return_expr.clone().lt_eq(lit(0))),
+        TradeSubset::Wins => unrealized_filter.and(return_expr.clone().gt(lit(0))),
+        TradeSubset::Losses => unrealized_filter.and(return_expr.clone().lt_eq(lit(0))),
     };
 
     return_expr.filter(combined_filter).sum()
@@ -914,7 +910,7 @@ pub enum OptimizationDirection {
 
 impl PortfolioPerformanceCol {
     #[must_use]
-    pub fn direction(&self) -> OptimizationDirection {
+    pub const fn direction(&self) -> OptimizationDirection {
         use OptimizationDirection::{Maximize, Minimize};
         use PortfolioPerformanceCol::{
             AvgLossReturn, AvgTradeProfit, AvgWinReturn, AvgWinToAvgLossRatio, CleanLoss,
@@ -1691,7 +1687,7 @@ mod tests {
 
         // Variance should be std_dev squared
         assert!(
-            (variance - std_dev.powi(2)).abs() < 0.01,
+            std_dev.mul_add(-std_dev, variance).abs() < 0.01,
             "Variance should equal std_dev squared"
         );
 

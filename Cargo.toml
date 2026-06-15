@@ -90,6 +90,7 @@ tonic-prost-build = "0.14"
 
 [lints.clippy]
 pedantic = "warn"
+nursery = "warn"
 
 [dev-dependencies]
 dirs = "6.0"

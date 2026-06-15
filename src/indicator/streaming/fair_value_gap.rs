@@ -37,19 +37,19 @@ pub struct OpenState {
 
 impl OpenState {
     #[must_use]
-    pub fn max_fill_percentage(&self) -> f64 {
+    pub const fn max_fill_percentage(&self) -> f64 {
         self.max_fill_percentage
     }
 
     #[must_use]
-    pub fn touch_count(&self) -> u32 {
+    pub const fn touch_count(&self) -> u32 {
         self.touch_count
     }
 }
 
 impl FairValueGapState for OpenState {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClosedState {
     closed_time: DateTime<Utc>,
     touch_count: u32,
@@ -57,7 +57,7 @@ pub struct ClosedState {
 
 impl ClosedState {
     #[must_use]
-    pub fn closed_time(&self) -> DateTime<Utc> {
+    pub const fn closed_time(&self) -> DateTime<Utc> {
         self.closed_time
     }
 
@@ -67,7 +67,7 @@ impl ClosedState {
     }
 
     #[must_use]
-    pub fn touch_count(&self) -> u32 {
+    pub const fn touch_count(&self) -> u32 {
         self.touch_count
     }
 }
@@ -83,15 +83,15 @@ pub struct ExpiredState {
 
 impl ExpiredState {
     #[must_use]
-    pub fn expired_time(&self) -> DateTime<Utc> {
+    pub const fn expired_time(&self) -> DateTime<Utc> {
         self.expired_time
     }
     #[must_use]
-    pub fn final_fill_percentage(&self) -> f64 {
+    pub const fn final_fill_percentage(&self) -> f64 {
         self.final_fill_percentage
     }
     #[must_use]
-    pub fn touch_count(&self) -> u32 {
+    pub const fn touch_count(&self) -> u32 {
         self.touch_count
     }
 }
@@ -118,13 +118,13 @@ pub enum GapInteraction {
 impl GapInteraction {
     /// Returns true if the candle touched OR filled the gap.
     #[must_use]
-    pub fn is_touch(&self) -> bool {
+    pub const fn is_touch(&self) -> bool {
         matches!(self, Self::Touch | Self::Fill)
     }
 
     /// Returns true strictly if the candle filled the gap.
     #[must_use]
-    pub fn is_fill(&self) -> bool {
+    pub const fn is_fill(&self) -> bool {
         matches!(self, Self::Fill)
     }
 }
@@ -150,9 +150,9 @@ pub enum FairValueGapStatus {
 impl MarketEvent for FairValueGapStatus {
     fn point_in_time(&self) -> DateTime<Utc> {
         match self {
-            FairValueGapStatus::Open(gap) => gap.point_in_time(),
-            FairValueGapStatus::Closed(gap) => gap.point_in_time(),
-            FairValueGapStatus::Expired(gap) => gap.point_in_time(),
+            Self::Open(gap) => gap.point_in_time(),
+            Self::Closed(gap) => gap.point_in_time(),
+            Self::Expired(gap) => gap.point_in_time(),
         }
     }
 }
@@ -164,28 +164,28 @@ impl<S: FairValueGapState> MarketEvent for FairValueGap<S> {
 }
 
 impl<S: FairValueGapState> FairValueGap<S> {
-    pub fn direction(&self) -> FairValueGapDirection {
+    pub const fn direction(&self) -> FairValueGapDirection {
         self.direction
     }
 
-    pub fn creation_time(&self) -> DateTime<Utc> {
+    pub const fn creation_time(&self) -> DateTime<Utc> {
         self.creation_time
     }
 
     /// Returns the index of the OHLCV candle that created this gap.
-    pub fn creation_index(&self) -> usize {
+    pub const fn creation_index(&self) -> usize {
         self.creation_index
     }
 
-    pub fn top(&self) -> Price {
+    pub const fn top(&self) -> Price {
         self.top
     }
 
-    pub fn bottom(&self) -> Price {
+    pub const fn bottom(&self) -> Price {
         self.bottom
     }
 
-    pub fn state(&self) -> &S {
+    pub const fn state(&self) -> &S {
         &self.state
     }
 
@@ -194,23 +194,23 @@ impl<S: FairValueGapState> FairValueGap<S> {
     }
 
     /// The three candles that formed this gap, chronological `[first, displacement, last]`.
-    pub fn window(&self) -> &[Ohlcv; 3] {
+    pub const fn window(&self) -> &[Ohlcv; 3] {
         &self.window
     }
 
     /// The first (left) candle. Its extreme forms the near edge of the gap.
-    pub fn first(&self) -> Ohlcv {
+    pub const fn first(&self) -> Ohlcv {
         self.window[LHS]
     }
 
     /// The middle candle. The impulse/displacement bar whose move opened the gap.
-    pub fn displacement(&self) -> Ohlcv {
+    pub const fn displacement(&self) -> Ohlcv {
         self.window[MID]
     }
 
     /// The last (right) candle. Its extreme forms the far edge of the gap and
     /// carries the creation index/time.
-    pub fn last(&self) -> Ohlcv {
+    pub const fn last(&self) -> Ohlcv {
         self.window[RHS]
     }
 
@@ -219,7 +219,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
     /// This is the breakout extreme under the displacement reading of a bullish
     /// setup, where only the impulse bar counts and the surrounding candles are
     /// ignored. Equivalent to `self.displacement().high`.
-    pub fn displacement_high(&self) -> Price {
+    pub const fn displacement_high(&self) -> Price {
         self.displacement().high
     }
 
@@ -227,7 +227,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
     ///
     /// This is the breakout extreme under the displacement reading of a bearish
     /// setup. Equivalent to `self.displacement().low`.
-    pub fn displacement_low(&self) -> Price {
+    pub const fn displacement_low(&self) -> Price {
         self.displacement().low
     }
 
@@ -237,7 +237,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
     /// setup, where the entire three candle leg is considered rather than the
     /// displacement bar alone. It is always greater than or equal to
     /// [`Self::displacement_high`].
-    pub fn movement_high(&self) -> Price {
+    pub const fn movement_high(&self) -> Price {
         let candles = self.window();
         Price(
             candles[LHS]
@@ -252,7 +252,7 @@ impl<S: FairValueGapState> FairValueGap<S> {
     ///
     /// This is the breakout extreme under the whole movement reading of a bearish
     /// setup. It is always less than or equal to [`Self::displacement_low`].
-    pub fn movement_low(&self) -> Price {
+    pub const fn movement_low(&self) -> Price {
         let candles = self.window();
         Price(
             candles[LHS]
@@ -264,12 +264,12 @@ impl<S: FairValueGapState> FairValueGap<S> {
     }
 
     /// The open of the first candle. The start of the movement.
-    pub fn movement_open(&self) -> Price {
+    pub const fn movement_open(&self) -> Price {
         self.first().open
     }
 
     /// The close of the last candle. The end of the movement.
-    pub fn movement_close(&self) -> Price {
+    pub const fn movement_close(&self) -> Price {
         self.last().close
     }
 }

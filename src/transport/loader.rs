@@ -14,13 +14,13 @@ use tracing::error;
 struct Year(pub u16);
 impl From<Year> for i32 {
     fn from(value: Year) -> Self {
-        i32::from(value.0)
+        Self::from(value.0)
     }
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn load_batch<T: Fetchable>(
-    client: &mut ChapatyClient,
+    client: &ChapatyClient,
     specs: Vec<T>,
     years: Vec<u16>,
 ) -> ChapatyResult<HashMap<T::Id, (SchemaRef, LazyFrame)>> {

@@ -656,7 +656,7 @@ impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
     /// let mut map: SortedVecMap<&str, u32> = SortedVecMap::new();
     /// assert_eq!(map.entry("poneyland").key(), &"poneyland");
     /// ```
-    pub fn key(&self) -> &K {
+    pub const fn key(&self) -> &K {
         &self.key
     }
 
@@ -845,10 +845,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
 // ================================================================================================
 // Standard trait implementations
 // ================================================================================================
-impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V> {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.inner.extend(iter);
         self.sort_and_dedup();
@@ -883,10 +880,7 @@ impl<'a, K, V> IntoIterator for &'a mut SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
         let mut map = Self {
             inner: iter.into_iter().collect(),
@@ -896,10 +890,7 @@ where
     }
 }
 
-impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V> {
     fn from(hash_map: HashMap<K, V>) -> Self {
         let mut map = Self {
             inner: hash_map.into_iter().collect(),
@@ -943,10 +934,7 @@ impl<K: Hash, V: Hash> Hash for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V> {
     fn from(arr: [(K, V); N]) -> Self {
         let mut map = Self {
             inner: SmallVec::from_iter(arr),
@@ -956,10 +944,7 @@ where
     }
 }
 
-impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V> {
     fn from(vec: Vec<(K, V)>) -> Self {
         let mut map = Self {
             inner: SmallVec::from_vec(vec),

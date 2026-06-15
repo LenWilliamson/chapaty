@@ -40,28 +40,28 @@ impl Episode {
     }
 
     #[must_use]
-    pub fn id(&self) -> EpisodeId {
+    pub const fn id(&self) -> EpisodeId {
         self.id
     }
 
     #[must_use]
-    pub fn length(&self) -> EpisodeLength {
+    pub const fn length(&self) -> EpisodeLength {
         self.length
     }
 
     #[must_use]
-    pub fn start(&self) -> DateTime<Utc> {
+    pub const fn start(&self) -> DateTime<Utc> {
         self.start
     }
 
     #[must_use]
-    pub fn end(&self) -> DateTime<Utc> {
+    pub const fn end(&self) -> DateTime<Utc> {
         self.end
     }
 }
 
 impl Episode {
-    pub(crate) fn next(self, start: DateTime<Utc>) -> Episode {
+    pub(crate) fn next(self, start: DateTime<Utc>) -> Self {
         let length = self.length();
         Self {
             id: EpisodeId(self.id().0 + 1),
@@ -79,7 +79,7 @@ pub(crate) struct EpisodeBuilder {
 }
 
 impl EpisodeBuilder {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             id: EpisodeId(0),
             length: None,
@@ -87,14 +87,14 @@ impl EpisodeBuilder {
         }
     }
 
-    pub(crate) fn with_length(self, length: EpisodeLength) -> Self {
+    pub(crate) const fn with_length(self, length: EpisodeLength) -> Self {
         Self {
             length: Some(length),
             ..self
         }
     }
 
-    pub(crate) fn with_start(self, start: DateTime<Utc>) -> Self {
+    pub(crate) const fn with_start(self, start: DateTime<Utc>) -> Self {
         Self {
             start: Some(start),
             ..self
@@ -163,42 +163,42 @@ pub enum EpisodeLength {
 
 impl EpisodeLength {
     #[must_use]
-    pub fn is_infinite(&self) -> bool {
-        matches!(self, EpisodeLength::Infinite)
+    pub const fn is_infinite(&self) -> bool {
+        matches!(self, Self::Infinite)
     }
 
     #[must_use]
-    pub fn is_day(&self) -> bool {
-        matches!(self, EpisodeLength::Day)
+    pub const fn is_day(&self) -> bool {
+        matches!(self, Self::Day)
     }
 
     #[must_use]
-    pub fn is_week(&self) -> bool {
-        matches!(self, EpisodeLength::Week)
+    pub const fn is_week(&self) -> bool {
+        matches!(self, Self::Week)
     }
 
     #[must_use]
-    pub fn is_month(&self) -> bool {
-        matches!(self, EpisodeLength::Month)
+    pub const fn is_month(&self) -> bool {
+        matches!(self, Self::Month)
     }
 
     #[must_use]
-    pub fn is_quarter(&self) -> bool {
-        matches!(self, EpisodeLength::Quarter)
+    pub const fn is_quarter(&self) -> bool {
+        matches!(self, Self::Quarter)
     }
 
     #[must_use]
-    pub fn is_semi_annual(&self) -> bool {
-        matches!(self, EpisodeLength::SemiAnnual)
+    pub const fn is_semi_annual(&self) -> bool {
+        matches!(self, Self::SemiAnnual)
     }
 
     #[must_use]
-    pub fn is_annual(&self) -> bool {
-        matches!(self, EpisodeLength::Annual)
+    pub const fn is_annual(&self) -> bool {
+        matches!(self, Self::Annual)
     }
 
     #[must_use]
-    pub fn max_episodes(&self) -> usize {
+    pub const fn max_episodes(&self) -> usize {
         use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
 
         match self {

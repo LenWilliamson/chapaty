@@ -42,11 +42,11 @@ pub struct Pending {
 
 impl Pending {
     #[must_use]
-    pub fn created_at(&self) -> DateTime<Utc> {
+    pub const fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
     #[must_use]
-    pub fn limit_price(&self) -> Price {
+    pub const fn limit_price(&self) -> Price {
         self.limit_price
     }
 }
@@ -64,27 +64,27 @@ pub struct Active {
 
 impl Active {
     #[must_use]
-    pub fn entry_ts(&self) -> DateTime<Utc> {
+    pub const fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
     #[must_use]
-    pub fn entry_price(&self) -> Price {
+    pub const fn entry_price(&self) -> Price {
         self.entry_price
     }
 
     #[must_use]
-    pub fn current_ts(&self) -> DateTime<Utc> {
+    pub const fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
 
     #[must_use]
-    pub fn current_price(&self) -> Price {
+    pub const fn current_price(&self) -> Price {
         self.current_price
     }
 
     #[must_use]
-    pub fn unrealized_pnl(&self) -> f64 {
+    pub const fn unrealized_pnl(&self) -> f64 {
         self.unrealized_pnl
     }
 }
@@ -103,32 +103,32 @@ pub struct Closed {
 
 impl Closed {
     #[must_use]
-    pub fn entry_ts(&self) -> DateTime<Utc> {
+    pub const fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
     #[must_use]
-    pub fn entry_price(&self) -> Price {
+    pub const fn entry_price(&self) -> Price {
         self.entry_price
     }
 
     #[must_use]
-    pub fn exit_ts(&self) -> DateTime<Utc> {
+    pub const fn exit_ts(&self) -> DateTime<Utc> {
         self.exit_ts
     }
 
     #[must_use]
-    pub fn exit_price(&self) -> Price {
+    pub const fn exit_price(&self) -> Price {
         self.exit_price
     }
 
     #[must_use]
-    pub fn termination_reason(&self) -> TerminationReason {
+    pub const fn termination_reason(&self) -> TerminationReason {
         self.termination_reason
     }
 
     #[must_use]
-    pub fn realized_pnl(&self) -> f64 {
+    pub const fn realized_pnl(&self) -> f64 {
         self.realized_pnl
     }
 }
@@ -144,22 +144,22 @@ pub struct Canceled {
 
 impl Canceled {
     #[must_use]
-    pub fn created_at(&self) -> DateTime<Utc> {
+    pub const fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
 
     #[must_use]
-    pub fn canceled_at(&self) -> DateTime<Utc> {
+    pub const fn canceled_at(&self) -> DateTime<Utc> {
         self.cancel_ts
     }
 
     #[must_use]
-    pub fn termination_reason(&self) -> TerminationReason {
+    pub const fn termination_reason(&self) -> TerminationReason {
         TerminationReason::Canceled
     }
 
     #[must_use]
-    pub fn limit_price(&self) -> Price {
+    pub const fn limit_price(&self) -> Price {
         self.limit_price
     }
 }
@@ -179,31 +179,31 @@ pub struct Trade<S: TradeState> {
 }
 
 impl<S: TradeState> Trade<S> {
-    pub fn uid(&self) -> TradeId {
+    pub const fn uid(&self) -> TradeId {
         self.uid
     }
 
-    pub fn agent_id(&self) -> &AgentIdentifier {
+    pub const fn agent_id(&self) -> &AgentIdentifier {
         &self.agent_id
     }
 
-    pub fn trade_type(&self) -> &TradeKind {
+    pub const fn trade_type(&self) -> &TradeKind {
         &self.kind
     }
 
-    pub fn quantity(&self) -> Quantity {
+    pub const fn quantity(&self) -> Quantity {
         self.quantity
     }
 
-    pub fn stop_loss(&self) -> Option<Price> {
+    pub const fn stop_loss(&self) -> Option<Price> {
         self.stop_loss
     }
 
-    pub fn take_profit(&self) -> Option<Price> {
+    pub const fn take_profit(&self) -> Option<Price> {
         self.take_profit
     }
 
-    pub fn state(&self) -> &S {
+    pub const fn state(&self) -> &S {
         &self.state
     }
 }
@@ -310,72 +310,72 @@ impl TryFrom<State> for Trade<Canceled> {
 
 impl State {
     #[must_use]
-    pub fn trade_id(&self) -> TradeId {
+    pub const fn trade_id(&self) -> TradeId {
         match self {
-            State::Pending(t) => t.uid,
-            State::Active(t) => t.uid,
-            State::Closed(t) => t.uid,
-            State::Canceled(t) => t.uid,
+            Self::Pending(t) => t.uid,
+            Self::Active(t) => t.uid,
+            Self::Closed(t) => t.uid,
+            Self::Canceled(t) => t.uid,
         }
     }
 
     #[must_use]
-    pub fn agent_id(&self) -> &AgentIdentifier {
+    pub const fn agent_id(&self) -> &AgentIdentifier {
         match self {
-            State::Pending(t) => &t.agent_id,
-            State::Active(t) => &t.agent_id,
-            State::Closed(t) => &t.agent_id,
-            State::Canceled(t) => &t.agent_id,
+            Self::Pending(t) => &t.agent_id,
+            Self::Active(t) => &t.agent_id,
+            Self::Closed(t) => &t.agent_id,
+            Self::Canceled(t) => &t.agent_id,
         }
     }
 
     #[must_use]
-    pub fn trade_type(&self) -> &TradeKind {
+    pub const fn trade_type(&self) -> &TradeKind {
         match self {
-            State::Pending(t) => &t.kind,
-            State::Active(t) => &t.kind,
-            State::Closed(t) => &t.kind,
-            State::Canceled(t) => &t.kind,
+            Self::Pending(t) => &t.kind,
+            Self::Active(t) => &t.kind,
+            Self::Closed(t) => &t.kind,
+            Self::Canceled(t) => &t.kind,
         }
     }
 
     #[must_use]
-    pub fn quantity(&self) -> Quantity {
+    pub const fn quantity(&self) -> Quantity {
         match self {
-            State::Pending(t) => t.quantity,
-            State::Active(t) => t.quantity,
-            State::Closed(t) => t.quantity,
-            State::Canceled(t) => t.quantity,
+            Self::Pending(t) => t.quantity,
+            Self::Active(t) => t.quantity,
+            Self::Closed(t) => t.quantity,
+            Self::Canceled(t) => t.quantity,
         }
     }
 
     #[must_use]
-    pub fn stop_loss(&self) -> Option<Price> {
+    pub const fn stop_loss(&self) -> Option<Price> {
         match self {
-            State::Pending(t) => t.stop_loss,
-            State::Active(t) => t.stop_loss,
-            State::Closed(t) => t.stop_loss,
-            State::Canceled(t) => t.stop_loss,
+            Self::Pending(t) => t.stop_loss,
+            Self::Active(t) => t.stop_loss,
+            Self::Closed(t) => t.stop_loss,
+            Self::Canceled(t) => t.stop_loss,
         }
     }
 
     #[must_use]
-    pub fn take_profit(&self) -> Option<Price> {
+    pub const fn take_profit(&self) -> Option<Price> {
         match self {
-            State::Pending(t) => t.take_profit,
-            State::Active(t) => t.take_profit,
-            State::Closed(t) => t.take_profit,
-            State::Canceled(t) => t.take_profit,
+            Self::Pending(t) => t.take_profit,
+            Self::Active(t) => t.take_profit,
+            Self::Closed(t) => t.take_profit,
+            Self::Canceled(t) => t.take_profit,
         }
     }
 
     #[must_use]
-    pub fn anticipated_entry_price(&self) -> Price {
+    pub const fn anticipated_entry_price(&self) -> Price {
         match self {
-            State::Pending(t) => t.state.limit_price,
-            State::Active(t) => t.state.entry_price,
-            State::Closed(t) => t.state.entry_price,
-            State::Canceled(t) => t.state.limit_price,
+            Self::Pending(t) => t.state.limit_price,
+            Self::Active(t) => t.state.entry_price,
+            Self::Closed(t) => t.state.entry_price,
+            Self::Canceled(t) => t.state.limit_price,
         }
     }
 
@@ -429,13 +429,13 @@ impl State {
 
     /// Returns the "Clean" USD `PnL` directly from the storage fields.
     #[must_use]
-    pub fn pnl_usd(&self) -> Option<f64> {
+    pub const fn pnl_usd(&self) -> Option<f64> {
         match self {
             // Already calculated via tick-math during `update`
-            State::Active(t) => Some(t.state.unrealized_pnl),
+            Self::Active(t) => Some(t.state.unrealized_pnl),
 
             // Already calculated via tick-math during `close`
-            State::Closed(t) => Some(t.state.realized_pnl),
+            Self::Closed(t) => Some(t.state.realized_pnl),
 
             _ => None,
         }
@@ -449,14 +449,14 @@ impl State {
     #[must_use]
     pub fn pnl_ticks(&self, symbol: Symbol) -> Option<Tick> {
         match self {
-            State::Active(t) => {
+            Self::Active(t) => {
                 // Use your existing helper
                 let diff = t
                     .kind
                     .price_diff(t.state.entry_price, t.state.current_price);
                 Some(symbol.price_to_ticks(diff))
             }
-            State::Closed(t) => {
+            Self::Closed(t) => {
                 // Use your existing helper
                 let diff = t.kind.price_diff(t.state.entry_price, t.state.exit_price);
                 Some(symbol.price_to_ticks(diff))
@@ -467,30 +467,30 @@ impl State {
 
     /// Returns the timestamp when the trade was effectively entered (Active/Closed only).
     #[must_use]
-    pub fn entry_ts(&self) -> Option<DateTime<Utc>> {
+    pub const fn entry_ts(&self) -> Option<DateTime<Utc>> {
         match self {
-            State::Active(t) => Some(t.state.entry_ts),
-            State::Closed(t) => Some(t.state.entry_ts),
+            Self::Active(t) => Some(t.state.entry_ts),
+            Self::Closed(t) => Some(t.state.entry_ts),
             // Pending/Canceled never entered the market
-            State::Pending(_) | State::Canceled(_) => None,
+            Self::Pending(_) | Self::Canceled(_) => None,
         }
     }
 
     /// Returns the timestamp when the trade ended (Closed/Canceled only).
     #[must_use]
-    pub fn exit_ts(&self) -> Option<DateTime<Utc>> {
+    pub const fn exit_ts(&self) -> Option<DateTime<Utc>> {
         match self {
-            State::Closed(t) => Some(t.state.exit_ts),
-            State::Canceled(t) => Some(t.state.cancel_ts),
+            Self::Closed(t) => Some(t.state.exit_ts),
+            Self::Canceled(t) => Some(t.state.cancel_ts),
             _ => None,
         }
     }
 
     /// Returns the price at which the trade was closed.
     #[must_use]
-    pub fn exit_price(&self) -> Option<Price> {
+    pub const fn exit_price(&self) -> Option<Price> {
         match self {
-            State::Closed(t) => Some(t.state.exit_price),
+            Self::Closed(t) => Some(t.state.exit_price),
             // Canceled orders don't have a price execution
             _ => None,
         }
@@ -498,11 +498,11 @@ impl State {
 
     /// Returns the reason why the trade ended.
     #[must_use]
-    pub fn exit_reason(&self) -> Option<TerminationReason> {
+    pub const fn exit_reason(&self) -> Option<TerminationReason> {
         match self {
-            State::Closed(t) => Some(t.state.termination_reason()),
+            Self::Closed(t) => Some(t.state.termination_reason()),
             // Canceled usually implies "Cancel" reason, handled by the struct helper
-            State::Canceled(t) => Some(t.state.termination_reason()),
+            Self::Canceled(t) => Some(t.state.termination_reason()),
             _ => None,
         }
     }
@@ -513,23 +513,23 @@ impl State {
     }
 
     #[must_use]
-    pub fn is_pending(&self) -> bool {
-        matches!(self, State::Pending(_))
+    pub const fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending(_))
     }
 
     #[must_use]
-    pub fn is_active(&self) -> bool {
-        matches!(self, State::Active(_))
+    pub const fn is_active(&self) -> bool {
+        matches!(self, Self::Active(_))
     }
 
     #[must_use]
-    pub fn is_closed(&self) -> bool {
-        matches!(self, State::Closed(_))
+    pub const fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed(_))
     }
 
     #[must_use]
-    pub fn is_canceled(&self) -> bool {
-        matches!(self, State::Canceled(_))
+    pub const fn is_canceled(&self) -> bool {
+        matches!(self, Self::Canceled(_))
     }
 }
 
@@ -537,10 +537,10 @@ impl State {
     /// Restores the original Stop Loss and Take Profit values across any valid state.
     fn with_restored_triggers(self, sl: Option<Price>, tp: Option<Price>) -> Self {
         match self {
-            State::Pending(t) => State::Pending(t.with_stop_loss(sl).with_take_profit(tp)),
-            State::Active(t) => State::Active(t.with_stop_loss(sl).with_take_profit(tp)),
-            State::Closed(c) => State::Closed(c.with_stop_loss(sl).with_take_profit(tp)),
-            State::Canceled(c) => State::Canceled(c.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Pending(t) => Self::Pending(t.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Active(t) => Self::Active(t.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Closed(c) => Self::Closed(c.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Canceled(c) => Self::Canceled(c.with_stop_loss(sl).with_take_profit(tp)),
         }
     }
 
@@ -629,7 +629,7 @@ impl States {
     }
 
     #[must_use]
-    pub fn pnl(&self) -> f64 {
+    pub const fn pnl(&self) -> f64 {
         self.cumulative_pnl
     }
 
@@ -719,9 +719,10 @@ impl States {
         F: FnMut(MarketId, ChapatyResult<Option<TerminationReason>>) -> ChapatyResult<()>,
     {
         let markets = self.markets().copied().collect::<Vec<_>>();
-        markets.into_iter().try_for_each(|market_id| {
-            self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))
-        })
+        for market_id in markets {
+            self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))?;
+        }
+        Ok(())
     }
 
     /// Factory: Creates a new State repository with pre-allocated memory.
@@ -1148,7 +1149,7 @@ impl<'a> StateGuard<'a> {
         })
     }
 
-    fn get(&self) -> &State {
+    const fn get(&self) -> &State {
         self.working_state
             .as_ref()
             .expect("StateGuard invariant violated: state missing")

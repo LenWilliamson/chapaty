@@ -40,35 +40,31 @@ pub enum BatchOhlcvIndicator {
 impl BatchCompute for BatchOhlcvIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            BatchOhlcvIndicator::Ema(ema) => Ok(pre_compute_ema(*ema, lf)),
-            BatchOhlcvIndicator::Sma(sma) => Ok(pre_compute_sma(*sma, lf)),
-            BatchOhlcvIndicator::Rsi(rsi) => Ok(pre_compute_rsi(*rsi, lf)),
-            BatchOhlcvIndicator::Atr(atr) => pre_compute_atr(*atr, lf),
-            BatchOhlcvIndicator::RateOfChange(lb) => pre_compute_rate_of_change(*lb, lf),
-            BatchOhlcvIndicator::Vwap(vwap) => Ok(pre_compute_vwap(*vwap, lf)),
-            BatchOhlcvIndicator::OvernightRange(session) => {
-                Ok(pre_compute_overnight_range(*session, lf))
-            }
+            Self::Ema(ema) => Ok(pre_compute_ema(*ema, lf)),
+            Self::Sma(sma) => Ok(pre_compute_sma(*sma, lf)),
+            Self::Rsi(rsi) => Ok(pre_compute_rsi(*rsi, lf)),
+            Self::Atr(atr) => pre_compute_atr(*atr, lf),
+            Self::RateOfChange(lb) => pre_compute_rate_of_change(*lb, lf),
+            Self::Vwap(vwap) => Ok(pre_compute_vwap(*vwap, lf)),
+            Self::OvernightRange(session) => Ok(pre_compute_overnight_range(*session, lf)),
         }
     }
 
     fn output_schema(&self) -> Arc<Schema> {
         match self {
-            BatchOhlcvIndicator::Ema(_)
-            | BatchOhlcvIndicator::Sma(_)
-            | BatchOhlcvIndicator::Rsi(_)
-            | BatchOhlcvIndicator::Atr(_)
-            | BatchOhlcvIndicator::Vwap(_) => Arc::new(Schema::from_iter(vec![
-                CanonicalCol::PointInTime.field(),
-                CanonicalCol::Price.field(),
-            ])),
-            BatchOhlcvIndicator::RateOfChange(_) => Arc::new(Schema::from_iter(vec![
+            Self::Ema(_) | Self::Sma(_) | Self::Rsi(_) | Self::Atr(_) | Self::Vwap(_) => {
+                Arc::new(Schema::from_iter(vec![
+                    CanonicalCol::PointInTime.field(),
+                    CanonicalCol::Price.field(),
+                ]))
+            }
+            Self::RateOfChange(_) => Arc::new(Schema::from_iter(vec![
                 CanonicalCol::OpenTimestamp.field(),
                 CanonicalCol::PointInTime.field(),
                 CanonicalCol::RocAbsolute.field(),
                 CanonicalCol::Roc.field(),
             ])),
-            BatchOhlcvIndicator::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
+            Self::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
                 CanonicalCol::Date.field(),
                 CanonicalCol::OpenTimestamp.field(),
                 CanonicalCol::PointInTime.field(),
@@ -146,13 +142,11 @@ impl OhlcvIndicatorExprExt for Expr {
     fn momentum_absolute(self, reference: Expr) -> Expr {
         let has_ref = reference.clone().abs().gt(lit(f64::EPSILON));
 
-        when(has_ref)
-            .then(self - reference.clone())
-            .otherwise(lit(NULL))
+        when(has_ref).then(self - reference).otherwise(lit(NULL))
     }
 
     fn momentum_roc(self, reference: Expr) -> Expr {
-        let absolute = self.clone().momentum_absolute(reference.clone());
+        let absolute = self.momentum_absolute(reference.clone());
         (absolute / reference) * lit(100.0)
     }
 }

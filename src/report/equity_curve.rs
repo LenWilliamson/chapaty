@@ -229,7 +229,7 @@ mod test {
         let schema = EquityCurveReport::to_schema();
         let df = LazyCsvReader::new(path)
             .with_has_header(true)
-            .with_schema(Some(schema.clone()))
+            .with_schema(Some(schema))
             .with_try_parse_dates(true)
             .finish()
             .expect("Failed to create LazyFrame from CSV")

@@ -185,63 +185,63 @@ pub struct MarketView<'env> {
 
 impl<'env> MarketView<'env> {
     #[must_use]
-    pub fn ohlcv(&self) -> &OhlcvView<'env> {
+    pub const fn ohlcv(&self) -> &OhlcvView<'env> {
         &self.ohlcv
     }
     #[must_use]
-    pub fn trades(&self) -> &TradeView<'env> {
+    pub const fn trades(&self) -> &TradeView<'env> {
         &self.trades
     }
     #[must_use]
-    pub fn economic_news(&self) -> &EconomicCalendarView<'env> {
+    pub const fn economic_news(&self) -> &EconomicCalendarView<'env> {
         &self.economic_calendar
     }
     #[must_use]
-    pub fn volume_profile(&self) -> &VolumeProfileView<'env> {
+    pub const fn volume_profile(&self) -> &VolumeProfileView<'env> {
         &self.volume_profile
     }
     #[must_use]
-    pub fn tpo(&self) -> &TpoView<'env> {
+    pub const fn tpo(&self) -> &TpoView<'env> {
         &self.tpo
     }
     #[must_use]
-    pub fn ema(&self) -> &EmaView<'env> {
+    pub const fn ema(&self) -> &EmaView<'env> {
         &self.ema
     }
     #[must_use]
-    pub fn sma(&self) -> &SmaView<'env> {
+    pub const fn sma(&self) -> &SmaView<'env> {
         &self.sma
     }
     #[must_use]
-    pub fn rsi(&self) -> &RsiView<'env> {
+    pub const fn rsi(&self) -> &RsiView<'env> {
         &self.rsi
     }
     #[must_use]
-    pub fn trades_vwap(&self) -> &TradesVwapView<'env> {
+    pub const fn trades_vwap(&self) -> &TradesVwapView<'env> {
         &self.trades_vwap
     }
     #[must_use]
-    pub fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
+    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
         &self.ohlcv_vwap
     }
     #[must_use]
-    pub fn trades_session(&self) -> &TradesSessionView<'env> {
+    pub const fn trades_session(&self) -> &TradesSessionView<'env> {
         &self.trades_session
     }
     #[must_use]
-    pub fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
+    pub const fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
         &self.ohlcv_session
     }
     #[must_use]
-    pub fn atr(&self) -> &AtrView<'env> {
+    pub const fn atr(&self) -> &AtrView<'env> {
         &self.atr
     }
     #[must_use]
-    pub fn roc(&self) -> &RocView<'env> {
+    pub const fn roc(&self) -> &RocView<'env> {
         &self.roc
     }
     #[must_use]
-    pub fn current_timestamp(&self) -> DateTime<Utc> {
+    pub const fn current_timestamp(&self) -> DateTime<Utc> {
         self.current_ts
     }
     #[must_use]

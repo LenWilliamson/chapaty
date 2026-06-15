@@ -35,7 +35,7 @@ impl_from_primitive!(EndpointUrl, String);
 
 impl From<&str> for EndpointUrl {
     fn from(value: &str) -> Self {
-        EndpointUrl(value.to_string())
+        Self(value.to_string())
     }
 }
 
@@ -57,7 +57,7 @@ impl_from_primitive!(ApiKey, String);
 
 impl From<&str> for ApiKey {
     fn from(value: &str) -> Self {
-        ApiKey(value.to_string())
+        Self(value.to_string())
     }
 }
 
@@ -132,8 +132,8 @@ pub enum DataSource {
 impl Connect for DataSource {
     async fn connect(&self) -> ChapatyResult<ChapatyClient> {
         match self {
-            DataSource::Hosted => HostedApi.connect().await,
-            DataSource::SelfHosted(rpc) => rpc.connect().await,
+            Self::Hosted => HostedApi.connect().await,
+            Self::SelfHosted(rpc) => rpc.connect().await,
         }
     }
 }
@@ -149,7 +149,7 @@ pub struct SourceGroup<T, S: Connect = DataSource> {
 }
 
 impl<T, S: Connect> SourceGroup<T, S> {
-    pub fn new(source: S) -> Self {
+    pub const fn new(source: S) -> Self {
         Self {
             source,
             items: Vec::new(),

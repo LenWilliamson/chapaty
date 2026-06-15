@@ -19,7 +19,7 @@ impl KahanSum {
     }
 
     /// Returns the current mathematically compensated sum.
-    pub fn value(self) -> f64 {
+    pub const fn value(self) -> f64 {
         self.sum
     }
 }

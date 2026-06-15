@@ -188,10 +188,10 @@ impl LiquiditySide {
     /// * If Maker = Buyer, then Aggressor = **Sell** (Red).
     /// * If Maker = Seller, then Aggressor = **Buy** (Green).
     #[must_use]
-    pub fn trade_side(&self) -> TradeSide {
+    pub const fn trade_side(&self) -> TradeSide {
         match self {
-            LiquiditySide::Bid => TradeSide::Sell,
-            LiquiditySide::Ask => TradeSide::Buy,
+            Self::Bid => TradeSide::Sell,
+            Self::Ask => TradeSide::Buy,
         }
     }
 }
@@ -200,11 +200,7 @@ impl LiquiditySide {
 
 impl From<bool> for LiquiditySide {
     fn from(value: bool) -> Self {
-        if value {
-            LiquiditySide::Bid
-        } else {
-            LiquiditySide::Ask
-        }
+        if value { Self::Bid } else { Self::Ask }
     }
 }
 
@@ -302,9 +298,9 @@ impl From<bool> for ExecutionDepth {
     /// If `false`, it indicates that the best available quantity was insufficient (`NotBestMatch`).
     fn from(is_best_match: bool) -> Self {
         if is_best_match {
-            ExecutionDepth::TopOfBook
+            Self::TopOfBook
         } else {
-            ExecutionDepth::BookSweep
+            Self::BookSweep
         }
     }
 }
@@ -354,17 +350,17 @@ pub enum DataBroker {
 
 impl DataBroker {
     #[must_use]
-    pub fn supports_economic_calendar(&self) -> bool {
-        matches!(self, DataBroker::InvestingCom)
+    pub const fn supports_economic_calendar(&self) -> bool {
+        matches!(self, Self::InvestingCom)
     }
 }
 
 impl From<&DataBroker> for RpcDataBroker {
     fn from(broker: &DataBroker) -> Self {
         match broker {
-            DataBroker::Binance => RpcDataBroker::Binance,
-            DataBroker::NinjaTrader => RpcDataBroker::NinjaTrader,
-            DataBroker::InvestingCom => RpcDataBroker::InvestingCom,
+            DataBroker::Binance => Self::Binance,
+            DataBroker::NinjaTrader => Self::NinjaTrader,
+            DataBroker::InvestingCom => Self::InvestingCom,
         }
     }
 }
@@ -380,9 +376,9 @@ impl TryFrom<RpcDataBroker> for DataBroker {
 
     fn try_from(proto: RpcDataBroker) -> Result<Self, Self::Error> {
         match proto {
-            RpcDataBroker::Binance => Ok(DataBroker::Binance),
-            RpcDataBroker::NinjaTrader => Ok(DataBroker::NinjaTrader),
-            RpcDataBroker::InvestingCom => Ok(DataBroker::InvestingCom),
+            RpcDataBroker::Binance => Ok(Self::Binance),
+            RpcDataBroker::NinjaTrader => Ok(Self::NinjaTrader),
+            RpcDataBroker::InvestingCom => Ok(Self::InvestingCom),
 
             // Handle the 0-value case explicitly
             RpcDataBroker::Unspecified => Err(TransportError::RpcTypeNotFound(
@@ -418,8 +414,8 @@ impl TryFrom<DataBroker> for Exchange {
 
     fn try_from(broker: DataBroker) -> Result<Self, Self::Error> {
         match broker {
-            DataBroker::NinjaTrader => Ok(Exchange::Cme),
-            DataBroker::Binance => Ok(Exchange::Binance),
+            DataBroker::NinjaTrader => Ok(Self::Cme),
+            DataBroker::Binance => Ok(Self::Binance),
             DataBroker::InvestingCom => Err(DataError::UnexpectedEnumVariant(format!(
                 "{broker} does not map to an exchange"
             ))
@@ -452,7 +448,7 @@ impl TryFrom<DataBroker> for EconomicDataSource {
 
     fn try_from(broker: DataBroker) -> Result<Self, Self::Error> {
         match broker {
-            DataBroker::InvestingCom => Ok(EconomicDataSource::InvestingCom),
+            DataBroker::InvestingCom => Ok(Self::InvestingCom),
             DataBroker::NinjaTrader | DataBroker::Binance => Err(DataError::UnexpectedEnumVariant(
                 format!("{broker} does not map to an economic data source"),
             )
@@ -562,8 +558,8 @@ pub enum Symbol {
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Symbol::Spot(s) => write!(f, "{s}"),
-            Symbol::Future(s) => write!(f, "{s}"),
+            Self::Spot(s) => write!(f, "{s}"),
+            Self::Future(s) => write!(f, "{s}"),
         }
     }
 }
@@ -574,12 +570,12 @@ impl FromStr for Symbol {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Try parsing as SpotPair first
         if let Ok(spot) = SpotPair::from_str(s) {
-            return Ok(Symbol::Spot(spot));
+            return Ok(Self::Spot(spot));
         }
 
         // Try parsing as FutureContract
         if let Ok(future) = FutureContract::from_str(s) {
-            return Ok(Symbol::Future(future));
+            return Ok(Self::Future(future));
         }
 
         Err(DataError::InvalidSymbol(s.to_string()).into())
@@ -788,7 +784,7 @@ impl FromStr for FutureContract {
         let month = ContractMonth::from_str(&remainder[..1]).map_err(DataError::ParseEnum)?;
         let year = ContractYear::from_str(&remainder[1..]).map_err(DataError::ParseEnum)?;
 
-        Ok(FutureContract { root, month, year })
+        Ok(Self { root, month, year })
     }
 }
 
@@ -1078,8 +1074,8 @@ pub trait Instrument {
 impl Instrument for SpotPair {
     fn tick_size(&self) -> f64 {
         match self {
-            SpotPair::BtcUsdt | SpotPair::BnbUsdt | SpotPair::EthUsdt | SpotPair::SolUsdt => 0.01,
-            SpotPair::XrpUsdt | SpotPair::TrxUsdt | SpotPair::AdaUsdt | SpotPair::XlmUsdt => 0.0001,
+            Self::BtcUsdt | Self::BnbUsdt | Self::EthUsdt | Self::SolUsdt => 0.01,
+            Self::XrpUsdt | Self::TrxUsdt | Self::AdaUsdt | Self::XlmUsdt => 0.0001,
         }
     }
 
@@ -1091,25 +1087,20 @@ impl Instrument for SpotPair {
 impl Instrument for FutureRoot {
     fn tick_size(&self) -> f64 {
         match self {
-            FutureRoot::AudUsd | FutureRoot::CadUsd | FutureRoot::EurUsd | FutureRoot::NzdUsd => {
-                0.00005
-            }
-            FutureRoot::GbpUsd => 0.0001,
-            FutureRoot::JpyUsd => 0.000_000_5,
-            FutureRoot::Btc => 5.0,
-            FutureRoot::EminiSp500 | FutureRoot::EminiNasdaq100 => 0.25,
+            Self::AudUsd | Self::CadUsd | Self::EurUsd | Self::NzdUsd => 0.00005,
+            Self::GbpUsd => 0.0001,
+            Self::JpyUsd => 0.000_000_5,
+            Self::Btc => 5.0,
+            Self::EminiSp500 | Self::EminiNasdaq100 => 0.25,
         }
     }
 
     fn tick_value_usd(&self) -> f64 {
         match self {
-            FutureRoot::EurUsd | FutureRoot::GbpUsd | FutureRoot::JpyUsd => 6.25,
-            FutureRoot::AudUsd
-            | FutureRoot::CadUsd
-            | FutureRoot::NzdUsd
-            | FutureRoot::EminiNasdaq100 => 5.0,
-            FutureRoot::EminiSp500 => 12.50,
-            FutureRoot::Btc => 25.0,
+            Self::EurUsd | Self::GbpUsd | Self::JpyUsd => 6.25,
+            Self::AudUsd | Self::CadUsd | Self::NzdUsd | Self::EminiNasdaq100 => 5.0,
+            Self::EminiSp500 => 12.50,
+            Self::Btc => 25.0,
         }
     }
 }
@@ -1117,15 +1108,15 @@ impl Instrument for FutureRoot {
 impl Instrument for Symbol {
     fn tick_size(&self) -> f64 {
         match self {
-            Symbol::Spot(spot) => spot.tick_size(),
-            Symbol::Future(future) => future.root.tick_size(),
+            Self::Spot(spot) => spot.tick_size(),
+            Self::Future(future) => future.root.tick_size(),
         }
     }
 
     fn tick_value_usd(&self) -> f64 {
         match self {
-            Symbol::Spot(spot) => spot.tick_value_usd(),
-            Symbol::Future(future) => future.root.tick_value_usd(),
+            Self::Spot(spot) => spot.tick_value_usd(),
+            Self::Future(future) => future.root.tick_value_usd(),
         }
     }
 }
@@ -1158,13 +1149,13 @@ impl Ord for SessionWindow {
     }
 }
 
-fn hm(h: u32, m: u32) -> NaiveTime {
+const fn hm(h: u32, m: u32) -> NaiveTime {
     NaiveTime::from_hms_opt(h, m, 0).expect("invalid hour or minute")
 }
 
 impl SessionWindow {
     #[must_use]
-    pub fn new(timezone: Tz, start: NaiveTime, end: NaiveTime) -> Self {
+    pub const fn new(timezone: Tz, start: NaiveTime, end: NaiveTime) -> Self {
         Self {
             timezone,
             start,
@@ -1174,68 +1165,68 @@ impl SessionWindow {
 
     /// US Core Session: 09:30 to 16:00 New York time.
     #[must_use]
-    pub fn us_core_session() -> Self {
-        SessionWindow::new(Tz::America__New_York, hm(9, 30), hm(16, 0))
+    pub const fn us_core_session() -> Self {
+        Self::new(Tz::America__New_York, hm(9, 30), hm(16, 0))
     }
 
     /// London Core Session: 08:00 to 16:30 London time.
     #[must_use]
-    pub fn london_core_session() -> Self {
-        SessionWindow::new(Tz::Europe__London, hm(8, 0), hm(16, 30))
+    pub const fn london_core_session() -> Self {
+        Self::new(Tz::Europe__London, hm(8, 0), hm(16, 30))
     }
 
     /// US/Europe Overlap: 13:00 to 17:00 London time.
     #[must_use]
-    pub fn us_europe_overlap() -> Self {
-        SessionWindow::new(Tz::Europe__London, hm(13, 0), hm(17, 0))
+    pub const fn us_europe_overlap() -> Self {
+        Self::new(Tz::Europe__London, hm(13, 0), hm(17, 0))
     }
 
     /// Singapore Core Session: 09:00 to 17:00 Singapore time.
     #[must_use]
-    pub fn singapore_core_session() -> Self {
-        SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
+    pub const fn singapore_core_session() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
 
     /// Sydney Core Session: 10:00 to 16:00 Sydney time.
     #[must_use]
-    pub fn sydney_core_session() -> Self {
-        SessionWindow::new(Tz::Australia__Sydney, hm(10, 0), hm(16, 0))
+    pub const fn sydney_core_session() -> Self {
+        Self::new(Tz::Australia__Sydney, hm(10, 0), hm(16, 0))
     }
 
     /// US Overnight: 16:00 to 09:30 New York time.
     #[must_use]
-    pub fn us_overnight() -> Self {
-        SessionWindow::new(Tz::America__New_York, hm(16, 0), hm(9, 30))
+    pub const fn us_overnight() -> Self {
+        Self::new(Tz::America__New_York, hm(16, 0), hm(9, 30))
     }
 
     /// US Extended Overnight: 18:00 to 09:30 New York time.
     #[must_use]
-    pub fn us_extended_overnight() -> Self {
-        SessionWindow::new(Tz::America__New_York, hm(18, 0), hm(9, 30))
+    pub const fn us_extended_overnight() -> Self {
+        Self::new(Tz::America__New_York, hm(18, 0), hm(9, 30))
     }
 
     /// Tokyo Core Session: 09:00 to 15:00 Tokyo time.
     #[must_use]
-    pub fn tokyo_core_session() -> Self {
-        SessionWindow::new(Tz::Asia__Tokyo, hm(9, 0), hm(15, 0))
+    pub const fn tokyo_core_session() -> Self {
+        Self::new(Tz::Asia__Tokyo, hm(9, 0), hm(15, 0))
     }
 
     /// Asia Institutional Core: 09:00 to 17:00 Singapore time.
     #[must_use]
-    pub fn asia_institutional_core() -> Self {
-        SessionWindow::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
+    pub const fn asia_institutional_core() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
     }
 
     /// Hong Kong Core Session: 09:30 to 16:00 Hong Kong time.
     #[must_use]
-    pub fn hong_kong_core_session() -> Self {
-        SessionWindow::new(Tz::Asia__Hong_Kong, hm(9, 30), hm(16, 0))
+    pub const fn hong_kong_core_session() -> Self {
+        Self::new(Tz::Asia__Hong_Kong, hm(9, 30), hm(16, 0))
     }
 
     /// APAC Overnight: 17:00 to 08:00 Singapore time.
     #[must_use]
-    pub fn apac_overnight() -> Self {
-        SessionWindow::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
+    pub const fn apac_overnight() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
     }
 
     #[must_use]
@@ -1316,13 +1307,13 @@ pub enum WindowKind {
 
 impl WindowKind {
     #[must_use]
-    pub fn is_intraday(&self) -> bool {
-        matches!(self, WindowKind::Intraday)
+    pub const fn is_intraday(&self) -> bool {
+        matches!(self, Self::Intraday)
     }
 
     #[must_use]
-    pub fn is_overnight(&self) -> bool {
-        matches!(self, WindowKind::Overnight)
+    pub const fn is_overnight(&self) -> bool {
+        matches!(self, Self::Overnight)
     }
 }
 

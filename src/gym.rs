@@ -82,22 +82,22 @@ pub enum EnvStatus {
 
 impl EnvStatus {
     #[must_use]
-    pub fn is_ready(&self) -> bool {
+    pub const fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 
     #[must_use]
-    pub fn is_running(&self) -> bool {
+    pub const fn is_running(&self) -> bool {
         matches!(self, Self::Running)
     }
 
     #[must_use]
-    pub fn is_episode_done(&self) -> bool {
+    pub const fn is_episode_done(&self) -> bool {
         matches!(self, Self::EpisodeDone)
     }
 
     #[must_use]
-    pub fn is_done(&self) -> bool {
+    pub const fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
 }
@@ -115,22 +115,22 @@ pub enum StepOutcome {
 
 impl StepOutcome {
     #[must_use]
-    pub fn is_done(&self) -> bool {
+    pub const fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
 
     #[must_use]
-    pub fn is_terminated(&self) -> bool {
+    pub const fn is_terminated(&self) -> bool {
         matches!(self, Self::Terminated)
     }
 
     #[must_use]
-    pub fn is_truncated(&self) -> bool {
+    pub const fn is_truncated(&self) -> bool {
         matches!(self, Self::Truncated)
     }
 
     #[must_use]
-    pub fn is_terminal(&self) -> bool {
+    pub const fn is_terminal(&self) -> bool {
         self.is_terminated() || self.is_truncated()
     }
 }
@@ -191,6 +191,7 @@ impl GridAxis {
 // ============================================================================
 
 /// Represents the unique identifier of an agent, used for tracking actions in reports.
+///
 /// This enum is designed to help identify which agent performed a specific action during
 /// the backtesting or trading process. Each variant contains a `String` that uniquely
 /// identifies the agent for reporting purposes.

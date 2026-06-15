@@ -35,7 +35,7 @@ pub type AtrEventMap = EventMap<AtrId>;
 pub type RocEventMap = EventMap<RocId>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Streams {
+pub struct Streams {
     ohlcv: OhlcvEventMap,
     trade: TradeEventMap,
     economic_cal: EconomicCalEventMap,
@@ -180,59 +180,59 @@ pub struct SimulationData {
 }
 
 impl SimulationData {
-    pub fn ohlcv(&self) -> &OhlcvEventMap {
+    pub const fn ohlcv(&self) -> &OhlcvEventMap {
         &self.streams.ohlcv
     }
 
-    pub fn trade(&self) -> &TradeEventMap {
+    pub const fn trade(&self) -> &TradeEventMap {
         &self.streams.trade
     }
 
-    pub fn economic_cal(&self) -> &EconomicCalEventMap {
+    pub const fn economic_cal(&self) -> &EconomicCalEventMap {
         &self.streams.economic_cal
     }
 
-    pub fn volume_profile(&self) -> &VolumeProfileEventMap {
+    pub const fn volume_profile(&self) -> &VolumeProfileEventMap {
         &self.streams.volume_profile
     }
 
-    pub fn tpo(&self) -> &TpoEventMap {
+    pub const fn tpo(&self) -> &TpoEventMap {
         &self.streams.tpo
     }
 
-    pub fn ema(&self) -> &EmaEventMap {
+    pub const fn ema(&self) -> &EmaEventMap {
         &self.streams.ema
     }
 
-    pub fn sma(&self) -> &SmaEventMap {
+    pub const fn sma(&self) -> &SmaEventMap {
         &self.streams.sma
     }
 
-    pub fn rsi(&self) -> &RsiEventMap {
+    pub const fn rsi(&self) -> &RsiEventMap {
         &self.streams.rsi
     }
 
-    pub fn trades_vwap(&self) -> &TradesVwapEventMap {
+    pub const fn trades_vwap(&self) -> &TradesVwapEventMap {
         &self.streams.trades_vwap
     }
 
-    pub fn ohlcv_vwap(&self) -> &OhlcvVwapEventMap {
+    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapEventMap {
         &self.streams.ohlcv_vwap
     }
 
-    pub fn trades_session(&self) -> &TradesSessionEventMap {
+    pub const fn trades_session(&self) -> &TradesSessionEventMap {
         &self.streams.trades_session
     }
 
-    pub fn ohlcv_session(&self) -> &OhlcvSessionEventMap {
+    pub const fn ohlcv_session(&self) -> &OhlcvSessionEventMap {
         &self.streams.ohlcv_session
     }
 
-    pub fn atr(&self) -> &AtrEventMap {
+    pub const fn atr(&self) -> &AtrEventMap {
         &self.streams.atr
     }
 
-    pub fn roc(&self) -> &RocEventMap {
+    pub const fn roc(&self) -> &RocEventMap {
         &self.streams.roc
     }
 
@@ -242,14 +242,14 @@ impl SimulationData {
 
     /// Returns the absolute earliest moment any data becomes available.
     /// Use this to initialize the global clock at the very start of the simulation.
-    pub fn global_availability_start(&self) -> DateTime<Utc> {
+    pub const fn global_availability_start(&self) -> DateTime<Utc> {
         self.global_availability_start
     }
 
     /// Returns the absolute earliest moment any market activity begins (Window Open).
     ///
     /// Use this to initialize the Simulation's internal clock or "Episode" tracking.
-    pub fn global_open_start(&self) -> DateTime<Utc> {
+    pub const fn global_open_start(&self) -> DateTime<Utc> {
         self.global_open_start
     }
 }
@@ -294,10 +294,10 @@ impl SimulationData {
             file_stem: custom_file_stem,
         } = io_cfg;
         let hash = env_cfg.hash()?;
-        let filename = match custom_file_stem {
-            Some(stem) => format!("{stem}.{format}"),
-            None => format!("{hash}.{format}"),
-        };
+        let filename = custom_file_stem.as_ref().map_or_else(
+            || format!("{hash}.{format}"),
+            |stem| format!("{stem}.{format}"),
+        );
 
         tracing::debug!(
             filename = %filename,
@@ -365,10 +365,10 @@ impl SimulationData {
             buffer_size,
             file_stem: custom_file_stem,
         } = cfg;
-        let filename = match custom_file_stem {
-            Some(name) => format!("{name}.{format}"),
-            None => format!("{}.{format}", self.hash),
-        };
+        let filename = custom_file_stem.as_ref().map_or_else(
+            || format!("{}.{format}", self.hash),
+            |name| format!("{name}.{format}"),
+        );
 
         tracing::debug!(
             filename = %filename,
@@ -457,12 +457,12 @@ impl<S: StreamId> StreamTimeInfo for EventMap<S> {
 // SimulationData Builder
 // ================================================================================================
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct SimulationDataBuilder {
+pub struct SimulationDataBuilder {
     streams: Streams,
 }
 
 impl SimulationDataBuilder {
-    pub(crate) fn new(streams: Streams) -> Self {
+    pub(crate) const fn new(streams: Streams) -> Self {
         Self { streams }
     }
 

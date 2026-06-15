@@ -51,7 +51,7 @@ pub struct FilterConfig {
 impl FilterConfig {
     /// Returns true if no filters are active (all data allowed).
     #[must_use]
-    pub fn is_unrestricted(&self) -> bool {
+    pub const fn is_unrestricted(&self) -> bool {
         self.economic_news_policy.is_none()
             && self.allowed_years.is_none()
             && self.allowed_trading_hours.is_none()
@@ -91,17 +91,17 @@ pub enum EconomicCalendarPolicy {
 
 impl EconomicCalendarPolicy {
     #[must_use]
-    pub fn is_unrestricted(&self) -> bool {
+    pub const fn is_unrestricted(&self) -> bool {
         matches!(self, Self::Unrestricted)
     }
 
     #[must_use]
-    pub fn is_only_with_events(&self) -> bool {
+    pub const fn is_only_with_events(&self) -> bool {
         matches!(self, Self::OnlyWithEvents)
     }
 
     #[must_use]
-    pub fn is_exclude_events(&self) -> bool {
+    pub const fn is_exclude_events(&self) -> bool {
         matches!(self, Self::ExcludeEvents)
     }
 }
@@ -171,19 +171,19 @@ impl TradingWindow {
 
     /// Helper for the full 24-hour day [0, 24).
     #[must_use]
-    pub fn full_day() -> Self {
+    pub const fn full_day() -> Self {
         Self { start: 0, end: 24 }
     }
 
     /// Returns the inclusive start hour (UTC).
     #[must_use]
-    pub fn start(&self) -> u8 {
+    pub const fn start(&self) -> u8 {
         self.start
     }
 
     /// Returns the exclusive end hour (UTC).
     #[must_use]
-    pub fn end(&self) -> u8 {
+    pub const fn end(&self) -> u8 {
         self.end
     }
 }
@@ -217,13 +217,13 @@ pub enum Weekday {
 impl From<chrono::Weekday> for Weekday {
     fn from(weekday: chrono::Weekday) -> Self {
         match weekday {
-            chrono::Weekday::Mon => Weekday::Monday,
-            chrono::Weekday::Tue => Weekday::Tuesday,
-            chrono::Weekday::Wed => Weekday::Wednesday,
-            chrono::Weekday::Thu => Weekday::Thursday,
-            chrono::Weekday::Fri => Weekday::Friday,
-            chrono::Weekday::Sat => Weekday::Saturday,
-            chrono::Weekday::Sun => Weekday::Sunday,
+            chrono::Weekday::Mon => Self::Monday,
+            chrono::Weekday::Tue => Self::Tuesday,
+            chrono::Weekday::Wed => Self::Wednesday,
+            chrono::Weekday::Thu => Self::Thursday,
+            chrono::Weekday::Fri => Self::Friday,
+            chrono::Weekday::Sat => Self::Saturday,
+            chrono::Weekday::Sun => Self::Sunday,
         }
     }
 }
@@ -231,13 +231,13 @@ impl From<chrono::Weekday> for Weekday {
 impl From<Weekday> for chrono::Weekday {
     fn from(weekday: Weekday) -> Self {
         match weekday {
-            Weekday::Monday => chrono::Weekday::Mon,
-            Weekday::Tuesday => chrono::Weekday::Tue,
-            Weekday::Wednesday => chrono::Weekday::Wed,
-            Weekday::Thursday => chrono::Weekday::Thu,
-            Weekday::Friday => chrono::Weekday::Fri,
-            Weekday::Saturday => chrono::Weekday::Sat,
-            Weekday::Sunday => chrono::Weekday::Sun,
+            Weekday::Monday => Self::Mon,
+            Weekday::Tuesday => Self::Tue,
+            Weekday::Wednesday => Self::Wed,
+            Weekday::Thursday => Self::Thu,
+            Weekday::Friday => Self::Fri,
+            Weekday::Saturday => Self::Sat,
+            Weekday::Sunday => Self::Sun,
         }
     }
 }

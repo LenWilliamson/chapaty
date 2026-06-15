@@ -36,8 +36,8 @@ enum RingState {
 }
 
 impl RingState {
-    fn is_full(&self) -> bool {
-        matches!(self, RingState::Full { .. })
+    const fn is_full(&self) -> bool {
+        matches!(self, Self::Full { .. })
     }
 }
 
@@ -101,7 +101,7 @@ impl<T> RingBuffer<T> {
     /// Returns the maximum number of elements the buffer can hold.
     ///
     /// This value is fixed at construction time and never changes.
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.capacity
     }
 
@@ -148,7 +148,7 @@ impl<T> RingBuffer<T> {
     /// buffer.push(2);
     /// assert!(buffer.is_full());
     /// ```
-    pub fn is_full(&self) -> bool {
+    pub const fn is_full(&self) -> bool {
         self.state.is_full()
     }
 

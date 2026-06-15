@@ -40,9 +40,11 @@ enum TransitionOutcome<Status, R> {
     },
 }
 
-/// The one thing each event family must supply: how to open a session from its
-/// first event and how to fold subsequent in-session events in. Everything else
-/// (timing, transitions, completion, caching, reset) is the shared.
+/// The one thing each event family must supply.
+///
+/// It defines how to open a session from its first event and how to fold
+/// subsequent in-session events in. Everything else (timing, transitions,
+/// completion, caching, reset) is shared.
 pub trait Range: Debug + Copy + Send + Sync {
     type Indicator: StreamingIndicator + Clone;
     type Event: MarketEvent;
@@ -92,7 +94,7 @@ impl<R: Range, S: RangeState> OvernightRange<R, S> {
         session: SessionDate,
         event: R::Event,
     ) -> OvernightRange<R, Building<R>> {
-        let OvernightRange {
+        let Self {
             window,
             mut indicator,
             ..
@@ -151,13 +153,13 @@ impl<R: Range> OvernightRange<R, Building<R>> {
         match self.window.classify(event.point_in_time()) {
             WindowPosition::Within(current_session) => {
                 if current_session == self.state.range.session_date() {
-                    let OvernightRange {
+                    let Self {
                         window,
                         indicator,
                         state,
                     } = self;
                     let (indicator, range) = state.range.fold(indicator, event);
-                    let next = OvernightRange {
+                    let next = Self {
                         window,
                         indicator,
                         state: Building { range },
@@ -194,17 +196,17 @@ enum OvernightRangeStatus<R: Range> {
 impl<R: Range> OvernightRangeStatus<R> {
     fn update(self, event: R::Event) -> TransitionOutcome<Self, R> {
         match self {
-            OvernightRangeStatus::Awaiting(r) => r.update(event),
-            OvernightRangeStatus::Building(r) => r.update(event),
-            OvernightRangeStatus::Closed(r) => r.update(event),
+            Self::Awaiting(r) => r.update(event),
+            Self::Building(r) => r.update(event),
+            Self::Closed(r) => r.update(event),
         }
     }
 
     fn reset(self) -> Self {
         match self {
-            OvernightRangeStatus::Awaiting(r) => OvernightRangeStatus::Awaiting(r.reset()),
-            OvernightRangeStatus::Building(r) => OvernightRangeStatus::Awaiting(r.reset()),
-            OvernightRangeStatus::Closed(r) => OvernightRangeStatus::Awaiting(r.reset()),
+            Self::Awaiting(r) => Self::Awaiting(r.reset()),
+            Self::Building(r) => Self::Awaiting(r.reset()),
+            Self::Closed(r) => Self::Awaiting(r.reset()),
         }
     }
 }
@@ -216,7 +218,7 @@ pub struct StreamingOvernightRange<R: Range> {
 }
 
 impl<R: Range> StreamingOvernightRange<R> {
-    pub fn last_completed_session(&self) -> Option<R> {
+    pub const fn last_completed_session(&self) -> Option<R> {
         self.last_completed_session
     }
 }
@@ -320,37 +322,37 @@ impl Range for OhlcvSessionData {
 impl OhlcvSessionData {
     /// Session date of the data.
     #[must_use]
-    pub fn session(&self) -> SessionDate {
+    pub const fn session(&self) -> SessionDate {
         self.session
     }
     /// Highest bar high over the window.
     #[must_use]
-    pub fn high(&self) -> Price {
+    pub const fn high(&self) -> Price {
         self.high
     }
     /// Lowest bar low over the window.
     #[must_use]
-    pub fn low(&self) -> Price {
+    pub const fn low(&self) -> Price {
         self.low
     }
     /// Highest bar close over the window.
     #[must_use]
-    pub fn highest_close(&self) -> Price {
+    pub const fn highest_close(&self) -> Price {
         self.highest_close
     }
     /// Lowest bar close over the window.
     #[must_use]
-    pub fn lowest_close(&self) -> Price {
+    pub const fn lowest_close(&self) -> Price {
         self.lowest_close
     }
     /// Total traded volume over the window.
     #[must_use]
-    pub fn volume(&self) -> Volume {
+    pub const fn volume(&self) -> Volume {
         self.volume
     }
     /// Session VWAP at the last update.
     #[must_use]
-    pub fn vwap(&self) -> Option<Price> {
+    pub const fn vwap(&self) -> Option<Price> {
         self.vwap
     }
 }
@@ -424,27 +426,27 @@ impl Range for TradesSessionData {
 impl TradesSessionData {
     /// Session date of the data.
     #[must_use]
-    pub fn session(&self) -> SessionDate {
+    pub const fn session(&self) -> SessionDate {
         self.session
     }
     /// Highest trade price over the window.
     #[must_use]
-    pub fn high(&self) -> Price {
+    pub const fn high(&self) -> Price {
         self.high
     }
     /// Lowest trade price over the window.
     #[must_use]
-    pub fn low(&self) -> Price {
+    pub const fn low(&self) -> Price {
         self.low
     }
     /// Total traded volume over the window.
     #[must_use]
-    pub fn volume(&self) -> Volume {
+    pub const fn volume(&self) -> Volume {
         self.volume
     }
     /// Session VWAP at the last update.
     #[must_use]
-    pub fn vwap(&self) -> Option<Price> {
+    pub const fn vwap(&self) -> Option<Price> {
         self.vwap
     }
 }
@@ -578,7 +580,7 @@ mod tests {
             // The machine should have reset the indicator before handing it over.
             let opened = IndicatorFreshness::from_update_count(indicator.updates);
             indicator.update(event);
-            let range = FakeRange {
+            let range = Self {
                 session,
                 sum: event.value,
                 folds: 0,
@@ -593,7 +595,7 @@ mod tests {
             event: Self::Event,
         ) -> (Self::Indicator, Self) {
             indicator.update(event);
-            let range = FakeRange {
+            let range = Self {
                 session: self.session,
                 sum: self.sum + event.value,
                 folds: self.folds + 1,

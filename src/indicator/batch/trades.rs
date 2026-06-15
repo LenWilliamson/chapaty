@@ -19,19 +19,17 @@ pub enum BatchTradesIndicator {
 impl BatchCompute for BatchTradesIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            BatchTradesIndicator::Vwap => Ok(pre_compute_trades_vwap(lf)),
-            BatchTradesIndicator::OvernightRange(session) => {
-                Ok(pre_compute_overnight_range(*session, lf))
-            }
+            Self::Vwap => Ok(pre_compute_trades_vwap(lf)),
+            Self::OvernightRange(session) => Ok(pre_compute_overnight_range(*session, lf)),
         }
     }
     fn output_schema(&self) -> Arc<Schema> {
         match self {
-            BatchTradesIndicator::Vwap => Arc::new(Schema::from_iter(vec![
+            Self::Vwap => Arc::new(Schema::from_iter(vec![
                 CanonicalCol::PointInTime.field(),
                 CanonicalCol::Price.field(),
             ])),
-            BatchTradesIndicator::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
+            Self::OvernightRange(_) => Arc::new(Schema::from_iter(vec![
                 CanonicalCol::Date.field(),
                 CanonicalCol::OpenTimestamp.field(),
                 CanonicalCol::PointInTime.field(),

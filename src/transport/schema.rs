@@ -154,7 +154,7 @@ impl CanonicalCol {
         self.into()
     }
 
-    pub fn dtype(self) -> DataType {
+    pub const fn dtype(self) -> DataType {
         match self {
             // Strings
             Self::DataSource

@@ -338,10 +338,10 @@ impl Fetchable for EconomicCalendarQuery {
             year,
             data_source: self
                 .data_source
-                .map_or(String::default(), |ds| ds.to_string()),
+                .map_or_else(String::default, |ds| ds.to_string()),
             country_code: self
                 .country_code
-                .map_or(String::default(), |cc| cc.to_string()),
+                .map_or_else(String::default, |cc| cc.to_string()),
             category: self
                 .category
                 .map_or(0, |ec| EconomicCategory::from(ec) as i32),

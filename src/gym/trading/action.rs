@@ -54,10 +54,10 @@ pub enum ActionKind {
 impl From<&Action> for ActionKind {
     fn from(action: &Action) -> Self {
         match action {
-            Action::Open(_) => ActionKind::Open,
-            Action::Modify(_) => ActionKind::Modify,
-            Action::MarketClose(_) => ActionKind::MarketClose,
-            Action::Cancel(_) => ActionKind::Cancel,
+            Action::Open(_) => Self::Open,
+            Action::Modify(_) => Self::Modify,
+            Action::MarketClose(_) => Self::MarketClose,
+            Action::Cancel(_) => Self::Cancel,
         }
     }
 }
@@ -73,10 +73,10 @@ pub enum Action {
 impl Command for Action {
     fn validate(&self) -> ChapatyResult<()> {
         match self {
-            Action::Open(cmd) => cmd.validate(),
-            Action::Modify(cmd) => cmd.validate(),
-            Action::MarketClose(cmd) => cmd.validate(),
-            Action::Cancel(cmd) => cmd.validate(),
+            Self::Open(cmd) => cmd.validate(),
+            Self::Modify(cmd) => cmd.validate(),
+            Self::MarketClose(cmd) => cmd.validate(),
+            Self::Cancel(cmd) => cmd.validate(),
         }
     }
 }
@@ -84,8 +84,8 @@ impl Command for Action {
 impl Action {
     /// Helper to identify "Open" intent for filtering/sorting optimization.
     #[must_use]
-    pub fn is_open(&self) -> bool {
-        matches!(self, Action::Open(_))
+    pub const fn is_open(&self) -> bool {
+        matches!(self, Self::Open(_))
     }
 
     /// Returns the execution priority rank for deterministic sorting.
@@ -96,12 +96,12 @@ impl Action {
     /// 3. Modify (2) - Adjust existing trades.
     /// 4. Open (3) - Enter new positions last (using freed resources).
     #[must_use]
-    pub fn execution_priority(&self) -> u8 {
+    pub const fn execution_priority(&self) -> u8 {
         match self {
-            Action::Cancel(_) => 0,
-            Action::MarketClose(_) => 1,
-            Action::Modify(_) => 2,
-            Action::Open(_) => 3,
+            Self::Cancel(_) => 0,
+            Self::MarketClose(_) => 1,
+            Self::Modify(_) => 2,
+            Self::Open(_) => 3,
         }
     }
 
@@ -113,22 +113,22 @@ impl Action {
     /// Extracts the Trade ID associated with this action.
     /// Useful for logging and routing without matching on the specific variant.
     #[must_use]
-    pub fn trade_id(&self) -> TradeId {
+    pub const fn trade_id(&self) -> TradeId {
         match self {
-            Action::Open(cmd) => cmd.trade_id,
-            Action::Modify(cmd) => cmd.trade_id,
-            Action::MarketClose(cmd) => cmd.trade_id,
-            Action::Cancel(cmd) => cmd.trade_id,
+            Self::Open(cmd) => cmd.trade_id,
+            Self::Modify(cmd) => cmd.trade_id,
+            Self::MarketClose(cmd) => cmd.trade_id,
+            Self::Cancel(cmd) => cmd.trade_id,
         }
     }
 
     #[must_use]
     pub fn as_command(&self) -> &dyn Command {
         match self {
-            Action::Open(cmd) => cmd,
-            Action::Modify(cmd) => cmd,
-            Action::MarketClose(cmd) => cmd,
-            Action::Cancel(cmd) => cmd,
+            Self::Open(cmd) => cmd,
+            Self::Modify(cmd) => cmd,
+            Self::MarketClose(cmd) => cmd,
+            Self::Cancel(cmd) => cmd,
         }
     }
 
@@ -136,10 +136,10 @@ impl Action {
     #[must_use]
     pub fn agent_id(&self) -> AgentIdentifier {
         match self {
-            Action::Open(cmd) => cmd.agent_id.clone(),
-            Action::Modify(cmd) => cmd.agent_id.clone(),
-            Action::MarketClose(cmd) => cmd.agent_id.clone(),
-            Action::Cancel(cmd) => cmd.agent_id.clone(),
+            Self::Open(cmd) => cmd.agent_id.clone(),
+            Self::Modify(cmd) => cmd.agent_id.clone(),
+            Self::MarketClose(cmd) => cmd.agent_id.clone(),
+            Self::Cancel(cmd) => cmd.agent_id.clone(),
         }
     }
 }
@@ -234,7 +234,7 @@ impl Command for MarketCloseCmd {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CancelCmd {
     pub agent_id: AgentIdentifier,
     pub trade_id: TradeId,
@@ -265,12 +265,12 @@ impl Default for Actions {
 impl Actions {
     /// Returns an [`Actions`] instance that represents **no operations**.
     #[must_use]
-    pub fn no_op() -> Self {
-        Actions(SortedVecMap::new())
+    pub const fn no_op() -> Self {
+        Self(SortedVecMap::new())
     }
 
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::no_op()
     }
 
@@ -305,7 +305,7 @@ impl Actions {
 
 impl From<(MarketId, Action)> for Actions {
     fn from((spec, action): (MarketId, Action)) -> Self {
-        Actions::new().with_action(spec, action)
+        Self::new().with_action(spec, action)
     }
 }
 
@@ -318,7 +318,7 @@ impl From<Vec<(MarketId, Action)>> for Actions {
 impl FromIterator<(MarketId, Action)> for Actions {
     fn from_iter<T: IntoIterator<Item = (MarketId, Action)>>(iter: T) -> Self {
         iter.into_iter()
-            .fold(Actions::new(), |mut acc, (market, action)| {
+            .fold(Self::new(), |mut acc, (market, action)| {
                 acc.add(market, action);
                 acc
             })

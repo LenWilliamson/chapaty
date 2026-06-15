@@ -214,7 +214,7 @@ fn last_peak_timestamp_expr(initial_value: u32) -> Expr {
     let peak_ret = peak_cumulative_return_usd_expr(initial_value);
 
     // Mark the timestamp at each new peak, else null
-    let peak_ts = when(cum_ret.clone().eq(peak_ret.clone()))
+    let peak_ts = when(cum_ret.eq(peak_ret))
         .then(exit_ts)
         .otherwise(polars::prelude::lit(Null {}));
 

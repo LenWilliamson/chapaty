@@ -54,7 +54,7 @@ impl GroupedJournal<'_> {
     }
 
     #[must_use]
-    pub fn source(&self) -> &Journal {
+    pub const fn source(&self) -> &Journal {
         self.journal
     }
 
@@ -154,29 +154,27 @@ impl From<GroupCol> for JournalCol {
     fn from(col: GroupCol) -> Self {
         match col {
             // === Identifiers ===
-            GroupCol::EpisodeId => JournalCol::EpisodeId,
-            GroupCol::TradeState => JournalCol::TradeState,
-            GroupCol::AgentId => JournalCol::AgentId,
+            GroupCol::EpisodeId => Self::EpisodeId,
+            GroupCol::TradeState => Self::TradeState,
+            GroupCol::AgentId => Self::AgentId,
 
             // === Market spec ===
-            GroupCol::DataBroker => JournalCol::DataBroker,
-            GroupCol::Exchange => JournalCol::Exchange,
-            GroupCol::Symbol => JournalCol::Symbol,
-            GroupCol::MarketType => JournalCol::MarketType,
+            GroupCol::DataBroker => Self::DataBroker,
+            GroupCol::Exchange => Self::Exchange,
+            GroupCol::Symbol => Self::Symbol,
+            GroupCol::MarketType => Self::MarketType,
 
             // === Trade configuration ===
-            GroupCol::TradeType => JournalCol::TradeType,
+            GroupCol::TradeType => Self::TradeType,
 
             // === Timestamps (Mapped to parent TS columns) ===
             GroupCol::EntryYear | GroupCol::EntryQuarter | GroupCol::EntryMonth => {
-                JournalCol::EntryTimestamp
+                Self::EntryTimestamp
             }
-            GroupCol::ExitYear | GroupCol::ExitQuarter | GroupCol::ExitMonth => {
-                JournalCol::ExitTimestamp
-            }
+            GroupCol::ExitYear | GroupCol::ExitQuarter | GroupCol::ExitMonth => Self::ExitTimestamp,
 
             // === Realized outcomes ===
-            GroupCol::ExitReason => JournalCol::ExitReason,
+            GroupCol::ExitReason => Self::ExitReason,
         }
     }
 }

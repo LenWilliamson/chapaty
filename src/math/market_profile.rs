@@ -89,6 +89,7 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
     let mut low_idx = poc_idx;
     let mut high_idx = poc_idx;
 
+    #[allow(clippy::while_float)]
     while current_vol < target_vol {
         // Look at neighbors
         let vol_below = if low_idx > 0 {

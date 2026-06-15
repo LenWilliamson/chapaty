@@ -109,8 +109,8 @@ impl TradeKind {
     #[must_use]
     pub fn price_diff(&self, entry: Price, exit: Price) -> Price {
         match self {
-            TradeKind::Long => exit - entry,
-            TradeKind::Short => entry - exit,
+            Self::Long => exit - entry,
+            Self::Short => entry - exit,
         }
     }
 
@@ -228,7 +228,7 @@ impl RiskRewardRatio {
     }
 
     #[must_use]
-    pub fn ratio(&self) -> f64 {
+    pub const fn ratio(&self) -> f64 {
         self.ratio
     }
 }

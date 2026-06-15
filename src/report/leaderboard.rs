@@ -377,14 +377,14 @@ pub struct LeaderboardEntry {
 impl LeaderboardEntry {
     /// Returns the unique identifier of the agent associated with this entry.
     #[must_use]
-    pub fn agent_uid(&self) -> u64 {
+    pub const fn agent_uid(&self) -> u64 {
         self.agent_uid
     }
 
     /// Returns the performance metric used for ranking this entry
     /// (e.g. Sharpe ratio, net profit, drawdown).
     #[must_use]
-    pub fn metric(&self) -> PortfolioPerformanceCol {
+    pub const fn metric(&self) -> PortfolioPerformanceCol {
         self.metric
     }
 
@@ -394,7 +394,7 @@ impl LeaderboardEntry {
     /// transformed into a score where *larger is always better*. This value
     /// is what the leaderboard compares to decide ordering.
     #[must_use]
-    pub fn normalized_reward(&self) -> f64 {
+    pub const fn normalized_reward(&self) -> f64 {
         self.reward.0
     }
 
@@ -518,9 +518,8 @@ mod tests {
         let heap = board.top_per_metric.get(&metric).unwrap();
         assert_eq!(heap.len(), 1, "Heap should only contain the valid agent");
 
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
         assert!(
-            !uids.contains(&2),
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 2),
             "Zero-entry agent should not be in the heap"
         );
 
@@ -578,9 +577,8 @@ mod tests {
         assert_eq!(heap.len(), k, "Heap size should remain unchanged");
 
         // Verify agent 100 is NOT in the heap
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
         assert!(
-            !uids.contains(&100),
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 100),
             "Worse agent should not be in the heap"
         );
 
@@ -638,8 +636,10 @@ mod tests {
 
         // Assert: Tie should be rejected (strict > inequality)
         let heap = board.top_per_metric.get(&metric).unwrap();
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
-        assert!(!uids.contains(&999), "Tied agent should not be in the heap");
+        assert!(
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 999),
+            "Tied agent should not be in the heap"
+        );
         assert_eq!(heap.len(), k, "Heap size should remain unchanged");
         assert!(
             !board.agent_data.contains_key(&999),
@@ -670,7 +670,7 @@ mod tests {
         for i in 1..=3u64 {
             let uid = 100 + i;
             let rank = u32::try_from(i).expect("rank index exceeds u32 range");
-            let entry = make_entry(uid, metric, (f64::from(rank) * 10.0) + 15.0);
+            let entry = make_entry(uid, metric, f64::from(rank).mul_add(10.0, 15.0));
             board_b.update(&[entry], TestAgent::new(uid));
         }
 

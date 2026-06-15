@@ -21,7 +21,7 @@ pub(crate) struct StreamingEwm {
 }
 
 impl StreamingEwm {
-    pub(crate) fn new(alpha: f64, window_size: usize) -> Self {
+    pub(crate) const fn new(alpha: f64, window_size: usize) -> Self {
         Self {
             alpha,
             current_mean: None,
@@ -45,7 +45,7 @@ impl StreamingIndicator for StreamingEwm {
             }
             Some(prev) => {
                 // Recursive update
-                self.current_mean = Some(self.alpha * value + (1.0 - self.alpha) * prev);
+                self.current_mean = Some((1.0 - self.alpha).mul_add(prev, self.alpha * value));
             }
         }
 
@@ -229,7 +229,7 @@ mod tests {
         let mut ema = StreamingEma::new(EmaWindow(2));
         let alpha = 2.0 / 3.0;
         assert_eq!(ema.update(10.0), None);
-        let expected = alpha * 20.0 + (1.0 - alpha) * 10.0;
+        let expected = (1.0_f64 - alpha).mul_add(10.0, alpha * 20.0);
         approx(ema.update(20.0).unwrap(), expected);
     }
 
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(ema.update(1.0), None); // count 1 < 2 again
         approx(
             ema.update(3.0).unwrap(),
-            (2.0 / 3.0) * 3.0 + (1.0 / 3.0) * 1.0,
+            (1.0_f64 / 3.0).mul_add(1.0, (2.0 / 3.0) * 3.0),
         );
     }
 

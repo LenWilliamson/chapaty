@@ -269,7 +269,7 @@ impl Trade<Active> {
             // The closed slice only adds, what it gained beyond its already-booked share.
             let step_delta = realized_pnl - closed_booked_unrealized;
 
-            let remaining = Trade {
+            let remaining = Self {
                 quantity: self.quantity - *qty,
                 state: Active {
                     // The survivor must carry only its share of the unrealized PnL.

@@ -206,10 +206,10 @@ where
 {
     fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()> {
         let ext: FileExtension = (&config.format).into();
-        let filename = match &config.file_stem {
-            Some(stem) => format!("{stem}.{ext}"),
-            None => format!("{}.{ext}", self.base_name()),
-        };
+        let filename = config.file_stem.as_ref().map_or_else(
+            || format!("{}.{ext}", self.base_name()),
+            |stem| format!("{stem}.{ext}"),
+        );
         let file_path = config.dir.join(&filename);
 
         if !config.dir.exists() {
@@ -455,7 +455,7 @@ mod tests {
         let schema = Journal::to_schema();
         let df = LazyCsvReader::new(path)
             .with_has_header(true)
-            .with_schema(Some(schema.clone()))
+            .with_schema(Some(schema))
             .with_try_parse_dates(true)
             .finish()
             .expect("failed to create LazyFrame from CSV")

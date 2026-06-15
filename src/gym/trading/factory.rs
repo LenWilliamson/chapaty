@@ -218,7 +218,7 @@ impl BuildCtx {
         self.vp_spot_map = Some(vp_spot);
         self.economic_calendar_map = Some(news);
 
-        Ok(StateFn::Next(BuildCtx::compute_batch_ohlcv_indicators))
+        Ok(StateFn::Next(Self::compute_batch_ohlcv_indicators))
     }
 
     #[tracing::instrument(skip_all)]
@@ -335,7 +335,7 @@ impl BuildCtx {
         self.atr_map = Some(atr_map);
         self.roc_map = Some(roc_map);
 
-        Ok(StateFn::Next(|ctx: &mut BuildCtx| {
+        Ok(StateFn::Next(|ctx: &mut Self| {
             ctx.compute_batch_trades_indicators()
         }))
     }
@@ -391,7 +391,7 @@ impl BuildCtx {
         self.trades_vwap_map = Some(trades_vwap_map);
         self.trades_session_map = Some(trades_session_map);
 
-        Ok(StateFn::Next(|ctx: &mut BuildCtx| {
+        Ok(StateFn::Next(|ctx: &mut Self| {
             ctx.overlay_economic_calendar_policy()
         }))
     }
@@ -411,7 +411,7 @@ impl BuildCtx {
             tracing::info!(
                 "Policy is Unrestricted or undefined. Skipping economic calendar overlay."
             );
-            return Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window));
+            return Ok(StateFn::Next(Self::filter_markets_by_trading_window));
         };
 
         // Handle Edge Case: No Calendar Data
@@ -433,7 +433,7 @@ impl BuildCtx {
                 self.tpo_future_map = None;
                 self.vp_spot_map = None;
             }
-            return Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window));
+            return Ok(StateFn::Next(Self::filter_markets_by_trading_window));
         }
 
         tracing::info!("Applying economic calendar policy: {:?}", policy);
@@ -490,7 +490,7 @@ impl BuildCtx {
 
         tracing::info!("Economic calendar policy applied successfully");
 
-        Ok(StateFn::Next(BuildCtx::filter_markets_by_trading_window))
+        Ok(StateFn::Next(Self::filter_markets_by_trading_window))
     }
 
     #[tracing::instrument(skip_all)]
@@ -502,7 +502,7 @@ impl BuildCtx {
             .and_then(|cfg| cfg.allowed_trading_hours.as_ref())
         else {
             tracing::info!("No trading hour restrictions defined. Skipping filter.");
-            return Ok(StateFn::Next(BuildCtx::sort_all_data));
+            return Ok(StateFn::Next(Self::sort_all_data));
         };
 
         if allowed_hours_map.is_empty() {
@@ -535,7 +535,7 @@ impl BuildCtx {
         }
 
         tracing::info!("Trading hours filter applied successfully");
-        Ok(StateFn::Next(BuildCtx::sort_all_data))
+        Ok(StateFn::Next(Self::sort_all_data))
     }
 
     #[tracing::instrument(skip_all)]
@@ -566,7 +566,7 @@ impl BuildCtx {
         }
 
         tracing::info!("Sorting applied successfully");
-        Ok(StateFn::Next(BuildCtx::finish))
+        Ok(StateFn::Next(Self::finish))
     }
 
     #[tracing::instrument(skip_all)]
@@ -832,8 +832,8 @@ async fn fetch_groups<T: Fetchable>(
     let mut aggregated_map = HashMap::with_capacity(total_items);
 
     for group in groups {
-        let mut client = group.source.connect().await?;
-        let batch_map = load_batch(&mut client, group.items.clone(), years.clone()).await?;
+        let client = group.source.connect().await?;
+        let batch_map = load_batch(&client, group.items.clone(), years.clone()).await?;
         aggregated_map.extend(batch_map);
     }
 
@@ -890,7 +890,7 @@ fn apply_filter<T>(
         conditions
             .into_iter()
             .reduce(polars::prelude::Expr::or)
-            .unwrap_or(lit(false))
+            .unwrap_or_else(|| lit(false))
     };
 
     // Apply filter to all LazyFrames

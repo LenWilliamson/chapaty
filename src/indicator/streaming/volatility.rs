@@ -96,19 +96,13 @@ impl StreamingAtr {
     fn calculate_true_range(&self, ohlcv: Ohlcv) -> f64 {
         let hl_range = ohlcv.high - ohlcv.low;
 
-        match self.prev_close {
-            Some(prev_c) => {
-                let high_close_range = (ohlcv.high - prev_c).abs();
-                let low_close_range = (ohlcv.low - prev_c).abs();
+        self.prev_close.map_or(hl_range.0, |prev_c| {
+            let high_close_range = (ohlcv.high - prev_c).abs();
+            let low_close_range = (ohlcv.low - prev_c).abs();
 
-                // TR = max(H - L, |H - C_prev|, |L - C_prev|)
-                hl_range.max(high_close_range).max(low_close_range).0
-            }
-            None => {
-                // First candle: we don't have a previous close, so TR is just the High-Low range.
-                hl_range.0
-            }
-        }
+            // TR = max(H - L, |H - C_prev|, |L - C_prev|)
+            hl_range.max(high_close_range).max(low_close_range).0
+        })
     }
 }
 
@@ -526,7 +520,7 @@ mod tests {
         // each one, Kahan accumulates them.
         let mut values = vec![1.0];
         values.extend(std::iter::repeat_n(1e-16, 100));
-        let truth = 1.0 + 100.0 * 1e-16;
+        let truth = 100.0_f64.mul_add(1e-16, 1.0);
 
         let kahan = values
             .iter()

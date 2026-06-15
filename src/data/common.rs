@@ -260,7 +260,7 @@ impl RiskMetricsConfig {
     /// # Example
     /// `200` = 2.0%.
     #[must_use]
-    pub fn with_annual_risk_free_rate_bps(self, bps: u16) -> Self {
+    pub const fn with_annual_risk_free_rate_bps(self, bps: u16) -> Self {
         Self {
             annual_risk_free_rate_bps: bps,
             ..self
@@ -268,7 +268,7 @@ impl RiskMetricsConfig {
     }
 
     #[must_use]
-    pub fn initial_portfolio_value(&self) -> u32 {
+    pub const fn initial_portfolio_value(&self) -> u32 {
         self.initial_portfolio_value
     }
 
@@ -279,7 +279,7 @@ impl RiskMetricsConfig {
     }
 
     #[must_use]
-    pub fn risk_free_rate_bps(&self) -> u16 {
+    pub const fn risk_free_rate_bps(&self) -> u16 {
         self.annual_risk_free_rate_bps
     }
 }

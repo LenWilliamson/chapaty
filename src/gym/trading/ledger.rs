@@ -638,7 +638,7 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
         let symbol = market_id.symbol;
         let state = log_entry.state;
 
-        Ok(JournalEntry {
+        Ok(Self {
             // === Identifiers ===
             episode_id: log_entry.episode,
             trade_id: state.trade_id(),

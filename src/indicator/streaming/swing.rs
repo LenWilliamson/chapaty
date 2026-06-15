@@ -28,8 +28,8 @@ impl From<MarketStructureSequence> for PivotType {
             UnclassifiedLow,
         };
         match sequence {
-            LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => PivotType::High,
-            HigherLow | LowerLow | EqualLow | UnclassifiedLow => PivotType::Low,
+            LowerHigh | HigherHigh | EqualHigh | UnclassifiedHigh => Self::High,
+            HigherLow | LowerLow | EqualLow | UnclassifiedLow => Self::Low,
         }
     }
 }
@@ -39,21 +39,21 @@ impl PivotType {
     /// configured [`PriceSource`] and the candle's own direction.
     fn extract_price(self, candle: Ohlcv, source: PriceSource) -> Price {
         match (source, self, candle.direction()) {
-            (PriceSource::HighLow, PivotType::High, _) => candle.high,
-            (PriceSource::HighLow, PivotType::Low, _) => candle.low,
+            (PriceSource::HighLow, Self::High, _) => candle.high,
+            (PriceSource::HighLow, Self::Low, _) => candle.low,
 
             (
                 PriceSource::OpenClose,
-                PivotType::High,
+                Self::High,
                 CandleDirection::Bullish | CandleDirection::Doji,
             )
             | (
                 PriceSource::OpenClose,
-                PivotType::Low,
+                Self::Low,
                 CandleDirection::Bearish | CandleDirection::Doji,
             ) => candle.close,
-            (PriceSource::OpenClose, PivotType::High, CandleDirection::Bearish)
-            | (PriceSource::OpenClose, PivotType::Low, CandleDirection::Bullish) => candle.open,
+            (PriceSource::OpenClose, Self::High, CandleDirection::Bearish)
+            | (PriceSource::OpenClose, Self::Low, CandleDirection::Bullish) => candle.open,
         }
     }
 }
@@ -211,7 +211,7 @@ impl PivotPoint {
     ///
     /// # Panics
     /// Panics if any involved bar index cannot be represented as `u32`.
-    pub fn price_line_by_index(&self, target: &PivotPoint) -> impl Fn(usize) -> Price {
+    pub fn price_line_by_index(&self, target: &Self) -> impl Fn(usize) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
         let x0 = f64::from(
@@ -239,10 +239,7 @@ impl PivotPoint {
     ///
     /// # Panics
     /// Panics if millisecond deltas cannot be losslessly formatted/parsing into `f64`.
-    pub fn price_line_by_point_in_time(
-        &self,
-        target: &PivotPoint,
-    ) -> impl Fn(DateTime<Utc>) -> Price {
+    pub fn price_line_by_point_in_time(&self, target: &Self) -> impl Fn(DateTime<Utc>) -> Price {
         let p0 = self.price.0;
         let p1 = target.price.0;
 
@@ -295,18 +292,18 @@ impl ZigZagPeriod {
     /// The indicator will buffer `2 * bars + 1` candles before emitting its first
     /// result.
     #[must_use]
-    pub fn symmetric(bars: u16) -> Self {
+    pub const fn symmetric(bars: u16) -> Self {
         Self {
             left_bars: bars,
             right_bars: bars,
         }
     }
 
-    fn buffer_size(self) -> usize {
+    const fn buffer_size(self) -> usize {
         (self.left_bars + self.right_bars + 1) as usize
     }
 
-    fn mid_index(self) -> usize {
+    const fn mid_index(self) -> usize {
         self.left_bars as usize
     }
 }
@@ -407,7 +404,7 @@ impl StreamingHhll {
     /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
     /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
     #[must_use]
-    pub fn active_pivot(&self) -> Option<PivotPoint> {
+    pub const fn active_pivot(&self) -> Option<PivotPoint> {
         self.active_pivot
     }
 
@@ -416,7 +413,7 @@ impl StreamingHhll {
     /// When a new High vertex is detected, it is compared against this anchor to determine if it
     /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
     #[must_use]
-    pub fn anchor_high(&self) -> Option<PivotPoint> {
+    pub const fn anchor_high(&self) -> Option<PivotPoint> {
         self.anchor_high
     }
 
@@ -425,7 +422,7 @@ impl StreamingHhll {
     /// When a new Low vertex is detected, it is compared against this anchor to determine if it
     /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
     #[must_use]
-    pub fn anchor_low(&self) -> Option<PivotPoint> {
+    pub const fn anchor_low(&self) -> Option<PivotPoint> {
         self.anchor_low
     }
 

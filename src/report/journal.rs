@@ -115,16 +115,16 @@ impl TryFrom<JournalCol> for GroupCol {
     fn try_from(value: JournalCol) -> Result<Self, Self::Error> {
         match value {
             // === Identifiers ===
-            JournalCol::EpisodeId => Ok(GroupCol::EpisodeId),
-            JournalCol::TradeState => Ok(GroupCol::TradeState),
-            JournalCol::AgentId => Ok(GroupCol::AgentId),
+            JournalCol::EpisodeId => Ok(Self::EpisodeId),
+            JournalCol::TradeState => Ok(Self::TradeState),
+            JournalCol::AgentId => Ok(Self::AgentId),
             // === Market spec ===
-            JournalCol::DataBroker => Ok(GroupCol::DataBroker),
-            JournalCol::Exchange => Ok(GroupCol::Exchange),
-            JournalCol::Symbol => Ok(GroupCol::Symbol),
-            JournalCol::MarketType => Ok(GroupCol::MarketType),
+            JournalCol::DataBroker => Ok(Self::DataBroker),
+            JournalCol::Exchange => Ok(Self::Exchange),
+            JournalCol::Symbol => Ok(Self::Symbol),
+            JournalCol::MarketType => Ok(Self::MarketType),
             // === Trade configuration ===
-            JournalCol::TradeType => Ok(GroupCol::TradeType),
+            JournalCol::TradeType => Ok(Self::TradeType),
             // === Timestamps ===
             JournalCol::EntryTimestamp => {
                 Err(DataError::UnexpectedEnumVariant(
@@ -137,7 +137,7 @@ impl TryFrom<JournalCol> for GroupCol {
                 ).into())
             }
             // === Realized outcomes ===
-            JournalCol::ExitReason => Ok(GroupCol::ExitReason),
+            JournalCol::ExitReason => Ok(Self::ExitReason),
             // === Any other JournalCol variants that don't have GroupCol equivalents ===
             JournalCol::RowId
             | JournalCol::TradeId
@@ -226,7 +226,7 @@ impl Journal {
         self.try_into()
     }
 
-    pub fn risk_metrics_config(&self) -> RiskMetricsConfig {
+    pub const fn risk_metrics_config(&self) -> RiskMetricsConfig {
         self.risk_metrics_config
     }
 

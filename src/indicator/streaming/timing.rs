@@ -33,9 +33,9 @@ pub enum PriceRelationship {
 impl From<Option<Ordering>> for PriceRelationship {
     fn from(cmp: Option<Ordering>) -> Self {
         match cmp {
-            Some(Ordering::Less) => PriceRelationship::Lower,
-            Some(Ordering::Greater) => PriceRelationship::Higher,
-            Some(Ordering::Equal) | None => PriceRelationship::Flat,
+            Some(Ordering::Less) => Self::Lower,
+            Some(Ordering::Greater) => Self::Higher,
+            Some(Ordering::Equal) | None => Self::Flat,
         }
     }
 }
@@ -53,21 +53,21 @@ enum InternalSetupState {
 }
 
 impl InternalSetupState {
-    fn new_bullish() -> Self {
+    const fn new_bullish() -> Self {
         Self::Tracking {
             direction: TdDirection::BullishReversal,
             count: 1,
         }
     }
 
-    fn new_bearish() -> Self {
+    const fn new_bearish() -> Self {
         Self::Tracking {
             direction: TdDirection::BearishReversal,
             count: 1,
         }
     }
 
-    fn increment(self) -> Self {
+    const fn increment(self) -> Self {
         match self {
             Self::Tracking { direction, count } => Self::Tracking {
                 direction,
@@ -139,7 +139,7 @@ impl StreamingTdXSequential {
     /// By checking exact multiples (e.g., 18, 27), we handle "Setup Recycling",
     /// ensuring extreme trend breakouts continue to emit valid exhaustion signals
     /// rather than being silently ignored.
-    fn is_setup_completion(&self, count: usize) -> bool {
+    const fn is_setup_completion(&self, count: usize) -> bool {
         count > 0 && count.is_multiple_of(self.target_count)
     }
 }
@@ -225,8 +225,8 @@ pub enum CountdownStart {
 
 impl CountdownStart {
     #[must_use]
-    pub fn is_next_bar(&self) -> bool {
-        matches!(self, CountdownStart::NextBar)
+    pub const fn is_next_bar(&self) -> bool {
+        matches!(self, Self::NextBar)
     }
 }
 
@@ -274,7 +274,7 @@ pub struct CountdownEvalContext {
 }
 
 impl Countdown {
-    fn new(direction: TdDirection) -> Self {
+    const fn new(direction: TdDirection) -> Self {
         Self {
             direction,
             count: 0,
@@ -326,7 +326,7 @@ impl Countdown {
                 self.qualifier_close
             };
 
-            return CountdownResult::Pending(Countdown {
+            return CountdownResult::Pending(Self {
                 count: tentative,
                 qualifier_close: new_qualifier,
                 ..self
@@ -405,7 +405,7 @@ impl StreamingTdSequential {
 
     /// The configured [`CountdownStart`] convention.
     #[must_use]
-    pub fn countdown_start(&self) -> CountdownStart {
+    pub const fn countdown_start(&self) -> CountdownStart {
         self.countdown_start
     }
 

@@ -91,11 +91,15 @@ impl<'a> IoConfig<'a> {
 
 /// An async cloud file reader that can be used synchronously via `Read`.
 #[derive(Default, Debug, Clone)]
-pub(crate) struct CloudReader {
+pub struct CloudReader {
     inner: Cursor<Bytes>,
 }
 
 impl CloudReader {
+    /// # Errors
+    ///
+    /// Returns an error if object-store initialization fails, if the object path
+    /// cannot be built, or if the remote object cannot be read into memory.
     pub async fn new(uri: &str, cloud_options: Option<&CloudOptions>) -> ChapatyResult<Self> {
         let (cloud_location, object_store) =
             build_object_store(PlRefPath::new(uri), cloud_options, false)
@@ -114,7 +118,7 @@ impl CloudReader {
 
         let bytes = result.bytes().await.map_err(map_object_store_err)?;
 
-        Ok(CloudReader {
+        Ok(Self {
             inner: Cursor::new(bytes),
         })
     }
@@ -218,7 +222,7 @@ impl StorageLocation<'_> {
                     object_path,
                     write_cfg.upload_chunk_size,
                     write_cfg.max_concurrency,
-                    write_cfg.io_metrics.clone(),
+                    write_cfg.io_metrics,
                 );
 
                 let io_writer = CloudWriterIoTraitWrap::from(cloud_writer);

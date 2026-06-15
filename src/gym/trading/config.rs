@@ -542,8 +542,8 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some(allowed_years),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
-                    .add_ohlcv_spot(source.clone(), market_config)
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
@@ -560,8 +560,8 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
-                    .add_ohlcv_spot(source.clone(), market_config)
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
@@ -586,9 +586,9 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_spot(source.clone(), ohlcv_1m)
-                    .add_ohlcv_spot(source.clone(), ohlcv_15m)
+                    .add_ohlcv_spot(source, ohlcv_15m)
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
@@ -629,12 +629,12 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2008..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_future(source.clone(), ohlcv_1m)
                     .add_ohlcv_future(source.clone(), ohlcv_5m)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
-                    .add_economic_calendar(source.clone(), calendar)
+                    .add_economic_calendar(source, calendar)
                     .with_trade_hint(4)
             }
             EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly => {
@@ -663,11 +663,11 @@ impl From<EnvPreset> for EnvConfig {
                     economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_future(source.clone(), ohlcv)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
-                    .add_economic_calendar(source.clone(), calendar)
+                    .add_economic_calendar(source, calendar)
                     .with_trade_hint(2)
             }
             EnvPreset::NinjaTraderCme6eh61m5mUsEmpHighEventsOnly => {
@@ -708,12 +708,12 @@ impl From<EnvPreset> for EnvConfig {
                     economic_news_policy: Some(EconomicCalendarPolicy::OnlyWithEvents),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_future(source.clone(), ohlcv_1m)
                     .add_ohlcv_future(source.clone(), ohlcv_5m)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
-                    .add_economic_calendar(source.clone(), calendar)
+                    .add_economic_calendar(source, calendar)
                     .with_trade_hint(4)
             }
             EnvPreset::BinanceBtcUsdt1dSma20Sma50 => {
@@ -732,8 +732,8 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
-                    .add_ohlcv_spot(source.clone(), market_config)
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
@@ -769,10 +769,10 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_spot(source.clone(), ohlcv_1h)
                     .add_ohlcv_spot(source.clone(), ohlcv_1m)
-                    .add_volume_profile_spot(source.clone(), vp)
+                    .add_volume_profile_spot(source, vp)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
             }
@@ -808,10 +808,10 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2017..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_spot(source.clone(), ohlcv_1h)
                     .add_ohlcv_spot(source.clone(), ohlcv_1m)
-                    .add_tpo_spot(source.clone(), tpo)
+                    .add_tpo_spot(source, tpo)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
             }
@@ -846,9 +846,9 @@ impl From<EnvPreset> for EnvConfig {
                     allowed_years: Some((2006..=2026).collect::<BTreeSet<_>>()),
                     ..FilterConfig::default()
                 };
-                EnvConfig::default()
+                Self::default()
                     .add_ohlcv_future(source.clone(), ohlcv)
-                    .add_tpo_future(source.clone(), tpo)
+                    .add_tpo_future(source, tpo)
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
             }
@@ -1134,27 +1134,27 @@ impl EnvConfig {
     }
 
     #[must_use]
-    pub fn filter_config(&self) -> Option<&FilterConfig> {
+    pub const fn filter_config(&self) -> Option<&FilterConfig> {
         self.filter_config.as_ref()
     }
 
     #[must_use]
-    pub fn episode_length(&self) -> EpisodeLength {
+    pub const fn episode_length(&self) -> EpisodeLength {
         self.episode_length
     }
 
     #[must_use]
-    pub fn risk_metrics_cfg(&self) -> RiskMetricsConfig {
+    pub const fn risk_metrics_cfg(&self) -> RiskMetricsConfig {
         self.risk_metrics_cfg
     }
 
     #[must_use]
-    pub fn trade_hint(&self) -> usize {
+    pub const fn trade_hint(&self) -> usize {
         self.trade_hint
     }
 
     #[must_use]
-    pub fn invalid_action_penalty(&self) -> InvalidActionPenalty {
+    pub const fn invalid_action_penalty(&self) -> InvalidActionPenalty {
         self.invalid_action_penalty
     }
 
@@ -1235,7 +1235,7 @@ impl EnvConfig {
 
     /// Validates that at least one market data source is configured.
     #[must_use]
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         !self.ohlcv_spot.is_empty() || !self.ohlcv_future.is_empty() || !self.trades_spot.is_empty()
     }
 }

@@ -43,17 +43,17 @@ impl AtrConfig {
     }
 
     #[must_use]
-    pub fn with_smoothing(self, smoothing: AtrSmoothingType) -> Self {
+    pub const fn with_smoothing(self, smoothing: AtrSmoothingType) -> Self {
         Self { smoothing, ..self }
     }
 
     #[must_use]
-    pub fn window(&self) -> u16 {
+    pub const fn window(&self) -> u16 {
         self.window
     }
 
     #[must_use]
-    pub fn smoothing(&self) -> AtrSmoothingType {
+    pub const fn smoothing(&self) -> AtrSmoothingType {
         self.smoothing
     }
 }

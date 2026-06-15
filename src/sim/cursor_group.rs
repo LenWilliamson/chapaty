@@ -111,67 +111,67 @@ impl CursorGroup {
         group
     }
 
-    pub fn current_ts(&self) -> DateTime<Utc> {
+    pub const fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
 
-    pub fn previous_ts(&self) -> Option<DateTime<Utc>> {
+    pub const fn previous_ts(&self) -> Option<DateTime<Utc>> {
         self.previous_ts
     }
 
-    pub fn ohlcv(&self) -> &OhlcvCursor {
+    pub const fn ohlcv(&self) -> &OhlcvCursor {
         &self.ohlcv
     }
 
-    pub fn trade(&self) -> &TradeCursor {
+    pub const fn trade(&self) -> &TradeCursor {
         &self.trade
     }
 
-    pub fn economic_cal(&self) -> &EconomicCalendarCursor {
+    pub const fn economic_cal(&self) -> &EconomicCalendarCursor {
         &self.economic_cal
     }
 
-    pub fn vp(&self) -> &VolumeProfileCursor {
+    pub const fn vp(&self) -> &VolumeProfileCursor {
         &self.vp
     }
 
-    pub fn tpo(&self) -> &TpoCursor {
+    pub const fn tpo(&self) -> &TpoCursor {
         &self.tpo
     }
 
-    pub fn ema(&self) -> &EmaCursor {
+    pub const fn ema(&self) -> &EmaCursor {
         &self.ema
     }
 
-    pub fn sma(&self) -> &SmaCursor {
+    pub const fn sma(&self) -> &SmaCursor {
         &self.sma
     }
 
-    pub fn rsi(&self) -> &RsiCursor {
+    pub const fn rsi(&self) -> &RsiCursor {
         &self.rsi
     }
 
-    pub fn trades_vwap(&self) -> &TradesVwapCursor {
+    pub const fn trades_vwap(&self) -> &TradesVwapCursor {
         &self.trades_vwap
     }
 
-    pub fn ohlcv_vwap(&self) -> &OhlcvVwapCursor {
+    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapCursor {
         &self.ohlcv_vwap
     }
 
-    pub fn trades_session(&self) -> &TradesSessionCursor {
+    pub const fn trades_session(&self) -> &TradesSessionCursor {
         &self.trades_session
     }
 
-    pub fn ohlcv_session(&self) -> &OhlcvSessionCursor {
+    pub const fn ohlcv_session(&self) -> &OhlcvSessionCursor {
         &self.ohlcv_session
     }
 
-    pub fn atr(&self) -> &AtrCursor {
+    pub const fn atr(&self) -> &AtrCursor {
         &self.atr
     }
 
-    pub fn roc(&self) -> &RocCursor {
+    pub const fn roc(&self) -> &RocCursor {
         &self.roc
     }
 
