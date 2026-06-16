@@ -1,2 +1,5 @@
+# Merges multiple imports from the same crate into a single nested use statement
 imports_granularity = "Crate"
+
+# Groups imports into Std, External Crates, and Local Crate blocks
 group_imports = "StdExternalCrate"
