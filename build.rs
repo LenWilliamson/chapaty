@@ -1,7 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // MAINTAINER NOTE:
     // This build script is disabled by default to allow users to build the crate
-    // without needing `protoc` installed or the external `chapaty-bq-export-proto` repo.
+    // without needing `protoc` installed or the external `chapaty-bq-export-proto`
+    // repo.
     //
     // The generated Rust code is committed to `src/proto_gen`.
     //
@@ -38,8 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/proto_gen")
         .compile_protos(&proto_files, &[proto_root])?;
 
-    // Formatting the generated protobuf code is a best-effort cosmetic step: surface
-    // failures as build warnings rather than silently discarding the command's status.
+    // Formatting the generated protobuf code is a best-effort cosmetic step:
+    // surface failures as build warnings rather than silently discarding the
+    // command's status.
     match std::process::Command::new("cargo")
         .args(["fmt", "--", "src/proto_gen/*.rs"])
         .status()

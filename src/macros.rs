@@ -16,8 +16,9 @@ macro_rules! impl_from_primitive {
     };
 }
 
-/// Macro to implement `Add`, `Sub`, `Mul`, `Div`, and `Sum` traits for newtype wrappers around numeric types,
-/// including support for adding a primitive type directly.
+/// Macro to implement `Add`, `Sub`, `Mul`, `Div`, and `Sum` traits for newtype
+/// wrappers around numeric types, including support for adding a primitive type
+/// directly.
 #[macro_export]
 macro_rules! impl_add_sub_mul_div_primitive {
     ($wrapper:ident, $primitive:ty) => {
@@ -75,7 +76,8 @@ macro_rules! impl_add_sub_mul_div_primitive {
     };
 }
 
-/// Macro to implement an `abs` method for newtype wrappers around numeric types.
+/// Macro to implement an `abs` method for newtype wrappers around numeric
+/// types.
 #[macro_export]
 macro_rules! impl_abs_primitive {
     ($wrapper:ident, $primitive:ty) => {
@@ -89,7 +91,8 @@ macro_rules! impl_abs_primitive {
     };
 }
 
-/// Macro to implement the `Neg` trait for newtype wrappers around numeric types.
+/// Macro to implement the `Neg` trait for newtype wrappers around numeric
+/// types.
 #[macro_export]
 macro_rules! impl_neg_primitive {
     ($wrapper:ident, $primitive:ty) => {
@@ -103,7 +106,8 @@ macro_rules! impl_neg_primitive {
     };
 }
 
-/// Macro to implement `min` and `max` methods for newtype wrappers around numeric types.
+/// Macro to implement `min` and `max` methods for newtype wrappers around
+/// numeric types.
 #[macro_export]
 macro_rules! impl_min_max_primitive {
     ($wrapper:ident, $primitive:ty) => {

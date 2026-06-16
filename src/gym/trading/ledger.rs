@@ -279,7 +279,8 @@ impl Ledger {
 // Helper Structs Ledger Configuration
 // ================================================================================================
 
-/// Memory allocation hints for the Ledger to prevent reallocation during the hot loop.
+/// Memory allocation hints for the Ledger to prevent reallocation during the
+/// hot loop.
 #[derive(Debug, Clone)]
 pub struct LedgerCapacityHint {
     /// The maximum number of episodes expected in the epoch.
@@ -293,8 +294,9 @@ pub struct LedgerCapacityHint {
     /// correct internal memory reserved for active and pending trades.
     pub prototype_states: States,
 
-    /// The maximum expected length of the time-series (e.g., longest data stream).
-    /// Determines the internal capacity reserved for each episode's `EquityCurve`.
+    /// The maximum expected length of the time-series (e.g., longest data
+    /// stream). Determines the internal capacity reserved for each
+    /// episode's `EquityCurve`.
     pub equity_curve_length: usize,
 }
 
@@ -356,8 +358,9 @@ struct JournalEntry {
 
 /// Column-oriented, tabular representation of a ledger entry set.
 ///
-/// This is the transposed struct of array (`SoA`) equivalent of `Vec<LedgerEntry>`,
-/// optimized for columnar processing, serialization, and analysis.
+/// This is the transposed struct of array (`SoA`) equivalent of
+/// `Vec<LedgerEntry>`, optimized for columnar processing, serialization, and
+/// analysis.
 #[derive(Default, Debug)]
 struct JournalSoA {
     episode_id: Vec<EpisodeId>,
@@ -808,7 +811,8 @@ mod test {
     }
 
     /// A lightweight wrapper around the heavy `SimulationData`.
-    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
+    /// It allows us to create a valid `MarketView` with a simple (low, high,
+    /// close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -911,7 +915,8 @@ mod test {
         }
     }
 
-    /// Populates a `JournalSoA` with a single entry (helper to reduce boilerplate).
+    /// Populates a `JournalSoA` with a single entry (helper to reduce
+    /// boilerplate).
     fn populate_soa_single(soa: &mut JournalSoA, entry: JournalEntry) {
         soa.episode_id.push(entry.episode_id);
         soa.trade_id.push(entry.trade_id);
@@ -1604,11 +1609,10 @@ mod test {
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
         };
 
-        // 3. Create two actions:
-        //    Action A (Invalid): OpenCmd with Quantity(0.0) - fails validate()
-        //    Action B (Valid):   OpenCmd with valid Quantity - passes validate()
-        //                        but will fail in handle_open because no price data
-        //                        (still exercises the rejection path at state level)
+        // 3. Create two actions: Action A (Invalid): OpenCmd with Quantity(0.0) - fails
+        //    validate() Action B (Valid):   OpenCmd with valid Quantity - passes
+        //    validate() but will fail in handle_open because no price data (still
+        //    exercises the rejection path at state level)
 
         let invalid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,

@@ -478,8 +478,9 @@ fn short_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCo
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
-/// Create an expression that computes the maximum length of consecutive `true` values
-/// in a boolean predicate expression, often used to identify streaks in a column.
+/// Create an expression that computes the maximum length of consecutive `true`
+/// values in a boolean predicate expression, often used to identify streaks in
+/// a column.
 ///
 /// Reference: <https://stackoverflow.com/a/75405310>
 fn max_consecutive_streak_expr(predicate: Expr) -> ChapatyResult<Expr> {
@@ -520,10 +521,12 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
     polars_to_chapaty_error("trade statistics", e)
 }
 
-/// Descriptive statistics and behavioral patterns derived from individual trades.
+/// Descriptive statistics and behavioral patterns derived from individual
+/// trades.
 ///
-/// These metrics provide insights into trade counts, durations, timing behaviors, and streaks.
-/// They are useful for diagnosing the consistency and execution profile of a strategy.
+/// These metrics provide insights into trade counts, durations, timing
+/// behaviors, and streaks. They are useful for diagnosing the consistency and
+/// execution profile of a strategy.
 #[derive(
     Debug,
     Clone,

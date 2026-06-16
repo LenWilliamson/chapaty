@@ -261,11 +261,12 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
     polars_to_chapaty_error("cumulative return report", e)
 }
 
-/// Represents a point in the cumulative return trajectory of a trading strategy.
+/// Represents a point in the cumulative return trajectory of a trading
+/// strategy.
 ///
-/// Captures the evolution of the strategy’s performance over time, including drawdown
-/// and return metrics. This structure is equivalent to an equity curve in traditional finance,
-/// or cumulative return in reinforcement learning.
+/// Captures the evolution of the strategy’s performance over time, including
+/// drawdown and return metrics. This structure is equivalent to an equity curve
+/// in traditional finance, or cumulative return in reinforcement learning.
 #[derive(
     Debug,
     Clone,
@@ -286,7 +287,8 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
 #[strum(serialize_all = "snake_case")]
 pub enum CumulativeReturnCol {
     // === Identifiers ===
-    /// Row identifier for the cumulative return entry (globally unique per row).
+    /// Row identifier for the cumulative return entry (globally unique per
+    /// row).
     RowId,
     /// Identifier for the episode this trade occurred in.
     EpisodeId,
@@ -298,7 +300,8 @@ pub enum CumulativeReturnCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
@@ -326,7 +329,8 @@ pub enum CumulativeReturnCol {
     DrawdownFromPeakPercentage,
 
     // === Performance ratio ===
-    /// Rolling ratio of total return to maximum drawdown — a measure of recovery strength.
+    /// Rolling ratio of total return to maximum drawdown — a measure of
+    /// recovery strength.
     RollingRecoveryFactor,
 
     // === Return outcomes ===

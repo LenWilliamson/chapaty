@@ -145,7 +145,8 @@ impl SymbolProvider for SmaId {
 // OHLCV VWAP
 // ================================================================================================
 
-/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from OHLCV data.
+/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from OHLCV
+/// data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OhlcvVwapId {
     /// The source data stream this indicator is calculated from.
@@ -189,7 +190,8 @@ impl SymbolProvider for OhlcvVwapId {
 // Trades VWAP
 // ================================================================================================
 
-/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from Trades data.
+/// Uniquely identifies a Volume Weighted Average Price (VWAP) stream from
+/// Trades data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TradesVwapId {
     /// The source data stream this indicator is calculated from.
@@ -354,13 +356,16 @@ pub struct RocId {
 /// Represents the Rate of Change (ROC) over a specific lookback window.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Roc {
-    /// The point in time when this rate of change was recorded (the end of the window).
+    /// The point in time when this rate of change was recorded (the end of the
+    /// window).
     pub timestamp: DateTime<Utc>,
 
-    /// The point in time of the historical reference price (the start of the window).
+    /// The point in time of the historical reference price (the start of the
+    /// window).
     pub window_start: DateTime<Utc>,
 
-    /// The raw price difference between the current close and the historical close.
+    /// The raw price difference between the current close and the historical
+    /// close.
     pub absolute_change: PriceDelta,
 
     /// The relative rate of change expressed as a ratio.
@@ -435,7 +440,8 @@ mod test {
         // 2. Exact Touch: SMA hits exactly 50000.0.
         assert!(mock_sma(50000.0).price_reached(target, TradeKind::Long));
 
-        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping 50000.0.
+        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping
+        //    50000.0.
         assert!(mock_sma(49000.0).price_reached(target, TradeKind::Long));
     }
 

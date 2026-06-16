@@ -384,7 +384,8 @@ impl State {
     pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
         let diff = self.trade_type().price_diff(ref_price, sl);
-        // Result is usually negative for a Stop Loss; we want magnitude (absolute ticks).
+        // Result is usually negative for a Stop Loss; we want magnitude (absolute
+        // ticks).
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
@@ -407,7 +408,8 @@ impl State {
         Some(pnl.abs())
     }
 
-    /// Calculates the expected profit in USD (Absolute Value) based on Take Profit.
+    /// Calculates the expected profit in USD (Absolute Value) based on Take
+    /// Profit.
     #[must_use]
     pub fn expected_profit_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, tp) = self.get_reward_params()?;
@@ -443,9 +445,10 @@ impl State {
 
     /// Calculates the Price Distance in Ticks.
     ///
-    /// We re-calculate this on the fly because `Active` state stores USD, not Ticks.
-    /// However, because `entry` and `current/exit` are **Guaranteed Clean** (snapped to grid),
-    /// this calculation is strictly deterministic and free of artifacts.
+    /// We re-calculate this on the fly because `Active` state stores USD, not
+    /// Ticks. However, because `entry` and `current/exit` are **Guaranteed
+    /// Clean** (snapped to grid), this calculation is strictly
+    /// deterministic and free of artifacts.
     #[must_use]
     pub fn pnl_ticks(&self, symbol: Symbol) -> Option<Tick> {
         match self {
@@ -465,7 +468,8 @@ impl State {
         }
     }
 
-    /// Returns the timestamp when the trade was effectively entered (Active/Closed only).
+    /// Returns the timestamp when the trade was effectively entered
+    /// (Active/Closed only).
     #[must_use]
     pub const fn entry_ts(&self) -> Option<DateTime<Utc>> {
         match self {
@@ -534,7 +538,8 @@ impl State {
 }
 
 impl State {
-    /// Restores the original Stop Loss and Take Profit values across any valid state.
+    /// Restores the original Stop Loss and Take Profit values across any valid
+    /// state.
     fn with_restored_triggers(self, sl: Option<Price>, tp: Option<Price>) -> Self {
         match self {
             Self::Pending(t) => Self::Pending(t.with_stop_loss(sl).with_take_profit(tp)),
@@ -598,8 +603,8 @@ pub struct States {
     /// Resets to `0.0` after every step.
     step_reward: f64,
 
-    /// **PERSISTENT:** `Total Realized + Unrealized PnL` since the episode began.
-    /// Does NOT reset. Monotonically tracks the portfolio curve.
+    /// **PERSISTENT:** `Total Realized + Unrealized PnL` since the episode
+    /// began. Does NOT reset. Monotonically tracks the portfolio curve.
     cumulative_pnl: f64,
 }
 
@@ -620,8 +625,9 @@ impl States {
     // Global Metrics
     // ========================================================================
 
-    /// Returns `true` if there are NO active or pending trades currently in the system.
-    /// This checks the Hot Path only (O(M) where M is number of markets).
+    /// Returns `true` if there are NO active or pending trades currently in the
+    /// system. This checks the Hot Path only (O(M) where M is number of
+    /// markets).
     #[must_use]
     pub fn all_closed(&self) -> bool {
         // If the map is empty, or all vectors within it are empty
@@ -633,7 +639,8 @@ impl States {
         self.cumulative_pnl
     }
 
-    /// Returns the markets that currently have allocated memory for live trades.
+    /// Returns the markets that currently have allocated memory for live
+    /// trades.
     pub fn markets(&self) -> impl Iterator<Item = &MarketId> {
         self.live.keys()
     }
@@ -675,7 +682,8 @@ impl States {
     // O(1) Lookups & Agent Queries
     // ========================================================================
 
-    /// Returns the active vector for a specific market if it exists, else empty slice.
+    /// Returns the active vector for a specific market if it exists, else empty
+    /// slice.
     #[must_use]
     pub fn get_live_trades(&self, market: &MarketId) -> &[State] {
         self.live
@@ -692,8 +700,8 @@ impl States {
         self.live.get(m_id)?.get(*idx)
     }
 
-    /// Checks if a specific agent has any **Active** (not just pending) positions.
-    /// Filters the Hot Path (fast).
+    /// Checks if a specific agent has any **Active** (not just pending)
+    /// positions. Filters the Hot Path (fast).
     #[must_use]
     pub fn any_active_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
         self.iter_live()
@@ -756,12 +764,13 @@ impl States {
         }
     }
 
-    /// Clones the state repository while explicitly preserving the allocated capacity
-    /// of the internal vectors.
+    /// Clones the state repository while explicitly preserving the allocated
+    /// capacity of the internal vectors.
     ///
-    /// Standard `#[derive(Clone)]` on an empty `Vec` will yield a new `Vec` with 0 capacity.
-    /// By using this method, we guarantee that the new episode inherits the exact memory
-    /// footprint reserved in the original prototype.
+    /// Standard `#[derive(Clone)]` on an empty `Vec` will yield a new `Vec`
+    /// with 0 capacity. By using this method, we guarantee that the new
+    /// episode inherits the exact memory footprint reserved in the original
+    /// prototype.
     pub(super) fn clone_with_capacity(&self) -> Self {
         let live: SortedVecMap<MarketId, Vec<State>> = self
             .live
@@ -899,10 +908,10 @@ impl States {
                 }),
 
                 // Case B: Partial Close
-                // 1. The remaining portion stays Active (Active -> Active).
-                //    Guard::commit() will update it in-place in the Active vector.
-                // 2. The 'Closed' portion is returned as 'output'.
-                //    We must manually archive this split child.
+                // 1. The remaining portion stays Active (Active -> Active). Guard::commit() will
+                //    update it in-place in the Active vector.
+                // 2. The 'Closed' portion is returned as 'output'. We must manually archive this
+                //    split child.
                 CloseOutcome::PartiallyClosed { closed, remaining } => Ok(Transition {
                     new_state: State::Active(remaining),
                     output: (reward, Some(State::Closed(closed))),
@@ -937,8 +946,9 @@ impl States {
         })
     }
 
-    /// Returns an iterator over ALL states (Live + Archived) coupled with their `MarketId`.
-    /// Useful for reporting, logging, or serialization of the entire state.
+    /// Returns an iterator over ALL states (Live + Archived) coupled with their
+    /// `MarketId`. Useful for reporting, logging, or serialization of the
+    /// entire state.
     pub(super) fn flattened(&self) -> impl Iterator<Item = (&MarketId, &State)> {
         let active_iter = self
             .live
@@ -970,7 +980,8 @@ impl States {
     /// The caller provides a callback `f` to process the result of each update.
     ///
     /// This handles the "Swap-Remove" shift automatically:
-    /// - If `f` returns a closed state, we stay at `idx` (because a new trade swapped in).
+    /// - If `f` returns a closed state, we stay at `idx` (because a new trade
+    ///   swapped in).
     /// - If `f` returns an active state, we advance `idx`.
     fn update_live_trades_scan<F>(
         &mut self,
@@ -995,7 +1006,8 @@ impl States {
             };
 
             // 3. Notify the caller (Ledger) so it can log/react
-            // We pass the result *before* we decide index logic, so Ledger knows what happened.
+            // We pass the result *before* we decide index logic, so Ledger knows what
+            // happened.
             on_update(update_result)?;
 
             // 4. Control Flow (The "Core" Safety Logic)
@@ -1062,8 +1074,9 @@ impl States {
     /// Executes a transaction on a specific trade location (Hot or Cold).
     ///
     /// # Safety
-    /// This uses `StateGuard` to clone the state first. The vector is NOT modified
-    /// until the closure returns successfully and `guard.commit()` is called.
+    /// This uses `StateGuard` to clone the state first. The vector is NOT
+    /// modified until the closure returns successfully and `guard.commit()`
+    /// is called.
     fn modify_state_at<F, R>(&mut self, m_id: MarketId, idx: usize, f: F) -> ChapatyResult<R>
     where
         // Closure returns a clear 'Transition' struct
@@ -1113,14 +1126,17 @@ impl States {
 // StateGuard: The Traffic Controller
 // ================================================================================================
 
-/// RAII Guard that manages state transitions between Hot (Active) and Cold (Archive) storage.
+/// RAII Guard that manages state transitions between Hot (Active) and Cold
+/// (Archive) storage.
 ///
 /// # Mechanism
-/// 1. `new()`: Clones the state from source vector. Does NOT remove it yet (Snapshot).
+/// 1. `new()`: Clones the state from source vector. Does NOT remove it yet
+///    (Snapshot).
 /// 2. `commit()`: Determines if state stays Hot or moves to Cold.
 ///    - If Hot->Hot: Overwrites the slot in-place (O(1)).
 ///    - If Hot->Cold: Swap-removes from Hot, pushes to Cold (O(1)).
-/// 3. `drop()`: If not committed, does nothing. The original state remains in the vector (Rollback).
+/// 3. `drop()`: If not committed, does nothing. The original state remains in
+///    the vector (Rollback).
 #[must_use = "StateGuard must be committed to persist changes"]
 #[derive(Debug)]
 struct StateGuard<'a> {
@@ -1736,7 +1752,8 @@ mod tests {
 
         // CHECK 2: Stability (The Critical Check)
         // Verify that NEITHER 10 nor 20 moved.
-        // This proves the operation acted as a stable 'pop', avoiding the reordering of a typical swap_remove.
+        // This proves the operation acted as a stable 'pop', avoiding the reordering of
+        // a typical swap_remove.
         assert_eq!(
             live_vec[0].trade_id().0,
             10,
@@ -2359,7 +2376,8 @@ mod tests {
         let live = states.live.get(&m_id).unwrap();
 
         // 1. Only T20 should remain.
-        // If the loop was buggy (incrementing index after swap), it would have skipped T30.
+        // If the loop was buggy (incrementing index after swap), it would have skipped
+        // T30.
         assert_eq!(live.len(), 1, "Only T20 should remain active");
         assert_eq!(live[0].trade_id().0, 20, "T20 should be at index 0");
 

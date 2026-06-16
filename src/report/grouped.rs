@@ -76,7 +76,8 @@ impl<'a> GroupedJournal<'a> {
     ///
     /// # Returns
     /// * `Vec<DataFrame>` - The partitions (one per group).
-    /// * `Vec<GroupCol>` - The group keys (e.g., [`GroupCol::Symbol`, `GroupCol::EntryYear`]).
+    /// * `Vec<GroupCol>` - The group keys (e.g., [`GroupCol::Symbol`,
+    ///   `GroupCol::EntryYear`]).
     pub(crate) fn to_partitions(&self) -> ChapatyResult<(Vec<DataFrame>, Vec<GroupCol>)> {
         let group_exprs = self
             .group_keys
@@ -120,7 +121,8 @@ pub enum GroupCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,

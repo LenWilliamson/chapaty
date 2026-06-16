@@ -25,9 +25,10 @@ use crate::{
 
 /// Represents the detailed journal recording every individual trade.
 ///
-/// This journal serves as a comprehensive log of all trades executed during backtesting.
-/// It is analogous to a trade journal or transaction log in traditional finance,
-/// capturing raw trade details used for analysis and performance evaluation.
+/// This journal serves as a comprehensive log of all trades executed during
+/// backtesting. It is analogous to a trade journal or transaction log in
+/// traditional finance, capturing raw trade details used for analysis and
+/// performance evaluation.
 #[derive(
     Debug,
     Clone,
@@ -61,7 +62,8 @@ pub enum JournalCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
@@ -81,7 +83,8 @@ pub enum JournalCol {
     Quantity,
 
     // === Expected outcomes ===
-    /// The expected loss in native market price increments (e.g., ticks for futures, pips for FX).
+    /// The expected loss in native market price increments (e.g., ticks for
+    /// futures, pips for FX).
     ExpectedLossInTicks,
     /// The expected profit in native market price increments.
     ExpectedProfitInTicks,
@@ -323,7 +326,8 @@ impl ToSchema for Journal {
 // ================================================================================================
 
 pub trait ExprDefineExt {
-    /// Casts the expression to the specified data type and aliases it using the provided column name.
+    /// Casts the expression to the specified data type and aliases it using the
+    /// provided column name.
     fn define_as<C: Into<PlSmallStr>>(self, col: C, dtype: DataType) -> Expr;
 }
 
@@ -334,7 +338,8 @@ impl ExprDefineExt for Expr {
 }
 
 pub trait JournalExprExt {
-    /// Evaluates to true if the expression resolves to an Active or Closed state.
+    /// Evaluates to true if the expression resolves to an Active or Closed
+    /// state.
     fn trade_executed(self) -> Expr;
 
     /// Converts a boolean mask into a sum of occurrences.

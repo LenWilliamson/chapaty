@@ -26,20 +26,23 @@ pub enum ValueAreaRule {
     /// - **Logic:** "Greedy" expansion. At each step, compare the volume of the
     ///   price bin immediately above vs. immediately below the current range.
     ///   Include the neighbor with the **higher** volume.
-    /// - **Tie-Breaker:** If volumes are equal, favor the **Higher** price (Up/Resistance).
+    /// - **Tie-Breaker:** If volumes are equal, favor the **Higher** price
+    ///   (Up/Resistance).
     #[default]
     HighestVolume,
 
     /// Same as `HighestVolume`, but resolves ties differently.
     ///
     /// - **Logic:** Greedy expansion.
-    /// - **Tie-Breaker:** If volumes are equal, favor the **Lower** price (Down/Support).
+    /// - **Tie-Breaker:** If volumes are equal, favor the **Lower** price
+    ///   (Down/Support).
     HighestVolumePreferLower,
 
     /// Expands strictly by price proximity, ignoring volume density.
     ///
-    /// - **Logic:** Expands one tick Up and one tick Down simultaneously at each step,
-    ///   maintaining a symmetric range around the POC (as much as data allows).
+    /// - **Logic:** Expands one tick Up and one tick Down simultaneously at
+    ///   each step, maintaining a symmetric range around the POC (as much as
+    ///   data allows).
     /// - **Use Case:** When assuming a normal (Gaussian) distribution or when
     ///   volume data is sparse/unreliable (e.g., TPO on low liquidity).
     Symmetric,
@@ -66,7 +69,8 @@ pub enum PocRule {
     ClosestToCenter,
 }
 
-/// Aggregation parameters for profile-based market data (TPO and Volume Profile).
+/// Aggregation parameters for profile-based market data (TPO and Volume
+/// Profile).
 ///
 /// Profile data aggregates price and volume information into price levels,
 /// providing insights into market structure and trader behavior.
@@ -77,7 +81,8 @@ pub struct ProfileAggregation {
     /// If `None`, defaults to "1m" (one minute).
     pub time_frame: Option<Period>,
 
-    /// The size of price bins expressed as a multiple of the instrument's tick size.
+    /// The size of price bins expressed as a multiple of the instrument's tick
+    /// size.
     ///
     /// Instead of a raw float, this defines the bin size in "ticks".
     /// This guarantees strict ordering (`Ord`) and hashing (`Hash`).
@@ -86,7 +91,8 @@ pub struct ProfileAggregation {
     /// `Bin Size = ticks_per_bin * Symbol::price_increment()`
     ///
     /// # Examples
-    /// - `1`: The bin size is exactly 1 tick (e.g., 0.01 for btc-usdt, 0.00005 for 6e Future).
+    /// - `1`: The bin size is exactly 1 tick (e.g., 0.01 for btc-usdt, 0.00005
+    ///   for 6e Future).
     /// - `10`: The bin size is 10 ticks.
     /// - `100`: The bin size is 100 ticks.
     ///
@@ -123,7 +129,8 @@ impl Default for ProfileAggregation {
 }
 
 impl ProfileAggregation {
-    /// Returns the size of the bin in quote currency as a mathematically exact string.
+    /// Returns the size of the bin in quote currency as a mathematically exact
+    /// string.
     ///
     /// # Errors
     /// Propagates the same errors as `calculate_bin_decimal` when the
@@ -136,8 +143,9 @@ impl ProfileAggregation {
     /// Returns the size of the bin in quote currency as an f64.
     ///
     /// # Errors
-    /// Returns `SystemError::InvariantViolation` if the calculated decimal cannot be
-    /// represented as an f64 (e.g. overflow), which implies corrupted inputs.
+    /// Returns `SystemError::InvariantViolation` if the calculated decimal
+    /// cannot be represented as an f64 (e.g. overflow), which implies
+    /// corrupted inputs.
     pub fn actual_price_bin<I: Instrument>(&self, instrument: &I) -> ChapatyResult<f64> {
         self.calculate_bin_decimal(instrument)?
             .to_f64()
@@ -203,13 +211,14 @@ pub trait ProfileBinStats {
 ///
 /// # Numeric Representation
 /// - **Rates** are stored in **Basis Points (bps)** (`1 bps = 0.01%`).
-/// - **Capital** is stored as `u32` (representing whole units of quote currency).
+/// - **Capital** is stored as `u32` (representing whole units of quote
+///   currency).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RiskMetricsConfig {
     /// The initial portfolio value (capital) at the start of the episode.
     ///
-    /// This value is used to normalize returns and calculate percentage-based metrics.
-    /// Must be strictly positive (> 0).
+    /// This value is used to normalize returns and calculate percentage-based
+    /// metrics. Must be strictly positive (> 0).
     ///
     /// # Example
     /// - `10_000` represents $10,000.
@@ -272,7 +281,8 @@ impl RiskMetricsConfig {
         self.initial_portfolio_value
     }
 
-    /// Helper to convert the BPS rate to a normalized `f64` (e.g., `200` -> `0.02`).
+    /// Helper to convert the BPS rate to a normalized `f64` (e.g., `200` ->
+    /// `0.02`).
     #[must_use]
     pub fn risk_free_rate_f64(&self) -> f64 {
         f64::from(self.annual_risk_free_rate_bps) / 10_000.0

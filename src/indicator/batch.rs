@@ -39,24 +39,27 @@ trait IndicatorExprExt {
     /// Computes a continuous, running VWAP.
     ///
     /// **Shape:** Yields a Vector (Series) of the same length as the input.
-    /// **Usage:** Use this strictly inside projection contexts like `.with_columns()`
-    /// or `.select()` when you need the running history of the VWAP at every tick.
+    /// **Usage:** Use this strictly inside projection contexts like
+    /// `.with_columns()` or `.select()` when you need the running history
+    /// of the VWAP at every tick.
     fn vwap_with_volume(self, volume: Expr) -> Expr;
 
     /// Computes the final, static VWAP for a grouped aggregation.
     ///
     /// **Shape:** Yields a Scalar (`f64`).
     /// **Usage:** Use this strictly inside `.group_by().agg()` blocks.
-    /// Using the standard [`Self::vwap_with_volume`] method in an aggregation context will incorrectly
-    /// yield a `List<f64>` instead of a singular value.
+    /// Using the standard [`Self::vwap_with_volume`] method in an aggregation
+    /// context will incorrectly yield a `List<f64>` instead of a singular
+    /// value.
     fn agg_vwap_with_volume(self, volume: Expr) -> Expr;
 
     /// Classifies timestamps into session dates based on a `SessionWindow`.
     /// Handles timezone conversions and overnight session wrapping.
     fn session_date(self, session: SessionWindow) -> Expr;
 
-    /// Detects the precision of an integer epoch timestamp (Seconds, Millis, Micros, or Nanos)
-    /// based on its magnitude and normalizes it to a UTC Datetime in Microseconds.
+    /// Detects the precision of an integer epoch timestamp (Seconds, Millis,
+    /// Micros, or Nanos) based on its magnitude and normalizes it to a UTC
+    /// Datetime in Microseconds.
     ///
     /// **Thresholds:**
     /// * Seconds (10 digits): `< 10^11`
@@ -145,7 +148,8 @@ fn prepare_vwap_components(price: Expr, volume: Expr) -> (Expr, Expr) {
 }
 
 trait LazyFrameIndicatorExt {
-    /// Projects a single-value indicator into the canonical `[Timestamp, Price]` shape.
+    /// Projects a single-value indicator into the canonical `[Timestamp,
+    /// Price]` shape.
     fn into_price_timeseries(self, value: Expr) -> Self;
 }
 
@@ -192,8 +196,9 @@ mod tests {
             .timestamp_micros()
     }
 
-    /// Runs `IndicatorExprExt::session_date` over a column of UTC timestamps and
-    /// returns the resulting session dates as ISO strings (`None` when outside the window).
+    /// Runs `IndicatorExprExt::session_date` over a column of UTC timestamps
+    /// and returns the resulting session dates as ISO strings (`None` when
+    /// outside the window).
     fn session_dates(window: SessionWindow, ts_utc: &[i64]) -> Vec<Option<String>> {
         let series = Series::new(CanonicalCol::PointInTime.as_str().into(), ts_utc.to_vec())
             .cast(&DataType::Datetime(
@@ -227,9 +232,9 @@ mod tests {
         value.to_string()
     }
 
-    /// Intraday window (`start_mins < end_mins`): US core session 09:30–16:00 ET.
-    /// The start is inclusive and the end exclusive; everything outside is null.
-    /// June keeps ET at a fixed UTC−4 offset (no DST ambiguity).
+    /// Intraday window (`start_mins < end_mins`): US core session 09:30–16:00
+    /// ET. The start is inclusive and the end exclusive; everything outside
+    /// is null. June keeps ET at a fixed UTC−4 offset (no DST ambiguity).
     #[test]
     fn session_date_intraday_us_core_session() {
         let window = SessionWindow::us_core_session();

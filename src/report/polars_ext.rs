@@ -19,7 +19,8 @@ pub(super) fn polars_to_chapaty_error(report: &str, e: polars::error::PolarsErro
 pub trait ExprExt {
     /// Safely divides two expressions, protecting against division-by-zero.
     ///
-    /// If the denominator is zero, returns `fallback` (default: `f64::INFINITY`).
+    /// If the denominator is zero, returns `fallback` (default:
+    /// `f64::INFINITY`).
     ///
     /// # Parameters
     /// - `numerator`: The `Expr` for the numerator.

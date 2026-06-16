@@ -85,7 +85,8 @@ impl Trade<Active> {
         }
 
         // 1. Calculate Candidates (Transactional Preparation)
-        // If the command has a new value, sanitize it. Otherwise, keep the current value.
+        // If the command has a new value, sanitize it. Otherwise, keep the current
+        // value.
         let candidate_sl = if let Some(raw_sl) = cmd.new_stop_loss {
             Some(Price(sanitize_price(symbol, raw_sl.0, "modify_sl")))
         } else {
@@ -140,15 +141,16 @@ impl Trade<Active> {
 
     /// Advances an Active trade by one market step.
     ///
-    /// Consumes the trade and returns its next state plus the **reward increment**
-    /// for this step (change in `PnL` since the previous mark):
+    /// Consumes the trade and returns its next state plus the **reward
+    /// increment** for this step (change in `PnL` since the previous mark):
     /// - No exit: a fresh `Active` clone marked to the current price.
     /// - SL/TP hit: the resulting `Closed` trade.
     ///
-    /// On an exit we intentionally do **not** re-mark first: the trade fills at the
-    /// SL/TP price, not the bar close, so `self.state.unrealized_pnl` is left at the
-    /// previous mark and `execute_close` reads it as the baseline. The current-bar
-    /// mark is only meaningful (and only applied) when the trade survives.
+    /// On an exit we intentionally do **not** re-mark first: the trade fills at
+    /// the SL/TP price, not the bar close, so `self.state.unrealized_pnl`
+    /// is left at the previous mark and `execute_close` reads it as the
+    /// baseline. The current-bar mark is only meaningful (and only applied)
+    /// when the trade survives.
     pub(super) fn update(self, m_id: MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
         let symbol = m_id.symbol;
 
@@ -223,13 +225,15 @@ impl Trade<Active> {
 }
 
 impl Trade<Active> {
-    /// Closes all (or part) of the position and reports the **reward increment**.
+    /// Closes all (or part) of the position and reports the **reward
+    /// increment**.
     ///
     /// The reward is a _delta against the trade's last recorded mark_, not the
     /// absolute realized `PnL`. Every reward emitted is the "change since the
     /// previous mark", and a close is just a final mark at the exit price. The
-    /// baseline is read straight off `self.state.unrealized_pnl`. The closed trade's `realized_pnl`
-    /// still stores the _absolute_ realized `PnL` for the journal.
+    /// baseline is read straight off `self.state.unrealized_pnl`. The closed
+    /// trade's `realized_pnl` still stores the _absolute_ realized `PnL`
+    /// for the journal.
     fn execute_close(self, close_params: &CloseParams) -> (CloseOutcome, f64) {
         let CloseParams {
             qty,
@@ -318,8 +322,8 @@ struct CloseParams {
     /// Why the trade is closing.
     reason: TerminationReason,
 
-    /// The instrument's symbol, used for tick-grid price sanitization and for the
-    /// discrete, tick-multiple `PnL` computation in `calculate_pnl`.
+    /// The instrument's symbol, used for tick-grid price sanitization and for
+    /// the discrete, tick-multiple `PnL` computation in `calculate_pnl`.
     symbol: Symbol,
 }
 
@@ -376,7 +380,8 @@ mod tests {
     }
 
     /// A lightweight wrapper around the heavy `SimulationData`.
-    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
+    /// It allows us to create a valid `MarketView` with a simple (low, high,
+    /// close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -415,7 +420,8 @@ mod tests {
             Self { sim_data, cursor }
         }
 
-        /// Returns a valid `MarketView` borrowing from the owned `SimulationData`
+        /// Returns a valid `MarketView` borrowing from the owned
+        /// `SimulationData`
         fn view(&self) -> MarketView<'_> {
             MarketView::new(&self.sim_data, &self.cursor).unwrap()
         }
@@ -1089,8 +1095,8 @@ mod tests {
         assert_eq!(remaining.quantity, Quantity(0.5));
         assert_f64_eq!(remaining.state.unrealized_pnl, 125.0);
 
-        // Survivor must mark correctly off its own baseline, not a stale full-position one.
-        // Mark to 1.103: +60 ticks * $6.25 * 0.5 = $187.5.
+        // Survivor must mark correctly off its own baseline, not a stale full-position
+        // one. Mark to 1.103: +60 ticks * $6.25 * 0.5 = $187.5.
         let fx2 = MarketFixture::new(ts("2026-01-19T10:03:00Z"), 1.102, 1.103, 1.103);
         let v2 = fx2.view();
         let c2 = UpdateCtx {
@@ -1104,7 +1110,8 @@ mod tests {
         assert_f64_eq!(marked2.state.unrealized_pnl, 187.5);
         assert_f64_eq!(d2, 62.5); // 187.5 - 125.0, not polluted by the stale 250 baseline
 
-        // End-to-end: every recorded delta sums to realized(closed) + unrealized(survivor).
+        // End-to-end: every recorded delta sums to realized(closed) +
+        // unrealized(survivor).
         assert_f64_eq!(d1 + close_delta + d2, 312.5 + 187.5);
     }
 }

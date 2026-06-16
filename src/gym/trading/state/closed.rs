@@ -3,7 +3,8 @@ use chrono::TimeDelta;
 use crate::gym::trading::state::{Closed, Trade};
 
 impl Trade<Closed> {
-    /// Calculates the duration the trade was active (in milliseconds/seconds depending on TS basis).
+    /// Calculates the duration the trade was active (in milliseconds/seconds
+    /// depending on TS basis).
     #[must_use]
     pub fn duration(&self) -> TimeDelta {
         self.state.exit_ts - self.state.entry_ts
@@ -12,7 +13,8 @@ impl Trade<Closed> {
     /// Calculates the Return on Investment (ROI) percentage.
     ///
     /// Formula: `PnL / (Entry Price * Quantity)`
-    /// Returns `0.0` if the cost basis is zero (should not happen in valid trades).
+    /// Returns `0.0` if the cost basis is zero (should not happen in valid
+    /// trades).
     #[must_use]
     pub fn roi(&self) -> f64 {
         let cost_basis = self.state.entry_price.0 * self.quantity.0;

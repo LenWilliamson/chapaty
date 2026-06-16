@@ -377,21 +377,26 @@ fn total_win_profit_by_total_loss_expr(
 // ================================================================================================
 // === Risk-adjusted returns ===
 // ================================================================================================
-/// Computes the annualized Sharpe ratio for a series of absolute USD trade returns.
+/// Computes the annualized Sharpe ratio for a series of absolute USD trade
+/// returns.
 ///
 /// # Arguments
 /// - `return_col`: The column containing per-trade `PnL` in USD.
-/// - `cfg`: Risk metric config holding initial portfolio value and annual risk-free rate.
+/// - `cfg`: Risk metric config holding initial portfolio value and annual
+///   risk-free rate.
 ///
 /// # Assumptions
 /// - Returns are absolute profit/loss per trade (not percentages).
-/// - Equity is tracked using cumulative sum of returns starting from `initial_value`.
-/// - Risk-free rate is annualized, so we compute trades-per-year to annualize returns.
+/// - Equity is tracked using cumulative sum of returns starting from
+///   `initial_value`.
+/// - Risk-free rate is annualized, so we compute trades-per-year to annualize
+///   returns.
 ///
 /// # Why we annualize
 /// The Sharpe ratio is a standardized measure of risk-adjusted return,
-/// typically expressed on an **annualized basis** so it can be compared across strategies or time periods.
-/// We annualize the mean return and standard deviation based on the average number of trades per year.
+/// typically expressed on an **annualized basis** so it can be compared across
+/// strategies or time periods. We annualize the mean return and standard
+/// deviation based on the average number of trades per year.
 ///
 /// # Returns
 /// An expression that evaluates to a scalar Sharpe ratio.
@@ -406,7 +411,8 @@ fn trade_sharpe_ratio_expr(
     excess.safe_div(std, None)
 }
 
-/// Computes the annualized Sortino ratio for a series of absolute USD trade returns.
+/// Computes the annualized Sortino ratio for a series of absolute USD trade
+/// returns.
 ///
 /// # Returns
 /// An expression evaluating to the Sortino ratio, using downside deviation
@@ -428,9 +434,10 @@ fn trade_sortino_ratio_expr(
 /// Computes the **Omega Ratio** for a series of per-trade percentage returns.
 ///
 /// # Definition
-/// The **Omega Ratio** measures the **risk-adjusted performance** of a strategy by comparing the
-/// probability-weighted gains **above** a minimum acceptable return (threshold, usually the risk-free rate)
-/// against the probability-weighted **shortfalls** below it.
+/// The **Omega Ratio** measures the **risk-adjusted performance** of a strategy
+/// by comparing the probability-weighted gains **above** a minimum acceptable
+/// return (threshold, usually the risk-free rate) against the
+/// probability-weighted **shortfalls** below it.
 ///
 /// The formula is:
 ///
@@ -443,19 +450,24 @@ fn trade_sortino_ratio_expr(
 /// - `θ` (theta) is the target threshold (e.g. the annual risk-free rate).
 ///
 /// # Interpretation
-/// - **Omega > 1.0**: The strategy generates more upside than downside relative to the threshold.
-/// - **Omega < 1.0**: More shortfall than excess gain (underperforming threshold).
-/// - **Omega = 1.0**: Symmetric outcome around threshold (breakeven performance).
+/// - **Omega > 1.0**: The strategy generates more upside than downside relative
+///   to the threshold.
+/// - **Omega < 1.0**: More shortfall than excess gain (underperforming
+///   threshold).
+/// - **Omega = 1.0**: Symmetric outcome around threshold (breakeven
+///   performance).
 ///
 /// # Example
 /// If the threshold is set to a 2% return per trade:
 /// - A +5% return contributes **3% gain**.
 /// - A +1% return contributes **1% loss**.
-/// - The Omega Ratio aggregates these to indicate strategy efficiency **relative to that 2% goal**.
+/// - The Omega Ratio aggregates these to indicate strategy efficiency
+///   **relative to that 2% goal**.
 ///
 /// # Note
-/// This formulation differs from the Sharpe and Sortino ratios by avoiding reliance on standard deviation
-/// and instead directly comparing weighted return distributions.
+/// This formulation differs from the Sharpe and Sortino ratios by avoiding
+/// reliance on standard deviation and instead directly comparing weighted
+/// return distributions.
 fn trade_omega_ratio_expr(
     return_col: JournalCol,
     trade_state_col: JournalCol,
@@ -799,8 +811,9 @@ fn excess_return_expr(
 
 /// Computes the average number of trades per year based on timestamp duration.
 ///
-/// Uses the difference between earliest entry and latest exit timestamp to derive
-/// total backtest duration in seconds and converts that to fractional years.
+/// Uses the difference between earliest entry and latest exit timestamp to
+/// derive total backtest duration in seconds and converts that to fractional
+/// years.
 ///
 /// This value is used to annualize per-trade metrics like Sharpe or Sortino.
 fn n_trades_per_year_expr() -> Expr {
@@ -839,7 +852,8 @@ fn n_trades_per_year_sqrt_expr() -> Expr {
 ///
 /// # Requirements
 /// - The input `DataFrame` must be sorted chronologically by trade.
-/// - `return_col` must contain **per-trade realized `PnL`** (in USD), not cumulative.
+/// - `return_col` must contain **per-trade realized `PnL`** (in USD), not
+///   cumulative.
 ///
 /// # Arguments
 /// - `return_col`: Column of per-trade `PnL` (realized return in USD).
@@ -969,9 +983,11 @@ impl PortfolioPerformanceCol {
     }
 }
 
-/// Aggregate performance and risk metrics for a portfolio or strategy over a backtest window.
+/// Aggregate performance and risk metrics for a portfolio or strategy over a
+/// backtest window.
 ///
-/// These metrics help quantify profitability, risk-adjusted returns, drawdowns, and return distributions.
+/// These metrics help quantify profitability, risk-adjusted returns, drawdowns,
+/// and return distributions.
 #[derive(
     Debug,
     Clone,
@@ -996,7 +1012,8 @@ pub enum PortfolioPerformanceCol {
     NetProfit,
     /// Average profit per trade.
     AvgTradeProfit,
-    /// Expected value per trade: (`win_rate` * `avg_win`) - ((1 - `win_rate`) * `avg_loss`).
+    /// Expected value per trade: (`win_rate` * `avg_win`) - ((1 - `win_rate`) *
+    /// `avg_loss`).
     ExpectedValuePerTrade,
     /// Total reward from winning trades.
     TotalWinProfit,

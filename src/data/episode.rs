@@ -224,13 +224,15 @@ impl EpisodeLength {
     ///
     /// # Returns
     ///
-    /// The `DateTime<Utc>` marking the beginning of the next period, which is the
-    /// exclusive end of the current episode. For `Infinite` length, it returns `DateTime::MAX_UTC`.
+    /// The `DateTime<Utc>` marking the beginning of the next period, which is
+    /// the exclusive end of the current episode. For `Infinite` length, it
+    /// returns `DateTime::MAX_UTC`.
     ///
     /// # Panics
     ///
     /// Panics if internal calendar arithmetic produces an invalid date or time,
-    /// which should not occur given the hardcoded valid calendar values used (months 1–12, day 1, midnight 00:00:00).
+    /// which should not occur given the hardcoded valid calendar values used
+    /// (months 1–12, day 1, midnight 00:00:00).
     #[expect(
         clippy::expect_used,
         reason = "episode boundaries are built from hardcoded valid month-day values at midnight, which can never be out of Chronos range"

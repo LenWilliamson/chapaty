@@ -15,9 +15,9 @@ const REPORTS_SUBDIR: &str = "examples/reports/quickstart";
 // ================================================================================================
 // No-Op Agent
 //
-// A placeholder agent that never trades. It exists only to demonstrate the evaluation API
-// (single-agent journals + parallel leaderboards) and the logging setup, without bundling any
-// real strategy logic into the core crate.
+// A placeholder agent that never trades. It exists only to demonstrate the
+// evaluation API (single-agent journals + parallel leaderboards) and the
+// logging setup, without bundling any real strategy logic into the core crate.
 //
 // For real, ready-to-run strategies, see chapaty-zoo:
 // https://github.com/LenWilliamson/chapaty-zoo
@@ -45,7 +45,8 @@ impl Agent for NoOpAgent {
     fn reset(&mut self) {}
 
     // `act` is called millions of times.
-    // Keep logging here at `debug` so it stays silent under the default `info` filter.
+    // Keep logging here at `debug` so it stays silent under the default `info`
+    // filter.
     #[tracing::instrument(skip_all)]
     fn act(&mut self, _obs: Observation) -> ChapatyResult<Actions> {
         debug!("Returning no actions, guaranteeing 0 trades");
@@ -124,7 +125,8 @@ async fn environment() -> Result<Environment> {
 // ================================================================================================
 // Tracing Configuration
 //
-// JSON to stdout in containers, or to a timestamped file under the OS state dir locally.
+// JSON to stdout in containers, or to a timestamped file under the OS state dir
+// locally.
 // ================================================================================================
 
 #[expect(

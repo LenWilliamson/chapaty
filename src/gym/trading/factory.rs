@@ -90,7 +90,8 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
     ctx.final_env.ok_or_else(|| EnvError::NotBuilt.into())
 }
 
-/// Loads a pre-built environment from storage, or builds a new one on cache miss.
+/// Loads a pre-built environment from storage, or builds a new one on cache
+/// miss.
 ///
 /// # Errors
 /// Returns an error if cache load fails and fallback build also fails.
@@ -422,8 +423,9 @@ impl BuildCtx {
         };
 
         // Handle Edge Case: No Calendar Data
-        // If the policy excludes events (ExcludeEvents) and we have none, we keep all data.
-        // If the policy requires events (OnlyWithEvents) but we have none, we must clear all data.
+        // If the policy excludes events (ExcludeEvents) and we have none, we keep all
+        // data. If the policy requires events (OnlyWithEvents) but we have
+        // none, we must clear all data.
         let is_empty = self
             .economic_calendar_map
             .as_ref()
@@ -445,7 +447,8 @@ impl BuildCtx {
 
         tracing::info!("Applying economic calendar policy: {:?}", policy);
 
-        // Create Master Calendar: Union of all events, projected to minimum schema (Timestamp, Category)
+        // Create Master Calendar: Union of all events, projected to minimum schema
+        // (Timestamp, Category)
         let master_calendar_lf = {
             let map = self.economic_calendar_map.as_ref().ok_or_else(|| {
                 ChapatyError::from(EnvError::InvalidState(
@@ -896,7 +899,8 @@ fn apply_filter<T>(
         }
 
         // Combine with OR: (Win1) OR (Win2)...
-        // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering all rows.
+        // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering
+        // all rows.
         conditions
             .into_iter()
             .reduce(polars::prelude::Expr::or)
@@ -1784,8 +1788,9 @@ where
 
 fn parse_session_date(days_opt: Option<i32>) -> ChapatyResult<SessionDate> {
     let days = days_opt.ok_or_else(|| DataError::DataFrame("Missing Date".to_string()))?;
-    let date =
-        chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap() + chrono::Duration::days(days as i64);
+    let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+        .ok_or_else(|| DataError::DataFrame("Invalid epoch date".to_string()))?;
+    let date = epoch + chrono::Duration::days(i64::from(days));
     Ok(SessionDate(date))
 }
 
@@ -1804,20 +1809,25 @@ fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTi
 // ================================================================================================
 
 trait LazyFrameCalendarExt {
-    /// Enriches market data with economic calendar overlays and handles calendar-based filtering.
+    /// Enriches market data with economic calendar overlays and handles
+    /// calendar-based filtering.
     ///
-    /// This method joins market data with an economic calendar at minute resolution, propagates the
-    /// context (`__is_on_calendar_event`) across the simulation timeframe (e.g., Day), and
-    /// optionally filters the data based on the provided [`EconomicCalendarPolicy`].
+    /// This method joins market data with an economic calendar at minute
+    /// resolution, propagates the context (`__is_on_calendar_event`) across
+    /// the simulation timeframe (e.g., Day), and optionally filters the
+    /// data based on the provided [`EconomicCalendarPolicy`].
     ///
     /// # Join Strategy: "Window-Based Semi-Join"
     ///
     /// 1. **Align:** Left-joins Market and Calendar on 1-minute buckets.
-    /// 2. **Propagate:** If *any* minute in a Simulation Window (e.g., Day) has an economic calendar event,
-    ///    marks the *entire* window as `__is_on_calendar_event = true`.
+    /// 2. **Propagate:** If *any* minute in a Simulation Window (e.g., Day) has
+    ///    an economic calendar event, marks the *entire* window as
+    ///    `__is_on_calendar_event = true`.
     /// 3. **Filter (Optional):**
-    ///    - If `policy == OnlyWithEvents`, drops windows where `__is_on_calendar_event` is false (Inner Join behavior).
-    ///    - If `policy == ExcludeEvents`, drops windows where `__is_on_calendar_event` is true (Anti Join behavior).
+    ///    - If `policy == OnlyWithEvents`, drops windows where
+    ///      `__is_on_calendar_event` is false (Inner Join behavior).
+    ///    - If `policy == ExcludeEvents`, drops windows where
+    ///      `__is_on_calendar_event` is true (Anti Join behavior).
     ///
     /// # Returns
     /// `LazyFrame` with potentially filtered rows based on the policy.
@@ -1828,7 +1838,8 @@ trait LazyFrameCalendarExt {
         policy: EconomicCalendarPolicy,
     ) -> LazyFrame;
 
-    /// Adds a temporary grouping key based on the simulation episode length (e.g., Day, Week).
+    /// Adds a temporary grouping key based on the simulation episode length
+    /// (e.g., Day, Week).
     fn with_simulation_window_key(
         self,
         ts_col: CanonicalCol,
@@ -2079,7 +2090,8 @@ mod test {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gym")
     }
 
-    /// Loads an OHLCV CSV fixture and maps column names to the canonical schema.
+    /// Loads an OHLCV CSV fixture and maps column names to the canonical
+    /// schema.
     fn load_ohlcv_fixture(filename: &str) -> LazyFrame {
         let path = fixtures_path().join("input").join(filename);
 
@@ -2290,8 +2302,8 @@ mod test {
     // 2. TRADING WINDOW FILTER TESTS
     // ============================================================================
 
-    // Helper to wrap a LazyFrame into the specific map structure your functions expect.
-    // We use "BTC" as a dummy key.
+    // Helper to wrap a LazyFrame into the specific map structure your functions
+    // expect. We use "BTC" as a dummy key.
     const KEY: &str = "__key";
     fn wrap_in_map(mut lf: LazyFrame) -> HashMap<String, (SchemaRef, LazyFrame)> {
         let schema = lf.collect_schema().unwrap();
@@ -2430,9 +2442,10 @@ mod test {
         // Secondary Sort: REMOVED.
         //
         // NOTE: We previously sorted by Open Time as a secondary index.
-        // However, not all data sources (e.g. tick data, economic calendar, etc.) provide an
-        // OpenTimestamp. To support generic inputs, we strictly sort by the Canonical
-        // Timestamp (Close Time, the time when an event is truly available).
+        // However, not all data sources (e.g. tick data, economic calendar, etc.)
+        // provide an OpenTimestamp. To support generic inputs, we strictly sort
+        // by the Canonical Timestamp (Close Time, the time when an event is
+        // truly available).
         //
         // IMPLICATION: If two rows have the exact same Canonical Timestamp, their
         // relative order is nondeterministic (unstable sort). In production, this
@@ -2517,7 +2530,7 @@ mod test {
     /// Helper to create a microsecond timestamp for Polars test data.
     fn ts_micros(dt_str: &str) -> i64 {
         DateTime::parse_from_rfc3339(dt_str)
-            .expect(&format!("Failed to parse rfc3339 timestamp '{dt_str}'"))
+            .unwrap_or_else(|_| panic!("Failed to parse rfc3339 timestamp '{dt_str}'"))
             .with_timezone(&Utc)
             .timestamp_micros()
     }
@@ -2525,13 +2538,14 @@ mod test {
     /// Helper to create a proper Date object for Polars test data.
     /// Expects format: "YYYY-MM-DD"
     fn naive_date(dt_str: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(dt_str, "%Y-%m-%d").expect(&format!(
-            "Failed to parse date '{dt_str}'. Expected format 'YYYY-MM-DD'",
-        ))
+        NaiveDate::parse_from_str(dt_str, "%Y-%m-%d").unwrap_or_else(|_| {
+            panic!("Failed to parse date '{dt_str}'. Expected format 'YYYY-MM-DD'")
+        })
     }
 
-    /// Helper to cast columns to their correct canonical types based on a schema.
-    fn with_schema(df: DataFrame, schema: SchemaRef) -> DataFrame {
+    /// Helper to cast columns to their correct canonical types based on a
+    /// schema.
+    fn with_schema(df: DataFrame, schema: &SchemaRef) -> DataFrame {
         let mut cast_exprs = Vec::new();
 
         for (name, target_dtype) in schema.iter() {
@@ -2549,8 +2563,9 @@ mod test {
         }
     }
 
-    /// Asserts that the DataFrame exactly matches the expected schema (same columns, same types, same order).
-    fn assert_schema_equal(df: &DataFrame, expected: SchemaRef) {
+    /// Asserts that the `DataFrame` exactly matches the expected schema (same
+    /// columns, same types, same order).
+    fn assert_schema_equal(df: &DataFrame, expected: &SchemaRef) {
         let df_schema = df.schema();
 
         assert_eq!(
@@ -2578,8 +2593,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[100.5, 101.0],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         // 2. Extract
         let events = extract_ema(&df).expect("failed to extract ema");
@@ -2626,8 +2641,8 @@ mod test {
         .unwrap();
 
         // Ensure timestamp is properly cast to Microseconds
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         // 2. Extract
         // We use extract_ema as a proxy for any technical indicator extractor
@@ -2667,8 +2682,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[None::<f64>, Some(12.5), Some(9.0)],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_atr(&df).expect("failed to extract atr");
 
@@ -2695,8 +2710,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[Some(100.0), None::<f64>],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let ohlcv_vwap = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
         assert_eq!(ohlcv_vwap.len(), 1, "null row should be skipped");
@@ -2726,8 +2741,8 @@ mod test {
             CanonicalCol::Roc.as_str() => &[None::<f64>, Some(0.05)],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_roc(&df).expect("failed to extract roc");
 
@@ -2770,8 +2785,8 @@ mod test {
             CanonicalCol::SessionVwap.as_str() => &[Some(100.0), None::<f64>],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_trades_session(&df).expect("failed to extract trades session");
 
@@ -2829,8 +2844,8 @@ mod test {
             CanonicalCol::SessionVwap.as_str() => &[Some(100.0), Some(110.0)],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
 
@@ -2931,8 +2946,8 @@ mod test {
             CanonicalCol::IsBestMatch.as_str()        => &[Some(true), None],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_trades(&df).expect("failed to extract trade");
 
@@ -2996,8 +3011,8 @@ mod test {
         )
         .unwrap();
         let schema = economic_calendar_schema();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let events = extract_economic(&df).expect("failed to extract economic");
 
@@ -3059,8 +3074,8 @@ mod test {
         )
         .unwrap();
         let schema = tpo_spot_schema();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
         df
     }
 
@@ -3130,8 +3145,8 @@ mod test {
             CanonicalCol::TimeSlotCount.as_str() => &[5_i64, 10_i64],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
@@ -3201,8 +3216,9 @@ mod test {
 
     #[test]
     fn test_vp_full_field_mapping() {
-        // SCENARIO: Ensure every single column, including Optionals, is mapped correctly.
-        // Also checks that 'volume' is converted to Quantity/Volume types correctly.
+        // SCENARIO: Ensure every single column, including Optionals, is mapped
+        // correctly. Also checks that 'volume' is converted to Quantity/Volume
+        // types correctly.
         let schema = volume_profile_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()               => &[ts_micros("2026-01-01T09:00:00Z")],
@@ -3221,8 +3237,8 @@ mod test {
             CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20_i64)],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
 
@@ -3287,7 +3303,8 @@ mod test {
 
     #[test]
     fn test_multi_window_grouping_logic() {
-        // SCENARIO: Tests the loop state machine: `if Some(ts_val) != current_window_start`.
+        // SCENARIO: Tests the loop state machine: `if Some(ts_val) !=
+        // current_window_start`.
 
         // Window 1: 09:00 (2 bins)
         // Window 2: 10:00 (1 bin)
@@ -3306,8 +3323,8 @@ mod test {
             CanonicalCol::TimeSlotCount.as_str() => &[10_i64, 20, 5],
         )
         .unwrap();
-        let df = with_schema(df, schema.clone());
-        assert_schema_equal(&df, schema);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 

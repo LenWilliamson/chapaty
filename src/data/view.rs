@@ -43,8 +43,9 @@ pub trait StreamView<'env> {
         self.get_slice(id).and_then(|s| s.last())
     }
 
-    /// Returns an iterator over events in reverse chronological order (Newest -> Oldest).
-    /// This is the primary access pattern for RL agents reacting to recent news.
+    /// Returns an iterator over events in reverse chronological order (Newest
+    /// -> Oldest). This is the primary access pattern for RL agents
+    /// reacting to recent news.
     fn rev_iter(
         &self,
         id: &Self::Id,
@@ -68,7 +69,8 @@ pub trait StreamView<'env> {
 
 /// Trait for Views that contain events capable of checking if a price was hit.
 pub trait PriceCheckableView {
-    /// Checks if any *new* event (since `since_ts`) matching `target_symbol` hit the `price`.
+    /// Checks if any *new* event (since `since_ts`) matching `target_symbol`
+    /// hit the `price`.
     fn reached_price_since(
         &self,
         target_symbol: Symbol,
@@ -80,7 +82,8 @@ pub trait PriceCheckableView {
 
 /// Trait for Views that contain events capable of providing a close price.
 pub trait ClosePriceView {
-    /// Finds the timestamp and price of the most recent event for the target symbol.
+    /// Finds the timestamp and price of the most recent event for the target
+    /// symbol.
     fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)>;
 }
 
@@ -254,7 +257,8 @@ impl<'env> MarketView<'env> {
         Arc::clone(&self.market_ids)
     }
 
-    /// Finds the candle active at the specific timestamp (Search: Newest to Oldest).
+    /// Finds the candle active at the specific timestamp (Search: Newest to
+    /// Oldest).
     #[must_use]
     pub fn find_candle(&self, id: &OhlcvId, ts: DateTime<Utc>) -> Option<Ohlcv> {
         self.ohlcv
@@ -263,7 +267,8 @@ impl<'env> MarketView<'env> {
             .copied()
     }
 
-    /// Returns `true` if `price` was reached by any *new* event since the last step.
+    /// Returns `true` if `price` was reached by any *new* event since the last
+    /// step.
     #[must_use]
     pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
         let prev = self.previous_timestamp();
@@ -318,7 +323,8 @@ impl<'env> MarketView<'env> {
 }
 
 impl MarketView<'_> {
-    /// Returns a stack-allocated array of all views that support price checking.
+    /// Returns a stack-allocated array of all views that support price
+    /// checking.
     fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 7] {
         [
             &self.ohlcv,
@@ -331,7 +337,8 @@ impl MarketView<'_> {
         ]
     }
 
-    /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
+    /// Returns a stack-allocated array of all views that provide a canonical
+    /// market "Close" price.
     fn close_price_views(&self) -> [&dyn ClosePriceView; 2] {
         [&self.ohlcv, &self.trades]
     }
@@ -434,7 +441,8 @@ mod test {
         }
     }
 
-    /// Helper to create a `MarketView` with specified OHLCV data and time state.
+    /// Helper to create a `MarketView` with specified OHLCV data and time
+    /// state.
     fn market_view_with_ohlcv(
         ohlcv_data: SortedVecMap<OhlcvId, &[Ohlcv]>,
         previous_ts: Option<DateTime<Utc>>,
@@ -551,8 +559,9 @@ mod test {
 
     #[test]
     fn test_reached_price_ignores_old_data() {
-        // Edge Case: Old data (events <= last_close_ts) hitting the price must be ignored.
-        // This tests the "reverse iteration" logic with `since_ts` filtering.
+        // Edge Case: Old data (events <= last_close_ts) hitting the price must be
+        // ignored. This tests the "reverse iteration" logic with `since_ts`
+        // filtering.
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
@@ -658,7 +667,8 @@ mod test {
             ts("2025-03-01T10:00:00Z"), // current_ts at 10:00:00 to include 5m candle
         );
 
-        // Both candles are "new" (point_in_time > previous_ts), so both should be checked
+        // Both candles are "new" (point_in_time > previous_ts), so both should be
+        // checked
         assert!(
             market_view.reached_price(Price(500.0), symbol, TradeKind::Long),
             "3m candle (new) contains 500, should be reached"
@@ -677,8 +687,8 @@ mod test {
         let symbol = Symbol::Spot(SpotPair::EthUsdt);
 
         let events = vec![
-            // Candle 1: available at EXACTLY previous_ts - should be IGNORED (not strictly greater)
-            // Range: [90, 111] - contains price 111
+            // Candle 1: available at EXACTLY previous_ts - should be IGNORED (not strictly
+            // greater) Range: [90, 111] - contains price 111
             ohlcv(
                 ts("2025-04-01T00:02:00Z"),
                 ts("2025-04-01T00:03:00Z"), // point_in_time = 00:03:00
@@ -728,8 +738,9 @@ mod test {
 
     #[test]
     fn test_try_resolved_close_price_most_recent_wins() {
-        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59. Current TS is 09:59.
-        // The function must return the 5m close price (09:59), ignoring the 3m candle (08:59).
+        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59. Current TS is
+        // 09:59. The function must return the 5m close price (09:59), ignoring
+        // the 3m candle (08:59).
         let id_3m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let id_5m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(5));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);

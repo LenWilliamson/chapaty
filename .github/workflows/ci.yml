@@ -16,13 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Setup latest stable Rust and include rustfmt
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
-          # We disable caching here because we don't compile anything in this job
-          cache: false
-
       # 1. Secret Leak Prevention
       - name: Security - Check for Leaked Environment Files
         run: |
@@ -33,11 +26,25 @@ jobs:
           fi
           echo "No secrets found in git index."
 
-      # 2. Formatting Check (Uses the idiomatic rustfmt action)
-      - name: Style - Check Formatting
-        uses: actions-rust-lang/rustfmt@v1
+      # 2. Formatting Check (Nightly rustfmt)
+      # rustfmt.toml relies on nightly-only options (imports_granularity,
+      # group_imports, wrap_comments, doc_comment_code_block_width,
+      # format_macro_bodies), which stable rustfmt silently ignores. Install
+      # nightly + rustfmt for this step only and check with it.
+      - name: Style - Check Formatting (Nightly)
+        run: |
+          rustup toolchain install nightly --profile minimal --component rustfmt
+          cargo +nightly fmt --all -- --check
 
-      # 3. Architecture Guardrails
+      # 3. Dependency Sort Order (cargo-sort)
+      # '--check' returns non-zero when Cargo.toml is unsorted and does not
+      # rewrite the file (the bare 'cargo sort' would sort in place and exit 0).
+      - name: Install cargo-sort
+        uses: taiki-e/install-action@cargo-sort
+      - name: Style - Check Cargo.toml Sort Order
+        run: cargo sort --check
+
+      # 4. Architecture Guardrails
       - name: Architecture - Disallow internal prelude imports
         run: |
           if grep -r "use crate::prelude::" src/; then

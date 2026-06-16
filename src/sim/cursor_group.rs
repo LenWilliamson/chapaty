@@ -61,7 +61,8 @@ macro_rules! for_each_cursor {
     }};
 }
 
-/// Calls a method on every cursor that requires simulation storage and collects results.
+/// Calls a method on every cursor that requires simulation storage and collects
+/// results.
 macro_rules! map_cursors {
     ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {
         [
@@ -182,13 +183,17 @@ impl CursorGroup {
             .min()
     }
 
-    /// Advances the cursor to the next chronological available event in the simulation data.
+    /// Advances the cursor to the next chronological available event in the
+    /// simulation data.
     ///
     /// # Idempotency
     ///
-    /// This method is idempotent when called at the end of available data or at an episode boundary:
-    /// - When there are no more events, calling this method multiple times has no effect.
-    /// - When at the episode's end, further calls will not advance beyond the episode boundary.
+    /// This method is idempotent when called at the end of available data or at
+    /// an episode boundary:
+    /// - When there are no more events, calling this method multiple times has
+    ///   no effect.
+    /// - When at the episode's end, further calls will not advance beyond the
+    ///   episode boundary.
     pub fn step(&mut self, sim_data: &SimulationData, ep: &Episode) {
         let Some(mut next_ts) = self.peek(sim_data) else {
             return;
@@ -208,8 +213,9 @@ impl CursorGroup {
 
     /// Resets the cursor to the beginning of the next chronological episode.
     ///
-    /// This function correctly handles sparse data by finding the first available
-    /// event at or after the theoretical start of the next episode.
+    /// This function correctly handles sparse data by finding the first
+    /// available event at or after the theoretical start of the next
+    /// episode.
     pub fn advance_to_next_episode(
         &mut self,
         sim_data: &SimulationData,
@@ -242,7 +248,8 @@ impl CursorGroup {
 
         // LOGICAL ASSERTION:
         // If an event opened at `next_start`, it MUST be available at >= `next_start`.
-        // If this unwrap fails, the SimulationData is corrupt or the Cursor logic is broken.
+        // If this unwrap fails, the SimulationData is corrupt or the Cursor logic is
+        // broken.
         let start_availability =
             start_availability_candidate.ok_or_else(|| DataError::CausalityViolation {
                 open: next_start.to_string(),
@@ -341,7 +348,8 @@ mod test {
     }
 
     /// Create an OHLCV event with specified open and close timestamps.
-    /// The `point_in_time()` is determined by `close_timestamp` per the `MarketEvent` trait.
+    /// The `point_in_time()` is determined by `close_timestamp` per the
+    /// `MarketEvent` trait.
     fn ohlcv(open_ts: DateTime<Utc>, close_ts: DateTime<Utc>) -> Ohlcv {
         Ohlcv {
             open_timestamp: open_ts,
@@ -369,7 +377,8 @@ mod test {
     }
 
     /// Create a Trade event at the specified timestamp.
-    /// For trades, `point_in_time()` returns `timestamp` per the `MarketEvent` trait.
+    /// For trades, `point_in_time()` returns `timestamp` per the `MarketEvent`
+    /// trait.
     fn trade(timestamp: DateTime<Utc>) -> TradeEvent {
         TradeEvent {
             timestamp,
@@ -412,7 +421,8 @@ mod test {
             .unwrap()
     }
 
-    /// Build `SimulationData` with both OHLCV and Trade data for multi-stream tests.
+    /// Build `SimulationData` with both OHLCV and Trade data for multi-stream
+    /// tests.
     fn sim_data_multi_stream(
         oid: OhlcvId,
         ohlcv_events: Vec<Ohlcv>,
@@ -452,8 +462,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_synchronization_ohlcv_and_trade() {
-        // THE CRITICAL TEST: Verify that when the group advances, BOTH cursors update correctly.
-        // This tests the synchronization guarantee of CursorGroup.
+        // THE CRITICAL TEST: Verify that when the group advances, BOTH cursors update
+        // correctly. This tests the synchronization guarantee of CursorGroup.
         //
         // Scenario:
         // - OHLCV 5m candles: available at 00:05, 00:10
@@ -541,7 +551,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_initialization_advances_to_first_available() {
-        // CursorGroup::new() should advance all cursors to the first available timestamp.
+        // CursorGroup::new() should advance all cursors to the first available
+        // timestamp.
         let oid = ohlcv_id(Period::Minute(3));
 
         // First candle available at 00:03
@@ -883,7 +894,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_integration_full_workflow() {
-        // Integration test: Complete workflow through multiple episodes with multi-stream data.
+        // Integration test: Complete workflow through multiple episodes with
+        // multi-stream data.
         let oid = ohlcv_id(Period::Minute(5));
         let tid = trade_id();
 

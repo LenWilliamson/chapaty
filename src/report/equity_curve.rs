@@ -76,19 +76,23 @@ impl EquityCurveReport {
     /// Downsamples the equity curve to End-Of-Day (EOD) resolution.
     ///
     /// This reduces memory and file size by retaining only the final
-    /// Mark-to-Market portfolio value for each calendar day across the entire simulation.
+    /// Mark-to-Market portfolio value for each calendar day across the entire
+    /// simulation.
     ///
     /// # Time-Series Boundary Edge Cases
     ///
-    /// OHLCV market data is defined as a left-inclusive, right-exclusive interval: `[open_ts, close_ts)`.
+    /// OHLCV market data is defined as a left-inclusive, right-exclusive
+    /// interval: `[open_ts, close_ts)`.
     ///
     /// To prevent the `T+1 00:00:00` flush into the next calendar day's bucket,
-    /// we use Polars' `DynamicGroupOptions` with `ClosedWindow::Right`. This `(start, end]`
-    /// inclusivity ensures the midnight tick is strictly evaluated as the terminal state of `T`
-    /// without duplicating the row into `T+1`.
+    /// we use Polars' `DynamicGroupOptions` with `ClosedWindow::Right`. This
+    /// `(start, end]` inclusivity ensures the midnight tick is strictly
+    /// evaluated as the terminal state of `T` without duplicating the row
+    /// into `T+1`.
     ///
     /// # Errors
-    /// Returns an error if Polars cannot group, aggregate, or collect the transformed frame.
+    /// Returns an error if Polars cannot group, aggregate, or collect the
+    /// transformed frame.
     pub fn into_eod(self) -> ChapatyResult<Self> {
         const BUCKET_ALIAS: &str = "_bucket_ts";
         let eod_df = self
@@ -276,7 +280,8 @@ mod test {
         let eod_df = eod_report.as_df();
 
         // 3. Verify Results
-        // It should gracefully process the empty data and return 0 rows without panicking.
+        // It should gracefully process the empty data and return 0 rows without
+        // panicking.
         assert_eq!(eod_df.height(), 0, "Empty input should yield empty output");
 
         // The schema should remain perfectly perfectly intact
@@ -392,8 +397,8 @@ mod test {
     #[test]
     fn test_equity_curve_into_eod_microsecond_determinism() {
         // This test proves the `ClosedWindow::Both` DDIA interval logic.
-        // It proves that exactly 00:00:00.000000 belongs to the previous day's terminal state,
-        // but 00:00:00.000001 strictly belongs to the current day.
+        // It proves that exactly 00:00:00.000000 belongs to the previous day's terminal
+        // state, but 00:00:00.000001 strictly belongs to the current day.
         let input_df = format_mock_df(
             df![
                 EquityCurveCol::RowId => [0_u32, 1, 2, 3],

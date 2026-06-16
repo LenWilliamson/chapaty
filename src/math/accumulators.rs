@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// A precise floating-point accumulator using the [Kahan Summation Algorithm](https://en.wikipedia.org/wiki/Kahan_summation_algorithm).
-/// Implemented using move semantics for functional, immutable state transitions.
+/// Implemented using move semantics for functional, immutable state
+/// transitions.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct KahanSum {
     sum: f64,
@@ -9,7 +10,8 @@ pub struct KahanSum {
 }
 
 impl KahanSum {
-    /// Consumes the current state and yields a new [`KahanSum`] containing the updated running totals.
+    /// Consumes the current state and yields a new [`KahanSum`] containing the
+    /// updated running totals.
     pub fn add(self, value: f64) -> Self {
         let y = value - self.c;
         let t = self.sum + y;

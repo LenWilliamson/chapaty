@@ -310,7 +310,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice rule takes the last one (101.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice rule takes
+        // the last one (101.0).
         assert_eq!(
             res.poc,
             Price(101.0),
@@ -326,7 +327,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice rule takes the first one (100.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice rule takes
+        // the first one (100.0).
         assert_eq!(
             res.poc,
             Price(100.0),
@@ -342,7 +344,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter rule takes the middle one (100.5).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter rule
+        // takes the middle one (100.5).
         assert_eq!(
             res.poc,
             Price(100.5),

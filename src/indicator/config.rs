@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
 pub enum AtrSmoothingType {
-    /// J. Welles Wilder's original smoothing method (Running Moving Average / RMA).
-    /// Formula: alpha = 1 / `window_size`
+    /// J. Welles Wilder's original smoothing method (Running Moving Average /
+    /// RMA). Formula: alpha = 1 / `window_size`
     #[default]
     Wilders,
     /// Simple Moving Average (SMA).
@@ -25,7 +25,8 @@ pub struct AtrConfig {
 }
 
 impl AtrConfig {
-    /// Creates a new `AtrConfig` with the given window size and [`AtrSmoothingType::default`] smoothing type.
+    /// Creates a new `AtrConfig` with the given window size and
+    /// [`AtrSmoothingType::default`] smoothing type.
     ///
     /// # Arguments
     ///
@@ -68,7 +69,8 @@ pub struct SmaWindow(pub u16);
 pub struct RsiWindow(pub u16);
 
 /// Defines how far back the indicator should look.
-/// Gives the trader the degree of freedom to mix time-based and bar-based strategies.
+/// Gives the trader the degree of freedom to mix time-based and bar-based
+/// strategies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LookbackWindow {
     /// A fixed number of bars/events (e.g., 14 periods).

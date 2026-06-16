@@ -40,7 +40,8 @@ pub struct Environment {
     /// In edge cases where a trade could both hit stop-loss and take-profit
     /// within the same timeframe, this mode selects the evaluation strategy:
     ///
-    /// - [`ExecutionBias::Optimistic`] chooses the most favorable result for the agent.
+    /// - [`ExecutionBias::Optimistic`] chooses the most favorable result for
+    ///   the agent.
     /// - [`ExecutionBias::Pessimistic`] chooses the least favorable outcome.
     ///
     /// Defaults to [`ExecutionBias::Pessimistic`] for conservative evaluation.
@@ -71,7 +72,8 @@ pub struct Environment {
     /// Current Episode
     ep: Episode,
 
-    /// Snapshot of the episode at the initial simulation state, used for resetting the environment.
+    /// Snapshot of the episode at the initial simulation state, used for
+    /// resetting the environment.
     initial_ep: Episode,
 
     /// Current status of the environment (e.g. running, done).
@@ -102,8 +104,9 @@ impl Environment {
 
     /// Caches the heavy static simulation data (OHLCV, events) to storage.
     ///
-    /// This allows subsequent runs to use `chapaty::load` with the same configuration
-    /// to skip the expensive data fetching and building steps.
+    /// This allows subsequent runs to use `chapaty::load` with the same
+    /// configuration to skip the expensive data fetching and building
+    /// steps.
     ///
     /// # Errors
     /// Returns an error if serialization or storage I/O fails.
@@ -121,35 +124,40 @@ impl Environment {
         self.journal()
     }
 
-    /// Evaluates a stream of agents in parallel, returning a leaderboard of the top performers.
+    /// Evaluates a stream of agents in parallel, returning a leaderboard of the
+    /// top performers.
     ///
-    /// This method uses `rayon` to distribute agent evaluation across all available CPU cores.
-    /// It maintains a min-heap of the top `top_k` results to minimize memory usage, allowing
-    /// for the evaluation of massive datasets (e.g., 1M+ agents) with constant RAM overhead.
+    /// This method uses `rayon` to distribute agent evaluation across all
+    /// available CPU cores. It maintains a min-heap of the top `top_k`
+    /// results to minimize memory usage, allowing for the evaluation of
+    /// massive datasets (e.g., 1M+ agents) with constant RAM overhead.
     ///
     /// # Arguments
     ///
-    /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as
-    ///   the unique **Agent UID**. This is typically created by calling `.enumerate()` on your
-    ///   configuration of the agent grid.
+    /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as the
+    ///   unique **Agent UID**. This is typically created by calling
+    ///   `.enumerate()` on your configuration of the agent grid.
     /// * `top_k` - The maximum number of agents to retain in the leaderboard.
     ///
     /// # Runtime Estimation
     ///
-    /// Before launching a massive grid search (e.g., 1M+ agents), it is recommended
-    /// to benchmark a single representative agent first.
+    /// Before launching a massive grid search (e.g., 1M+ agents), it is
+    /// recommended to benchmark a single representative agent first.
     ///
-    /// You can use [`Environment::evaluate_agent`] to run one agent sequentially:
+    /// You can use [`Environment::evaluate_agent`] to run one agent
+    /// sequentially:
     ///
     /// 1. Pick a random configuration from your grid.
     /// 2. Measure the time it takes to run `env.evaluate_agent(&mut agent)`.
-    /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU Cores`.
+    /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU
+    ///    Cores`.
     ///
-    /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks instead of 2 hours.
+    /// This simple check prevents surprises—like discovering a 1M run will take
+    /// 2 weeks instead of 2 hours.
     ///
     /// # Errors
-    /// Returns an error when any worker fails to evaluate, aggregate, or convert
-    /// intermediate results into the final leaderboard.
+    /// Returns an error when any worker fails to evaluate, aggregate, or
+    /// convert intermediate results into the final leaderboard.
     pub fn evaluate_agents<T>(
         &mut self,
         agents: Vec<(usize, T)>,

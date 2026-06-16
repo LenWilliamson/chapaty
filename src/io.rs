@@ -28,8 +28,8 @@ use crate::error::{ChapatyError, ChapatyResult, IoError};
 
 /// Configuration for loading and caching environment data.
 ///
-/// Encapsulates the storage location, serialization format, and I/O buffer settings
-/// to standardize reads and writes across Chapaty environments.
+/// Encapsulates the storage location, serialization format, and I/O buffer
+/// settings to standardize reads and writes across Chapaty environments.
 #[derive(Debug, Clone)]
 pub struct IoConfig<'a> {
     /// The storage location (local directory, cloud path, or HF dataset).
@@ -98,8 +98,9 @@ pub struct CloudReader {
 impl CloudReader {
     /// # Errors
     ///
-    /// Returns an error if object-store initialization fails, if the object path
-    /// cannot be built, or if the remote object cannot be read into memory.
+    /// Returns an error if object-store initialization fails, if the object
+    /// path cannot be built, or if the remote object cannot be read into
+    /// memory.
     pub async fn new(uri: &str, cloud_options: Option<&CloudOptions>) -> ChapatyResult<Self> {
         let (cloud_location, object_store) =
             build_object_store(PlRefPath::new(uri), cloud_options, false)
@@ -144,9 +145,9 @@ fn map_object_store_err(err: object_store::Error) -> ChapatyError {
 
 /// Configuration for tuning cloud storage multipart uploads.
 ///
-/// This struct allows fine-grained control over how data is chunked and uploaded
-/// to cloud object stores (e.g., AWS S3, GCS, Azure), as well as optionally
-/// tracking real-time network I/O metrics during the write process.
+/// This struct allows fine-grained control over how data is chunked and
+/// uploaded to cloud object stores (e.g., AWS S3, GCS, Azure), as well as
+/// optionally tracking real-time network I/O metrics during the write process.
 #[derive(Debug, Clone)]
 pub struct CloudWriteConfig {
     /// The size of each chunk uploaded to the cloud, in bytes.

@@ -215,7 +215,8 @@ mod test {
     }
 
     /// A lightweight wrapper around the heavy `SimulationData`.
-    /// It allows us to create a valid `MarketView` with a simple (low, high, close) API.
+    /// It allows us to create a valid `MarketView` with a simple (low, high,
+    /// close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -254,7 +255,8 @@ mod test {
             Self { sim_data, cursor }
         }
 
-        /// Returns a valid `MarketView` borrowing from the owned `SimulationData`
+        /// Returns a valid `MarketView` borrowing from the owned
+        /// `SimulationData`
         fn view(&self) -> MarketView<'_> {
             MarketView::new(&self.sim_data, &self.cursor).unwrap()
         }
@@ -541,8 +543,9 @@ mod test {
 
         let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
-        // The bug: TP was left as None because it fell through to the `other` match arm.
-        // Expectation: Trade is Closed on SL, but TP is successfully restored.
+        // The bug: TP was left as None because it fell through to the `other` match
+        // arm. Expectation: Trade is Closed on SL, but TP is successfully
+        // restored.
         match new_state {
             State::Closed(c) => {
                 assert_eq!(c.state.termination_reason, TerminationReason::StopLoss);

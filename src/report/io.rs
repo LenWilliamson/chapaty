@@ -79,9 +79,9 @@ impl<'a> FileConfig<'a> {
 /// Configuration for exporting reports to cloud storage (GCS, S3, Azure).
 ///
 /// # Important: Full URIs Required
-/// To prevent URL malformation, `CloudConfig` requires the **complete URI**, including
-/// the file name and extension (e.g., `gs://bucket/path/to/my_report.csv`).
-/// Do not pass a directory URI.
+/// To prevent URL malformation, `CloudConfig` requires the **complete URI**,
+/// including the file name and extension (e.g.,
+/// `gs://bucket/path/to/my_report.csv`). Do not pass a directory URI.
 #[derive(Debug, Clone)]
 pub struct CloudConfig<'a> {
     pub uri: &'a str,
@@ -122,7 +122,8 @@ impl<'a> CloudConfig<'a> {
 // Traits
 // ================================================================================================
 
-/// Defines a common interface for all Report types (Journal, `TradeStats`, etc.).
+/// Defines a common interface for all Report types (Journal, `TradeStats`,
+/// etc.).
 pub trait Report {
     /// Access the underlying `DataFrame` (Immutable).
     fn as_df(&self) -> &DataFrame;
@@ -157,10 +158,12 @@ pub trait ExportSync {
     /// Writes the report to a local file system (blocking).
     ///
     /// - Creates directories if they do not exist.
-    /// - Automatically generates a file name if one is not provided in `FileConfig`.
+    /// - Automatically generates a file name if one is not provided in
+    ///   `FileConfig`.
     ///
     /// # Errors
-    /// Returns an error if path resolution, serialization, or file writing fails.
+    /// Returns an error if path resolution, serialization, or file writing
+    /// fails.
     fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()>;
 }
 
@@ -317,7 +320,8 @@ where
 // Helpers
 // ================================================================================================
 
-/// Provides reasonable default arguments for the unified sink API since it lacks a direct `Default` implementation.
+/// Provides reasonable default arguments for the unified sink API since it
+/// lacks a direct `Default` implementation.
 fn default_unified_sink_args() -> UnifiedSinkArgs {
     UnifiedSinkArgs {
         mkdir: true,

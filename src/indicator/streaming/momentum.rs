@@ -34,9 +34,11 @@ impl HistoricalBuffer {
     ///
     /// # Errors
     ///
-    /// Returns an error if the time window duration is too large to fit in a `usize` capacity.
+    /// Returns an error if the time window duration is too large to fit in a
+    /// `usize` capacity.
     fn new(window: LookbackWindow) -> ChapatyResult<Self> {
-        // Adding +2 prevents reallocation because we push BEFORE we pop in the update loop.
+        // Adding +2 prevents reallocation because we push BEFORE we pop in the update
+        // loop.
         let capacity = match window {
             LookbackWindow::Bars(n) => n + 2,
             // Convert time window to capacity in minutes, rounded up to nearest minute.
@@ -52,7 +54,8 @@ impl HistoricalBuffer {
         })
     }
 
-    /// Pushes the new value into the buffer, drops stale values, and returns the reference value (Input_{current - n}).
+    /// Pushes the new value into the buffer, drops stale values, and returns
+    /// the reference value (Input_{current - n}).
     fn update(&mut self, current: MomentumInput) -> Option<MomentumInput> {
         self.buffer.push_back(current);
 
@@ -98,16 +101,19 @@ impl HistoricalBuffer {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct MomentumOutput {
-    /// The point in time of the historical reference price (the start of the window).
+    /// The point in time of the historical reference price (the start of the
+    /// window).
     pub window_start: DateTime<Utc>,
     /// The absolute point change: $Close_{current} - Close_{current - n}$
     pub absolute: f64,
-    /// The percentage rate of change: $((Close_{current} - Close_{current - n}) / Close_{current - n}) \times 100$
+    /// The percentage rate of change: $((Close_{current} - Close_{current - n})
+    /// / Close_{current - n}) \times 100$
     pub roc: f64,
 }
 
 /// Streaming Rate of Change (ROC) Indicator.
-/// Measures both the absolute and percentage change in price over a specific lookback window.
+/// Measures both the absolute and percentage change in price over a specific
+/// lookback window.
 #[derive(Debug, Clone)]
 pub struct StreamingRateOfChange {
     buffer: HistoricalBuffer,
@@ -118,7 +124,8 @@ impl StreamingRateOfChange {
     ///
     /// # Errors
     ///
-    /// Returns an error if the time window duration is too large to fit in a `usize` capacity.
+    /// Returns an error if the time window duration is too large to fit in a
+    /// `usize` capacity.
     pub fn new(window: LookbackWindow) -> ChapatyResult<Self> {
         Ok(Self {
             buffer: HistoricalBuffer::new(window)?,
@@ -217,9 +224,10 @@ mod tests {
     }
 
     /// Drives one gap-free sequence through a `Bars(n)` buffer and a
-    /// `Time(n * period)` buffer and asserts they return the identical reference at
-    /// every step. This is the core invariant: on regularly spaced bars a bar-count
-    /// window and the equivalent time window must look back to the same point.
+    /// `Time(n * period)` buffer and asserts they return the identical
+    /// reference at every step. This is the core invariant: on regularly
+    /// spaced bars a bar-count window and the equivalent time window must
+    /// look back to the same point.
     fn assert_bars_matches_time(n: usize, period_secs: u64, points: &[(i64, f64)]) {
         let secs = (n as u64) * period_secs;
         let mut bars = HistoricalBuffer::new(LookbackWindow::Bars(n)).unwrap();

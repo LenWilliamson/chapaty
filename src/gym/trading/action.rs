@@ -187,9 +187,11 @@ impl Command for OpenCmd {
 
 /// Command to modify an existing trade.
 ///
-/// - For **Pending** orders: Can modify Entry (Limit) Price, Stop Loss, and Take Profit.
-/// - For **Active** trades: Can ONLY modify Stop Loss and Take Profit. Attempting to modify
-///   Entry Price on an active trade will result in an error.
+/// - For **Pending** orders: Can modify Entry (Limit) Price, Stop Loss, and
+///   Take Profit.
+/// - For **Active** trades: Can ONLY modify Stop Loss and Take Profit.
+///   Attempting to modify Entry Price on an active trade will result in an
+///   error.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModifyCmd {
     pub agent_id: AgentIdentifier,
@@ -292,7 +294,8 @@ impl Actions {
             .is_some_and(|actions| actions.iter().any(Action::is_open))
     }
 
-    /// Consumes the batch and returns an iterator yielding actions sorted by execution priority.
+    /// Consumes the batch and returns an iterator yielding actions sorted by
+    /// execution priority.
     pub fn into_sorted_iter(self) -> impl Iterator<Item = (MarketId, Action)> {
         self.0
             .into_iter()

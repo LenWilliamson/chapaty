@@ -47,10 +47,12 @@ impl TradeKind {
 }
 
 impl TradeKind {
-    /// Validates `stop_loss`, `entry`, and `take_profit` ordering for the trade side.
+    /// Validates `stop_loss`, `entry`, and `take_profit` ordering for the trade
+    /// side.
     ///
     /// # Errors
-    /// Returns an error when the provided prices violate long/short ordering constraints.
+    /// Returns an error when the provided prices violate long/short ordering
+    /// constraints.
     pub fn price_ordering_validation(
         &self,
         stop_loss: Option<Price>,
@@ -176,8 +178,9 @@ impl TerminationReason {
 
 /// Represents a Risk-Reward Ratio (RRR) in trading and financial contexts.
 ///
-/// The Risk-Reward Ratio quantifies the relationship between potential loss and potential gain
-/// for a trade, helping assess whether the trade setup is favorable.
+/// The Risk-Reward Ratio quantifies the relationship between potential loss and
+/// potential gain for a trade, helping assess whether the trade setup is
+/// favorable.
 ///
 /// # Fields
 /// - `risk`: Expected loss (absolute value)
@@ -187,14 +190,16 @@ impl TerminationReason {
 /// # Interpretation
 /// - `ratio = 2.0` -> Risking $2 to gain $1 (risk outweighs reward)
 /// - `ratio = 0.5` -> Risking $0.50 to gain $1 (reward outweighs risk)
-/// - `reward = 0.0` and `risk > 0.0` -> Infinite risk, no reward => `ratio = f64::INFINITY`
+/// - `reward = 0.0` and `risk > 0.0` -> Infinite risk, no reward => `ratio =
+///   f64::INFINITY`
 /// - `reward = 0.0` and `risk = 0.0` -> No risk, no reward => `ratio = 0.0`
 /// - `risk = 0.0` and `reward > 0.0` -> No-loss scenario => `ratio = 0.0`
 ///
 /// # Notes
 /// - Both `risk` and `reward` are expected to be absolute values.
 /// - A lower ratio generally indicates a more favorable trade.
-/// - The `ratio` field is computed during construction and is not stored externally.
+/// - The `ratio` field is computed during construction and is not stored
+///   externally.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RiskRewardRatio {
     risk: f64,
@@ -429,8 +434,8 @@ mod tests {
 
         // === LONG CASES (Target: SL < Entry < TP) ===
 
-        // Case 1: Entry < TP is Valid (100 < 110), but SL > Entry (105 > 100) -> INVALID
-        // This was the specific bug case.
+        // Case 1: Entry < TP is Valid (100 < 110), but SL > Entry (105 > 100) ->
+        // INVALID This was the specific bug case.
         assert!(
             TradeKind::Long
                 .price_ordering_validation(Some(sl(105.0)), Some(en(100.0)), Some(tp(110.0)))
@@ -457,7 +462,8 @@ mod tests {
             "Short: Valid TP/Entry should not mask invalid Entry/SL"
         );
 
-        // Case 4: Entry < SL is Valid (100 < 110), but TP > Entry (105 > 100) -> INVALID
+        // Case 4: Entry < SL is Valid (100 < 110), but TP > Entry (105 > 100) ->
+        // INVALID
         assert!(
             TradeKind::Short
                 .price_ordering_validation(Some(sl(110.0)), Some(en(100.0)), Some(tp(105.0)))
@@ -572,7 +578,8 @@ mod tests {
         let zero_reward = RiskRewardRatio::new(100.0, 0.0);
         assert!(zero_reward.ratio().is_infinite());
 
-        // 3. Zero Risk AND Zero Reward -> Ratio 0.0 (Undefined, treated as neutral/safe)
+        // 3. Zero Risk AND Zero Reward -> Ratio 0.0 (Undefined, treated as
+        //    neutral/safe)
         let zero_zero = RiskRewardRatio::new(0.0, 0.0);
         assert_f64_eq!(zero_zero.ratio(), 0.0);
     }

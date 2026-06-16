@@ -17,7 +17,8 @@ use crate::{
 /// Binds a `StreamId` to its physical storage container in the simulation.
 ///
 /// This "Type Family" pattern allows generic components (like Cursors) to know
-/// exactly what data structure they operate on without explicit generic parameters.
+/// exactly what data structure they operate on without explicit generic
+/// parameters.
 pub trait StreamEntity: StreamId {
     /// The physical storage container for this stream's history.
     type Storage;
@@ -88,7 +89,8 @@ pub trait StreamCursor {
     fn new(data: &Self::Storage) -> Self;
 
     /// Moves the cursor forward to `ts`.
-    /// Handles both small steps (t -> t+1) and large jumps (Episode -> Episode) efficiently.
+    /// Handles both small steps (t -> t+1) and large jumps (Episode -> Episode)
+    /// efficiently.
     fn advance(&mut self, data: &Self::Storage, ts: DateTime<Utc>);
 
     /// Resets all indices to 0.
@@ -109,7 +111,8 @@ pub trait StreamCursor {
 
     /// Scans future events (starting from current cursor position)
     /// to find the first event that becomes AVAILABLE at or after `ts`.
-    /// Use this to determine the exact timestamp when the environment loop should resume.
+    /// Use this to determine the exact timestamp when the environment loop
+    /// should resume.
     fn find_first_point_in_time_at_or_after(
         &self,
         data: &Self::Storage,
@@ -155,12 +158,13 @@ where
 
     fn advance(&mut self, data: &EventMap<S>, ts: DateTime<Utc>) {
         // OPTIMIZATION: Lockstep Iteration (Zip).
-        // Since Cursor is created from Data, and Data is structurally immutable during simulation,
-        // the memory layout of keys is identical.
-        // We zip the iterators to access the event vector in O(1) relative to the cursor.
+        // Since Cursor is created from Data, and Data is structurally immutable during
+        // simulation, the memory layout of keys is identical.
+        // We zip the iterators to access the event vector in O(1) relative to the
+        // cursor.
         //
-        // Prerequisite: `Cursor` and `EventMap` must have the exact same keys in the same order.
-        // This is enforced by <S as StreamCursor>::new()
+        // Prerequisite: `Cursor` and `EventMap` must have the exact same keys in the
+        // same order. This is enforced by <S as StreamCursor>::new()
         self.0
             .iter_mut()
             .zip(data.iter())
@@ -171,8 +175,8 @@ where
 
                 let future_events = &events[range.end..];
 
-                // OPTIMIZATION: Quick check to avoid `position` call overhead if we are already up to date.
-                // This handles the "waiting" case.
+                // OPTIMIZATION: Quick check to avoid `position` call overhead if we are already
+                // up to date. This handles the "waiting" case.
                 if future_events
                     .first()
                     .is_some_and(|e| e.point_in_time() <= ts)
@@ -287,7 +291,8 @@ mod test {
     }
 
     /// Create an OHLCV event with specified open and close timestamps.
-    /// The `point_in_time` is determined by `close_timestamp` per the `MarketEvent` trait.
+    /// The `point_in_time` is determined by `close_timestamp` per the
+    /// `MarketEvent` trait.
     fn ohlcv(open_ts: DateTime<Utc>, close_ts: DateTime<Utc>) -> Ohlcv {
         Ohlcv {
             open_timestamp: open_ts,
@@ -399,8 +404,9 @@ mod test {
         // THE CRITICAL TEST: "CPI YoY", "CPI MoM", "CPI QoQ" all released at ts=100
         // Fourth event at ts=101 should NOT be included when advancing to ts=100.
         //
-        // The advance logic uses `position(|e| e.point_in_time() > ts)` which is STRICTLY GREATER.
-        // This ensures ALL events at exactly ts=100 are consumed.
+        // The advance logic uses `position(|e| e.point_in_time() > ts)` which is
+        // STRICTLY GREATER. This ensures ALL events at exactly ts=100 are
+        // consumed.
         let id = econ_id();
 
         // All three news items released simultaneously at 08:30:00
@@ -439,7 +445,8 @@ mod test {
         // - 3m candle: [00:00:00, 00:03:00) - 3 minute duration
         // - Another 1m candle: [00:02:00, 00:03:00) - duplicate (realistic scenario)
         //
-        // All three close at exactly 00:03:00, so all should be consumed at ts=00:03:00.
+        // All three close at exactly 00:03:00, so all should be consumed at
+        // ts=00:03:00.
 
         let id = ohlcv_id(Period::Minute(1)); // Using same id for simplicity in test
 
@@ -520,7 +527,8 @@ mod test {
 
     #[test]
     fn test_cursor_advance_before_any_events() {
-        // Advancing to a time before any events are available should leave cursor at 0..0
+        // Advancing to a time before any events are available should leave cursor at
+        // 0..0
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![
             // First event available at 00:03:00
@@ -566,7 +574,8 @@ mod test {
 
     #[test]
     fn test_cursor_large_jump_consumes_all_intermediate() {
-        // Test episode-to-episode jumps: advancing far ahead should consume all intermediate events
+        // Test episode-to-episode jumps: advancing far ahead should consume all
+        // intermediate events
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![
             ohlcv(ts("2025-07-01T00:00:00Z"), ts("2025-07-01T00:03:00Z")),
@@ -826,8 +835,9 @@ mod test {
 
     #[test]
     fn test_cursor_lockstep_invariant_mixed_types() {
-        // Verify cursor and data maintain synchronized key order across DIFFERENT stream types.
-        // This ensures the generic implementation of Cursor works for any StreamId.
+        // Verify cursor and data maintain synchronized key order across DIFFERENT
+        // stream types. This ensures the generic implementation of Cursor works
+        // for any StreamId.
 
         // 1. Setup OHLCV Stream
         let ohlcv_id = OhlcvId {

@@ -59,8 +59,8 @@ impl_abs_primitive!(Tick, i64);
 /// providing strong typing against Price or other metrics.
 ///
 /// # Semantics
-/// - **Negative values** are generally not allowed in storage but may appear
-///   in delta calculations.
+/// - **Negative values** are generally not allowed in storage but may appear in
+///   delta calculations.
 /// - **Precision** is handled via standard `f64` IEEE-754 semantics.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct Quantity(pub f64);
@@ -222,7 +222,8 @@ impl From<LiquiditySide> for bool {
 
 /// Selects which aggregated price of a bar is used for calculations.
 ///
-/// Only meaningful for bar-like data that spans a range (e.g. [`crate::data::event::Ohlcv`]).
+/// Only meaningful for bar-like data that spans a range (e.g.
+/// [`crate::data::event::Ohlcv`]).
 #[derive(
     Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
@@ -239,7 +240,8 @@ pub enum AggregatedPrice {
 }
 
 impl AggregatedPrice {
-    /// Converts the price aggregation type into its corresponding Polars Expression.
+    /// Converts the price aggregation type into its corresponding Polars
+    /// Expression.
     pub(crate) fn to_expr(self) -> Expr {
         match self {
             Self::Close => col(CanonicalCol::Close),
@@ -284,7 +286,8 @@ pub enum ExecutionDepth {
     /// at the top of the book was sufficient to fill this portion of the trade.
     TopOfBook,
 
-    /// The trade swept through the top of the book and matched at a worse price.
+    /// The trade swept through the top of the book and matched at a worse
+    /// price.
     ///
     /// This indicates that the Aggressor's order size exceeded the liquidity
     /// available at the BBO, forcing the engine to match against deeper
@@ -295,8 +298,9 @@ pub enum ExecutionDepth {
 impl From<bool> for ExecutionDepth {
     /// Converts a boolean value to a `TradeMatchQuality`.
     ///
-    /// If `true`, it indicates that the trade was filled at the best available price (`BestMatch`).
-    /// If `false`, it indicates that the best available quantity was insufficient (`NotBestMatch`).
+    /// If `true`, it indicates that the trade was filled at the best available
+    /// price (`BestMatch`). If `false`, it indicates that the best
+    /// available quantity was insufficient (`NotBestMatch`).
     fn from(is_best_match: bool) -> Self {
         if is_best_match {
             Self::TopOfBook
@@ -309,10 +313,11 @@ impl From<bool> for ExecutionDepth {
 impl From<&ExecutionDepth> for bool {
     /// Converts a `TradeMatchQuality` into a boolean value.
     ///
-    /// `TradeMatchQuality::BestMatch` converts to `true`, meaning that the trade was filled entirely
-    /// at the best available price.
-    /// `TradeMatchQuality::NotBestMatch` converts to `false`, indicating that the best available quantity
-    /// was insufficient and additional price levels were used.
+    /// `TradeMatchQuality::BestMatch` converts to `true`, meaning that the
+    /// trade was filled entirely at the best available price.
+    /// `TradeMatchQuality::NotBestMatch` converts to `false`, indicating that
+    /// the best available quantity was insufficient and additional price
+    /// levels were used.
     fn from(trade_match_quality: &ExecutionDepth) -> Self {
         match trade_match_quality {
             ExecutionDepth::TopOfBook => true,
@@ -817,7 +822,8 @@ impl FromStr for FutureContract {
 )]
 #[strum(serialize_all = "camelCase")]
 pub enum EconomicCategory {
-    /// Employment-related indicators (e.g., Non-Farm Payrolls, Unemployment Rate).
+    /// Employment-related indicators (e.g., Non-Farm Payrolls, Unemployment
+    /// Rate).
     Employment = 1,
 
     /// Economic activity indicators (e.g., GDP, PMI, Retail Sales).
@@ -832,7 +838,8 @@ pub enum EconomicCategory {
     /// Central bank policy and actions (e.g., FOMC meetings, Rate Decisions).
     CentralBanks = 5,
 
-    /// Consumer and business confidence indicators (e.g., Consumer Confidence, Business Sentiment).
+    /// Consumer and business confidence indicators (e.g., Consumer Confidence,
+    /// Business Sentiment).
     ConfidenceIndex = 6,
 
     /// Balance of payments or trade balance indicators.
@@ -886,7 +893,8 @@ impl TryFrom<RpcEconomicCategory> for EconomicCategory {
     }
 }
 
-/// Importance level of an economic event as of investing.com (e.g., from 1 to 3 stars).
+/// Importance level of an economic event as of investing.com (e.g., from 1 to 3
+/// stars).
 #[derive(
     Debug,
     Clone,
@@ -1006,7 +1014,8 @@ pub trait Instrument {
     /// # Panics
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
-    /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
+    /// representable range of a signed 64-bit integer (`i64::MIN` to
+    /// `i64::MAX`).
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -1047,7 +1056,8 @@ pub trait Instrument {
     /// # Panics
     ///
     /// Panics if the calculated value is `NaN`, or if it falls outside the
-    /// representable range of a signed 64-bit integer (`i64::MIN` to `i64::MAX`).
+    /// representable range of a signed 64-bit integer (`i64::MIN` to
+    /// `i64::MAX`).
     #[expect(
         clippy::cast_precision_loss,
         reason = "The standard i64 bounds (±9.22e18) fit completely within the safe \
@@ -1092,7 +1102,8 @@ pub trait Instrument {
     }
 
     /// Normalizes a raw price to the nearest valid tick.
-    /// Crucial for order entry validation to prevent "Invalid Tick Size" errors.
+    /// Crucial for order entry validation to prevent "Invalid Tick Size"
+    /// errors.
     fn normalize_price(&self, price: f64) -> f64 {
         let ticks = (price / self.tick_size()).round();
         ticks * self.tick_size()
@@ -1153,7 +1164,8 @@ impl Instrument for Symbol {
 // Session Window
 // ================================================================================================
 
-/// A timezone-aware accumulation window defined by a local start and end time-of-day.
+/// A timezone-aware accumulation window defined by a local start and end
+/// time-of-day.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionWindow {
     pub timezone: Tz,
@@ -1287,11 +1299,13 @@ impl SessionWindow {
         }
     }
 
-    /// Classifies a UTC timestamp against the window, resolving the session it belongs to when inside.
+    /// Classifies a UTC timestamp against the window, resolving the session it
+    /// belongs to when inside.
     ///
     /// # Panics
     /// Panics when classifying overnight windows if the local date is Chrono's
-    /// minimum representable date and cannot be decremented (`pred_opt` is `None`).
+    /// minimum representable date and cannot be decremented (`pred_opt` is
+    /// `None`).
     #[must_use]
     pub fn classify(&self, utc_ts: DateTime<Utc>) -> WindowPosition {
         let local = utc_ts.with_timezone(&self.timezone);
@@ -1375,7 +1389,8 @@ mod tests {
     // Market Session Tetsts
     // ============================================================================================
 
-    /// Helper to easily construct a UTC timestamp from a local timezone date and time.
+    /// Helper to easily construct a UTC timestamp from a local timezone date
+    /// and time.
     fn local_to_utc(
         tz: Tz,
         year: i32,
@@ -1442,7 +1457,8 @@ mod tests {
         let eve_mid = local_to_utc(New_York, 2026, 6, 10, 23, 0, 0);
         assert_eq!(session.classify(eve_mid), expected_session);
 
-        // 4. Cross midnight / Morning leg begins (00:00:00 on June 11) -> Within(June 10)
+        // 4. Cross midnight / Morning leg begins (00:00:00 on June 11) -> Within(June
+        //    10)
         let morn_start = local_to_utc(New_York, 2026, 6, 11, 0, 0, 0);
         assert_eq!(session.classify(morn_start), expected_session);
 

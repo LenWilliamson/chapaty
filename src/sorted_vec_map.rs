@@ -1,8 +1,8 @@
 //! A sorted map optimized for small collections.
 //!
 //! This module provides [`SortedVecMap`], a map backed by a sorted `SmallVec`.
-//! It keeps keys in deterministic sorted order, making iteration predictable and
-//! stable while remaining efficient for small datasets.
+//! It keeps keys in deterministic sorted order, making iteration predictable
+//! and stable while remaining efficient for small datasets.
 //!
 //! # Examples
 //!
@@ -29,15 +29,17 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-/// A map that maintains entries in sorted order, optimized for small collections.
+/// A map that maintains entries in sorted order, optimized for small
+/// collections.
 ///
-/// `SortedVecMap` uses a sorted `SmallVec` internally, providing performance for
-/// small datasets (typically < 100 elements).
+/// `SortedVecMap` uses a sorted `SmallVec` internally, providing performance
+/// for small datasets (typically < 100 elements).
 /// For larger collections, consider using `BTreeMap` or `HashMap`.
 ///
 /// # Type Parameters
 ///
-/// - `N`: Inline capacity (default: 8). Number of entries stored on the stack before heap allocation.
+/// - `N`: Inline capacity (default: 8). Number of entries stored on the stack
+///   before heap allocation.
 ///
 /// # Performance Characteristics
 ///
@@ -286,7 +288,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
             .map(|pos| self.inner.remove(pos).1)
     }
 
-    /// Removes a key from the map, returning the stored key and value if present.
+    /// Removes a key from the map, returning the stored key and value if
+    /// present.
     ///
     /// # Examples
     ///
@@ -324,7 +327,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
         self.inner.retain_mut(|(k, v)| f(k, v));
     }
 
-    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    /// Gets the given key's corresponding entry in the map for in-place
+    /// manipulation.
     ///
     /// # Examples
     ///
@@ -352,7 +356,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
         }
     }
 
-    /// Merges another map into this one, consuming both maps and maintaining sorted order.
+    /// Merges another map into this one, consuming both maps and maintaining
+    /// sorted order.
     ///
     /// All key-value pairs from `other` are moved into `self`. Duplicate keys
     /// are deduplicated (the value from `other` takes precedence).
@@ -382,7 +387,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 
     /// Appends all elements from another map into this one.
     ///
-    /// After appending, the map is re-sorted and deduplicated to maintain invariants.
+    /// After appending, the map is re-sorted and deduplicated to maintain
+    /// invariants.
     ///
     /// # Examples
     ///
@@ -497,8 +503,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 
     /// Sorts the internal storage and removes duplicate keys.
     ///
-    /// This is called automatically by methods that could break the sort invariant.
-    /// You typically don't need to call this manually.
+    /// This is called automatically by methods that could break the sort
+    /// invariant. You typically don't need to call this manually.
     fn sort_and_dedup(&mut self)
     where
         K: Eq,
@@ -555,7 +561,8 @@ impl<'a, K: Ord, V> Entry<'a, K, V> {
         }
     }
 
-    /// Ensures a value is in the entry by inserting the result of the function if empty.
+    /// Ensures a value is in the entry by inserting the result of the function
+    /// if empty.
     ///
     /// # Examples
     ///
@@ -766,8 +773,8 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
         &mut self.map.inner[self.position].1
     }
 
-    /// Converts the `OccupiedEntry` into a mutable reference to the value in the entry
-    /// with a lifetime bound to the map itself.
+    /// Converts the `OccupiedEntry` into a mutable reference to the value in
+    /// the entry with a lifetime bound to the map itself.
     ///
     /// # Examples
     ///

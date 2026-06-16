@@ -149,7 +149,8 @@ impl Streams {
 
 impl Streams {
     /// Returns a unified list of all data streams as trait objects.
-    /// This allows generic iteration over "Time" without worrying about the underlying Types.
+    /// This allows generic iteration over "Time" without worrying about the
+    /// underlying Types.
     fn as_array(&self) -> [&dyn StreamTimeInfo; 14] {
         [
             &self.ohlcv,
@@ -241,14 +242,17 @@ impl SimulationData {
     }
 
     /// Returns the absolute earliest moment any data becomes available.
-    /// Use this to initialize the global clock at the very start of the simulation.
+    /// Use this to initialize the global clock at the very start of the
+    /// simulation.
     pub const fn global_availability_start(&self) -> DateTime<Utc> {
         self.global_availability_start
     }
 
-    /// Returns the absolute earliest moment any market activity begins (Window Open).
+    /// Returns the absolute earliest moment any market activity begins (Window
+    /// Open).
     ///
-    /// Use this to initialize the Simulation's internal clock or "Episode" tracking.
+    /// Use this to initialize the Simulation's internal clock or "Episode"
+    /// tracking.
     pub const fn global_open_start(&self) -> DateTime<Utc> {
         self.global_open_start
     }
@@ -259,19 +263,22 @@ impl SimulationData {
     ///
     /// # Cache Behavior
     ///
-    /// This function attempts to read cached simulation data based on the hash derived from
-    /// `env_cfg`. If the file doesn't exist or deserialization fails, it returns an error
-    /// that should typically be handled as a **cache miss**.
+    /// This function attempts to read cached simulation data based on the hash
+    /// derived from `env_cfg`. If the file doesn't exist or deserialization
+    /// fails, it returns an error that should typically be handled as a
+    /// **cache miss**.
     ///
     /// # Important Limitations
     ///
     /// **Schema-less formats (Postcard, Pickle) have no versioning:**
-    /// - If the `SimulationData` struct definition changes between writes and reads,
-    ///   deserialization will fail or produce corrupt data
+    /// - If the `SimulationData` struct definition changes between writes and
+    ///   reads, deserialization will fail or produce corrupt data
     /// - The hash is based on `EnvConfig`, not on the struct schema
-    /// - **Cache misses can occur even with identical `EnvConfig` if the code changed**
+    /// - **Cache misses can occur even with identical `EnvConfig` if the code
+    ///   changed**
     ///
-    /// This is a convenience caching mechanism, not a production-grade solution.
+    /// This is a convenience caching mechanism, not a production-grade
+    /// solution.
     ///
     /// # Returns
     ///
@@ -283,8 +290,9 @@ impl SimulationData {
     /// # Errors
     ///
     /// This function returns an error on cache miss or deserialization failure.
-    /// **These errors should typically be caught and treated as cache misses** rather
-    /// than fatal errors, allowing the system to regenerate the data.
+    /// **These errors should typically be caught and treated as cache misses**
+    /// rather than fatal errors, allowing the system to regenerate the
+    /// data.
     #[tracing::instrument(skip(io_cfg, env_cfg), fields(format = ?io_cfg.format))]
     pub(crate) async fn read(env_cfg: &EnvConfig, io_cfg: &IoConfig<'_>) -> ChapatyResult<Self> {
         let IoConfig {
@@ -356,7 +364,8 @@ impl SimulationData {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` on successful write, or an error if serialization or I/O fails.
+    /// Returns `Ok(())` on successful write, or an error if serialization or
+    /// I/O fails.
     #[tracing::instrument(skip(self, cfg), fields(hash = %self.hash, format = ?cfg.format))]
     pub(crate) async fn write(self: Arc<Self>, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
         let IoConfig {
@@ -408,8 +417,9 @@ impl SimulationData {
         result
     }
 
-    /// Estimates the maximum required capacity for time-series allocations (like Equity Curves)
-    /// by finding the longest single data stream in the simulation.
+    /// Estimates the maximum required capacity for time-series allocations
+    /// (like Equity Curves) by finding the longest single data stream in
+    /// the simulation.
     pub(crate) fn max_capacity_hint(&self) -> usize {
         self.streams
             .as_array()
@@ -422,7 +432,8 @@ impl SimulationData {
 
 /// Object-safe trait for querying time properties of a data stream.
 pub trait StreamTimeInfo {
-    /// The absolute earliest point in time any data becomes immutable and available.
+    /// The absolute earliest point in time any data becomes immutable and
+    /// available.
     fn min_availability(&self) -> Option<DateTime<Utc>>;
 
     /// The absolute earliest timestamp any data window opens.
@@ -485,7 +496,8 @@ impl SimulationDataBuilder {
 
 impl SimulationDataBuilder {
     /// Returns the absolute earliest moment any data becomes available.
-    /// Use this to initialize the global clock at the very start of the simulation.
+    /// Use this to initialize the global clock at the very start of the
+    /// simulation.
     fn global_availability_start(&self) -> DateTime<Utc> {
         self.streams
             .as_array()
@@ -495,9 +507,11 @@ impl SimulationDataBuilder {
             .unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
 
-    /// Returns the absolute earliest moment any market activity begins (Window Open).
+    /// Returns the absolute earliest moment any market activity begins (Window
+    /// Open).
     ///
-    /// Use this to initialize the Simulation's internal clock or "Episode" tracking.
+    /// Use this to initialize the Simulation's internal clock or "Episode"
+    /// tracking.
     fn global_open_start(&self) -> DateTime<Utc> {
         self.streams
             .as_array()
@@ -830,7 +844,8 @@ mod tests {
             )
     }
 
-    /// Creates `SimulationData` with some test OHLCV and economic calendar events.
+    /// Creates `SimulationData` with some test OHLCV and economic calendar
+    /// events.
     fn make_test_simulation_data(env_cfg: &EnvConfig) -> SimulationData {
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
         let ohlcv_id = make_ohlcv_id(symbol);
@@ -880,8 +895,9 @@ mod tests {
         let cache_path = temp_dir.join(format!("{hash}.postcard"));
 
         assert!(cache_path.exists(), "Cache file was not created");
-        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get file metadata").len();
-        // println!("Cache file written: {} ({} bytes)", cache_path.display(), file_size);
+        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get file
+        // metadata").len(); println!("Cache file written: {} ({} bytes)",
+        // cache_path.display(), file_size);
 
         // 4. Read back using SimulationData::read()
         let loaded = SimulationData::read(&env_cfg, &io_cfg)

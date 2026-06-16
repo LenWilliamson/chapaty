@@ -217,7 +217,8 @@ pub struct ApiKeyInterceptor {
 }
 
 impl ApiKeyInterceptor {
-    /// Creates an interceptor that injects the optional API key into request metadata.
+    /// Creates an interceptor that injects the optional API key into request
+    /// metadata.
     ///
     /// # Panics
     /// Panics if the provided API key cannot be parsed into ASCII metadata.

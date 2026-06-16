@@ -11,7 +11,8 @@ use crate::indicator::{
 // SHARED: Exponential Weighted Mean (Base Logic)
 // ================================================================================================
 
-/// Internal helper for EMA-like calculations (Standard EMA and Wilder's Smoothing).
+/// Internal helper for EMA-like calculations (Standard EMA and Wilder's
+/// Smoothing).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct StreamingEwm {
     alpha: f64,

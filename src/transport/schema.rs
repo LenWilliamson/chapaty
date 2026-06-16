@@ -123,7 +123,8 @@ pub enum CanonicalCol {
     RocAbsolute,
 
     // === Session / Overnight Range ===
-    /// Anchor date identifying the session a row belongs to (null when outside any session).
+    /// Anchor date identifying the session a row belongs to (null when outside
+    /// any session).
     SessionDate,
     /// Running session high.
     SessionHigh,

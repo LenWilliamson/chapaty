@@ -59,7 +59,8 @@ impl PivotType {
     }
 }
 
-/// Represents the relative sequence that defines the market's overall direction.
+/// Represents the relative sequence that defines the market's overall
+/// direction.
 ///
 /// While [`PivotType`] tells us the basic shape (peak or trough),
 /// [`MarketStructureSequence`] provides the **trend context** by comparing it
@@ -84,30 +85,34 @@ impl MarketStructureSequence {
 }
 
 /// Defines how the indicator handles consecutive pivots of the same type
-/// (e.g., detecting two `PivotType::High`s in a row without a `PivotType::Low` in between).
+/// (e.g., detecting two `PivotType::High`s in a row without a `PivotType::Low`
+/// in between).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AlternationMode {
-    /// Forces alternating `High -> Low -> High -> Low` sequences (`ZigZag` behavior).
+    /// Forces alternating `High -> Low -> High -> Low` sequences (`ZigZag`
+    /// behavior).
     ///
-    /// If the algorithm detects a new `PivotType::High`, but the last confirmed pivot
-    /// was also a `PivotType::High`, it evaluates both and only keeps the one with
-    /// the higher price. The lesser pivot is discarded as market noise.
+    /// If the algorithm detects a new `PivotType::High`, but the last confirmed
+    /// pivot was also a `PivotType::High`, it evaluates both and only keeps
+    /// the one with the higher price. The lesser pivot is discarded as
+    /// market noise.
     #[default]
     Alternating,
 
     /// No alternation filtering. Every detected [`PivotType`] is kept.
     ///
-    /// If the algorithm detects two `PivotType::High`s in a row, the second `PivotType::High`
-    /// is simply classified against the first `PivotType::High` (resulting in a HH or LH),
-    /// regardless of the missing `PivotType::Low`.
+    /// If the algorithm detects two `PivotType::High`s in a row, the second
+    /// `PivotType::High` is simply classified against the first
+    /// `PivotType::High` (resulting in a HH or LH), regardless of the
+    /// missing `PivotType::Low`.
     Consecutive,
 }
 
 /// Represents structural breakthrough events detected in the price series.
 ///
 /// A `MarketStructureEvent` is emitted alongside every new confirmed pivot.
-/// It answers the question: _"Did this new pivot break a meaningful prior level,
-/// and if so, does it continue or contradict the prevailing trend?"_
+/// It answers the question: _"Did this new pivot break a meaningful prior
+/// level, and if so, does it continue or contradict the prevailing trend?"_
 ///
 /// # Background
 ///
@@ -117,55 +122,61 @@ pub enum AlternationMode {
 /// events this enum classifies.
 ///
 /// The classification depends on two things:
-/// 1. Whether the new pivot exceeds the most recent same-side pivot
-///    (e.g. a new high above the last confirmed high).
+/// 1. Whether the new pivot exceeds the most recent same-side pivot (e.g. a new
+///    high above the last confirmed high).
 /// 2. What the prevailing trend looked like just before the break, inferred
 ///    from the most recent opposite-side pivot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketStructureEvent {
-    /// The new pivot extends the prevailing trend, or establishes the first directional trend.
+    /// The new pivot extends the prevailing trend, or establishes the first
+    /// directional trend.
     ///
     /// A _Break of Structure_ (BOS) is the classification for any new pivot
     /// that exceeds its confirmed same-side predecessor. It fires when:
     ///
-    /// - **Continuation**: the market was already trending in the same direction
-    ///   (e.g., a new Higher High after a recent Higher Low).
-    /// - **Initiation**: the pivot establishes the first directional trend by breaking
-    ///   the initial anchor (e.g., a Higher High occurs, but the prior opposite-side
-    ///   pivot is still `UnclassifiedLow` or `EqualLow`).
+    /// - **Continuation**: the market was already trending in the same
+    ///   direction (e.g., a new Higher High after a recent Higher Low).
+    /// - **Initiation**: the pivot establishes the first directional trend by
+    ///   breaking the initial anchor (e.g., a Higher High occurs, but the prior
+    ///   opposite-side pivot is still `UnclassifiedLow` or `EqualLow`).
     BreakOfStructure,
 
     /// The new pivot reverses a previously confirmed trend.
     ///
-    /// Also known as a _Change of Character_ (`CHoCH`). This is the strict case:
-    /// it fires only when the prior opposite-side pivot was itself a trend-confirming
-    /// break, so there is concrete evidence of a trend to reverse.
+    /// Also known as a _Change of Character_ (`CHoCH`). This is the strict
+    /// case: it fires only when the prior opposite-side pivot was itself a
+    /// trend-confirming break, so there is concrete evidence of a trend to
+    /// reverse.
     ///
-    /// - **Bullish Shift**: a new swing high prints above the most recent swing high,
-    ///   and the most recent low was a `LowerLow` (downtrend -> potential uptrend).
-    /// - **Bearish Shift**: a new swing low prints below the most recent swing low,
-    ///   and the most recent high was a `HigherHigh` (uptrend -> potential downtrend).
+    /// - **Bullish Shift**: a new swing high prints above the most recent swing
+    ///   high, and the most recent low was a `LowerLow` (downtrend -> potential
+    ///   uptrend).
+    /// - **Bearish Shift**: a new swing low prints below the most recent swing
+    ///   low, and the most recent high was a `HigherHigh` (uptrend -> potential
+    ///   downtrend).
     MarketStructureShift,
 
     /// The new pivot did not break structure or shift the trend.
     ///
-    /// Returned when the candidate forms a Lower High, Equal High, Higher Low, or
-    /// Equal Low. This is also emitted for the **very first detected pivot** (unclassified),
-    /// as there is no prior structure on that side to compare against. The pivot is
-    /// still recorded and added to the history. It just doesn't represent a breakout.
+    /// Returned when the candidate forms a Lower High, Equal High, Higher Low,
+    /// or Equal Low. This is also emitted for the **very first detected
+    /// pivot** (unclassified), as there is no prior structure on that side
+    /// to compare against. The pivot is still recorded and added to the
+    /// history. It just doesn't represent a breakout.
     NoChange,
 }
 
 /// Tiebreaker policy when two adjacent bars share the same extreme price.
 ///
 /// Affects two situations:
-/// 1. **Plateaus inside the lookback window**: when a sequence of adjacent bars shares the
-///    exact same extreme price, they will all eventually pass through the center candidate
-///    position. This rule applies strict/inclusive inequalities to ensure only one of them
-///    (the earliest or latest) actually triggers a valid pivot.
-/// 2. **Conflicts under [`AlternationMode::Alternating`]**: when a new pivot of the same
-///    type as the active one is detected and their prices are equal, this rule decides
-///    which one wins.
+/// 1. **Plateaus inside the lookback window**: when a sequence of adjacent bars
+///    shares the exact same extreme price, they will all eventually pass
+///    through the center candidate position. This rule applies strict/inclusive
+///    inequalities to ensure only one of them (the earliest or latest) actually
+///    triggers a valid pivot.
+/// 2. **Conflicts under [`AlternationMode::Alternating`]**: when a new pivot of
+///    the same type as the active one is detected and their prices are equal,
+///    this rule decides which one wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExtremeTiebreaker {
     /// On a tie, the later bar wins. Pivots track the most recent occurrence
@@ -179,12 +190,14 @@ pub enum ExtremeTiebreaker {
 
 /// A confirmed swing point in the price series.
 ///
-/// Carries the originating candle, the price that triggered the pivot (which may be
-/// `high`/`low` or `open`/`close` depending on the configured [`PriceSource`]),
-/// and the trend-relative classification ([`MarketStructureSequence`]).
+/// Carries the originating candle, the price that triggered the pivot (which
+/// may be `high`/`low` or `open`/`close` depending on the configured
+/// [`PriceSource`]), and the trend-relative classification
+/// ([`MarketStructureSequence`]).
 ///
-/// Note: The geometric type ([`PivotType::High`] or [`PivotType::Low`]) is intrinsically
-/// implied by the `trend` and can be accessed via [`Self::pivot_type`].
+/// Note: The geometric type ([`PivotType::High`] or [`PivotType::Low`]) is
+/// intrinsically implied by the `trend` and can be accessed via
+/// [`Self::pivot_type`].
 #[derive(Debug, Clone, Copy)]
 pub struct PivotPoint {
     pub indexed_candle: IndexedOhlcv,
@@ -199,7 +212,8 @@ impl MarketEvent for PivotPoint {
 }
 
 impl PivotPoint {
-    /// Returns the geometric type of the pivot, derived directly from its trend sequence.
+    /// Returns the geometric type of the pivot, derived directly from its trend
+    /// sequence.
     #[must_use]
     pub fn pivot_type(&self) -> PivotType {
         self.trend.into()
@@ -236,14 +250,17 @@ impl PivotPoint {
         }
     }
 
-    /// Generates a linear interpolation function based on exact point-in-time timestamps.
+    /// Generates a linear interpolation function based on exact point-in-time
+    /// timestamps.
     ///
     /// Returns a zero-allocation closure that takes a target point in time
     /// (`DateTime<Utc>`) and returns the interpolated/extrapolated price.
-    /// Uses `chrono::Duration` to safely compute the time deltas in milliseconds.
+    /// Uses `chrono::Duration` to safely compute the time deltas in
+    /// milliseconds.
     ///
     /// # Panics
-    /// Panics if millisecond deltas cannot be losslessly formatted/parsing into `f64`.
+    /// Panics if millisecond deltas cannot be losslessly formatted/parsing into
+    /// `f64`.
     #[expect(
         clippy::expect_used,
         reason = "the decimal string of a millisecond timestamp always parses back into an f64"
@@ -273,13 +290,15 @@ impl PivotPoint {
 
 /// Lookback and lookforward window for swing detection.
 ///
-/// A bar is treated as a candidate pivot only if it is the most extreme bar within
-/// a window of `left_bars` preceding bars and `right_bars` following bars. Larger
-/// values produce fewer, more significant pivots and smaller values are more responsive
-/// but noisier. Default is a symmetric window with `5` bars on each side.
+/// A bar is treated as a candidate pivot only if it is the most extreme bar
+/// within a window of `left_bars` preceding bars and `right_bars` following
+/// bars. Larger values produce fewer, more significant pivots and smaller
+/// values are more responsive but noisier. Default is a symmetric window with
+/// `5` bars on each side.
 ///
-/// Note that the indicator must buffer `left_bars + right_bars + 1` candles before
-/// it can emit its first result, since the candidate sits in the middle of the window.
+/// Note that the indicator must buffer `left_bars + right_bars + 1` candles
+/// before it can emit its first result, since the candidate sits in the middle
+/// of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ZigZagPeriod {
     pub left_bars: u16,
@@ -298,8 +317,8 @@ impl ZigZagPeriod {
     /// Sets both `left_bars` and `right_bars` to `bars`, producing a symmetric
     /// window where the candidate pivot sits exactly in the middle.
     ///
-    /// The indicator will buffer `2 * bars + 1` candles before emitting its first
-    /// result.
+    /// The indicator will buffer `2 * bars + 1` candles before emitting its
+    /// first result.
     #[must_use]
     pub const fn symmetric(bars: u16) -> Self {
         Self {
@@ -319,31 +338,33 @@ impl ZigZagPeriod {
 
 /// A streaming Higher-High / Lower-Low indicator over OHLCV bars.
 ///
-/// Consumes a stream of [`IndexedOhlcv`] bars and emits a confirmed [`PivotPoint`]
-/// together with a [`MarketStructureEvent`] whenever a new swing point is identified
-/// and either continues or breaks the prevailing trend.
+/// Consumes a stream of [`IndexedOhlcv`] bars and emits a confirmed
+/// [`PivotPoint`] together with a [`MarketStructureEvent`] whenever a new swing
+/// point is identified and either continues or breaks the prevailing trend.
 ///
 /// # How it works
 ///
 /// 1. Each incoming bar is appended to an internal rolling window of size
 ///    `left_bars + right_bars + 1` (see [`ZigZagPeriod`]).
-/// 2. The bar at the center of that window is the _candidate_. It is considered a
-///    pivot if it is the most extreme bar in the window (highest for a swing high,
-///    lowest for a swing low). Ties are resolved per [`ExtremeTiebreaker`].
+/// 2. The bar at the center of that window is the _candidate_. It is considered
+///    a pivot if it is the most extreme bar in the window (highest for a swing
+///    high, lowest for a swing low). Ties are resolved per
+///    [`ExtremeTiebreaker`].
 /// 3. When a candidate qualifies, it is classified relative to the most recent
-///    confirmed pivot of the same kind (Higher High / Lower High / Equal High, etc.)
-///    and a [`MarketStructureEvent`] is emitted.
+///    confirmed pivot of the same kind (Higher High / Lower High / Equal High,
+///    etc.) and a [`MarketStructureEvent`] is emitted.
 /// 4. The [`AlternationMode`] controls what happens when consecutive same-type
 ///    pivots appear without an intervening opposite-type pivot.
 ///
-/// Because the candidate sits at the middle of the window, every emitted pivot is
-/// confirmed with a lag of `right_bars` bars.
+/// Because the candidate sits at the middle of the window, every emitted pivot
+/// is confirmed with a lag of `right_bars` bars.
 ///
 /// # Output stream
 ///
-/// [`StreamingIndicator::update`] returns `Some((event, pivot))` whenever a pivot
-/// is confirmed, and `None` while the window is still filling or no pivot is detected.
-/// The full chronological history is available via [`Self::history`].
+/// [`StreamingIndicator::update`] returns `Some((event, pivot))` whenever a
+/// pivot is confirmed, and `None` while the window is still filling or no pivot
+/// is detected. The full chronological history is available via
+/// [`Self::history`].
 #[derive(Debug, Clone)]
 pub struct StreamingHhll {
     zig_zag_period: ZigZagPeriod,
@@ -407,29 +428,33 @@ impl StreamingHhll {
         }
     }
 
-    /// The active pivot currently tracking the trailing edge of the market structure.
+    /// The active pivot currently tracking the trailing edge of the market
+    /// structure.
     ///
-    /// If [`AlternationMode::Alternating`] is active, this pivot remains mutable.
-    /// If a consecutive vertex of the same [`PivotType`] appears, this [`PivotPoint`]
-    /// may be overwritten or extended based on the [`ExtremeTiebreaker`].
+    /// If [`AlternationMode::Alternating`] is active, this pivot remains
+    /// mutable. If a consecutive vertex of the same [`PivotType`] appears,
+    /// this [`PivotPoint`] may be overwritten or extended based on the
+    /// [`ExtremeTiebreaker`].
     #[must_use]
     pub const fn active_pivot(&self) -> Option<PivotPoint> {
         self.active_pivot
     }
 
-    /// The historical, safely locked-in `PivotType::High` used as a baseline for relative classification.
+    /// The historical, safely locked-in `PivotType::High` used as a baseline
+    /// for relative classification.
     ///
-    /// When a new High vertex is detected, it is compared against this anchor to determine if it
-    /// is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
+    /// When a new High vertex is detected, it is compared against this anchor
+    /// to determine if it is a `HigherHigh`, `LowerHigh`, or `EqualHigh`.
     #[must_use]
     pub const fn anchor_high(&self) -> Option<PivotPoint> {
         self.anchor_high
     }
 
-    /// The historical, safely locked-in `PivotType::Low` used as a baseline for relative classification.
+    /// The historical, safely locked-in `PivotType::Low` used as a baseline for
+    /// relative classification.
     ///
-    /// When a new Low vertex is detected, it is compared against this anchor to determine if it
-    /// is a `HigherLow`, `LowerLow`, or `EqualLow`.
+    /// When a new Low vertex is detected, it is compared against this anchor to
+    /// determine if it is a `HigherLow`, `LowerLow`, or `EqualLow`.
     #[must_use]
     pub const fn anchor_low(&self) -> Option<PivotPoint> {
         self.anchor_low
@@ -437,8 +462,8 @@ impl StreamingHhll {
 
     /// Chronological history of all safely locked-in pivots.
     ///
-    /// This vector guarantees perfect time-order. To iterate from latest to earliest,
-    /// you simply call `self.history.iter().rev()`.
+    /// This vector guarantees perfect time-order. To iterate from latest to
+    /// earliest, you simply call `self.history.iter().rev()`.
     #[must_use]
     pub fn history(&self) -> &[PivotPoint] {
         &self.history
@@ -473,7 +498,8 @@ impl StreamingHhll {
         let candidate = self.candidate();
         let candidate_price = pivot_type.extract_price(candidate.candle, self.price_source);
 
-        // Determine which side of the window requires a STRICT inequality based on the tiebreaker.
+        // Determine which side of the window requires a STRICT inequality based on the
+        // tiebreaker.
         let (left_inequality, right_inequality) = match self.tiebreaker {
             ExtremeTiebreaker::Earliest => (Inequality::Strict, Inequality::Inclusive),
             ExtremeTiebreaker::Latest => (Inequality::Inclusive, Inequality::Strict),
@@ -525,8 +551,9 @@ impl StreamingHhll {
         match resolution {
             CandidateResolution::Discard => return None,
             CandidateResolution::ReplaceActive => {
-                // Do nothing to the history. We will simply overwrite `self.active_pivot`
-                // with the new candidate at the end of the method.
+                // Do nothing to the history. We will simply overwrite
+                // `self.active_pivot` with the new candidate at
+                // the end of the method.
             }
             CandidateResolution::ConfirmActive => {
                 // The active pivot is safe. Lock it into the anchors and history.
@@ -646,8 +673,9 @@ impl StreamingHhll {
         match resolution {
             CandidateResolution::Discard => return None,
             CandidateResolution::ReplaceActive => {
-                // Do nothing to the history. We will simply overwrite `self.active_pivot`
-                // with the new candidate at the end of the method.
+                // Do nothing to the history. We will simply overwrite
+                // `self.active_pivot` with the new candidate at
+                // the end of the method.
             }
             CandidateResolution::ConfirmActive => {
                 // The active pivot is safe. Lock it into the anchors and history.
@@ -806,7 +834,8 @@ impl StreamingIndicator for StreamingHhll {
 enum CandidateResolution {
     /// The candidate violates alternation and is weaker. Discard it.
     Discard,
-    /// The candidate violates alternation but is stronger. Overwrite the active pivot.
+    /// The candidate violates alternation but is stronger. Overwrite the active
+    /// pivot.
     ReplaceActive,
     /// The candidate respects alternation. Lock the active pivot into history.
     ConfirmActive,
@@ -824,7 +853,8 @@ enum Inequality {
 /// Represents the detected swing extremum classification for a candidate bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SwingState {
-    /// The candidate is BOTH a Swing High and a Swing Low (e.g., an outside bar).
+    /// The candidate is BOTH a Swing High and a Swing Low (e.g., an outside
+    /// bar).
     Both,
     /// The candidate is only a Swing High.
     High,
@@ -852,7 +882,8 @@ mod tests {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    /// A rapid builder for Indexed OHLCV candles to keep our test trajectories readable.
+    /// A rapid builder for Indexed OHLCV candles to keep our test trajectories
+    /// readable.
     fn candle(
         index: usize,
         time: &str,
@@ -910,7 +941,8 @@ mod tests {
         let bearish_candle = candle(1, "2026-05-24T10:01:00Z", 15., 20., 5., 10.).candle;
         let doji_candle = candle(2, "2026-05-24T10:02:00Z", 15., 20., 5., 15.).candle;
 
-        // === HighLow PriceSource (Always extracts High/Low regardless of direction) ===
+        // === HighLow PriceSource (Always extracts High/Low regardless of direction)
+        // ===
         assert_f64_eq!(
             PivotType::High
                 .extract_price(bullish_candle, PriceSource::HighLow)
@@ -968,7 +1000,8 @@ mod tests {
         );
     }
 
-    /// Verifies that all `MarketStructureSequence` variants correctly map to their implied geometric `PivotType`.
+    /// Verifies that all `MarketStructureSequence` variants correctly map to
+    /// their implied geometric `PivotType`.
     #[test]
     fn test_market_structure_sequence_to_pivot_type() {
         use MarketStructureSequence::*;
@@ -986,7 +1019,8 @@ mod tests {
         }
     }
 
-    /// Verifies the initial struct classification accurately returns `NoChange` for the first unclassified points.
+    /// Verifies the initial struct classification accurately returns `NoChange`
+    /// for the first unclassified points.
     #[test]
     fn test_initial_classification_bos_vs_nochange() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
@@ -1046,7 +1080,8 @@ mod tests {
             trend: MarketStructureSequence::LowerLow,
         };
 
-        // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by 50.
+        // Target pivot is exactly 10 bars (and 10 minutes) later, price has risen by
+        // 50.
         let p2 = PivotPoint {
             indexed_candle: candle(20, "2026-05-24T15:10:00Z", 150., 150., 150., 150.),
             price: Price(150.0),
@@ -1097,7 +1132,8 @@ mod tests {
     // === 3. Partitions & Tiebreaker Microstructure Tests ===
     // ==========================================
 
-    /// Validates the internal left/right partitioning logic and `candidate()` pointer.
+    /// Validates the internal left/right partitioning logic and `candidate()`
+    /// pointer.
     #[test]
     fn test_streaming_hhll_partitions_and_candidate() {
         let mut hhll = create_indicator(2, 2, ExtremeTiebreaker::Latest);
@@ -1120,10 +1156,12 @@ mod tests {
         assert_eq!(right, vec![4, 3]);
     }
 
-    /// Evaluates the `check_extremum` logic in strict isolation to prove micro-swing detection.
+    /// Evaluates the `check_extremum` logic in strict isolation to prove
+    /// micro-swing detection.
     ///
-    /// Note: Because this tests a private internal method, we manually populate the buffer
-    /// to bypass the `update()` state machine and avoid triggering `process_high/low`.
+    /// Note: Because this tests a private internal method, we manually populate
+    /// the buffer to bypass the `update()` state machine and avoid
+    /// triggering `process_high/low`.
     #[test]
     fn test_check_extremum_isolated() {
         // === Case 1: Clear Swing High ===
@@ -1180,7 +1218,8 @@ mod tests {
                 .buffer
                 .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
 
-            // Latest: Left is inclusive (20 >= 20 = Pass). Right is strict (20 > 10 = Pass).
+            // Latest: Left is inclusive (20 >= 20 = Pass). Right is strict (20 > 10 =
+            // Pass).
             assert!(
                 hhll_latest.check_extremum(PivotType::High),
                 "Latest should pass on flat left side"
@@ -1198,7 +1237,8 @@ mod tests {
                 .buffer
                 .push_back(candle(2, "2026-05-24T10:02:00Z", 10., 10., 10., 10.));
 
-            // Earliest: Left is strict (20 > 20 = FAIL). Right is inclusive (20 >= 10 = Pass).
+            // Earliest: Left is strict (20 > 20 = FAIL). Right is inclusive (20 >= 10 =
+            // Pass).
             assert!(
                 !hhll_earliest.check_extremum(PivotType::High),
                 "Earliest should fail on flat left side"
@@ -1206,8 +1246,8 @@ mod tests {
         }
     }
 
-    /// Comprehensive edge case: Plateau inside lookback window under Earliest policy.
-    /// Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
+    /// Comprehensive edge case: Plateau inside lookback window under Earliest
+    /// policy. Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
     /// `Earliest` dictates that ONLY 15(A) should be emitted.
     #[test]
     fn test_sliding_window_plateaus_earliest() {
@@ -1269,8 +1309,8 @@ mod tests {
         assert!(event_c.is_none());
     }
 
-    /// Comprehensive edge case: Plateau inside lookback window under Latest policy.
-    /// Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
+    /// Comprehensive edge case: Plateau inside lookback window under Latest
+    /// policy. Scenario: Prices `[10, 15(A), 15(B), 15(C), 10]`.
     /// `Latest` dictates that ONLY 15(C) should be emitted.
     #[test]
     fn test_sliding_window_plateaus_latest() {
@@ -1336,15 +1376,17 @@ mod tests {
         assert_eq!(event_c.unwrap().1.indexed_candle.index, 3);
     }
 
-    /// Verifies the update block bootstrapping logic explicitly routes Mega Bars
-    /// to the correct processor based on Bullish / Bearish candle closes.
+    /// Verifies the update block bootstrapping logic explicitly routes Mega
+    /// Bars to the correct processor based on Bullish / Bearish candle
+    /// closes.
     #[test]
     fn test_mega_bar_bullish_and_bearish_routing() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
 
         // === Subtest: Bullish Mega Bar (Close > Open) ===
         hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
-        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bullish Close (25 > 10).
+        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bullish Close (25 >
+        // 10).
         hhll.update(candle(1, "2026-05-24T10:01:00Z", 10., 30., 5., 25.));
         let event_bullish = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
 
@@ -1357,7 +1399,8 @@ mod tests {
 
         // === Subtest: Bearish Mega Bar (Close < Open) ===
         hhll.update(candle(0, "2026-05-24T10:00:00Z", 20., 20., 20., 20.));
-        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bearish Close (10 < 25).
+        // Outside Bar: Higher High (30>20) AND Lower Low (5<20). Bearish Close (10 <
+        // 25).
         hhll.update(candle(1, "2026-05-24T10:01:00Z", 25., 30., 5., 10.));
         let event_bearish = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
 
@@ -1403,8 +1446,8 @@ mod tests {
 
     #[test]
     fn test_tiebreaker_double_top() {
-        // Window is 2-2. Requires 5 bars. To correctly center C2 as the first candidate,
-        // we must pre-pad with two left bars.
+        // Window is 2-2. Requires 5 bars. To correctly center C2 as the first
+        // candidate, we must pre-pad with two left bars.
         let trajectory = vec![
             candle(0, "2026-05-24T15:00:00Z", 10., 10., 10., 10.),
             candle(1, "2026-05-24T15:01:00Z", 10., 10., 10., 10.),
@@ -1674,13 +1717,15 @@ mod tests {
     // === 5. Deep Edge Cases & Mega Bars ===
     // ==========================================
 
-    /// Tests the Mega Bar (Outside Bar) anomaly when the candidate closes as a Doji.
+    /// Tests the Mega Bar (Outside Bar) anomaly when the candidate closes as a
+    /// Doji.
     ///
     /// # The Microstructure Logic
-    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an outside bar),
-    /// the algorithm must choose which extremum logically extends the current market structure.
-    /// If the candle is a Doji (Open == Close, indicating no directional conviction),
-    /// the algorithm evaluates it against the active trend to see if it extends it.
+    /// When a candidate is mathematically BOTH a Swing High and a Swing Low (an
+    /// outside bar), the algorithm must choose which extremum logically
+    /// extends the current market structure. If the candle is a Doji (Open
+    /// == Close, indicating no directional conviction), the algorithm
+    /// evaluates it against the active trend to see if it extends it.
     ///
     /// # Scenario A: Mega Doji Extends a High
     #[test]
@@ -1703,7 +1748,8 @@ mod tests {
                 .is_none()
         );
 
-        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open == Close)
+        // 2. Push Mega Doji Candidate (High > neighbors, Low < neighbors, Open ==
+        //    Close)
         // High is 60 (Extends the 50 High).
         assert!(
             hhll.update(candle(4, "2026-05-24T15:02:00Z", 25., 60., 5., 25.))
@@ -1970,7 +2016,8 @@ mod tests {
     }
 
     /// Verifies that if the VERY FIRST extremum detected is a Mega Bar Doji,
-    /// the algorithm safely ignores it because there is no prior trend to derive inertia from.
+    /// the algorithm safely ignores it because there is no prior trend to
+    /// derive inertia from.
     #[test]
     fn test_initial_orphaned_mega_doji_safely_ignored() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
@@ -1986,14 +2033,16 @@ mod tests {
         // Right boundary closes the window
         let event = hhll.update(candle(2, "2026-05-24T10:02:00Z", 20., 20., 20., 20.));
 
-        // Because active_pivot is None, `CandleDirection::Doji` logic explicitly returns `None`.
+        // Because active_pivot is None, `CandleDirection::Doji` logic explicitly
+        // returns `None`.
         assert!(
             event.is_none(),
             "Expected initial Mega Doji to be safely discarded, but it emitted an event."
         );
     }
 
-    /// Geometrically proves that an Inside Bar can never be evaluated as an extremum.
+    /// Geometrically proves that an Inside Bar can never be evaluated as an
+    /// extremum.
     #[test]
     fn test_inside_bar_never_triggers() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);
@@ -2013,8 +2062,9 @@ mod tests {
         );
     }
 
-    /// Verifies that state-poisoning (NaN prices) are trapped by the `partial_cmp` logic
-    /// and gracefully return None without panicking the application.
+    /// Verifies that state-poisoning (NaN prices) are trapped by the
+    /// `partial_cmp` logic and gracefully return None without panicking the
+    /// application.
     #[test]
     fn test_nan_price_corruption_resistance() {
         let mut hhll = create_indicator(1, 1, ExtremeTiebreaker::Latest);

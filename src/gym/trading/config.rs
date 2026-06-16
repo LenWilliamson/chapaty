@@ -35,13 +35,16 @@ use crate::{
 /// Trade outcome evaluation strategy for ambiguous executions.
 ///
 /// In some market scenarios (e.g., large candles, coarse time resolution),
-/// it may be unclear which price level was hit first: entry, stop-loss, or take-profit.
-/// `ExecutionBias` defines how such ambiguity should be resolved:
+/// it may be unclear which price level was hit first: entry, stop-loss, or
+/// take-profit. `ExecutionBias` defines how such ambiguity should be resolved:
 ///
-/// - `Optimistic`: Favors the agent's outcome (e.g., assumes take-profit was hit first).
-/// - `Pessimistic`: Favors conservative assumptions (e.g., assumes stop-loss hit or no profit).
+/// - `Optimistic`: Favors the agent's outcome (e.g., assumes take-profit was
+///   hit first).
+/// - `Pessimistic`: Favors conservative assumptions (e.g., assumes stop-loss
+///   hit or no profit).
 ///
-/// This is particularly relevant in environments where candles can contain multiple trigger prices.
+/// This is particularly relevant in environments where candles can contain
+/// multiple trigger prices.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum ExecutionBias {
     /// Choose the most favorable outcome for the agent in ambiguous cases.
@@ -49,7 +52,8 @@ pub enum ExecutionBias {
 
     /// Choose the least favorable outcome for the agent in ambiguous cases.
     ///
-    /// This is the default mode to ensure conservative and risk-aware evaluation.
+    /// This is the default mode to ensure conservative and risk-aware
+    /// evaluation.
     #[default]
     Pessimistic,
 }
@@ -60,18 +64,20 @@ pub enum ExecutionBias {
 
 /// Ready-made environment configurations for common trading setups.
 ///
-/// Each variant encodes the exact data source IDs (broker, symbol, period, etc.) required to
-/// reproduce the environment. The underlying datasets are publicly available on
-/// [Hugging Face](https://huggingface.co/datasets/chapaty/environments) and are strictly
+/// Each variant encodes the exact data source IDs (broker, symbol, period,
+/// etc.) required to reproduce the environment. The underlying datasets are
+/// publicly available on [Hugging Face](https://huggingface.co/datasets/chapaty/environments) and are strictly
 /// tied to your current `chapaty` crate version.
 ///
 /// # Loading from Hugging Face
 ///
-/// Every preset is pre-compiled and available to download directly from the Hugging Face Hub.
-/// To load a preset, configure your I/O settings to use `StorageLocation::HuggingFace`.
+/// Every preset is pre-compiled and available to download directly from the
+/// Hugging Face Hub. To load a preset, configure your I/O settings to use
+/// `StorageLocation::HuggingFace`.
 ///
-/// Because the dataset files on Hugging Face are named using the snake-case representation
-/// of the preset variants, you can conveniently pass `preset.to_string()` as the filename.
+/// Because the dataset files on Hugging Face are named using the snake-case
+/// representation of the preset variants, you can conveniently pass
+/// `preset.to_string()` as the filename.
 ///
 /// ```rust,no_run
 /// # use anyhow::{Context, Result};
@@ -104,19 +110,21 @@ pub enum ExecutionBias {
 ///
 /// # Starter Configurations & Customization
 ///
-/// Presets also serve as excellent baseline configurations. If you want to customize a preset
-/// (e.g., modifying the episode length or adding a new risk metric), you can convert it into
-/// an [`EnvConfig`] using `.into()` and tweak it to your liking:
+/// Presets also serve as excellent baseline configurations. If you want to
+/// customize a preset (e.g., modifying the episode length or adding a new risk
+/// metric), you can convert it into an [`EnvConfig`] using `.into()` and tweak
+/// it to your liking:
 ///
 /// ```rust,ignore
 /// let mut config: EnvConfig = EnvPreset::BinanceBtcUsdt1d.into();
 /// // Modify the config as needed
 /// ```
 ///
-/// **Future Roadmap:** Currently, building a customized `EnvConfig` from scratch via
-/// `chapaty::make()` requires you to host your own Chapaty gRPC server for the raw historical data.
-/// Once the managed Chapaty API is publicly available, `chapaty::make()` will work out-of-the-box
-/// for customized presets without requiring local infrastructure.
+/// **Future Roadmap:** Currently, building a customized `EnvConfig` from
+/// scratch via `chapaty::make()` requires you to host your own Chapaty gRPC
+/// server for the raw historical data. Once the managed Chapaty API is publicly
+/// available, `chapaty::make()` will work out-of-the-box for customized presets
+/// without requiring local infrastructure.
 #[derive(
     Debug,
     Clone,
@@ -138,8 +146,8 @@ pub enum ExecutionBias {
 pub enum EnvPreset {
     /// **BTC/USDT Daily Spot (Binance)**
     ///
-    /// A classic daily timeframe environment ideal for trend-following or swing trading
-    /// strategies on Bitcoin spot markets.
+    /// A classic daily timeframe environment ideal for trend-following or swing
+    /// trading strategies on Bitcoin spot markets.
     ///
     /// # Episode Length
     ///
@@ -160,8 +168,9 @@ pub enum EnvPreset {
 
     /// **BTC/USDT 1-Minute Spot (Binance)**
     ///
-    /// A high-frequency intraday environment for scalping or short-term momentum strategies
-    /// on Bitcoin spot markets. Each episode covers a single trading day.
+    /// A high-frequency intraday environment for scalping or short-term
+    /// momentum strategies on Bitcoin spot markets. Each episode covers a
+    /// single trading day.
     ///
     /// # Episode Length
     ///
@@ -182,10 +191,10 @@ pub enum EnvPreset {
 
     /// **BTC/USDT 1-Minute + 15-Minute Spot (Binance)**
     ///
-    /// A multi-resolution intraday environment combining 1-minute and 15-minute BTC/USDT
-    /// OHLCV data. The 15-minute timeframe provides trend context while the 1-minute
-    /// timeframe is used for precise entry and exit timing. Each episode covers a single
-    /// trading day.
+    /// A multi-resolution intraday environment combining 1-minute and 15-minute
+    /// BTC/USDT OHLCV data. The 15-minute timeframe provides trend context
+    /// while the 1-minute timeframe is used for precise entry and exit
+    /// timing. Each episode covers a single trading day.
     ///
     /// # Episode Length
     ///
@@ -211,13 +220,15 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1m15m,
 
-    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Unrestricted (`NinjaTrader`, CME 6eh6)**
+    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News —
+    /// Unrestricted (`NinjaTrader`, CME 6eh6)**
     ///
-    /// A multi-resolution intraday environment with 1-minute and 5-minute EUR/USD futures
-    /// and US high-impact employment calendar data. The economic calendar filter policy is
-    /// [`EconomicCalendarPolicy::Unrestricted`], meaning **all trading days are included**
-    /// regardless of whether an event occurs. The calendar data is still available to the
-    /// agent for decision-making.
+    /// A multi-resolution intraday environment with 1-minute and 5-minute
+    /// EUR/USD futures and US high-impact employment calendar data. The
+    /// economic calendar filter policy is
+    /// [`EconomicCalendarPolicy::Unrestricted`], meaning **all trading days are
+    /// included** regardless of whether an event occurs. The calendar data
+    /// is still available to the agent for decision-making.
     ///
     /// # Episode Length
     ///
@@ -260,17 +271,19 @@ pub enum EnvPreset {
     ///
     /// # Filter Policy
     ///
-    /// [`EconomicCalendarPolicy::Unrestricted`] — no day-level filtering. All days in
-    /// `2008..=2026` are eligible for simulation. The economic calendar serves as
-    /// contextual data only.
+    /// [`EconomicCalendarPolicy::Unrestricted`] — no day-level filtering. All
+    /// days in `2008..=2026` are eligible for simulation. The economic
+    /// calendar serves as contextual data only.
     NinjaTraderCme6eh61m5mUsEmpHigh,
 
-    /// **EUR/USD 1-Minute Futures with US Employment News — Events Only (`NinjaTrader`, CME 6eh6)**
+    /// **EUR/USD 1-Minute Futures with US Employment News — Events Only
+    /// (`NinjaTrader`, CME 6eh6)**
     ///
-    /// A high-frequency intraday environment for news-driven strategies on EUR/USD futures,
-    /// such as breakout or fade entries around scheduled US employment releases.
-    /// The economic calendar filter policy is [`EconomicCalendarPolicy::OnlyWithEvents`],
-    /// meaning **only days that contain a matching economic event are simulated**.
+    /// A high-frequency intraday environment for news-driven strategies on
+    /// EUR/USD futures, such as breakout or fade entries around scheduled
+    /// US employment releases. The economic calendar filter policy is
+    /// [`EconomicCalendarPolicy::OnlyWithEvents`], meaning **only days that
+    /// contain a matching economic event are simulated**.
     ///
     /// # Episode Length
     ///
@@ -302,16 +315,18 @@ pub enum EnvPreset {
     ///
     /// # Filter Policy
     ///
-    /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US Employment
-    /// (High impact) event are excluded from simulation.
+    /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US
+    /// Employment (High impact) event are excluded from simulation.
     NinjaTraderCme6eh61mUsEmpHighEventsOnly,
 
-    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Events Only (`NinjaTrader`, CME 6eh6)**
+    /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Events
+    /// Only (`NinjaTrader`, CME 6eh6)**
     ///
-    /// A multi-resolution intraday environment combining 1-minute and 5-minute futures data
-    /// for hybrid news strategies that use different timeframes for entry and confirmation.
-    /// The economic calendar filter policy is [`EconomicCalendarPolicy::OnlyWithEvents`],
-    /// meaning **only days that contain a matching economic event are simulated**.
+    /// A multi-resolution intraday environment combining 1-minute and 5-minute
+    /// futures data for hybrid news strategies that use different
+    /// timeframes for entry and confirmation. The economic calendar filter
+    /// policy is [`EconomicCalendarPolicy::OnlyWithEvents`], meaning **only
+    /// days that contain a matching economic event are simulated**.
     ///
     /// # Episode Length
     ///
@@ -354,14 +369,14 @@ pub enum EnvPreset {
     ///
     /// # Filter Policy
     ///
-    /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US Employment
-    /// (High impact) event are excluded from simulation.
+    /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US
+    /// Employment (High impact) event are excluded from simulation.
     NinjaTraderCme6eh61m5mUsEmpHighEventsOnly,
 
     /// **BTC/USDT Daily Spot with SMA Crossover (Binance)**
     ///
-    /// A daily timeframe environment pre-configured with SMA(20) and SMA(50) indicators,
-    /// tailored for moving-average crossover strategies.
+    /// A daily timeframe environment pre-configured with SMA(20) and SMA(50)
+    /// indicators, tailored for moving-average crossover strategies.
     ///
     /// # Episode Length
     ///
@@ -390,11 +405,12 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1dSma20Sma50,
 
-    /// **BTC/USDT 1-Hour + 1-Minute Spot with Daily Volume Profile, 100 USDT bins (Binance)**
+    /// **BTC/USDT 1-Hour + 1-Minute Spot with Daily Volume Profile, 100 USDT
+    /// bins (Binance)**
     ///
-    /// A multi-resolution spot environment combining 1-hour and 1-minute BTC/USDT OHLCV
-    /// data with a daily-aggregated Volume Profile using 100 USDT bin size
-    /// (10,000 ticks × $0.01 tick size).
+    /// A multi-resolution spot environment combining 1-hour and 1-minute
+    /// BTC/USDT OHLCV data with a daily-aggregated Volume Profile using 100
+    /// USDT bin size (10,000 ticks × $0.01 tick size).
     ///
     /// # Episode Length
     ///
@@ -431,11 +447,12 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1h1mVolumeProfile1d100Usdt,
 
-    /// **BTC/USDT 1-Hour + 1-Minute Spot with Daily TPO Profile, 1 USDT bins (Binance)**
+    /// **BTC/USDT 1-Hour + 1-Minute Spot with Daily TPO Profile, 1 USDT bins
+    /// (Binance)**
     ///
-    /// A multi-resolution spot environment combining 1-hour and 1-minute BTC/USDT OHLCV
-    /// data with a daily-aggregated TPO (Market Profile) using 1 USDT bin size
-    /// (100 ticks × $0.01 tick size).
+    /// A multi-resolution spot environment combining 1-hour and 1-minute
+    /// BTC/USDT OHLCV data with a daily-aggregated TPO (Market Profile)
+    /// using 1 USDT bin size (100 ticks × $0.01 tick size).
     ///
     /// # Episode Length
     ///
@@ -472,7 +489,8 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1h1mTpo1d1Usdt,
 
-    /// **EUR/USD 1-Minute Futures with Daily TPO Profile (`NinjaTrader`, CME 6eh6)**
+    /// **EUR/USD 1-Minute Futures with Daily TPO Profile (`NinjaTrader`, CME
+    /// 6eh6)**
     ///
     /// An intraday futures environment with 1-minute EUR/USD OHLCV data and a
     /// daily-aggregated TPO (Market Profile) using tick-level bin size
@@ -870,7 +888,8 @@ impl From<EnvPreset> for EnvConfig {
 /// # Core Components
 ///
 /// **Market Data (with optional indicators):**
-/// - `ohlcv_spot`, `ohlcv_future`: Candlestick data with attached technical indicators
+/// - `ohlcv_spot`, `ohlcv_future`: Candlestick data with attached technical
+///   indicators
 /// - `trade_spot`: Trade-level execution data
 ///
 /// **Profile Data (external):**
@@ -939,7 +958,8 @@ pub struct EnvConfig {
     /// Expected trades per episode for buffer preallocation (max: 32).
     trade_hint: usize,
 
-    /// Penalty applied for invalid actions (must be <= 0 and defaults to -100.0).
+    /// Penalty applied for invalid actions (must be <= 0 and defaults to
+    /// -100.0).
     invalid_action_penalty: InvalidActionPenalty,
 }
 

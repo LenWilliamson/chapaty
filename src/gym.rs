@@ -10,12 +10,14 @@ pub mod trading;
 
 /// Represents a reward value in whole dollars.
 ///
-/// This struct wraps an `i64` to avoid floating-point precision issues, ensuring
-/// exact comparisons and efficient operations in financial calculations.
+/// This struct wraps an `i64` to avoid floating-point precision issues,
+/// ensuring exact comparisons and efficient operations in financial
+/// calculations.
 ///
 /// # Rationale
 ///
-/// - Using `i64` avoids floating-point inaccuracies (e.g., `0.1 + 0.2 != 0.3` in `f64`).
+/// - Using `i64` avoids floating-point inaccuracies (e.g., `0.1 + 0.2 != 0.3`
+///   in `f64`).
 /// - `i64` ensures deterministic ordering and equality comparisons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Reward(pub i64);
@@ -50,7 +52,8 @@ impl From<InvalidActionPenalty> for Reward {
 ///
 /// # Lifecycle
 ///
-/// The environment follows a finite state machine (FSM) with the following valid transitions. Other transitions return an error.
+/// The environment follows a finite state machine (FSM) with the following
+/// valid transitions. Other transitions return an error.
 ///
 /// ```md
 /// Current State (optional step context)           | Action  | Next State  | Notes
@@ -68,7 +71,8 @@ pub enum EnvStatus {
 
     /// An episode is active and the environment is ready for `step()` calls.
     ///
-    /// The attached `Episode` value tracks the current episode number, starting from 0.
+    /// The attached `Episode` value tracks the current episode number, starting
+    /// from 0.
     Running,
 
     /// The active episode has reached a terminal state.
@@ -190,13 +194,15 @@ impl GridAxis {
 //  Core Agent Definitions
 // ============================================================================
 
-/// Represents the unique identifier of an agent, used for tracking actions in reports.
+/// Represents the unique identifier of an agent, used for tracking actions in
+/// reports.
 ///
-/// This enum is designed to help identify which agent performed a specific action during
-/// the backtesting or trading process. Each variant contains a `String` that uniquely
-/// identifies the agent for reporting purposes.
+/// This enum is designed to help identify which agent performed a specific
+/// action during the backtesting or trading process. Each variant contains a
+/// `String` that uniquely identifies the agent for reporting purposes.
 ///
-/// The `String` can represent custom agent names or predefined types (e.g., "`NewsCounter`").
+/// The `String` can represent custom agent names or predefined types (e.g.,
+/// "`NewsCounter`").
 #[derive(
     Clone,
     Debug,

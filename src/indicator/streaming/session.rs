@@ -375,8 +375,9 @@ impl StreamingOvernightTradesRange {
 
 /// Frozen overnight/session range built from [`TradeEvent`]s.
 ///
-/// Trades are point data, so there is no high-vs-close distinction: `high`/`low`
-/// are the price envelope and there are no separate close extremes.
+/// Trades are point data, so there is no high-vs-close distinction:
+/// `high`/`low` are the price envelope and there are no separate close
+/// extremes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TradesSessionData {
     session: SessionDate,
@@ -463,7 +464,8 @@ mod tests {
 
     use super::*;
 
-    /// Helper to easily construct a UTC timestamp from a local timezone date and time.
+    /// Helper to easily construct a UTC timestamp from a local timezone date
+    /// and time.
     fn local_to_utc(
         tz: Tz,
         year: i32,
@@ -525,22 +527,27 @@ mod tests {
         }
     }
 
-    /// Whether the indicator handed to [`Range::open`] had been reset before use.
+    /// Whether the indicator handed to [`Range::open`] had been reset before
+    /// use.
     ///
     /// The machine's contract is that `open` always receives a fresh indicator.
-    /// [`OvernightRange::into_building`] calls `reset` immediately before delegating
-    /// to `open`. This enum lets the mock range record which case it actually saw,
-    /// so tests can assert the machine upholds that contract rather than assuming it.
+    /// [`OvernightRange::into_building`] calls `reset` immediately before
+    /// delegating to `open`. This enum lets the mock range record which
+    /// case it actually saw, so tests can assert the machine upholds that
+    /// contract rather than assuming it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum IndicatorFreshness {
-        /// The indicator had zero accumulated updates: the machine reset it first.
+        /// The indicator had zero accumulated updates: the machine reset it
+        /// first.
         Fresh,
-        /// The indicator still carried state from a prior session: reset was skipped.
+        /// The indicator still carried state from a prior session: reset was
+        /// skipped.
         Carried,
     }
 
     impl IndicatorFreshness {
-        /// Derives freshness from the number of updates an indicator has accumulated.
+        /// Derives freshness from the number of updates an indicator has
+        /// accumulated.
         fn from_update_count(updates: u32) -> Self {
             if updates == 0 {
                 Self::Fresh
@@ -549,7 +556,8 @@ mod tests {
             }
         }
 
-        /// True if the indicator was reset before `open` (zero accumulated updates).
+        /// True if the indicator was reset before `open` (zero accumulated
+        /// updates).
         fn is_fresh(self) -> bool {
             matches!(self, Self::Fresh)
         }
@@ -565,8 +573,9 @@ mod tests {
         session: SessionDate,
         sum: i64,
         folds: u32,
-        /// Records the freshness of the indicator that [`Range::open`] received,
-        /// so tests can verify the machine reset it before opening a session.
+        /// Records the freshness of the indicator that [`Range::open`]
+        /// received, so tests can verify the machine reset it before
+        /// opening a session.
         opened: IndicatorFreshness,
     }
 
@@ -611,7 +620,8 @@ mod tests {
         }
     }
 
-    /// Build a finite state machine over the mock range with a fresh counting indicator.
+    /// Build a finite state machine over the mock range with a fresh counting
+    /// indicator.
     fn fsm(window: SessionWindow) -> StreamingOvernightRange<FakeRange> {
         StreamingOvernightRange {
             status: OvernightRangeStatus::Awaiting(OvernightRange::new(

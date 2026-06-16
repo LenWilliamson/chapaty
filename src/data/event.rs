@@ -28,7 +28,8 @@ use crate::{
 
 /// Capability to check if a specific price was traded within an event's range.
 pub trait PriceReachable {
-    /// Returns true if the given `price` was reached or breached based on the intended trade direction.
+    /// Returns true if the given `price` was reached or breached based on the
+    /// intended trade direction.
     fn price_reached(&self, price: Price, direction: TradeKind) -> bool;
 }
 
@@ -161,7 +162,8 @@ impl Ohlcv {
     }
 }
 
-/// A wrapper around an OHLCV candle that includes its absolute index in the stream.
+/// A wrapper around an OHLCV candle that includes its absolute index in the
+/// stream.
 #[derive(Debug, Clone, Copy)]
 pub struct IndexedOhlcv {
     pub candle: Ohlcv,
@@ -326,13 +328,14 @@ pub trait MarketProfile {
     /// The bottom of the Value Area.
     fn value_area_low(&self) -> Price;
 
-    /// Converts the efficient binary snapshot into a Polars `DataFrame` for complex analysis.
+    /// Converts the efficient binary snapshot into a Polars `DataFrame` for
+    /// complex analysis.
     ///
     /// This unpacks the `Box<[Bin]>` structure into Series.
     ///
     /// # Errors
-    /// Returns an error when one or more required columns cannot be materialized
-    /// or cast into the expected schema.
+    /// Returns an error when one or more required columns cannot be
+    /// materialized or cast into the expected schema.
     fn as_dataframe(&self) -> ChapatyResult<DataFrame>;
 }
 
@@ -503,9 +506,10 @@ pub struct VolumeProfileId {
 /// interval `[open_timestamp, close_timestamp)`.
 ///
 /// # Metrics
-/// - **POC (Point of Control):** The price level with the highest traded volume.
-/// - **VA (Value Area):** The price range containing a specified percentage
-///   of total volume.
+/// - **POC (Point of Control):** The price level with the highest traded
+///   volume.
+/// - **VA (Value Area):** The price range containing a specified percentage of
+///   total volume.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VolumeProfile {
     // === Temporal Metadata ===
@@ -570,8 +574,9 @@ pub struct VolumeProfileBin {
     // === Trade Counts (Activity/Frequency) ===
     /// Total number of individual trades executed in this bin.
     ///
-    /// A high trade count with low volume suggests "fighting" (many small retail orders).
-    /// A low trade count with high volume suggests "whale" activity (few large institutional orders).
+    /// A high trade count with low volume suggests "fighting" (many small
+    /// retail orders). A low trade count with high volume suggests "whale"
+    /// activity (few large institutional orders).
     pub number_of_trades: Option<Count>,
 
     /// Number of individual trades where the aggressor was a Buyer.
@@ -1055,7 +1060,8 @@ mod test {
         // 2. Exact Touch: Market prints exactly at our limit.
         assert!(mock_trade(50000.0).price_reached(target, TradeKind::Long));
 
-        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry,
+        //    offering a better price.
         assert!(mock_trade(49990.0).price_reached(target, TradeKind::Long));
     }
 
@@ -1069,7 +1075,8 @@ mod test {
         // 2. Exact Touch: Market prints exactly at our limit.
         assert!(mock_trade(50000.0).price_reached(target, TradeKind::Short));
 
-        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry,
+        //    offering a better price.
         assert!(mock_trade(50010.0).price_reached(target, TradeKind::Short));
     }
 }

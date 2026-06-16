@@ -133,8 +133,9 @@ impl StreamingIndicator for StreamingAtr {
 
 /// Shared accumulator for the `sum(price * volume) / sum(volume)` core.
 ///
-/// VWAP variants only differ on how they derive the `(price, volume)` pair they feed in.
-/// Now implemented using Kahan summation for precision lossless high-frequency accumulation.
+/// VWAP variants only differ on how they derive the `(price, volume)` pair they
+/// feed in. Now implemented using Kahan summation for precision lossless
+/// high-frequency accumulation.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 struct KahanAccumulator {
     sum_price_x_volume: KahanSum,
@@ -144,8 +145,9 @@ struct KahanAccumulator {
 impl KahanAccumulator {
     /// Folds one observation into the running totals using move semantics.
     ///
-    /// Non-positive or non-finite volume is skipped: it contributes nothing and a zero-volume
-    /// bar must not pull the average or risk a zero-division once it's the only input.
+    /// Non-positive or non-finite volume is skipped: it contributes nothing and
+    /// a zero-volume bar must not pull the average or risk a zero-division
+    /// once it's the only input.
     fn add(self, price: Price, volume: Volume) -> Self {
         let v = volume.0;
         if !v.is_finite() || v <= 0.0 {
@@ -176,7 +178,8 @@ impl KahanAccumulator {
 /// A streaming Volume-Weighted Average Price over [`Ohlcv`] bars.
 ///
 /// Accumulates `price * volume` and `volume` from the anchor onward and never
-/// discards past data. The anchor is reset by [`reset`](StreamingIndicator::reset).
+/// discards past data. The anchor is reset by
+/// [`reset`](StreamingIndicator::reset).
 ///
 /// The per-bar price fed into the average is chosen via [`AggregatedPrice`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -314,18 +317,21 @@ mod tests {
     // ============================================================================================
     #[test]
     fn atr_calculates_true_range_correctly_across_edge_cases() {
-        // By using an SMA of length 1, the smoother just outputs the exact True Range of the current candle.
-        // This isolates the TR math from the smoothing math.
+        // By using an SMA of length 1, the smoother just outputs the exact True Range
+        // of the current candle. This isolates the TR math from the smoothing
+        // math.
         let mut atr = StreamingAtr::new(AtrConfig {
             window: 1,
             smoothing: AtrSmoothingType::Sma,
         });
 
-        // 1. First Candle: No previous close. TR should be High - Low (15.0 - 5.0 = 10.0)
+        // 1. First Candle: No previous close. TR should be High - Low (15.0 - 5.0 =
+        //    10.0)
         let candle1 = mock_candle(10., 15., 5., 12., 100.);
         assert_eq!(atr.update(candle1), Some(10.0));
 
-        // 2. Normal Inside/Regular Candle: High/Low range is completely contained or slightly overlaps.
+        // 2. Normal Inside/Regular Candle: High/Low range is completely contained or
+        //    slightly overlaps.
         // Prev Close = 12.0. High = 14.0, Low = 10.0.
         // TR = max(14 - 10, |14 - 12|, |10 - 12|) = max(4, 2, 2) = 4.0
         let candle2 = mock_candle(12., 14., 10., 13., 100.);
@@ -344,10 +350,11 @@ mod tests {
         assert_eq!(atr.update(candle4), Some(19.0));
     }
 
-    /// With a constant True Range, every smoothing type must converge to (and stay
-    /// at) that exact value — a smoother-agnostic sanity check that the dispatch is
-    /// wired correctly and nothing drifts. Each bar here has H-L = 2 and no gap
-    /// large enough to exceed it, so TR == 2 on every bar including the first.
+    /// With a constant True Range, every smoothing type must converge to (and
+    /// stay at) that exact value — a smoother-agnostic sanity check that
+    /// the dispatch is wired correctly and nothing drifts. Each bar here
+    /// has H-L = 2 and no gap large enough to exceed it, so TR == 2 on
+    /// every bar including the first.
     #[test]
     fn atr_constant_true_range_is_stable_for_all_smoothers() {
         for smoothing in [
@@ -371,8 +378,8 @@ mod tests {
         }
     }
 
-    /// `reset` must clear `prev_close` so the next bar is treated as a fresh first
-    /// bar (TR = High - Low), not as a gap from the stale close.
+    /// `reset` must clear `prev_close` so the next bar is treated as a fresh
+    /// first bar (TR = High - Low), not as a gap from the stale close.
     #[test]
     fn atr_reset_clears_previous_close() {
         let mut atr = StreamingAtr::new(AtrConfig {
@@ -448,8 +455,8 @@ mod tests {
         assert_eq!(vwap_close.update(candle), Some(18.0)); // 18.0
     }
 
-    /// Before any positive-volume bar arrives, the VWAP is undefined (`None`), even
-    /// after zero/negative-volume bars have been fed.
+    /// Before any positive-volume bar arrives, the VWAP is undefined (`None`),
+    /// even after zero/negative-volume bars have been fed.
     #[test]
     fn ohlcv_vwap_is_none_until_positive_volume() {
         let mut vwap = StreamingOhlcvVwap::new(AggregatedPrice::Hlc3);
@@ -510,8 +517,8 @@ mod tests {
 
     /// The Kahan core recovers low-order bits that naive `f64` summation drops
     /// when a long tail of tiny terms is added to a larger running sum. (This
-    /// really belongs beside `KahanSum` in the accumulators module; included here
-    /// as it underpins VWAP precision.)
+    /// really belongs beside `KahanSum` in the accumulators module; included
+    /// here as it underpins VWAP precision.)
     #[test]
     fn kahan_sum_recovers_precision_lost_by_naive_summation() {
         use crate::math::accumulators::KahanSum;

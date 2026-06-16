@@ -28,7 +28,8 @@ use smallvec::SmallVec;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 enum RingState {
     /// The buffer has not yet reached capacity. Elements are strictly appended.
-    /// The `buffer.len()` is both the current length and the next insertion index.
+    /// The `buffer.len()` is both the current length and the next insertion
+    /// index.
     Filling,
     /// The buffer is fully populated. New insertions overwrite the oldest data.
     /// The `cursor` is the index of the next element to be evicted.
@@ -66,7 +67,8 @@ pub struct RingBuffer<T> {
 }
 
 impl<T> RingBuffer<T> {
-    /// Creates a new, empty `RingBuffer` that can hold exactly `capacity` elements.
+    /// Creates a new, empty `RingBuffer` that can hold exactly `capacity`
+    /// elements.
     ///
     /// The backing allocation is reserved immediately, so no further allocation
     /// occurs while the buffer is in use.
@@ -132,9 +134,11 @@ impl<T> RingBuffer<T> {
         self.buffer.is_empty()
     }
 
-    /// Returns `true` once the buffer has been filled to [`capacity`](Self::capacity).
+    /// Returns `true` once the buffer has been filled to
+    /// [`capacity`](Self::capacity).
     ///
-    /// While full, every [`push`](Self::push) evicts and returns the oldest element.
+    /// While full, every [`push`](Self::push) evicts and returns the oldest
+    /// element.
     ///
     /// # Examples
     ///
@@ -152,7 +156,8 @@ impl<T> RingBuffer<T> {
         self.state.is_full()
     }
 
-    /// Pushes `value` into the buffer, returning the evicted element if there was one.
+    /// Pushes `value` into the buffer, returning the evicted element if there
+    /// was one.
     ///
     /// While the buffer is still filling, `value` is appended and [`None`] is
     /// returned. Once the buffer is full, `value` overwrites the oldest element

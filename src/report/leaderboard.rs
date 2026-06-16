@@ -93,16 +93,19 @@ impl ToSchema for Leaderboard {
 pub struct Leaderboard {
     /// A typed report representing the **leaderboard of agents**.
     ///
-    /// Each row corresponds to a single agent’s placement for a given portfolio performance
-    /// metric. The schema is defined by the [`Leaderboard`] key type, ensuring column consistency.
+    /// Each row corresponds to a single agent’s placement for a given portfolio
+    /// performance metric. The schema is defined by the [`Leaderboard`] key
+    /// type, ensuring column consistency.
     ///
     /// # Columns
     ///
-    /// - `Metric`: Portfolio performance metric (e.g. `sharpe_ratio`, `net_profit`).
+    /// - `Metric`: Portfolio performance metric (e.g. `sharpe_ratio`,
+    ///   `net_profit`).
     /// - `Rank`: Position of the agent for the given metric (1 = best).
     /// - `AgentUid`: Unique identifier of the agent.
     /// - `Value`: Numeric value of the metric for this agent.
-    /// - `AgentParameterization`: JSON serialization of the agent’s parameterization/configuration.
+    /// - `AgentParameterization`: JSON serialization of the agent’s
+    ///   parameterization/configuration.
     ///
     /// # Example Table
     ///
@@ -113,8 +116,8 @@ pub struct Leaderboard {
     /// | `net_profit`                   | 1    | 150234.60 | 78103      | { "`wait_duration"`: 120, "`take_profit_risk_factor"`: 1.2, ... }  |
     /// | `net_profit`                   | 2    | 149875.10 | 45201      | { "`wait_duration"`: 300, "`take_profit_risk_factor"`: 1.0, ... }  |
     ///
-    /// This makes it easy to export leaderboard data to external systems (e.g. `DataFrames`, CSV, or
-    /// dashboards) while retaining schema guarantees.
+    /// This makes it easy to export leaderboard data to external systems (e.g.
+    /// `DataFrames`, CSV, or dashboards) while retaining schema guarantees.
     df: DataFrame,
 }
 
@@ -140,14 +143,17 @@ impl Report for Leaderboard {
 
 /// A report tracking the top-k performing agents for each performance metric.
 ///
-/// This report maintains a **min-heap** (`BinaryHeap<Reverse<LeaderboardEntry>>`)
-/// to efficiently track the **top-k best-performing agents** per metric.
+/// This report maintains a **min-heap**
+/// (`BinaryHeap<Reverse<LeaderboardEntry>>`) to efficiently track the **top-k
+/// best-performing agents** per metric.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentLeaderboard<T> {
-    /// A mapping from performance metrics to **min-heaps** tracking the top-k performing agents.
+    /// A mapping from performance metrics to **min-heaps** tracking the top-k
+    /// performing agents.
     ///
-    /// Each entry in the heap is wrapped in `Reverse` to ensure that the smallest (i.e.
-    /// the worst-performing among the top-k) entry is always at the top.
+    /// Each entry in the heap is wrapped in `Reverse` to ensure that the
+    /// smallest (i.e. the worst-performing among the top-k) entry is always
+    /// at the top.
     pub top_per_metric:
         SortedVecMap<PortfolioPerformanceCol, BinaryHeap<Reverse<LeaderboardEntry>>>,
 
@@ -172,11 +178,13 @@ where
 }
 
 impl<T> AgentLeaderboard<T> {
-    /// Creates a new, empty `AgentPerformanceReport` with the specified heap capacity `k`.
+    /// Creates a new, empty `AgentPerformanceReport` with the specified heap
+    /// capacity `k`.
     ///
     /// # Arguments
     ///
-    /// * `k` - The maximum number of top entries to retain for each reward statistic.
+    /// * `k` - The maximum number of top entries to retain for each reward
+    ///   statistic.
     ///
     /// # Returns
     ///
@@ -367,11 +375,12 @@ impl TryFrom<LeaderboardSoA> for DataFrame {
 
 /// Represents a single performance record for an agent.
 ///
-/// This structure wraps an agent along with its corresponding reward statistic and the
-/// calculated reward value. The ordering for this structure is defined solely by the `reward`
-/// field, meaning that two entries are compared based on their reward value. This makes it
-/// convenient for use in a min-heap (by wrapping with `std::cmp::Reverse`) when keeping track
-/// of the top-k performers.
+/// This structure wraps an agent along with its corresponding reward statistic
+/// and the calculated reward value. The ordering for this structure is defined
+/// solely by the `reward` field, meaning that two entries are compared based on
+/// their reward value. This makes it convenient for use in a min-heap (by
+/// wrapping with `std::cmp::Reverse`) when keeping track of the top-k
+/// performers.
 #[derive(Copy, Clone, Debug)]
 pub struct LeaderboardEntry {
     /// The agent associated with this performance record.

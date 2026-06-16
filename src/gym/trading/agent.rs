@@ -12,7 +12,8 @@ pub trait Agent {
     /// Decide on actions based on the current observation.
     ///
     /// # Errors
-    /// Returns an error when the agent cannot produce a valid action set for `obs`.
+    /// Returns an error when the agent cannot produce a valid action set for
+    /// `obs`.
     fn act(&mut self, obs: Observation) -> ChapatyResult<Actions>;
 
     /// Optional agent name for logging/debugging.

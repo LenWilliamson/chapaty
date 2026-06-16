@@ -77,6 +77,10 @@ time = { version = "0.3", features = ["macros", "formatting"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"] }
 
+[lints.rust]
+unsafe_code = "forbid"
+# missing_docs = "warn"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
@@ -88,8 +92,8 @@ print_stdout = "warn"
 print_stderr = "warn"
 unwrap_used = "warn"
 expect_used = "warn"
+future_not_send = "warn"
 
 # Attributes & Code Discipline lints
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
-unnecessary_import_braces = "warn"
