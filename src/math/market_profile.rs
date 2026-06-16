@@ -6,6 +6,14 @@ use crate::{
     error::{ChapatyResult, DataError, SystemError},
 };
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "single cohesive value-area and POC computation kept together for readability of the market-profile algorithm"
+)]
+#[expect(
+    clippy::expect_used,
+    reason = "candidate bin indices are bounded by the input slice length and always fit in u32"
+)]
 pub fn compute_profile_stats<T: ProfileBinStats>(
     bins: &[T],
     va_pct: f64,
@@ -58,14 +66,18 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
             if candidates.len() == 1 {
                 candidates[0]
             } else {
-                let sum_indices: usize = candidates.iter().sum();
-                let avg_idx = sum_indices as f64 / candidates.len() as f64;
-                *candidates
+                let sum_indices = candidates.iter().sum::<usize>();
+                let sum_indices = u32::try_from(sum_indices).map_err(DataError::from)?;
+                let candidate_count = u32::try_from(candidates.len()).map_err(DataError::from)?;
+                let avg_idx = f64::from(sum_indices) / f64::from(candidate_count);
+                candidates
                     .iter()
-                    .min_by(|&&a, &&b| {
-                        let diff_a = (a as f64 - avg_idx).abs();
-                        let diff_b = (b as f64 - avg_idx).abs();
-                        // f64::total_cmp provides a total ordering where NaN is > Infinity
+                    .copied()
+                    .min_by(|&a, &b| {
+                        let a = u32::try_from(a).expect("candidate index exceeds u32");
+                        let b = u32::try_from(b).expect("candidate index exceeds u32");
+                        let diff_a = (f64::from(a) - avg_idx).abs();
+                        let diff_b = (f64::from(b) - avg_idx).abs();
                         diff_a.total_cmp(&diff_b)
                     })
                     .ok_or_else(|| {
@@ -83,6 +95,10 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
     let mut low_idx = poc_idx;
     let mut high_idx = poc_idx;
 
+    #[expect(
+        clippy::while_float,
+        reason = "value-area expansion accumulates f64 volume until it reaches the target percentage; the loop genuinely iterates over floating-point volume"
+    )]
     while current_vol < target_vol {
         // Look at neighbors
         let vol_below = if low_idx > 0 {
@@ -152,6 +168,10 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
 
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
+    )]
 
     use super::*;
 
@@ -191,7 +211,7 @@ mod test {
             .iter()
             .enumerate()
             .map(|(i, &v)| SimpleBin {
-                price: 100.0 + i as f64,
+                price: 100.0 + f64::from(u32::try_from(i).expect("auto-price index exceeds u32")),
                 volume: v,
             })
             .collect()
@@ -290,7 +310,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice rule takes the last one (101.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice rule takes
+        // the last one (101.0).
         assert_eq!(
             res.poc,
             Price(101.0),
@@ -306,7 +327,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice rule takes the first one (100.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice rule takes
+        // the first one (100.0).
         assert_eq!(
             res.poc,
             Price(100.0),
@@ -322,7 +344,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter rule takes the middle one (100.5).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter rule
+        // takes the middle one (100.5).
         assert_eq!(
             res.poc,
             Price(100.5),

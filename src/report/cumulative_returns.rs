@@ -16,7 +16,7 @@ use crate::{
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
-        journal::{Journal, JournalCol},
+        journal::{ExprDefineExt, Journal, JournalCol, JournalExprExt},
         polars_ext::{ExprExt, polars_to_chapaty_error},
     },
 };
@@ -90,7 +90,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().is_empty() {
+        if j.as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -99,6 +99,7 @@ impl TryFrom<&Journal> for CumulativeReturns {
             .as_df()
             .clone()
             .lazy()
+            .filter(col(JournalCol::TradeState).trade_executed())
             .select(exprs(init_val))
             .collect()
             .map_err(convert_err)?;
@@ -111,7 +112,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().is_empty() {
+        if gj.source().as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -129,6 +130,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 
                 let lf = df
                     .lazy()
+                    .filter(col(JournalCol::TradeState).trade_executed())
                     .sort(
                         [JournalCol::EntryTimestamp.as_str()],
                         SortMultipleOptions::default(),
@@ -157,72 +159,49 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 fn exprs(init_val: u32) -> Vec<Expr> {
     vec![
         // === Identifiers ===
-        col(JournalCol::RowId)
-            .alias(CumulativeReturnCol::RowId)
-            .cast(DataType::UInt32),
-        col(JournalCol::EpisodeId)
-            .alias(CumulativeReturnCol::EpisodeId)
-            .cast(DataType::UInt32),
-        col(JournalCol::TradeId)
-            .alias(CumulativeReturnCol::TradeId)
-            .cast(DataType::UInt32),
-        col(JournalCol::AgentId)
-            .alias(CumulativeReturnCol::AgentId)
-            .cast(DataType::String),
+        col(JournalCol::RowId).define_as(CumulativeReturnCol::RowId, DataType::UInt32),
+        col(JournalCol::EpisodeId).define_as(CumulativeReturnCol::EpisodeId, DataType::UInt32),
+        col(JournalCol::TradeId).define_as(CumulativeReturnCol::TradeId, DataType::UInt32),
+        col(JournalCol::AgentId).define_as(CumulativeReturnCol::AgentId, DataType::String),
         // === Market spec ===
-        col(JournalCol::DataBroker)
-            .alias(CumulativeReturnCol::DataBroker)
-            .cast(DataType::String),
-        col(JournalCol::Exchange)
-            .alias(CumulativeReturnCol::Exchange)
-            .cast(DataType::String),
-        col(JournalCol::Symbol)
-            .alias(CumulativeReturnCol::Symbol)
-            .cast(DataType::String),
-        col(JournalCol::MarketType)
-            .alias(CumulativeReturnCol::MarketType)
-            .cast(DataType::String),
+        col(JournalCol::DataBroker).define_as(CumulativeReturnCol::DataBroker, DataType::String),
+        col(JournalCol::Exchange).define_as(CumulativeReturnCol::Exchange, DataType::String),
+        col(JournalCol::Symbol).define_as(CumulativeReturnCol::Symbol, DataType::String),
+        col(JournalCol::MarketType).define_as(CumulativeReturnCol::MarketType, DataType::String),
         // === Trade configuration ===
-        col(JournalCol::TradeType)
-            .alias(CumulativeReturnCol::TradeType)
-            .cast(DataType::String),
-        col(JournalCol::Quantity)
-            .alias(CumulativeReturnCol::Quantity)
-            .cast(DataType::Float64),
+        col(JournalCol::TradeType).define_as(CumulativeReturnCol::TradeType, DataType::String),
+        col(JournalCol::Quantity).define_as(CumulativeReturnCol::Quantity, DataType::Float64),
         // === Time ===
-        col(JournalCol::ExitTimestamp)
-            .alias(CumulativeReturnCol::CumulativeTimestamp)
-            .cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(TimeZone::UTC),
-            )),
-        last_peak_timestamp_expr(init_val)
-            .alias(CumulativeReturnCol::LastPeakTimestamp)
-            .cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(TimeZone::UTC),
-            )),
+        col(JournalCol::ExitTimestamp).define_as(
+            CumulativeReturnCol::CumulativeTimestamp,
+            DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC)),
+        ),
+        last_peak_timestamp_expr(init_val).define_as(
+            CumulativeReturnCol::LastPeakTimestamp,
+            DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC)),
+        ),
         // === Equity curve metrics ===
-        peak_cumulative_return_usd_expr(init_val)
-            .alias(CumulativeReturnCol::PeakCumulativeReturnUsd)
-            .cast(DataType::Float64),
+        peak_cumulative_return_usd_expr(init_val).define_as(
+            CumulativeReturnCol::PeakCumulativeReturnUsd,
+            DataType::Float64,
+        ),
         drawdown_from_peak_usd_expr(init_val)
-            .alias(CumulativeReturnCol::DrawdownFromPeakUsd)
-            .cast(DataType::Float64),
-        drawdown_from_peak_pct_expr(init_val)
-            .alias(CumulativeReturnCol::DrawdownFromPeakPercentage)
-            .cast(DataType::Float64),
+            .define_as(CumulativeReturnCol::DrawdownFromPeakUsd, DataType::Float64),
+        drawdown_from_peak_pct_expr(init_val).define_as(
+            CumulativeReturnCol::DrawdownFromPeakPercentage,
+            DataType::Float64,
+        ),
         // === Performance ratio ===
-        rolling_recovery_factor_expr(init_val)
-            .alias(CumulativeReturnCol::RollingRecoveryFactor)
-            .cast(DataType::Float64),
+        rolling_recovery_factor_expr(init_val).define_as(
+            CumulativeReturnCol::RollingRecoveryFactor,
+            DataType::Float64,
+        ),
         // === Return outcomes ===
-        col(JournalCol::ExitReason)
-            .alias(CumulativeReturnCol::ExitReason)
-            .cast(DataType::String),
-        cumulative_realized_return_usd_expr(init_val)
-            .alias(CumulativeReturnCol::CumulativeRealizedReturnUsd)
-            .cast(DataType::Float64),
+        col(JournalCol::ExitReason).define_as(CumulativeReturnCol::ExitReason, DataType::String),
+        cumulative_realized_return_usd_expr(init_val).define_as(
+            CumulativeReturnCol::CumulativeRealizedReturnUsd,
+            DataType::Float64,
+        ),
     ]
 }
 
@@ -235,7 +214,7 @@ fn last_peak_timestamp_expr(initial_value: u32) -> Expr {
     let peak_ret = peak_cumulative_return_usd_expr(initial_value);
 
     // Mark the timestamp at each new peak, else null
-    let peak_ts = when(cum_ret.clone().eq(peak_ret.clone()))
+    let peak_ts = when(cum_ret.eq(peak_ret))
         .then(exit_ts)
         .otherwise(polars::prelude::lit(Null {}));
 
@@ -282,11 +261,12 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
     polars_to_chapaty_error("cumulative return report", e)
 }
 
-/// Represents a point in the cumulative return trajectory of a trading strategy.
+/// Represents a point in the cumulative return trajectory of a trading
+/// strategy.
 ///
-/// Captures the evolution of the strategy’s performance over time, including drawdown
-/// and return metrics. This structure is equivalent to an equity curve in traditional finance,
-/// or cumulative return in reinforcement learning.
+/// Captures the evolution of the strategy’s performance over time, including
+/// drawdown and return metrics. This structure is equivalent to an equity curve
+/// in traditional finance, or cumulative return in reinforcement learning.
 #[derive(
     Debug,
     Clone,
@@ -307,7 +287,8 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
 #[strum(serialize_all = "snake_case")]
 pub enum CumulativeReturnCol {
     // === Identifiers ===
-    /// Row identifier for the cumulative return entry (globally unique per row).
+    /// Row identifier for the cumulative return entry (globally unique per
+    /// row).
     RowId,
     /// Identifier for the episode this trade occurred in.
     EpisodeId,
@@ -319,7 +300,8 @@ pub enum CumulativeReturnCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
@@ -347,7 +329,8 @@ pub enum CumulativeReturnCol {
     DrawdownFromPeakPercentage,
 
     // === Performance ratio ===
-    /// Rolling ratio of total return to maximum drawdown — a measure of recovery strength.
+    /// Rolling ratio of total return to maximum drawdown — a measure of
+    /// recovery strength.
     RollingRecoveryFactor,
 
     // === Return outcomes ===
@@ -364,10 +347,12 @@ impl From<CumulativeReturnCol> for PlSmallStr {
 }
 
 impl CumulativeReturnCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -375,13 +360,18 @@ impl CumulativeReturnCol {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::{collections::HashSet, path::PathBuf};
 
-    use crate::data::common::RiskMetricsConfig;
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
+    use strum::IntoEnumIterator;
 
     use super::*;
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath, SchemaExt};
-    use strum::IntoEnumIterator;
+    use crate::data::common::RiskMetricsConfig;
 
     // ========================================================================
     // Helper: Load Journal Fixture
@@ -399,7 +389,7 @@ mod tests {
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),
@@ -412,7 +402,7 @@ mod tests {
         .collect()
         .expect("Failed to collect DataFrame");
 
-        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
     }
 
     // ========================================================================
@@ -456,8 +446,7 @@ mod tests {
         for col in &expected_columns {
             assert!(
                 df.column(col.as_str()).is_ok(),
-                "Missing expected column: {}",
-                col
+                "Missing expected column: {col}"
             );
         }
 
@@ -471,11 +460,11 @@ mod tests {
                 let actual = df
                     .get_column_names()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let expected = expected_columns
                     .iter()
-                    .map(|c| c.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let missing: Vec<_> = expected.difference(&actual).cloned().collect();
                 let extra: Vec<_> = actual.difference(&expected).cloned().collect();
@@ -500,13 +489,12 @@ mod tests {
             let expected_dtype = field.dtype();
             let actual_dtype = df
                 .column(col_name)
-                .unwrap_or_else(|_| panic!("Column '{}' not found", col_name))
+                .unwrap_or_else(|_| panic!("Column '{col_name}' not found"))
                 .dtype();
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Data type mismatch for '{}': expected {:?}, found {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Data type mismatch for '{col_name}': expected {expected_dtype:?}, found {actual_dtype:?}"
             );
         }
     }
@@ -534,10 +522,10 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = cum_returns.get(i).expect("Missing value at index");
-            assert_eq!(
-                actual, *expected_val,
-                "Cumulative return mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+            assert_f64_eq!(
+                actual,
+                *expected_val,
+                "Cumulative return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }
@@ -564,10 +552,10 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = peaks.get(i).expect("Missing value");
-            assert_eq!(
-                actual, *expected_val,
-                "Peak return mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+            assert_f64_eq!(
+                actual,
+                *expected_val,
+                "Peak return mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }
@@ -594,10 +582,10 @@ mod tests {
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = drawdowns.get(i).expect("Missing value");
-            assert_eq!(
-                actual, *expected_val,
-                "Drawdown mismatch at row {}: expected {}, found {}",
-                i, expected_val, actual
+            assert_f64_eq!(
+                actual,
+                *expected_val,
+                "Drawdown mismatch at row {i}: expected {expected_val}, found {actual}"
             );
         }
     }
@@ -609,7 +597,7 @@ mod tests {
     #[test]
     fn test_empty_journal() {
         let empty_df = DataFrame::empty_with_schema(&Journal::to_schema());
-        let journal = Journal::new(empty_df, RiskMetricsConfig::default())
+        let journal = Journal::new(&empty_df, RiskMetricsConfig::default())
             .expect("Failed to create empty Journal");
 
         let result = CumulativeReturns::try_from(&journal);
@@ -698,7 +686,7 @@ mod tests {
         assert!(val_0.is_infinite(), "Row 0 should be inf (no drawdown)");
 
         let val_1 = recovery_factors.get(1).expect("Missing value");
-        assert_eq!(val_1, 17.0, "Row 1 recovery factor mismatch");
+        assert_f64_eq!(val_1, 17.0, "Row 1 recovery factor mismatch");
 
         let val_3 = recovery_factors.get(3).expect("Missing value");
         assert!(val_3.is_infinite(), "Row 3 should be inf (at peak)");

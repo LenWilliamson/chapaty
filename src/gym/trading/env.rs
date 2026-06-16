@@ -40,7 +40,8 @@ pub struct Environment {
     /// In edge cases where a trade could both hit stop-loss and take-profit
     /// within the same timeframe, this mode selects the evaluation strategy:
     ///
-    /// - [`ExecutionBias::Optimistic`] chooses the most favorable result for the agent.
+    /// - [`ExecutionBias::Optimistic`] chooses the most favorable result for
+    ///   the agent.
     /// - [`ExecutionBias::Pessimistic`] chooses the least favorable outcome.
     ///
     /// Defaults to [`ExecutionBias::Pessimistic`] for conservative evaluation.
@@ -71,7 +72,8 @@ pub struct Environment {
     /// Current Episode
     ep: Episode,
 
-    /// Snapshot of the episode at the initial simulation state, used for resetting the environment.
+    /// Snapshot of the episode at the initial simulation state, used for
+    /// resetting the environment.
     initial_ep: Episode,
 
     /// Current status of the environment (e.g. running, done).
@@ -79,10 +81,12 @@ pub struct Environment {
 }
 
 impl Environment {
+    #[must_use]
     pub fn with_execution_bias(self, bias: ExecutionBias) -> Self {
         Self { bias, ..self }
     }
 
+    #[must_use]
     pub fn with_invalid_action_penalty(self, invalid_action_penalty: InvalidActionPenalty) -> Self {
         Self {
             invalid_action_penalty,
@@ -90,6 +94,7 @@ impl Environment {
         }
     }
 
+    #[must_use]
     pub fn with_risk_metrics_cfg(self, cfg: RiskMetricsConfig) -> Self {
         Self {
             risk_metrics_cfg: cfg,
@@ -99,43 +104,60 @@ impl Environment {
 
     /// Caches the heavy static simulation data (OHLCV, events) to storage.
     ///
-    /// This allows subsequent runs to use `chapaty::load` with the same configuration
-    /// to skip the expensive data fetching and building steps.
+    /// This allows subsequent runs to use `chapaty::load` with the same
+    /// configuration to skip the expensive data fetching and building
+    /// steps.
+    ///
+    /// # Errors
+    /// Returns an error if serialization or storage I/O fails.
     pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
-        self.sim_data.clone().write(cfg).await
+        Arc::clone(&self.sim_data).write(cfg).await
     }
 
+    /// Runs one full episode for `agent` and returns its trading journal.
+    ///
+    /// # Errors
+    /// Returns an error if reset, stepping, or report materialization fails.
     pub fn evaluate_agent<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<Journal> {
         self.reset()?;
         self.eval(agent)?;
         self.journal()
     }
 
-    /// Evaluates a stream of agents in parallel, returning a leaderboard of the top performers.
+    /// Evaluates a stream of agents in parallel, returning a leaderboard of the
+    /// top performers.
     ///
-    /// This method uses `rayon` to distribute agent evaluation across all available CPU cores.
-    /// It maintains a min-heap of the top `top_k` results to minimize memory usage, allowing
-    /// for the evaluation of massive datasets (e.g., 1M+ agents) with constant RAM overhead.
+    /// This method uses `rayon` to distribute agent evaluation across all
+    /// available CPU cores. It maintains a min-heap of the top `top_k`
+    /// results to minimize memory usage, allowing for the evaluation of
+    /// massive datasets (e.g., 1M+ agents) with constant RAM overhead.
     ///
     /// # Arguments
     ///
-    /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as
-    ///   the unique **Agent UID**. This is typically created by calling `.enumerate()` on your
-    ///   configuration of the agent grid.
+    /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as the
+    ///   unique **Agent UID**. This is typically created by calling
+    ///   `.enumerate()` on your configuration of the agent grid.
     /// * `top_k` - The maximum number of agents to retain in the leaderboard.
     ///
     /// # Runtime Estimation
     ///
-    /// Before launching a massive grid search (e.g., 1M+ agents), it is recommended
-    /// to benchmark a single representative agent first.
+    /// Before launching a massive grid search (e.g., 1M+ agents), it is
+    /// recommended to benchmark a single representative agent first.
     ///
-    /// You can use [`Environment::evaluate_agent`] to run one agent sequentially:
+    /// You can use [`Environment::evaluate_agent`] to run one agent
+    /// sequentially:
     ///
     /// 1. Pick a random configuration from your grid.
     /// 2. Measure the time it takes to run `env.evaluate_agent(&mut agent)`.
-    /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU Cores`.
+    /// 3. Estimate your total wait time: `(Single Time * Total Agents) / CPU
+    ///    Cores`.
     ///
-    /// This simple check prevents surprises—like discovering a 1M run will take 2 weeks instead of 2 hours.
+    /// This simple check prevents surprises—like discovering a 1M run will take
+    /// 2 weeks instead of 2 hours.
+    ///
+    /// # Errors
+    /// Returns an error when any worker fails to evaluate, aggregate, or
+    /// convert intermediate results into the final leaderboard.
     pub fn evaluate_agents<T>(
         &mut self,
         agents: Vec<(usize, T)>,
@@ -168,33 +190,47 @@ impl Environment {
         agent_leaderboard.try_into()
     }
 
-    pub fn episode(&self) -> Episode {
+    #[must_use]
+    pub const fn episode(&self) -> Episode {
         self.ep
     }
 
+    /// Returns cumulative `PnL` for the given episode.
+    ///
+    /// # Errors
+    /// Returns an error if the episode does not exist in the ledger.
     pub fn episode_pnl(&self, ep: &Episode) -> ChapatyResult<f64> {
         self.ledger.episode_pnl(ep)
     }
 
-    pub fn status(&self) -> EnvStatus {
+    #[must_use]
+    pub const fn status(&self) -> EnvStatus {
         self.env_status
     }
 
+    /// Materializes the journal report for all completed and active trades.
+    ///
+    /// # Errors
+    /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
         let df = self.ledger.journal_df()?;
-        Journal::new(df, self.risk_metrics_cfg)
+        Journal::new(&df, self.risk_metrics_cfg)
     }
 
+    /// Materializes the equity-curve report from the ledger.
+    ///
+    /// # Errors
+    /// Returns an error if ledger extraction or report construction fails.
     pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
         let df = self.ledger.equity_curve_df()?;
-        EquityCurveReport::new(df)
+        EquityCurveReport::new(&df)
     }
 }
 
 impl Env for Environment {
     #[tracing::instrument(skip(self), fields(ep_id = %self.ep.id().0))]
     fn reset(&mut self) -> ChapatyResult<(Observation<'_>, Reward, StepOutcome)> {
-        use EnvStatus::*;
+        use EnvStatus::{Done, EpisodeDone, Ready, Running};
 
         match self.env_status {
             EpisodeDone => {
@@ -257,7 +293,7 @@ impl Env for Environment {
         let (outcome, total_reward) = self.transition(&episode, summary)?;
 
         // 4. Update Status
-        self.update_env_status(outcome)?;
+        self.update_env_status(outcome);
 
         // 5. Observe S(t+1)
         let market_final = MarketView::new(&self.sim_data, &self.cursor)?;
@@ -286,14 +322,14 @@ impl Environment {
         ep: &Episode,
         summary: ActionSummary,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
-        self.advance_market()?;
+        self.advance_market();
         let market_after = MarketView::new(&self.sim_data, &self.cursor)?;
 
         let update_ctx = UpdateCtx {
             market: &market_after,
             bias: self.bias,
         };
-        self.ledger.apply_updates(ep, update_ctx)?;
+        self.ledger.apply_updates(ep, &update_ctx)?;
 
         let reward_delta = self.ledger.pop_step_reward(ep)?;
         let penalty = self.penalty(summary);
@@ -355,11 +391,11 @@ impl Environment {
     }
 
     fn penalty(&self, report: ActionSummary) -> Reward {
-        Reward((report.rejected as i64) * self.invalid_action_penalty.0.0)
+        Reward(i64::from(report.rejected) * self.invalid_action_penalty.0.0)
     }
 
     fn check_step_status(&self) -> ChapatyResult<()> {
-        use EnvStatus::*;
+        use EnvStatus::{Done, EpisodeDone, Ready, Running};
         match self.env_status {
             Running => Ok(()),
             Ready => Err(EnvError::InvalidState(
@@ -378,8 +414,8 @@ impl Environment {
         }
     }
 
-    fn advance_market(&mut self) -> ChapatyResult<()> {
-        self.cursor.step(&self.sim_data, &self.ep)
+    fn advance_market(&mut self) {
+        self.cursor.step(&self.sim_data, &self.ep);
     }
 
     fn evaluate_outcome(&self, ep: &Episode) -> ChapatyResult<StepOutcome> {
@@ -396,7 +432,7 @@ impl Environment {
         }
     }
 
-    fn update_env_status(&mut self, outcome: StepOutcome) -> ChapatyResult<()> {
+    fn update_env_status(&mut self, outcome: StepOutcome) {
         if outcome.is_terminal() {
             self.env_status = if self.cursor.is_end_of_data(&self.sim_data) {
                 EnvStatus::Done
@@ -404,7 +440,6 @@ impl Environment {
                 EnvStatus::EpisodeDone
             };
         }
-        Ok(())
     }
 }
 
@@ -427,7 +462,7 @@ impl Environment {
             bias: ExecutionBias::Pessimistic,
             invalid_action_penalty: InvalidActionPenalty::default(),
             env_status: EnvStatus::Ready,
-            risk_metrics_cfg: Default::default(),
+            risk_metrics_cfg: RiskMetricsConfig::default(),
         }
     }
 }

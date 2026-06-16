@@ -11,7 +11,6 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::{
     data::{
-        batch_indicator::{EmaWindow, RsiWindow, SmaWindow},
         common::{ProfileAggregation, ProfileBinStats},
         domain::{
             CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
@@ -20,7 +19,7 @@ use crate::{
         },
     },
     error::{ChapatyError, ChapatyResult, DataError},
-    gym::trading::types::TradeType,
+    gym::trading::types::TradeKind,
 };
 
 // ================================================================================================
@@ -29,23 +28,15 @@ use crate::{
 
 /// Capability to check if a specific price was traded within an event's range.
 pub trait PriceReachable {
-    /// Returns true if the given `price` was reached or breached based on the intended trade direction.
-    fn price_reached(&self, price: Price, direction: TradeType) -> bool;
+    /// Returns true if the given `price` was reached or breached based on the
+    /// intended trade direction.
+    fn price_reached(&self, price: Price, direction: TradeKind) -> bool;
 }
 
 /// Capability to provide a "Close" price for resolving market state.
 pub trait ClosePriceProvider {
     fn close_price(&self) -> Price;
     fn close_timestamp(&self) -> DateTime<Utc>;
-}
-
-/// Capability to provide a computed technical indicator value at a specific point in time.
-pub trait IndicatorValueProvider {
-    /// The computed value of the indicator (e.g., the EMA line level).
-    fn value(&self) -> Price;
-
-    /// The timestamp at which this indicator value was recorded/calculated.
-    fn timestamp(&self) -> DateTime<Utc>;
 }
 
 /// Defines the temporal properties of any financial event.
@@ -72,7 +63,7 @@ pub trait StreamId: Ord + Copy + Debug {
 }
 
 pub trait SymbolProvider {
-    fn symbol(&self) -> &Symbol;
+    fn symbol(&self) -> Symbol;
 }
 
 // ================================================================================================
@@ -122,7 +113,7 @@ pub struct Ohlcv {
 }
 
 impl PriceReachable for Ohlcv {
-    fn price_reached(&self, price: Price, _direction: TradeType) -> bool {
+    fn price_reached(&self, price: Price, _direction: TradeKind) -> bool {
         self.low.0 <= price.0 && price.0 <= self.high.0
     }
 }
@@ -150,12 +141,13 @@ impl StreamId for OhlcvId {
 }
 
 impl SymbolProvider for OhlcvId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
 impl Ohlcv {
+    #[must_use]
     pub fn direction(&self) -> CandleDirection {
         let open = self.open.0;
         let close = self.close.0;
@@ -170,7 +162,8 @@ impl Ohlcv {
     }
 }
 
-/// A wrapper around an OHLCV candle that includes its absolute index in the stream.
+/// A wrapper around an OHLCV candle that includes its absolute index in the
+/// stream.
 #[derive(Debug, Clone, Copy)]
 pub struct IndexedOhlcv {
     pub candle: Ohlcv,
@@ -228,10 +221,10 @@ pub struct TradeEvent {
 }
 
 impl PriceReachable for TradeEvent {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
+    fn price_reached(&self, target_price: Price, direction: TradeKind) -> bool {
         match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
+            TradeKind::Long => self.price.0 <= target_price.0,
+            TradeKind::Short => self.price.0 >= target_price.0,
         }
     }
 }
@@ -252,8 +245,8 @@ impl MarketEvent for TradeEvent {
 }
 
 impl SymbolProvider for TradesId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
@@ -265,7 +258,7 @@ impl StreamId for TradesId {
 // Market Profile Properties
 // ================================================================================================
 
-/// Standard column names for Profile DataFrames exposed to Agents.
+/// Standard column names for Profile `DataFrames` exposed to Agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum ProfileCol {
@@ -307,10 +300,12 @@ impl From<ProfileCol> for PlSmallStr {
 }
 
 impl ProfileCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -333,9 +328,14 @@ pub trait MarketProfile {
     /// The bottom of the Value Area.
     fn value_area_low(&self) -> Price;
 
-    /// Converts the efficient binary snapshot into a Polars DataFrame for complex analysis.
+    /// Converts the efficient binary snapshot into a Polars `DataFrame` for
+    /// complex analysis.
     ///
     /// This unpacks the `Box<[Bin]>` structure into Series.
+    ///
+    /// # Errors
+    /// Returns an error when one or more required columns cannot be
+    /// materialized or cast into the expected schema.
     fn as_dataframe(&self) -> ChapatyResult<DataFrame>;
 }
 
@@ -391,8 +391,8 @@ pub struct TpoBin {
 }
 
 impl SymbolProvider for TpoId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
@@ -436,7 +436,7 @@ impl MarketProfile for Tpo {
         let mut price_ends = Vec::with_capacity(len);
         let mut counts = Vec::with_capacity(len);
 
-        for bin in self.bins.iter() {
+        for bin in &self.bins {
             price_starts.push(bin.price_bin_start.0);
             price_ends.push(bin.price_bin_end.0);
             counts.push(bin.time_slot_count.0); // Assuming Count wraps integer
@@ -469,8 +469,14 @@ impl MarketProfile for Tpo {
 
 impl ProfileBinStats for TpoBin {
     fn get_value(&self) -> f64 {
-        // TPO Count acts as "Volume" for Market Profile calculations
-        self.time_slot_count.0 as f64
+        #[expect(
+            clippy::expect_used,
+            reason = "A TPO block counter tracks discrete periods within a single session window, \
+                              meaning counts mathematically remain tiny integers that should not realistically overflow an i32."
+        )]
+        let time_slot_count =
+            i32::try_from(self.time_slot_count.0).expect("time slot count exceeds i32 range");
+        f64::from(time_slot_count)
     }
 
     fn get_price(&self) -> Price {
@@ -500,9 +506,10 @@ pub struct VolumeProfileId {
 /// interval `[open_timestamp, close_timestamp)`.
 ///
 /// # Metrics
-/// - **POC (Point of Control):** The price level with the highest traded volume.
-/// - **VA (Value Area):** The price range containing a specified percentage
-///   of total volume.
+/// - **POC (Point of Control):** The price level with the highest traded
+///   volume.
+/// - **VA (Value Area):** The price range containing a specified percentage of
+///   total volume.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VolumeProfile {
     // === Temporal Metadata ===
@@ -567,8 +574,9 @@ pub struct VolumeProfileBin {
     // === Trade Counts (Activity/Frequency) ===
     /// Total number of individual trades executed in this bin.
     ///
-    /// A high trade count with low volume suggests "fighting" (many small retail orders).
-    /// A low trade count with high volume suggests "whale" activity (few large institutional orders).
+    /// A high trade count with low volume suggests "fighting" (many small
+    /// retail orders). A low trade count with high volume suggests "whale"
+    /// activity (few large institutional orders).
     pub number_of_trades: Option<Count>,
 
     /// Number of individual trades where the aggressor was a Buyer.
@@ -579,8 +587,8 @@ pub struct VolumeProfileBin {
 }
 
 impl SymbolProvider for VolumeProfileId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 impl MarketEvent for VolumeProfile {
@@ -626,30 +634,30 @@ impl MarketProfile for VolumeProfile {
 
         // Use Vec<Option<f64>> to handle sparse data correctly in Polars
         let mut vol = Vec::with_capacity(len);
-        let mut tb_base = Vec::with_capacity(len);
-        let mut ts_base = Vec::with_capacity(len);
-        let mut q_vol = Vec::with_capacity(len);
-        let mut tb_quote = Vec::with_capacity(len);
-        let mut ts_quote = Vec::with_capacity(len);
+        let mut taker_buy_base = Vec::with_capacity(len);
+        let mut taker_sell_base = Vec::with_capacity(len);
+        let mut quote_asset_vol = Vec::with_capacity(len);
+        let mut taker_buy_quote = Vec::with_capacity(len);
+        let mut taker_sell_quote_quote = Vec::with_capacity(len);
 
         // Counts
         let mut n_trades = Vec::with_capacity(len);
         let mut n_buy = Vec::with_capacity(len);
         let mut n_sell = Vec::with_capacity(len);
 
-        for bin in self.bins.iter() {
+        for bin in &self.bins {
             p_starts.push(bin.price_bin_start.0);
             p_ends.push(bin.price_bin_end.0);
 
             vol.push(bin.volume.0);
 
             // Map Option<Volume> -> Option<f64>
-            tb_base.push(bin.taker_buy_base_asset_volume.map(|v| v.0));
-            ts_base.push(bin.taker_sell_base_asset_volume.map(|v| v.0));
+            taker_buy_base.push(bin.taker_buy_base_asset_volume.map(|v| v.0));
+            taker_sell_base.push(bin.taker_sell_base_asset_volume.map(|v| v.0));
 
-            q_vol.push(bin.quote_asset_volume.map(|v| v.0));
-            tb_quote.push(bin.taker_buy_quote_asset_volume.map(|v| v.0));
-            ts_quote.push(bin.taker_sell_quote_asset_volume.map(|v| v.0));
+            quote_asset_vol.push(bin.quote_asset_volume.map(|v| v.0));
+            taker_buy_quote.push(bin.taker_buy_quote_asset_volume.map(|v| v.0));
+            taker_sell_quote_quote.push(bin.taker_sell_quote_asset_volume.map(|v| v.0));
 
             // Map Option<Count> -> Option<u64>
             n_trades.push(bin.number_of_trades.map(|c| c.0));
@@ -664,12 +672,12 @@ impl MarketProfile for VolumeProfile {
             ProfileCol::PriceBinEnd.to_string() => p_ends,
 
             ProfileCol::Volume.to_string() => vol,
-            ProfileCol::TakerBuyBaseVol.to_string() => tb_base,
-            ProfileCol::TakerSellBaseVol.to_string() => ts_base,
+            ProfileCol::TakerBuyBaseVol.to_string() => taker_buy_base,
+            ProfileCol::TakerSellBaseVol.to_string() => taker_sell_base,
 
-            ProfileCol::QuoteVol.to_string() => q_vol,
-            ProfileCol::TakerBuyQuoteVol.to_string() => tb_quote,
-            ProfileCol::TakerSellQuoteVol.to_string() => ts_quote,
+            ProfileCol::QuoteVol.to_string() => quote_asset_vol,
+            ProfileCol::TakerBuyQuoteVol.to_string() => taker_buy_quote,
+            ProfileCol::TakerSellQuoteVol.to_string() => taker_sell_quote_quote,
 
             ProfileCol::NumTrades.to_string() => n_trades,
             ProfileCol::NumBuyTrades.to_string() => n_buy,
@@ -700,152 +708,6 @@ impl ProfileBinStats for VolumeProfileBin {
 
     fn get_price(&self) -> Price {
         self.price_bin_start
-    }
-}
-
-// ================================================================================================
-// Technical Indicator
-// ================================================================================================
-
-/// Uniquely identifies an Exponential Moving Average (EMA) stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EmaId {
-    pub parent: OhlcvId,
-    pub length: EmaWindow,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Ema {
-    pub timestamp: DateTime<Utc>,
-    pub price: Price,
-}
-
-impl PriceReachable for Ema {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
-        match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
-        }
-    }
-}
-
-impl IndicatorValueProvider for Ema {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl MarketEvent for Ema {
-    fn point_in_time(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl StreamId for EmaId {
-    type Event = Ema;
-}
-
-impl SymbolProvider for EmaId {
-    fn symbol(&self) -> &Symbol {
-        self.parent.symbol()
-    }
-}
-
-/// Uniquely identifies a Relative Strength Index (RSI) stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RsiId {
-    pub parent: OhlcvId,
-    pub length: RsiWindow,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Rsi {
-    pub timestamp: DateTime<Utc>,
-    pub price: Price,
-}
-
-impl PriceReachable for Rsi {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
-        match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
-        }
-    }
-}
-
-impl IndicatorValueProvider for Rsi {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl MarketEvent for Rsi {
-    fn point_in_time(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl StreamId for RsiId {
-    type Event = Rsi;
-}
-
-impl SymbolProvider for RsiId {
-    fn symbol(&self) -> &Symbol {
-        self.parent.symbol()
-    }
-}
-/// Uniquely identifies a Simple Moving Average (SMA) stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SmaId {
-    /// The source data stream this indicator is calculated from.
-    pub parent: OhlcvId,
-    /// The lookback window length (e.g., 14, 200).
-    pub length: SmaWindow,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Sma {
-    pub timestamp: DateTime<Utc>,
-    pub price: Price,
-}
-
-impl PriceReachable for Sma {
-    fn price_reached(&self, target_price: Price, direction: TradeType) -> bool {
-        match direction {
-            TradeType::Long => self.price.0 <= target_price.0,
-            TradeType::Short => self.price.0 >= target_price.0,
-        }
-    }
-}
-
-impl IndicatorValueProvider for Sma {
-    fn value(&self) -> Price {
-        self.price
-    }
-    fn timestamp(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl MarketEvent for Sma {
-    fn point_in_time(&self) -> DateTime<Utc> {
-        self.timestamp
-    }
-}
-
-impl StreamId for SmaId {
-    type Event = Sma;
-}
-
-impl SymbolProvider for SmaId {
-    fn symbol(&self) -> &Symbol {
-        self.parent.symbol()
     }
 }
 
@@ -906,10 +768,10 @@ pub struct EconomicEvent {
     /// Classified event type identifier (e.g., "NFP", "CPI", "FOMC").
     pub news_type: Option<String>,
 
-    /// Confidence score for news_type classification (0.0 to 1.0).
+    /// Confidence score for `news_type` classification (0.0 to 1.0).
     pub news_type_confidence: Option<f64>,
 
-    /// Method used to derive news_type classification.
+    /// Method used to derive `news_type` classification.
     pub news_type_source: Option<String>,
 
     /// Reporting periodicity (e.g., "mom", "qoq", "yoy").
@@ -948,12 +810,13 @@ pub struct MarketId {
 }
 
 impl SymbolProvider for MarketId {
-    fn symbol(&self) -> &Symbol {
-        &self.symbol
+    fn symbol(&self) -> Symbol {
+        self.symbol
     }
 }
 
 impl MarketId {
+    #[must_use]
     pub fn market_type(&self) -> MarketType {
         self.symbol.into()
     }
@@ -992,9 +855,14 @@ impl From<TradesId> for MarketId {
 
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -1086,7 +954,7 @@ mod test {
                     volume: Quantity(2500.0),
                     taker_buy_base_asset_volume: Some(Quantity(1200.0)),
                     taker_sell_base_asset_volume: Some(Quantity(1300.0)),
-                    quote_asset_volume: Some(Quantity(125000.0)),
+                    quote_asset_volume: Some(Quantity(125_000.0)),
                     taker_buy_quote_asset_volume: Some(Quantity(60000.0)),
                     taker_sell_quote_asset_volume: Some(Quantity(65000.0)),
                     number_of_trades: Some(Count(120)),
@@ -1151,54 +1019,33 @@ mod test {
         }
     }
 
-    fn mock_sma(price: f64) -> Sma {
-        Sma {
-            timestamp: ts("2026-05-01T00:00:00Z"),
-            price: Price(price),
-        }
-    }
-
-    fn mock_ema(price: f64) -> Ema {
-        Ema {
-            timestamp: ts("2026-05-01T00:00:00Z"),
-            price: Price(price),
-        }
-    }
-
-    fn mock_rsi(value: f64) -> Rsi {
-        Rsi {
-            timestamp: ts("2026-05-01T00:00:00Z"),
-            price: Price(value),
-        }
-    }
-
     #[test]
     fn test_ohlcv_reachability() {
         let target = Price(50000.0);
 
         // 1. Exact Wick Touches (Edge Cases)
         assert!(
-            mock_ohlcv(49000.0, 50000.0).price_reached(target, TradeType::Long),
+            mock_ohlcv(49000.0, 50000.0).price_reached(target, TradeKind::Long),
             "High wick exactly touches target"
         );
         assert!(
-            mock_ohlcv(50000.0, 51000.0).price_reached(target, TradeType::Short),
+            mock_ohlcv(50000.0, 51000.0).price_reached(target, TradeKind::Short),
             "Low wick exactly touches target"
         );
 
         // 2. Complete Engulfing (Target is inside the candle body/wicks)
-        assert!(mock_ohlcv(49000.0, 51000.0).price_reached(target, TradeType::Long));
+        assert!(mock_ohlcv(49000.0, 51000.0).price_reached(target, TradeKind::Long));
 
         // 3. Flat Candle / Zero Variance (Doji tick)
-        assert!(mock_ohlcv(50000.0, 50000.0).price_reached(target, TradeType::Long));
+        assert!(mock_ohlcv(50000.0, 50000.0).price_reached(target, TradeKind::Long));
 
         // 4. Undershoots / Misses
         assert!(
-            !mock_ohlcv(49000.0, 49999.999999).price_reached(target, TradeType::Long),
+            !mock_ohlcv(49000.0, 49_999.999_999).price_reached(target, TradeKind::Long),
             "Wick high barely misses"
         );
         assert!(
-            !mock_ohlcv(50000.000001, 51000.0).price_reached(target, TradeType::Short),
+            !mock_ohlcv(50_000.000_001, 51000.0).price_reached(target, TradeKind::Short),
             "Wick low barely misses"
         );
     }
@@ -1208,13 +1055,14 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't dropped enough.
-        assert!(!mock_trade(50000.000001).price_reached(target, TradeType::Long));
+        assert!(!mock_trade(50_000.000_001).price_reached(target, TradeKind::Long));
 
         // 2. Exact Touch: Market prints exactly at our limit.
-        assert!(mock_trade(50000.0).price_reached(target, TradeType::Long));
+        assert!(mock_trade(50000.0).price_reached(target, TradeKind::Long));
 
-        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
-        assert!(mock_trade(49990.0).price_reached(target, TradeType::Long));
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry,
+        //    offering a better price.
+        assert!(mock_trade(49990.0).price_reached(target, TradeKind::Long));
     }
 
     #[test]
@@ -1222,100 +1070,13 @@ mod test {
         let target = Price(50000.0);
 
         // 1. Miss: Market price hasn't risen enough.
-        assert!(!mock_trade(49999.999999).price_reached(target, TradeType::Short));
+        assert!(!mock_trade(49_999.999_999).price_reached(target, TradeKind::Short));
 
         // 2. Exact Touch: Market prints exactly at our limit.
-        assert!(mock_trade(50000.0).price_reached(target, TradeType::Short));
+        assert!(mock_trade(50000.0).price_reached(target, TradeKind::Short));
 
-        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry, offering a better price.
-        assert!(mock_trade(50010.0).price_reached(target, TradeType::Short));
-    }
-
-    #[test]
-    fn test_sma_long_reachability() {
-        // We want to trigger a Long when SMA drops to 50000.0 or below
-        let target = Price(50000.0);
-
-        // 1. Undershoot (Miss): SMA is at 50000.1, hasn't dropped enough.
-        assert!(!mock_sma(50000.1).price_reached(target, TradeType::Long));
-
-        // 2. Exact Touch: SMA hits exactly 50000.0.
-        assert!(mock_sma(50000.0).price_reached(target, TradeType::Long));
-
-        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping 50000.0.
-        assert!(mock_sma(49000.0).price_reached(target, TradeType::Long));
-    }
-
-    #[test]
-    fn test_sma_short_reachability() {
-        // We want to trigger a Short when SMA rises to 50000.0 or above
-        let target = Price(50000.0);
-
-        // 1. Undershoot (Miss): SMA is at 49999.9, hasn't risen enough.
-        assert!(!mock_sma(49999.9).price_reached(target, TradeType::Short));
-
-        // 2. Exact Touch: SMA hits exactly 50000.0.
-        assert!(mock_sma(50000.0).price_reached(target, TradeType::Short));
-
-        // 3. Overshoot (Gap up): SMA gaps up to 51000.0, completely skipping 50000.0.
-        assert!(mock_sma(51000.0).price_reached(target, TradeType::Short));
-    }
-
-    #[test]
-    fn test_ema_long_reachability() {
-        let target = Price(100.5);
-
-        // Test precision boundaries often encountered in floating-point math
-        assert!(!mock_ema(100.50000001).price_reached(target, TradeType::Long));
-        assert!(mock_ema(100.5).price_reached(target, TradeType::Long));
-        assert!(mock_ema(100.49999999).price_reached(target, TradeType::Long));
-    }
-
-    #[test]
-    fn test_ema_short_reachability() {
-        let target = Price(100.5);
-
-        assert!(
-            !mock_ema(100.49999999).price_reached(target, TradeType::Short),
-            "EMA is just below target"
-        );
-        assert!(
-            mock_ema(100.5).price_reached(target, TradeType::Short),
-            "EMA exactly hits target"
-        );
-        assert!(
-            mock_ema(100.50000001).price_reached(target, TradeType::Short),
-            "EMA spikes just above target"
-        );
-    }
-
-    #[test]
-    fn test_rsi_oversold_long() {
-        // Classic strategy: Buy when RSI drops below 30
-        let target = Price(30.0);
-
-        // RSI is 31 (Not oversold enough)
-        assert!(!mock_rsi(31.0).price_reached(target, TradeType::Long));
-
-        // RSI is exactly 30 (Trigger)
-        assert!(mock_rsi(30.0).price_reached(target, TradeType::Long));
-
-        // RSI plummets to 15 (Trigger)
-        assert!(mock_rsi(15.0).price_reached(target, TradeType::Long));
-    }
-
-    #[test]
-    fn test_rsi_overbought_short() {
-        // Classic strategy: Sell when RSI spikes above 70
-        let target = Price(70.0);
-
-        // RSI is 69.9 (Not overbought enough)
-        assert!(!mock_rsi(69.9).price_reached(target, TradeType::Short));
-
-        // RSI is exactly 70.0 (Trigger)
-        assert!(mock_rsi(70.0).price_reached(target, TradeType::Short));
-
-        // RSI rockets to 85.5 (Trigger)
-        assert!(mock_rsi(85.5).price_reached(target, TradeType::Short));
+        // 3. Overshoot (Slippage/Gap in our favor): Market blew past our entry,
+        //    offering a better price.
+        assert!(mock_trade(50010.0).price_reached(target, TradeKind::Short));
     }
 }

@@ -6,6 +6,10 @@ use serde_json::Value;
 
 use crate::error::{ChapatyError, ChapatyResult, DataError, IoError};
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 pub(super) fn polars_to_chapaty_error(report: &str, e: polars::error::PolarsError) -> ChapatyError {
     ChapatyError::Data(DataError::DataFrame(format!(
         "Error while building {report} from journal DataFrame: {e}"
@@ -15,7 +19,8 @@ pub(super) fn polars_to_chapaty_error(report: &str, e: polars::error::PolarsErro
 pub trait ExprExt {
     /// Safely divides two expressions, protecting against division-by-zero.
     ///
-    /// If the denominator is zero, returns `fallback` (default: `f64::INFINITY`).
+    /// If the denominator is zero, returns `fallback` (default:
+    /// `f64::INFINITY`).
     ///
     /// # Parameters
     /// - `numerator`: The `Expr` for the numerator.
@@ -48,6 +53,10 @@ impl ExprExt for Expr {
 }
 
 pub trait DataFrameExt {
+    /// Converts each `DataFrame` row into a JSON object map.
+    ///
+    /// # Errors
+    /// Returns an error if intermediate serialization or JSON parsing fails.
     fn to_json_rows(&self) -> ChapatyResult<Vec<serde_json::Map<String, Value>>>;
 }
 
@@ -92,6 +101,7 @@ impl DataFrameExt for DataFrame {
 }
 
 pub trait LazyFrameExt {
+    #[must_use]
     fn with_human_durations(self, schema: SchemaRef) -> Self;
 }
 
@@ -120,13 +130,17 @@ impl LazyFrameExt for LazyFrame {
 // Helper Functions
 // ================================================================================================
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Polars elementwise UDF signature requires taking the Column by value"
+)]
 fn fmt_duration_udf(c: Column) -> PolarsResult<Column> {
     let ca = c.duration()?;
     let unit = ca.time_unit();
 
     let out = ca
         .physical()
-        .into_iter()
+        .iter()
         .map(|opt_val| {
             opt_val.and_then(|v| {
                 let val = u64::try_from(v).ok()?;

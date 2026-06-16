@@ -1,16 +1,31 @@
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+    pin::Pin,
+    sync::Arc,
+};
+
+use chrono::{DateTime, Utc};
+use itertools::izip;
+use polars::prelude::{
+    BooleanType, ChunkedArray, DataFrame, DataType, DateType, DatetimeType, Float64Type, Int32Type,
+    Int64Type, JoinArgs, JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector,
+    SortMultipleOptions, StringType, TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
+};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tracing::{debug, info, warn};
+
 use crate::{
     data::{
-        batch_indicator::{BatchOhlcvIndicator, EmaWindow, RsiWindow, SmaWindow},
         common::ProfileAggregation,
         domain::{
             Count, CountryCode, EconomicEventImpact, EconomicValue, ExecutionDepth, LiquiditySide,
-            Price, Quantity, TradeId,
+            Price, PriceDelta, Quantity, SessionDate, TradeId,
         },
         episode::{EpisodeBuilder, EpisodeLength},
         event::{
-            EconomicCalendarId, EconomicEvent, Ema, EmaId, Ohlcv, OhlcvId, Rsi, RsiId, Sma, SmaId,
-            StreamId, Tpo, TpoBin, TpoId, TradeEvent, TradesId, VolumeProfile, VolumeProfileBin,
-            VolumeProfileId,
+            EconomicCalendarId, EconomicEvent, Ohlcv, OhlcvId, StreamId, Tpo, TpoBin, TpoId,
+            TradeEvent, TradesId, VolumeProfile, VolumeProfileBin, VolumeProfileId,
         },
         filter::{EconomicCalendarPolicy, TradingWindow, Weekday},
         query::QueryId,
@@ -21,6 +36,19 @@ use crate::{
         env::Environment,
         ledger::{Ledger, LedgerCapacityHint},
         state::States,
+    },
+    indicator::{
+        batch::{
+            BatchCompute,
+            event::{
+                Atr, AtrId, Ema, EmaId, OhlcvSession, OhlcvSessionId, OhlcvVwap, OhlcvVwapId, Roc,
+                RocId, Rsi, RsiId, Sma, SmaId, TradesSession, TradesSessionId, TradesVwap,
+                TradesVwapId,
+            },
+            ohlcv::BatchOhlcvIndicator,
+            trades::BatchTradesIndicator,
+        },
+        config::{EmaWindow, RsiWindow, SmaWindow},
     },
     io::IoConfig,
     math::market_profile::compute_profile_stats,
@@ -37,26 +65,11 @@ use crate::{
     },
 };
 
-use chrono::{DateTime, Utc};
-use itertools::izip;
-use polars::{
-    frame::{DataFrame, UniqueKeepStrategy},
-    prelude::{
-        BooleanType, ChunkedArray, DataType, DatetimeType, Float64Type, Int64Type, JoinArgs,
-        JoinType, LazyFrame, Logical, PlSmallStr, Schema, SchemaRef, Selector, SortMultipleOptions,
-        StringType, TimeUnit, UnionArgs, col, lit,
-    },
-};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{
-    collections::{BTreeMap, HashMap},
-    hash::Hash,
-    pin::Pin,
-    sync::Arc,
-};
-use tracing::{debug, info, warn};
-
 /// Builds a trading environment from this configuration.
+///
+/// # Errors
+/// Returns an error if validation fails, data loading/building fails, or the
+/// environment cannot be finalized.
 #[tracing::instrument(skip(cfg), fields(hash = tracing::field::Empty))]
 pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
     let env_cfg = cfg.into();
@@ -74,26 +87,27 @@ pub async fn make(cfg: impl Into<EnvConfig>) -> ChapatyResult<Environment> {
     };
 
     ctx.run().await?;
-    ctx.final_env.ok_or(EnvError::NotBuilt.into())
+    ctx.final_env.ok_or_else(|| EnvError::NotBuilt.into())
 }
 
-/// Loads a pre-built environment from storage, or builds a new one on cache miss.
+/// Loads a pre-built environment from storage, or builds a new one on cache
+/// miss.
+///
+/// # Errors
+/// Returns an error if cache load fails and fallback build also fails.
 #[tracing::instrument(skip(env_cfg, io_cfg))]
-pub async fn load<'a>(
+pub async fn load(
     env_cfg: impl Into<EnvConfig>,
-    io_cfg: &IoConfig<'a>,
+    io_cfg: &IoConfig<'_>,
 ) -> ChapatyResult<Environment> {
     let env_cfg: EnvConfig = env_cfg.into();
 
-    let sim_data = match SimulationData::read(&env_cfg, io_cfg).await {
-        Ok(data) => {
-            tracing::info!("Cache hit: Initializing environment from loaded data.");
-            Arc::new(data)
-        }
-        Err(_) => {
-            tracing::info!("Cache miss: Building new environment.");
-            return make(env_cfg).await;
-        }
+    let sim_data = if let Ok(data) = SimulationData::read(&env_cfg, io_cfg).await {
+        tracing::info!("Cache hit: Initializing environment from loaded data.");
+        Arc::new(data)
+    } else {
+        tracing::info!("Cache miss: Building new environment.");
+        return make(env_cfg).await;
     };
 
     let trade_hint = env_cfg.trade_hint();
@@ -113,7 +127,7 @@ pub async fn load<'a>(
         equity_curve_length: sim_data.max_capacity_hint(),
     });
 
-    let cursor = CursorGroup::new(&sim_data)?;
+    let cursor = CursorGroup::new(&sim_data);
 
     tracing::debug!("Hydrating environment from cached SimulationData");
 
@@ -144,6 +158,12 @@ struct BuildCtx {
     ema_map: Option<HashMap<EmaId, (SchemaRef, LazyFrame)>>,
     rsi_map: Option<HashMap<RsiId, (SchemaRef, LazyFrame)>>,
     sma_map: Option<HashMap<SmaId, (SchemaRef, LazyFrame)>>,
+    trades_vwap_map: Option<HashMap<TradesVwapId, (SchemaRef, LazyFrame)>>,
+    ohlcv_vwap_map: Option<HashMap<OhlcvVwapId, (SchemaRef, LazyFrame)>>,
+    trades_session_map: Option<HashMap<TradesSessionId, (SchemaRef, LazyFrame)>>,
+    ohlcv_session_map: Option<HashMap<OhlcvSessionId, (SchemaRef, LazyFrame)>>,
+    atr_map: Option<HashMap<AtrId, (SchemaRef, LazyFrame)>>,
+    roc_map: Option<HashMap<RocId, (SchemaRef, LazyFrame)>>,
 }
 
 impl BuildCtx {
@@ -167,9 +187,15 @@ impl BuildCtx {
 
 impl BuildCtx {
     #[tracing::instrument]
+    #[expect(
+        clippy::large_futures,
+        reason = "environment-construction future holds the full builder state; it is awaited once during setup, not in a hot loop"
+    )]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
-        next_async_fn(|ctx| Box::pin(async move { ctx.fetch_data().await }))
+        Ok(next_async_fn(|ctx| {
+            Box::pin(async move { ctx.fetch_data().await })
+        }))
     }
 
     #[tracing::instrument(skip_all)]
@@ -180,7 +206,7 @@ impl BuildCtx {
         let (ohlcv_spot, ohlcv_future, trade_spot, tpo_spot, tpo_future, vp_spot, news) = tokio::try_join!(
             fetch_groups(self.env_cfg.ohlcv_spot(), years.clone()),
             fetch_groups(self.env_cfg.ohlcv_future(), years.clone()),
-            fetch_groups(self.env_cfg.trade_spot(), years.clone()),
+            fetch_groups(self.env_cfg.trades_spot(), years.clone()),
             fetch_groups(self.env_cfg.tpo_spot(), years.clone()),
             fetch_groups(self.env_cfg.tpo_future(), years.clone()),
             fetch_groups(self.env_cfg.volume_profile_spot(), years.clone()),
@@ -197,31 +223,32 @@ impl BuildCtx {
         self.vp_spot_map = Some(vp_spot);
         self.economic_calendar_map = Some(news);
 
-        Ok(StateFn::Next(|ctx| ctx.compute_indicators()))
+        Ok(StateFn::Next(Self::compute_batch_ohlcv_indicators))
     }
 
     #[tracing::instrument(skip_all)]
-    fn compute_indicators<'a>(&mut self) -> NextState<'a, Self> {
-        tracing::info!("Computing derived technical indicators");
+    #[expect(
+        clippy::too_many_lines,
+        reason = "computes the full suite of batch OHLCV indicators in one pass; splitting would scatter tightly coupled column logic"
+    )]
+    fn compute_batch_ohlcv_indicators<'a>(&mut self) -> NextState<'a, Self> {
+        tracing::info!("Computing derived batch technical ohlcv indicators");
 
-        // 1. Initialize Indicator Maps
         let mut ema_map = HashMap::new();
         let mut sma_map = HashMap::new();
         let mut rsi_map = HashMap::new();
+        let mut ohlcv_vwap_map = HashMap::new();
+        let mut ohlcv_session_map = HashMap::new();
+        let mut atr_map = HashMap::new();
+        let mut roc_map = HashMap::new();
 
-        let s = Schema::from_iter(vec![
-            CanonicalCol::Timestamp.field(),
-            CanonicalCol::Price.field(),
-        ]);
-        let schema = Arc::new(s);
-
-        // 2. Define a helper to process indicators for a specific parent LazyFrame
         let mut process_indicators = |parent_id: OhlcvId,
                                       source_lf: LazyFrame,
                                       indicators: &[BatchOhlcvIndicator]|
          -> ChapatyResult<()> {
             for &ind in indicators {
                 let lf_result = ind.pre_compute(source_lf.clone())?;
+                let schema = ind.output_schema();
 
                 match ind {
                     BatchOhlcvIndicator::Ema(EmaWindow(w)) => {
@@ -229,28 +256,55 @@ impl BuildCtx {
                             parent: parent_id,
                             length: EmaWindow(w),
                         };
-                        ema_map.insert(id, (schema.clone(), lf_result));
+                        ema_map.insert(id, (schema, lf_result));
                     }
                     BatchOhlcvIndicator::Sma(SmaWindow(w)) => {
                         let id = SmaId {
                             parent: parent_id,
                             length: SmaWindow(w),
                         };
-                        sma_map.insert(id, (schema.clone(), lf_result));
+                        sma_map.insert(id, (schema, lf_result));
                     }
                     BatchOhlcvIndicator::Rsi(RsiWindow(w)) => {
                         let id = RsiId {
                             parent: parent_id,
                             length: RsiWindow(w),
                         };
-                        rsi_map.insert(id, (schema.clone(), lf_result));
+                        rsi_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::Vwap(price_aggregation) => {
+                        let id = OhlcvVwapId {
+                            parent: parent_id,
+                            price_aggregation,
+                        };
+                        ohlcv_vwap_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::OvernightRange(cfg) => {
+                        let id = OhlcvSessionId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        ohlcv_session_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::Atr(cfg) => {
+                        let id = AtrId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        atr_map.insert(id, (schema, lf_result));
+                    }
+                    BatchOhlcvIndicator::RateOfChange(lookback) => {
+                        let id = RocId {
+                            parent: parent_id,
+                            lookback,
+                        };
+                        roc_map.insert(id, (schema, lf_result));
                     }
                 }
             }
             Ok(())
         };
 
-        // 3. Process Spot Markets
         if let Some(spot_map) = &self.ohlcv_spot_map {
             for group in self.env_cfg.ohlcv_spot() {
                 for config in &group.items {
@@ -266,7 +320,6 @@ impl BuildCtx {
             }
         }
 
-        // 4. Process Futures Markets
         if let Some(future_map) = &self.ohlcv_future_map {
             for group in self.env_cfg.ohlcv_future() {
                 for config in &group.items {
@@ -282,12 +335,71 @@ impl BuildCtx {
             }
         }
 
-        // 5. Store Results in Context
         self.ema_map = Some(ema_map);
         self.sma_map = Some(sma_map);
         self.rsi_map = Some(rsi_map);
+        self.ohlcv_vwap_map = Some(ohlcv_vwap_map);
+        self.ohlcv_session_map = Some(ohlcv_session_map);
+        self.atr_map = Some(atr_map);
+        self.roc_map = Some(roc_map);
 
-        Ok(StateFn::Next(|ctx: &mut BuildCtx| {
+        Ok(StateFn::Next(|ctx: &mut Self| {
+            ctx.compute_batch_trades_indicators()
+        }))
+    }
+
+    #[tracing::instrument(skip_all)]
+    fn compute_batch_trades_indicators<'a>(&mut self) -> NextState<'a, Self> {
+        tracing::info!("Computing derived batch technical trades indicators");
+
+        let mut trades_vwap_map = HashMap::new();
+        let mut trades_session_map = HashMap::new();
+
+        let mut process_indicators = |parent_id: TradesId,
+                                      source_lf: LazyFrame,
+                                      indicators: &[BatchTradesIndicator]|
+         -> ChapatyResult<()> {
+            for &ind in indicators {
+                let lf_result = ind.pre_compute(source_lf.clone())?;
+                let schema = ind.output_schema();
+
+                match ind {
+                    BatchTradesIndicator::Vwap => {
+                        let id = TradesVwapId { parent: parent_id };
+                        trades_vwap_map.insert(id, (schema, lf_result));
+                    }
+                    BatchTradesIndicator::OvernightRange(cfg) => {
+                        let id = TradesSessionId {
+                            parent: parent_id,
+                            cfg,
+                        };
+                        trades_session_map.insert(id, (schema, lf_result));
+                    }
+                }
+            }
+
+            Ok(())
+        };
+
+        if let Some(trade_map) = &self.trade_spot_map {
+            for group in self.env_cfg.trades_spot() {
+                for config in &group.items {
+                    if config.indicators.is_empty() {
+                        continue;
+                    }
+
+                    let parent_id = config.to_id()?;
+                    if let Some((_, lf)) = trade_map.get(&parent_id) {
+                        process_indicators(parent_id, lf.clone(), &config.indicators)?;
+                    }
+                }
+            }
+        }
+
+        self.trades_vwap_map = Some(trades_vwap_map);
+        self.trades_session_map = Some(trades_session_map);
+
+        Ok(StateFn::Next(|ctx: &mut Self| {
             ctx.overlay_economic_calendar_policy()
         }))
     }
@@ -307,16 +419,17 @@ impl BuildCtx {
             tracing::info!(
                 "Policy is Unrestricted or undefined. Skipping economic calendar overlay."
             );
-            return Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()));
+            return Ok(StateFn::Next(Self::filter_markets_by_trading_window));
         };
 
         // Handle Edge Case: No Calendar Data
-        // If the policy excludes events (ExcludeEvents) and we have none, we keep all data.
-        // If the policy requires events (OnlyWithEvents) but we have none, we must clear all data.
+        // If the policy excludes events (ExcludeEvents) and we have none, we keep all
+        // data. If the policy requires events (OnlyWithEvents) but we have
+        // none, we must clear all data.
         let is_empty = self
             .economic_calendar_map
             .as_ref()
-            .is_none_or(|m| m.is_empty());
+            .is_none_or(std::collections::HashMap::is_empty);
         if is_empty {
             if policy.is_only_with_events() {
                 tracing::warn!(
@@ -329,12 +442,13 @@ impl BuildCtx {
                 self.tpo_future_map = None;
                 self.vp_spot_map = None;
             }
-            return Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()));
+            return Ok(StateFn::Next(Self::filter_markets_by_trading_window));
         }
 
         tracing::info!("Applying economic calendar policy: {:?}", policy);
 
-        // Create Master Calendar: Union of all events, projected to minimum schema (Timestamp, Category)
+        // Create Master Calendar: Union of all events, projected to minimum schema
+        // (Timestamp, Category)
         let master_calendar_lf = {
             let map = self.economic_calendar_map.as_ref().ok_or_else(|| {
                 ChapatyError::from(EnvError::InvalidState(
@@ -347,7 +461,7 @@ impl BuildCtx {
                 .map(|(_, lf)| {
                     // Strictly select only what the overlay logic needs
                     lf.clone()
-                        .select([col(CanonicalCol::Timestamp), col(CanonicalCol::Category)])
+                        .select([col(CanonicalCol::PointInTime), col(CanonicalCol::Category)])
                 })
                 .collect::<Vec<LazyFrame>>();
 
@@ -386,7 +500,7 @@ impl BuildCtx {
 
         tracing::info!("Economic calendar policy applied successfully");
 
-        Ok(StateFn::Next(|ctx| ctx.filter_markets_by_trading_window()))
+        Ok(StateFn::Next(Self::filter_markets_by_trading_window))
     }
 
     #[tracing::instrument(skip_all)]
@@ -398,7 +512,7 @@ impl BuildCtx {
             .and_then(|cfg| cfg.allowed_trading_hours.as_ref())
         else {
             tracing::info!("No trading hour restrictions defined. Skipping filter.");
-            return Ok(StateFn::Next(|ctx| ctx.sort_all_data()));
+            return Ok(StateFn::Next(Self::sort_all_data));
         };
 
         if allowed_hours_map.is_empty() {
@@ -431,7 +545,7 @@ impl BuildCtx {
         }
 
         tracing::info!("Trading hours filter applied successfully");
-        Ok(StateFn::Next(|ctx| ctx.sort_all_data()))
+        Ok(StateFn::Next(Self::sort_all_data))
     }
 
     #[tracing::instrument(skip_all)]
@@ -439,33 +553,37 @@ impl BuildCtx {
         tracing::info!("Finalizing data order: Sorting all datasets by timestamp");
 
         if let Some(map) = self.ohlcv_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.ohlcv_future_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.trade_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.tpo_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.tpo_future_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
         if let Some(map) = self.vp_spot_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
 
         if let Some(map) = self.economic_calendar_map.as_mut() {
-            apply_sort(map)?;
+            apply_sort(map);
         }
 
         tracing::info!("Sorting applied successfully");
-        Ok(StateFn::Next(|ctx| ctx.finish()))
+        Ok(StateFn::Next(Self::finish))
     }
 
     #[tracing::instrument(skip_all)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "environment finalization assembles all components in one sequential pass that mirrors the build order"
+    )]
     fn finish<'a>(&mut self) -> NextState<'a, Self> {
         info!("Starting environment finalization");
 
@@ -481,6 +599,18 @@ impl BuildCtx {
         let mut ema_res: ChapatyResult<SortedVecMap<EmaId, Box<[Ema]>>> = Ok(SortedVecMap::new());
         let mut rsi_res: ChapatyResult<SortedVecMap<RsiId, Box<[Rsi]>>> = Ok(SortedVecMap::new());
         let mut sma_res: ChapatyResult<SortedVecMap<SmaId, Box<[Sma]>>> = Ok(SortedVecMap::new());
+        let mut trades_vwap_res: ChapatyResult<SortedVecMap<TradesVwapId, Box<[TradesVwap]>>> =
+            Ok(SortedVecMap::new());
+        let mut ohlcv_vwap_res: ChapatyResult<SortedVecMap<OhlcvVwapId, Box<[OhlcvVwap]>>> =
+            Ok(SortedVecMap::new());
+        let mut trades_session_res: ChapatyResult<
+            SortedVecMap<TradesSessionId, Box<[TradesSession]>>,
+        > = Ok(SortedVecMap::new());
+        let mut ohlcv_session_res: ChapatyResult<
+            SortedVecMap<OhlcvSessionId, Box<[OhlcvSession]>>,
+        > = Ok(SortedVecMap::new());
+        let mut atr_res: ChapatyResult<SortedVecMap<AtrId, Box<[Atr]>>> = Ok(SortedVecMap::new());
+        let mut roc_res: ChapatyResult<SortedVecMap<RocId, Box<[Roc]>>> = Ok(SortedVecMap::new());
 
         debug!("Spawning parallel data extraction tasks");
         rayon::scope(|s| {
@@ -521,8 +651,8 @@ impl BuildCtx {
             // === Trades ===
             s.spawn(|_| {
                 debug!("Processing Trade data");
-                trade_res = process_map(self.trade_spot_map.as_ref(), |df, _id| extract_trade(df));
-                if let Ok(ref map) = trade_res {
+                trade_res = process_map(self.trade_spot_map.as_ref(), |df, _id| extract_trades(df));
+                if let Ok(map) = &trade_res {
                     info!("Trade: extracted {} streams", map.len());
                 }
             });
@@ -533,7 +663,7 @@ impl BuildCtx {
                 vp_res = process_map(self.vp_spot_map.as_ref(), |df, id| {
                     extract_vp(df, &id.aggregation)
                 });
-                if let Ok(ref map) = vp_res {
+                if let Ok(map) = &vp_res {
                     info!("Volume Profile: extracted {} streams", map.len());
                 }
             });
@@ -544,7 +674,7 @@ impl BuildCtx {
                 cal_res = process_map(self.economic_calendar_map.as_ref(), |df, _id| {
                     extract_economic(df)
                 });
-                if let Ok(ref map) = cal_res {
+                if let Ok(map) = &cal_res {
                     info!("Economic: extracted {} streams", map.len());
                 }
             });
@@ -553,7 +683,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing EMA indicators");
                 ema_res = process_map(self.ema_map.as_ref(), |df, _id| extract_ema(df));
-                if let Ok(ref map) = ema_res {
+                if let Ok(map) = &ema_res {
                     info!("EMA: extracted {} streams", map.len());
                 }
             });
@@ -562,7 +692,7 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing RSI indicators");
                 rsi_res = process_map(self.rsi_map.as_ref(), |df, _id| extract_rsi(df));
-                if let Ok(ref map) = rsi_res {
+                if let Ok(map) = &rsi_res {
                     info!("RSI: extracted {} streams", map.len());
                 }
             });
@@ -571,8 +701,70 @@ impl BuildCtx {
             s.spawn(|_| {
                 debug!("Processing SMA indicators");
                 sma_res = process_map(self.sma_map.as_ref(), |df, _id| extract_sma(df));
-                if let Ok(ref map) = sma_res {
+                if let Ok(map) = &sma_res {
                     info!("SMA: extracted {} streams", map.len());
+                }
+            });
+
+            // === Trades VWAP ===
+            s.spawn(|_| {
+                debug!("Processing Trades VWAP indicators");
+                trades_vwap_res = process_map(self.trades_vwap_map.as_ref(), |df, _id| {
+                    extract_trades_vwap(df)
+                });
+                if let Ok(map) = &trades_vwap_res {
+                    info!("Trades VWAP: extracted {} streams", map.len());
+                }
+            });
+
+            // === OHLCV VWAP ===
+            s.spawn(|_| {
+                debug!("Processing OHLCV VWAP indicators");
+                ohlcv_vwap_res = process_map(self.ohlcv_vwap_map.as_ref(), |df, _id| {
+                    extract_ohlcv_vwap(df)
+                });
+                if let Ok(map) = &ohlcv_vwap_res {
+                    info!("OHLCV VWAP: extracted {} streams", map.len());
+                }
+            });
+
+            // === Trades Session ===
+            s.spawn(|_| {
+                debug!("Processing Trades session indicators");
+                trades_session_res = process_map(self.trades_session_map.as_ref(), |df, _id| {
+                    extract_trades_session(df)
+                });
+                if let Ok(map) = &trades_session_res {
+                    info!("Trades session: extracted {} streams", map.len());
+                }
+            });
+
+            // === OHLCV Session ===
+            s.spawn(|_| {
+                debug!("Processing OHLCV session indicators");
+                ohlcv_session_res = process_map(self.ohlcv_session_map.as_ref(), |df, _id| {
+                    extract_ohlcv_session(df)
+                });
+                if let Ok(map) = &ohlcv_session_res {
+                    info!("OHLCV session: extracted {} streams", map.len());
+                }
+            });
+
+            // === ATR ===
+            s.spawn(|_| {
+                debug!("Processing ATR indicators");
+                atr_res = process_map(self.atr_map.as_ref(), |df, _id| extract_atr(df));
+                if let Ok(map) = &atr_res {
+                    info!("ATR: extracted {} streams", map.len());
+                }
+            });
+
+            // === ROC ===
+            s.spawn(|_| {
+                debug!("Processing ROC indicators");
+                roc_res = process_map(self.roc_map.as_ref(), |df, _id| extract_roc(df));
+                if let Ok(map) = &roc_res {
+                    info!("ROC: extracted {} streams", map.len());
                 }
             });
         });
@@ -591,9 +783,15 @@ impl BuildCtx {
             .with_tpo(tpo_res?)
             .with_ema(ema_res?)
             .with_rsi(rsi_res?)
-            .with_sma(sma_res?);
+            .with_sma(sma_res?)
+            .with_trades_vwap(trades_vwap_res?)
+            .with_ohlcv_vwap(ohlcv_vwap_res?)
+            .with_trades_session(trades_session_res?)
+            .with_ohlcv_session(ohlcv_session_res?)
+            .with_atr(atr_res?)
+            .with_roc(roc_res?);
 
-        let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(self.env_cfg.clone())?);
+        let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(&self.env_cfg)?);
         let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
 
         info!("SimulationData built successfully");
@@ -611,7 +809,7 @@ impl BuildCtx {
             .build()?;
 
         debug!("Building final Environment");
-        let env = Environment::new(CursorGroup::new(&sim_data)?, sim_data, ep_log, episode)
+        let env = Environment::new(CursorGroup::new(&sim_data), sim_data, ep_log, episode)
             .with_invalid_action_penalty(self.env_cfg.invalid_action_penalty())
             .with_execution_bias(ExecutionBias::default())
             .with_risk_metrics_cfg(self.env_cfg.risk_metrics_cfg());
@@ -625,7 +823,8 @@ impl BuildCtx {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
-fn next_async_fn<'a, F>(f: F) -> ChapatyResult<StateFn<'a, BuildCtx>>
+
+fn next_async_fn<'a, F>(f: F) -> StateFn<'a, BuildCtx>
 where
     F: for<'ctx> FnOnce(
             &'ctx mut BuildCtx,
@@ -634,10 +833,10 @@ where
         > + Send
         + 'a,
 {
-    Ok(StateFn::NextAsync(Box::new(f)))
+    StateFn::NextAsync(Box::new(f))
 }
 
-/// Generic helper to fetch data from a list of SourceGroups.
+/// Generic helper to fetch data from a list of `SourceGroups`.
 async fn fetch_groups<T: Fetchable>(
     groups: &[SourceGroup<T>],
     years: Vec<u16>,
@@ -646,8 +845,8 @@ async fn fetch_groups<T: Fetchable>(
     let mut aggregated_map = HashMap::with_capacity(total_items);
 
     for group in groups {
-        let mut client = group.source.connect().await?;
-        let batch_map = load_batch(&mut client, group.items.clone(), years.clone()).await?;
+        let client = group.source.connect().await?;
+        let batch_map = load_batch(&client, group.items.clone(), years.clone()).await?;
         aggregated_map.extend(batch_map);
     }
 
@@ -661,10 +860,9 @@ fn apply_overlay<T>(
     policy: EconomicCalendarPolicy,
 ) {
     for (_id, (_schema, lf)) in map.iter_mut() {
-        let new_lf =
+        *lf =
             lf.clone()
                 .join_with_economic_calendar_overlay(news_lf.clone(), sim_timeframe, policy);
-        *lf = new_lf;
     }
 }
 
@@ -678,7 +876,7 @@ fn apply_filter<T>(
 
     // Build predicate once inside this function
     let predicate = {
-        let ts_col = col(CanonicalCol::Timestamp);
+        let ts_col = col(CanonicalCol::PointInTime);
         let wd = ts_col.clone().dt().weekday();
         let hr = ts_col.dt().hour();
 
@@ -701,11 +899,12 @@ fn apply_filter<T>(
         }
 
         // Combine with OR: (Win1) OR (Win2)...
-        // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering all rows.
+        // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering
+        // all rows.
         conditions
             .into_iter()
-            .reduce(|acc, expr| acc.or(expr))
-            .unwrap_or(lit(false))
+            .reduce(polars::prelude::Expr::or)
+            .unwrap_or_else(|| lit(false))
     };
 
     // Apply filter to all LazyFrames
@@ -714,17 +913,16 @@ fn apply_filter<T>(
     }
 }
 
-fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) -> ChapatyResult<()> {
+fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) {
     for (_id, (_schema, lf)) in map.iter_mut() {
         *lf = lf.clone().sort(
-            [CanonicalCol::Timestamp],
+            [CanonicalCol::PointInTime],
             SortMultipleOptions::default().with_maintain_order(false),
         );
     }
-    Ok(())
 }
 
-/// Generic helper to materialize and transform a map of LazyFrames.
+/// Generic helper to materialize and transform a map of `LazyFrames`.
 ///
 /// Short-circuits early if the map is `None` or empty.
 #[tracing::instrument(skip_all)]
@@ -735,7 +933,7 @@ fn process_map<Id, Event, F>(
 where
     Id: StreamId + Hash + Send + Sync,
     Event: Send,
-    F: Fn(DataFrame, &Id) -> ChapatyResult<Box<[Event]>> + Sync + Send,
+    F: Fn(&DataFrame, &Id) -> ChapatyResult<Box<[Event]>> + Sync + Send,
 {
     // Early return: No data to process
     let Some(map) = map else {
@@ -760,7 +958,7 @@ where
             })?;
             debug!("Collected dataframe for {:?}: {} rows", id, df.height());
 
-            let events = extractor(df, id)?;
+            let events = extractor(&df, id)?;
             debug!("Extracted {} events for {:?}", events.len(), id);
 
             Ok((*id, events))
@@ -774,8 +972,8 @@ where
 // ================================================================================================
 // Extractor Functions
 // ================================================================================================
-
-fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
+#[tracing::instrument(skip_all)]
+fn extract_ohlcv(df: &DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -784,7 +982,7 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     // Required fields
     let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let open_ts_ca = open_dt_logical.physical();
-    let ts_dt_locial = df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_locial = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = ts_dt_locial.physical();
     let open_ca = df.f64_ca(CanonicalCol::Open)?;
     let high_ca = df.f64_ca(CanonicalCol::High)?;
@@ -793,58 +991,52 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     let vol_ca = df.f64_ca(CanonicalCol::Volume)?;
 
     // Optional numeric fields with iterators
-    let qav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let qav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::QuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let nt_iter: Box<dyn Iterator<Item = Option<i64>>> = df
-        .i64_ca(CanonicalCol::NumberOfTrades)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<i64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let nt_iter: Box<dyn Iterator<Item = Option<i64>>> =
+        match df.i64_ca(CanonicalCol::NumberOfTrades) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let tbbav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::TakerBuyBaseAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let tbbav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::TakerBuyBaseAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let tbqav_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::TakerBuyQuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let tbqav_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::TakerBuyQuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
     let mut events = Vec::with_capacity(len);
 
     for (o_ts, ts, o, h, l, c, v, qav, nt, tbbav, tbqav) in izip!(
-        open_ts_ca.into_iter(),
-        ts_ca.into_iter(),
-        open_ca.into_iter(),
-        high_ca.into_iter(),
-        low_ca.into_iter(),
-        close_ca.into_iter(),
-        vol_ca.into_iter(),
+        open_ts_ca.iter(),
+        ts_ca.iter(),
+        open_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        close_ca.iter(),
+        vol_ca.iter(),
         qav_iter,
         nt_iter,
         tbbav_iter,
         tbqav_iter
     ) {
-        let open_ts_val = o_ts.ok_or(DataError::DataFrame("Missing OpenTimestamp".into()))?;
-        let open_timestamp = DateTime::<Utc>::from_timestamp_micros(open_ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert OpenTimestamp ({open_ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let open_val = o.ok_or(DataError::DataFrame("Missing Open".into()))?;
-        let high_val = h.ok_or(DataError::DataFrame("Missing High".into()))?;
-        let low_val = l.ok_or(DataError::DataFrame("Missing Low".into()))?;
-        let close_val = c.ok_or(DataError::DataFrame("Missing Close".into()))?;
-        let vol_val = v.ok_or(DataError::DataFrame("Missing Volume".into()))?;
+        let open_timestamp = micros_to_utc(o_ts, CanonicalCol::OpenTimestamp)?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
+        let open_val = o.ok_or_else(|| DataError::DataFrame("Missing Open".into()))?;
+        let high_val = h.ok_or_else(|| DataError::DataFrame("Missing High".into()))?;
+        let low_val = l.ok_or_else(|| DataError::DataFrame("Missing Low".into()))?;
+        let close_val = c.ok_or_else(|| DataError::DataFrame("Missing Close".into()))?;
+        let vol_val = v.ok_or_else(|| DataError::DataFrame("Missing Volume".into()))?;
 
         events.push(Ohlcv {
             // === Required ===
@@ -867,58 +1059,58 @@ fn extract_ohlcv(df: DataFrame) -> ChapatyResult<Box<[Ohlcv]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
+#[tracing::instrument(skip_all)]
+fn extract_trades(df: &DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
     }
 
     // Required fields
-    let dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = dt_logical.physical();
     let price_ca = df.f64_ca(CanonicalCol::Price)?;
     let vol_ca = df.f64_ca(CanonicalCol::Volume)?;
 
     // Optional numeric fields with iterators
-    let trade_id_iter: Box<dyn Iterator<Item = Option<i64>>> = df
-        .i64_ca(CanonicalCol::TradeId)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<i64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let trade_id_iter: Box<dyn Iterator<Item = Option<i64>>> =
+        match df.i64_ca(CanonicalCol::TradeId) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let quote_vol_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::QuoteAssetVolume)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let quote_vol_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::QuoteAssetVolume) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let is_maker_iter: Box<dyn Iterator<Item = Option<bool>>> = df
-        .bool_ca(CanonicalCol::IsBuyerMaker)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<bool>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let is_maker_iter: Box<dyn Iterator<Item = Option<bool>>> =
+        match df.bool_ca(CanonicalCol::IsBuyerMaker) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let is_best_iter: Box<dyn Iterator<Item = Option<bool>>> = df
-        .bool_ca(CanonicalCol::IsBestMatch)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<bool>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let is_best_iter: Box<dyn Iterator<Item = Option<bool>>> =
+        match df.bool_ca(CanonicalCol::IsBestMatch) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
     let mut events = Vec::with_capacity(len);
 
     for (ts, price, vol, trade_id, quote_vol, is_maker, is_best) in izip!(
-        ts_ca.into_iter(),
-        price_ca.into_iter(),
-        vol_ca.into_iter(),
+        ts_ca.iter(),
+        price_ca.iter(),
+        vol_ca.iter(),
         trade_id_iter,
         quote_vol_iter,
         is_maker_iter,
         is_best_iter
     ) {
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
-        let price_val = price.ok_or(DataError::DataFrame("Missing Price".into()))?;
-        let vol_val = vol.ok_or(DataError::DataFrame("Missing Volume".into()))?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
+        let price_val = price.ok_or_else(|| DataError::DataFrame("Missing Price".into()))?;
+        let vol_val = vol.ok_or_else(|| DataError::DataFrame("Missing Volume".into()))?;
 
         events.push(TradeEvent {
             timestamp,
@@ -934,14 +1126,19 @@ fn extract_trade(df: DataFrame) -> ChapatyResult<Box<[TradeEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "extracts every economic-event column from the DataFrame in one linear pass"
+)]
+#[tracing::instrument(skip_all)]
+fn extract_economic(df: &DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
     }
 
     // Required fields
-    let dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = dt_logical.physical();
     let source_ca = df.str_ca(CanonicalCol::DataSource)?;
     let cat_ca = df.str_ca(CanonicalCol::Category)?;
@@ -951,41 +1148,46 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     let impact_ca = df.i64_ca(CanonicalCol::EconomicImpact)?;
 
     // Optional string fields with iterators
-    let news_type_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::NewsType)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let news_type_iter: Box<dyn Iterator<Item = Option<&str>>> =
+        match df.str_ca(CanonicalCol::NewsType) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let news_src_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::NewsTypeSource)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let news_src_iter: Box<dyn Iterator<Item = Option<&str>>> =
+        match df.str_ca(CanonicalCol::NewsTypeSource) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let period_iter: Box<dyn Iterator<Item = Option<&str>>> = df
-        .str_ca(CanonicalCol::Period)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<&str>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let period_iter: Box<dyn Iterator<Item = Option<&str>>> = match df.str_ca(CanonicalCol::Period)
+    {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
     // Optional numeric fields with iterators
-    let conf_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::NewsTypeConfidence)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let conf_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::NewsTypeConfidence) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let actual_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Actual)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let actual_iter: Box<dyn Iterator<Item = Option<f64>>> = match df.f64_ca(CanonicalCol::Actual) {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
-    let forecast_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Forecast)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let forecast_iter: Box<dyn Iterator<Item = Option<f64>>> =
+        match df.f64_ca(CanonicalCol::Forecast) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
+        };
 
-    let prev_iter: Box<dyn Iterator<Item = Option<f64>>> = df
-        .f64_ca(CanonicalCol::Previous)
-        .map(|ca| Box::new(ca.into_iter()) as Box<dyn Iterator<Item = Option<f64>>>)
-        .unwrap_or_else(|_| Box::new(std::iter::repeat_n(None, len)));
+    let prev_iter: Box<dyn Iterator<Item = Option<f64>>> = match df.f64_ca(CanonicalCol::Previous) {
+        Ok(ca) => Box::new(ca.iter()),
+        Err(_) => Box::new(std::iter::repeat_n(None, len)),
+    };
 
     let mut events = Vec::with_capacity(len);
 
@@ -1005,13 +1207,13 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
         forecast,
         prev,
     ) in izip!(
-        ts_ca.into_iter(),
-        source_ca.into_iter(),
-        cat_ca.into_iter(),
-        name_ca.into_iter(),
-        country_ca.into_iter(),
-        currency_ca.into_iter(),
-        impact_ca.into_iter(),
+        ts_ca.iter(),
+        source_ca.iter(),
+        cat_ca.iter(),
+        name_ca.iter(),
+        country_ca.iter(),
+        currency_ca.iter(),
+        impact_ca.iter(),
         news_type_iter,
         news_src_iter,
         period_iter,
@@ -1020,19 +1222,17 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
         forecast_iter,
         prev_iter
     ) {
-        let ts_val = ts.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
+        let timestamp = micros_to_utc(ts, CanonicalCol::PointInTime)?;
 
-        let source_val = source.ok_or(DataError::DataFrame("Missing DataSource".into()))?;
-        let cat_val = cat.ok_or(DataError::DataFrame("Missing Category".into()))?;
-        let name_val = name.ok_or(DataError::DataFrame("Missing NewsName".into()))?;
-        let country_val = country.ok_or(DataError::DataFrame("Missing CountryCode".into()))?;
-        let currency_val = currency.ok_or(DataError::DataFrame("Missing CurrencyCode".into()))?;
-        let impact_val = impact.ok_or(DataError::DataFrame("Missing EconomicImpact".into()))?;
+        let source_val = source.ok_or_else(|| DataError::DataFrame("Missing DataSource".into()))?;
+        let cat_val = cat.ok_or_else(|| DataError::DataFrame("Missing Category".into()))?;
+        let name_val = name.ok_or_else(|| DataError::DataFrame("Missing NewsName".into()))?;
+        let country_val =
+            country.ok_or_else(|| DataError::DataFrame("Missing CountryCode".into()))?;
+        let currency_val =
+            currency.ok_or_else(|| DataError::DataFrame("Missing CurrencyCode".into()))?;
+        let impact_val =
+            impact.ok_or_else(|| DataError::DataFrame("Missing EconomicImpact".into()))?;
 
         let country_code = std::str::FromStr::from_str(country_val).unwrap_or(CountryCode::Us);
         let economic_impact = match impact_val {
@@ -1049,9 +1249,9 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
             country_code,
             currency_code: currency_val.to_string(),
             economic_impact,
-            news_type: news_type.map(|s| s.to_string()),
-            news_type_source: news_src.map(|s| s.to_string()),
-            period: period.map(|s| s.to_string()),
+            news_type: news_type.map(std::string::ToString::to_string),
+            news_type_source: news_src.map(std::string::ToString::to_string),
+            period: period.map(std::string::ToString::to_string),
             news_type_confidence: conf,
             actual: actual.map(EconomicValue),
             forecast: forecast.map(EconomicValue),
@@ -1062,7 +1262,8 @@ fn extract_economic(df: DataFrame) -> ChapatyResult<Box<[EconomicEvent]>> {
     Ok(events.into_boxed_slice())
 }
 
-fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tpo]>> {
+#[tracing::instrument(skip_all)]
+fn extract_tpo(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tpo]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1080,7 +1281,7 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
 
     let open_dt_logical = sorted_df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let ts_open_ca = open_dt_logical.physical();
-    let ts_dt_logical = sorted_df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_logical = sorted_df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_close_ca = ts_dt_logical.physical();
     let p_start_ca = sorted_df.f64_ca(CanonicalCol::PriceBinStart)?;
     let p_end_ca = sorted_df.f64_ca(CanonicalCol::PriceBinEnd)?;
@@ -1096,15 +1297,16 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     let va_rule = cfg.value_area_rule.unwrap_or_default();
 
     for (ts_open, ts_close, p_start, p_end, count) in izip!(
-        ts_open_ca.into_iter(),
-        ts_close_ca.into_iter(),
-        p_start_ca.into_iter(),
-        p_end_ca.into_iter(),
-        count_ca.into_iter()
+        ts_open_ca.iter(),
+        ts_close_ca.iter(),
+        p_start_ca.iter(),
+        p_end_ca.iter(),
+        count_ca.iter()
     ) {
         let ts_open_val =
-            ts_open.ok_or(DataError::DataFrame("Missing TPO Open Timestamp".into()))?;
-        let ts_val = ts_close.ok_or(DataError::DataFrame("Missing TPO Timestamp".into()))?;
+            ts_open.ok_or_else(|| DataError::DataFrame("Missing TPO Open Timestamp".into()))?;
+        let ts_val =
+            ts_close.ok_or_else(|| DataError::DataFrame("Missing TPO Timestamp".into()))?;
 
         if Some(ts_open_val) != current_window_start {
             if !current_bins.is_empty()
@@ -1113,16 +1315,8 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
 
                 profiles.push(Tpo {
-                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "TPO open timestamp out of range: {start}"
-                        )))
-                    })?,
-                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "TPO close timestamp out of range: {end}"
-                        )))
-                    })?,
+                    open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+                    close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1134,13 +1328,13 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
             current_bins = Vec::new();
         }
 
-        let count_val = count.ok_or(DataError::DataFrame("Missing TPO Count".into()))?;
+        let count_val = count.ok_or_else(|| DataError::DataFrame("Missing TPO Count".into()))?;
         current_bins.push(TpoBin {
             price_bin_start: Price(
-                p_start.ok_or(DataError::DataFrame("Missing TPO Price Start".into()))?,
+                p_start.ok_or_else(|| DataError::DataFrame("Missing TPO Price Start".into()))?,
             ),
             price_bin_end: Price(
-                p_end.ok_or(DataError::DataFrame("Missing TPO Price End".into()))?,
+                p_end.ok_or_else(|| DataError::DataFrame("Missing TPO Price End".into()))?,
             ),
             time_slot_count: Count(count_val),
         });
@@ -1151,16 +1345,8 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(Tpo {
-            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "TPO open timestamp out of range: {start}"
-                )))
-            })?,
-            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "TPO close timestamp out of range: {end}"
-                )))
-            })?,
+            open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+            close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1171,7 +1357,12 @@ fn extract_tpo(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Tp
     Ok(profiles.into_boxed_slice())
 }
 
-fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "extracts every volume-profile column from the DataFrame in one linear pass"
+)]
+#[tracing::instrument(skip_all)]
+fn extract_vp(df: &DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[VolumeProfile]>> {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
@@ -1189,25 +1380,23 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
     let open_dt_logical = sorted_df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let ts_open_ca = open_dt_logical.physical();
-    let close_dt_logical = sorted_df.dt_logical(CanonicalCol::Timestamp)?;
+    let close_dt_logical = sorted_df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_close_ca = close_dt_logical.physical();
     let p_start_ca = sorted_df.f64_ca(CanonicalCol::PriceBinStart)?;
     let p_end_ca = sorted_df.f64_ca(CanonicalCol::PriceBinEnd)?;
     let vol_ca = sorted_df.f64_ca(CanonicalCol::Volume)?;
 
     let get_opt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<f64>>> {
-        if let Ok(ca) = sorted_df.f64_ca(col) {
-            Box::new(ca.into_iter())
-        } else {
-            Box::new(std::iter::repeat_n(None, len))
+        match sorted_df.f64_ca(col) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
         }
     };
 
     let get_cnt_iter = |col: CanonicalCol| -> Box<dyn Iterator<Item = Option<i64>>> {
-        if let Ok(ca) = sorted_df.i64_ca(col) {
-            Box::new(ca.into_iter())
-        } else {
-            Box::new(std::iter::repeat_n(None, len))
+        match sorted_df.i64_ca(col) {
+            Ok(ca) => Box::new(ca.iter()),
+            Err(_) => Box::new(std::iter::repeat_n(None, len)),
         }
     };
 
@@ -1245,11 +1434,11 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
         n_buy,
         n_sell,
     ) in izip!(
-        ts_open_ca.into_iter(),
-        ts_close_ca.into_iter(),
-        p_start_ca.into_iter(),
-        p_end_ca.into_iter(),
-        vol_ca.into_iter(),
+        ts_open_ca.iter(),
+        ts_close_ca.iter(),
+        p_start_ca.iter(),
+        p_end_ca.iter(),
+        vol_ca.iter(),
         tb_base_iter,
         ts_base_iter,
         q_vol_iter,
@@ -1260,8 +1449,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
         n_sell_iter
     ) {
         let ts_open_val =
-            ts_open.ok_or(DataError::DataFrame("Missing VP Open Timestamp".into()))?;
-        let ts_val = ts_close.ok_or(DataError::DataFrame("Missing VP Timestamp".into()))?;
+            ts_open.ok_or_else(|| DataError::DataFrame("Missing VP Open Timestamp".into()))?;
+        let ts_val = ts_close.ok_or_else(|| DataError::DataFrame("Missing VP Timestamp".into()))?;
 
         if Some(ts_open_val) != current_window_start {
             if !current_bins.is_empty()
@@ -1269,16 +1458,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
             {
                 let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
                 profiles.push(VolumeProfile {
-                    open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "VP open timestamp out of range: {start}"
-                        )))
-                    })?,
-                    close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                        ChapatyError::Data(DataError::TimestampConversion(format!(
-                            "VP close timestamp out of range: {end}"
-                        )))
-                    })?,
+                    open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+                    close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
                     poc: stats.poc,
                     value_area_high: stats.value_area_high,
                     value_area_low: stats.value_area_low,
@@ -1292,11 +1473,13 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
 
         current_bins.push(VolumeProfileBin {
             price_bin_start: Price(
-                p_start.ok_or(DataError::DataFrame("Missing VP Price Start".into()))?,
+                p_start.ok_or_else(|| DataError::DataFrame("Missing VP Price Start".into()))?,
             ),
-            price_bin_end: Price(p_end.ok_or(DataError::DataFrame("Missing VP Price End".into()))?),
+            price_bin_end: Price(
+                p_end.ok_or_else(|| DataError::DataFrame("Missing VP Price End".into()))?,
+            ),
             volume: vol
-                .ok_or(DataError::DataFrame("Missing VP Volume".into()))
+                .ok_or_else(|| DataError::DataFrame("Missing VP Volume".into()))
                 .map(Quantity)?,
             taker_buy_base_asset_volume: tb_base.map(Quantity),
             taker_sell_base_asset_volume: ts_base.map(Quantity),
@@ -1314,16 +1497,8 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     {
         let stats = compute_profile_stats(&current_bins, va_pct, poc_rule, va_rule)?;
         profiles.push(VolumeProfile {
-            open_timestamp: DateTime::from_timestamp_micros(start).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "VP open timestamp out of range: {start}"
-                )))
-            })?,
-            close_timestamp: DateTime::from_timestamp_micros(end).ok_or_else(|| {
-                ChapatyError::Data(DataError::TimestampConversion(format!(
-                    "VP close timestamp out of range: {end}"
-                )))
-            })?,
+            open_timestamp: micros_to_utc(Some(start), CanonicalCol::OpenTimestamp)?,
+            close_timestamp: micros_to_utc(Some(end), CanonicalCol::PointInTime)?,
             poc: stats.poc,
             value_area_high: stats.value_area_high,
             value_area_low: stats.value_area_low,
@@ -1334,50 +1509,299 @@ fn extract_vp(df: DataFrame, cfg: &ProfileAggregation) -> ChapatyResult<Box<[Vol
     Ok(profiles.into_boxed_slice())
 }
 
-fn extract_ema(df: DataFrame) -> ChapatyResult<Box<[Ema]>> {
-    extract_technical_indicator(df, |timestamp, price| Ema { timestamp, price })
+#[tracing::instrument(skip_all)]
+fn extract_ema(df: &DataFrame) -> ChapatyResult<Box<[Ema]>> {
+    extract_price_timeseries(df, |timestamp, price| Ema {
+        timestamp,
+        price: Price(price),
+    })
 }
 
-fn extract_rsi(df: DataFrame) -> ChapatyResult<Box<[Rsi]>> {
-    extract_technical_indicator(df, |timestamp, price| Rsi { timestamp, price })
+#[tracing::instrument(skip_all)]
+fn extract_rsi(df: &DataFrame) -> ChapatyResult<Box<[Rsi]>> {
+    extract_price_timeseries(df, |timestamp, price| Rsi {
+        timestamp,
+        price: Price(price),
+    })
 }
 
-fn extract_sma(df: DataFrame) -> ChapatyResult<Box<[Sma]>> {
-    extract_technical_indicator(df, |timestamp, price| Sma { timestamp, price })
+#[tracing::instrument(skip_all)]
+fn extract_sma(df: &DataFrame) -> ChapatyResult<Box<[Sma]>> {
+    extract_price_timeseries(df, |timestamp, price| Sma {
+        timestamp,
+        price: Price(price),
+    })
 }
 
-fn extract_technical_indicator<T, F>(df: DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
+#[tracing::instrument(skip_all)]
+fn extract_trades_vwap(df: &DataFrame) -> ChapatyResult<Box<[TradesVwap]>> {
+    extract_price_timeseries(df, |timestamp, price| TradesVwap {
+        timestamp,
+        price: Price(price),
+    })
+}
+
+#[tracing::instrument(skip_all)]
+fn extract_ohlcv_vwap(df: &DataFrame) -> ChapatyResult<Box<[OhlcvVwap]>> {
+    extract_price_timeseries(df, |timestamp, price| OhlcvVwap {
+        timestamp,
+        price: Price(price),
+    })
+}
+
+#[tracing::instrument(skip_all)]
+fn extract_atr(df: &DataFrame) -> ChapatyResult<Box<[Atr]>> {
+    extract_price_timeseries(df, |timestamp, value| Atr {
+        timestamp,
+        range: PriceDelta(value),
+    })
+}
+
+#[tracing::instrument(skip_all)]
+fn extract_roc(df: &DataFrame) -> ChapatyResult<Box<[Roc]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let ts_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let ts_ca = ts_dt_logical.physical();
+    let abs_ca = df.f64_ca(CanonicalCol::RocAbsolute)?;
+    let roc_ca = df.f64_ca(CanonicalCol::Roc)?;
+
+    let mut events = Vec::with_capacity(len);
+
+    for (open_ts_opt, ts_opt, abs_opt, roc_opt) in izip!(
+        open_ts_ca.iter(),
+        ts_ca.iter(),
+        abs_ca.iter(),
+        roc_ca.iter()
+    ) {
+        let (Some(abs_val), Some(roc_val)) = (abs_opt, roc_opt) else {
+            debug!(
+                point_in_time = ?ts_opt,
+                absolute_change = ?abs_opt,
+                percentage = ?roc_opt,
+                "Skipping rate-of-change row: at least one value is null"
+            );
+            continue;
+        };
+
+        let window_start = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
+
+        events.push(Roc {
+            timestamp,
+            window_start,
+            absolute_change: PriceDelta(abs_val),
+            percentage: roc_val,
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+#[tracing::instrument(skip_all)]
+fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let date_logical = df.date_logical(CanonicalCol::Date)?;
+    let date_ca = date_logical.physical();
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let close_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let close_ts_ca = close_dt_logical.physical();
+    let high_ca = df.f64_ca(CanonicalCol::SessionHigh)?;
+    let low_ca = df.f64_ca(CanonicalCol::SessionLow)?;
+    let vol_ca = df.f64_ca(CanonicalCol::SessionVolume)?;
+    let vwap_ca = df.f64_ca(CanonicalCol::SessionVwap)?;
+
+    let mut events = Vec::with_capacity(len);
+    for (date_opt, open_ts_opt, close_ts_opt, high_opt, low_opt, vol_opt, vwap_opt) in izip!(
+        date_ca.iter(),
+        open_ts_ca.iter(),
+        close_ts_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        vol_ca.iter(),
+        vwap_ca.iter()
+    ) {
+        let (Some(high_val), Some(low_val), Some(vol_val), Some(vwap_val)) =
+            (high_opt, low_opt, vol_opt, vwap_opt)
+        else {
+            debug!(
+                point_in_time = ?close_ts_opt,
+                high = ?high_opt,
+                low = ?low_opt,
+                volume = ?vol_opt,
+                vwap = ?vwap_opt,
+                "Skipping trades-session row: at least one aggregate value is null"
+            );
+            continue;
+        };
+
+        let session = parse_session_date(date_opt)?;
+        let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
+
+        events.push(TradesSession {
+            session,
+            open_timestamp,
+            close_timestamp,
+            high: Price(high_val),
+            low: Price(low_val),
+            volume: Quantity(vol_val),
+            vwap: Price(vwap_val),
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+#[tracing::instrument(skip_all)]
+fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
+    let len = df.height();
+    if len == 0 {
+        return Ok(Box::new([]));
+    }
+
+    let date_logical = df.date_logical(CanonicalCol::Date)?;
+    let date_ca = date_logical.physical();
+    let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
+    let open_ts_ca = open_dt_logical.physical();
+    let close_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
+    let close_ts_ca = close_dt_logical.physical();
+    let high_ca = df.f64_ca(CanonicalCol::SessionHigh)?;
+    let low_ca = df.f64_ca(CanonicalCol::SessionLow)?;
+    let highest_close_ca = df.f64_ca(CanonicalCol::SessionHighestClose)?;
+    let lowest_close_ca = df.f64_ca(CanonicalCol::SessionLowestClose)?;
+    let vol_ca = df.f64_ca(CanonicalCol::SessionVolume)?;
+    let vwap_ca = df.f64_ca(CanonicalCol::SessionVwap)?;
+
+    let mut events = Vec::with_capacity(len);
+    for (
+        date_opt,
+        open_ts_opt,
+        close_ts_opt,
+        high_opt,
+        low_opt,
+        highest_close_opt,
+        lowest_close_opt,
+        vol_opt,
+        vwap_opt,
+    ) in izip!(
+        date_ca.iter(),
+        open_ts_ca.iter(),
+        close_ts_ca.iter(),
+        high_ca.iter(),
+        low_ca.iter(),
+        highest_close_ca.iter(),
+        lowest_close_ca.iter(),
+        vol_ca.iter(),
+        vwap_ca.iter()
+    ) {
+        let (
+            Some(high_val),
+            Some(low_val),
+            Some(highest_close_val),
+            Some(lowest_close_val),
+            Some(vol_val),
+            Some(vwap_val),
+        ) = (
+            high_opt,
+            low_opt,
+            highest_close_opt,
+            lowest_close_opt,
+            vol_opt,
+            vwap_opt,
+        )
+        else {
+            debug!(
+                point_in_time = ?close_ts_opt,
+                high = ?high_opt,
+                low = ?low_opt,
+                highest_close = ?highest_close_opt,
+                lowest_close = ?lowest_close_opt,
+                volume = ?vol_opt,
+                vwap = ?vwap_opt,
+                "Skipping ohlcv-session row: at least one aggregate value is null"
+            );
+            continue;
+        };
+
+        let session = parse_session_date(date_opt)?;
+        let open_timestamp = micros_to_utc(open_ts_opt, CanonicalCol::OpenTimestamp)?;
+        let close_timestamp = micros_to_utc(close_ts_opt, CanonicalCol::PointInTime)?;
+
+        events.push(OhlcvSession {
+            session,
+            open_timestamp,
+            close_timestamp,
+            high: Price(high_val),
+            low: Price(low_val),
+            highest_close: Price(highest_close_val),
+            lowest_close: Price(lowest_close_val),
+            volume: Quantity(vol_val),
+            vwap: Price(vwap_val),
+        });
+    }
+
+    Ok(events.into_boxed_slice())
+}
+
+fn extract_price_timeseries<T, F>(df: &DataFrame, constructor: F) -> ChapatyResult<Box<[T]>>
 where
-    F: Fn(DateTime<Utc>, Price) -> T,
+    F: Fn(DateTime<Utc>, f64) -> T,
 {
     let len = df.height();
     if len == 0 {
         return Ok(Box::new([]));
     }
 
-    let ts_dt_logical = df.dt_logical(CanonicalCol::Timestamp)?;
+    let ts_dt_logical = df.dt_logical(CanonicalCol::PointInTime)?;
     let ts_ca = ts_dt_logical.physical();
     let price_ca = df.f64_ca(CanonicalCol::Price)?;
 
     let mut events = Vec::with_capacity(len);
 
-    for (ts_opt, price_opt) in izip!(ts_ca.into_iter(), price_ca.into_iter()) {
-        let ts_val = ts_opt.ok_or(DataError::DataFrame("Missing Timestamp".into()))?;
-        let price_val = match price_opt {
-            Some(v) => v,
-            None => continue,
+    for (ts_opt, price_opt) in izip!(ts_ca.iter(), price_ca.iter()) {
+        let Some(price_val) = price_opt else {
+            debug!(
+                point_in_time = ?ts_opt,
+                "Skipping row: indicator value (Price) is null"
+            );
+            continue;
         };
 
-        let timestamp = DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
-            DataError::TimestampConversion(format!(
-                "Failed to convert Timestamp ({ts_val}) from microseconds to UTC DateTime"
-            ))
-        })?;
+        let timestamp = micros_to_utc(ts_opt, CanonicalCol::PointInTime)?;
 
-        events.push(constructor(timestamp, Price(price_val)));
+        events.push(constructor(timestamp, price_val));
     }
 
     Ok(events.into_boxed_slice())
+}
+
+fn parse_session_date(days_opt: Option<i32>) -> ChapatyResult<SessionDate> {
+    let days = days_opt.ok_or_else(|| DataError::DataFrame("Missing Date".to_string()))?;
+    let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+        .ok_or_else(|| DataError::DataFrame("Invalid epoch date".to_string()))?;
+    let date = epoch + chrono::Duration::days(i64::from(days));
+    Ok(SessionDate(date))
+}
+
+fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTime<Utc>> {
+    let ts_val = ts_opt.ok_or_else(|| DataError::DataFrame(format!("Missing {col:?}")))?;
+    DateTime::<Utc>::from_timestamp_micros(ts_val).ok_or_else(|| {
+        DataError::TimestampConversion(format!(
+            "Failed to convert {col:?} ({ts_val}) from microseconds to UTC DateTime"
+        ))
+        .into()
+    })
 }
 
 // ================================================================================================
@@ -1385,20 +1809,25 @@ where
 // ================================================================================================
 
 trait LazyFrameCalendarExt {
-    /// Enriches market data with economic calendar overlays and handles calendar-based filtering.
+    /// Enriches market data with economic calendar overlays and handles
+    /// calendar-based filtering.
     ///
-    /// This method joins market data with an economic calendar at minute resolution, propagates the
-    /// context (`__is_on_calendar_event`) across the simulation timeframe (e.g., Day), and
-    /// optionally filters the data based on the provided [`EconomicCalendarPolicy`].
+    /// This method joins market data with an economic calendar at minute
+    /// resolution, propagates the context (`__is_on_calendar_event`) across
+    /// the simulation timeframe (e.g., Day), and optionally filters the
+    /// data based on the provided [`EconomicCalendarPolicy`].
     ///
     /// # Join Strategy: "Window-Based Semi-Join"
     ///
     /// 1. **Align:** Left-joins Market and Calendar on 1-minute buckets.
-    /// 2. **Propagate:** If *any* minute in a Simulation Window (e.g., Day) has an economic calendar event,
-    ///    marks the *entire* window as `__is_on_calendar_event = true`.
+    /// 2. **Propagate:** If *any* minute in a Simulation Window (e.g., Day) has
+    ///    an economic calendar event, marks the *entire* window as
+    ///    `__is_on_calendar_event = true`.
     /// 3. **Filter (Optional):**
-    ///    - If `policy == OnlyWithEvents`, drops windows where `__is_on_calendar_event` is false (Inner Join behavior).
-    ///    - If `policy == ExcludeEvents`, drops windows where `__is_on_calendar_event` is true (Anti Join behavior).
+    ///    - If `policy == OnlyWithEvents`, drops windows where
+    ///      `__is_on_calendar_event` is false (Inner Join behavior).
+    ///    - If `policy == ExcludeEvents`, drops windows where
+    ///      `__is_on_calendar_event` is true (Anti Join behavior).
     ///
     /// # Returns
     /// `LazyFrame` with potentially filtered rows based on the policy.
@@ -1409,7 +1838,8 @@ trait LazyFrameCalendarExt {
         policy: EconomicCalendarPolicy,
     ) -> LazyFrame;
 
-    /// Adds a temporary grouping key based on the simulation episode length (e.g., Day, Week).
+    /// Adds a temporary grouping key based on the simulation episode length
+    /// (e.g., Day, Week).
     fn with_simulation_window_key(
         self,
         ts_col: CanonicalCol,
@@ -1435,7 +1865,7 @@ impl LazyFrameCalendarExt for LazyFrame {
 
         // 2. Prepare Calendar: Key by Simulation Window + deduplicate
         let news_w_key = calendar_lf
-            .with_simulation_window_key(CanonicalCol::Timestamp, sim_timeframe, join_key)
+            .with_simulation_window_key(CanonicalCol::PointInTime, sim_timeframe, join_key)
             .select([col(join_key)])
             .unique(None, UniqueKeepStrategy::Any) // prevent row multiplication
             .with_column(lit(true).alias(is_on_calendar_event));
@@ -1501,6 +1931,7 @@ impl LazyFrameCalendarExt for LazyFrame {
 
 trait DataFrameExt {
     fn dt_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DatetimeType, Int64Type>>;
+    fn date_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DateType, Int32Type>>;
     fn f64_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<Float64Type>>;
     fn i64_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<Int64Type>>;
     fn str_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<StringType>>;
@@ -1527,6 +1958,27 @@ impl DataFrameExt for DataFrame {
 
         casted.datetime().cloned().map_err(|_| {
             DataError::DataFrame(format!("Cast produced invalid Datetime for {col:?}")).into()
+        })
+    }
+
+    fn date_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DateType, Int32Type>> {
+        let s = self
+            .column(col.as_str())
+            .map_err(|_| DataError::DataFrame(format!("Failed to get column {col:?}")))?;
+
+        if matches!(s.dtype(), DataType::Date) {
+            return s
+                .date()
+                .cloned()
+                .map_err(|_| DataError::DataFrame(format!("Column {col:?} is not Date")).into());
+        }
+
+        let casted = s
+            .cast(&DataType::Date)
+            .map_err(|e| DataError::DataFrame(format!("Failed to cast {col:?} to Date: {e}")))?;
+
+        casted.date().cloned().map_err(|_| {
+            DataError::DataFrame(format!("Cast produced invalid Date for {col:?}")).into()
         })
     }
 
@@ -1576,7 +2028,10 @@ impl DataFrameExt for DataFrame {
 
 type NextState<'a, Ctx> = ChapatyResult<StateFn<'a, Ctx>>;
 
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the boxed async state-transition function type is irreducibly complex; a type alias would not clarify the state-machine intent"
+)]
 enum StateFn<'a, Ctx> {
     Next(fn(&mut Ctx) -> NextState<'a, Ctx>),
     NextAsync(
@@ -1598,13 +2053,33 @@ enum StateFn<'a, Ctx> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use chrono::{TimeZone, Timelike};
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::print_stdout,
+        clippy::similar_names,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use std::path::PathBuf;
+
+    use chrono::{NaiveDate, TimeZone, Timelike};
     use polars::{
         df,
-        prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlPath, TimeUnit},
+        prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit},
     };
-    use std::path::PathBuf;
+
+    use super::*;
+    use crate::{
+        data::domain::{AggregatedPrice, SessionDate, SessionWindow},
+        indicator::{
+            batch::ohlcv::SessionCfg,
+            config::{AtrConfig, LookbackWindow},
+        },
+        transport::schema::{
+            economic_calendar_schema, tpo_spot_schema, trades_spot_schema,
+            volume_profile_spot_schema,
+        },
+    };
 
     // ============================================================================
     // Test Fixtures & Helpers
@@ -1615,11 +2090,12 @@ mod test {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gym")
     }
 
-    /// Loads an OHLCV CSV fixture and maps column names to the canonical schema.
+    /// Loads an OHLCV CSV fixture and maps column names to the canonical
+    /// schema.
     fn load_ohlcv_fixture(filename: &str) -> LazyFrame {
         let path = fixtures_path().join("input").join(filename);
 
-        LazyCsvReader::new(PlPath::new(path.as_os_str().to_str().expect("filepath")))
+        LazyCsvReader::new(PlRefPath::new(path.as_os_str().to_str().expect("filepath")))
             .with_has_header(true)
             .finish()
             .expect("Failed to parse fixture CSV")
@@ -1635,7 +2111,7 @@ mod test {
                         TimeUnit::Microseconds,
                         Some(polars::prelude::TimeZone::UTC),
                     ))
-                    .alias(CanonicalCol::Timestamp.as_str()),
+                    .alias(CanonicalCol::PointInTime.as_str()),
                 // Rename the metrics (Implicitly drops 'exchange', 'symbol', etc.)
                 col("open").alias(CanonicalCol::Open.as_str()),
                 col("high").alias(CanonicalCol::High.as_str()),
@@ -1655,7 +2131,7 @@ mod test {
     fn load_calendar_fixture(filename: &str) -> LazyFrame {
         let path = fixtures_path().join("input").join(filename);
 
-        LazyCsvReader::new(PlPath::new(path.as_os_str().to_str().expect("filepath")))
+        LazyCsvReader::new(PlRefPath::new(path.as_os_str().to_str().expect("filepath")))
             .with_has_header(true)
             .finish()
             .expect("Failed to parse calendar CSV")
@@ -1665,89 +2141,30 @@ mod test {
                         TimeUnit::Microseconds,
                         Some(polars::prelude::TimeZone::UTC),
                     ))
-                    .alias(CanonicalCol::Timestamp.as_str()),
+                    .alias(CanonicalCol::PointInTime.as_str()),
                 col("category").alias(CanonicalCol::Category.as_str()),
             ])
     }
 
-    // ============================================================================
-    // 1. INDICATOR COMPUTATION TESTS
-    // ============================================================================
-
-    struct IndicatorTestCase {
-        name: &'static str,
-        indicator: BatchOhlcvIndicator,
-        expected_file: &'static str,
-    }
-
-    /// **REGRESSION TEST**
-    ///
-    /// Checks that the current indicator logic produces the same output as
-    /// previously recorded snapshots.
-    ///
-    /// **NOTE:** The `expected/*.csv` files were generated by this library itself.
-    /// They serve to catch accidental changes in logic (regressions), but they
-    /// do NOT guarantee mathematical correctness against an external standard
-    /// (like TA-Lib or TradingView).
-    #[test]
-    fn test_indicators_regression_consistency() {
-        let test_cases = vec![
-            IndicatorTestCase {
-                name: "EMA-20",
-                indicator: BatchOhlcvIndicator::Ema(EmaWindow(20)),
-                expected_file: "ema_20_daily.csv",
-            },
-            IndicatorTestCase {
-                name: "SMA-14",
-                indicator: BatchOhlcvIndicator::Sma(SmaWindow(14)),
-                expected_file: "sma_14_daily.csv",
-            },
-            IndicatorTestCase {
-                name: "RSI-14",
-                indicator: BatchOhlcvIndicator::Rsi(RsiWindow(14)),
-                expected_file: "rsi_14_daily.csv",
-            },
-        ];
-
-        for case in test_cases {
-            println!("Running indicator test: {}", case.name);
-
-            // 1. Load Input
-            let input_lf = load_ohlcv_fixture("binance-btc-usdt-8h.csv");
-
-            // 2. Compute (Simulating internal build step)
-            let result_lf = case
-                .indicator
-                .pre_compute(input_lf)
-                .unwrap_or_else(|_| panic!("Failed to compute {}", case.name));
-
-            // 3. Assert
-            let result_df = result_lf.collect().unwrap();
-
-            let expected_file = fixtures_path().join("expected").join(case.expected_file);
-            let expected_df = LazyCsvReader::new(PlPath::new(
-                expected_file.as_os_str().to_str().expect("filepath"),
-            ))
-            .with_has_header(true)
-            .finish()
-            .unwrap()
-            .with_column(col("timestamp").cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(polars::prelude::TimeZone::UTC),
-            )))
-            .collect()
-            .unwrap();
-
-            assert_eq!(
-                result_df, expected_df,
-                "DataFrame mismatch for test case: {}",
-                case.name
+    /// Helper to cast columns to their correct canonical logical type.
+    fn with_ts_cols(df: DataFrame, cols: &[CanonicalCol]) -> DataFrame {
+        let mut lf = df.lazy();
+        for &c in cols {
+            let dtype = c.dtype();
+            lf = lf.with_column(
+                col(c)
+                    .cast(DataType::Datetime(
+                        TimeUnit::Microseconds,
+                        Some(polars::prelude::TimeZone::UTC),
+                    ))
+                    .cast(dtype),
             );
         }
+        lf.collect().unwrap()
     }
 
     // ============================================================================
-    // 2. ECONOMIC CALENDAR OVERLAY TESTS
+    // 1. ECONOMIC CALENDAR OVERLAY TESTS
     // ============================================================================
 
     struct OverlayTestCase {
@@ -1802,7 +2219,7 @@ mod test {
 
             // 2. Prepare Master Calendar (Union of sources)
             let cols = [
-                col(CanonicalCol::Timestamp.as_str()),
+                col(CanonicalCol::PointInTime.as_str()),
                 col(CanonicalCol::Category.as_str()),
             ];
             let master_calendar = polars::prelude::concat(
@@ -1819,18 +2236,18 @@ mod test {
             .unwrap()
             .unique(None, UniqueKeepStrategy::First);
 
-            // 3. Apply Overlay
-            let result_lf = market_lf.join_with_economic_calendar_overlay(
-                master_calendar,
-                case.episode_length,
-                case.policy,
-            );
-
-            // 4. Assert
-            let result_df = result_lf.collect().unwrap();
+            // 3. Apply Overlay & Assert
+            let result_df = market_lf
+                .join_with_economic_calendar_overlay(
+                    master_calendar,
+                    case.episode_length,
+                    case.policy,
+                )
+                .collect()
+                .unwrap();
 
             let expected_file = fixtures_path().join("expected").join(case.expected_file);
-            let expected_df = LazyCsvReader::new(PlPath::new(
+            let expected_df = LazyCsvReader::new(PlRefPath::new(
                 expected_file.as_os_str().to_str().expect("filepath"),
             ))
             .with_has_header(true)
@@ -1841,7 +2258,7 @@ mod test {
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
-                col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+                col("timestamp").cast(DataType::Datetime(
                     TimeUnit::Microseconds,
                     Some(polars::prelude::TimeZone::UTC),
                 )),
@@ -1865,13 +2282,14 @@ mod test {
         let empty_calendar =
             load_calendar_fixture("investingcom-ez-inflation.csv").filter(lit(false));
 
-        let result_lf = market_lf.join_with_economic_calendar_overlay(
-            empty_calendar,
-            EpisodeLength::Day,
-            EconomicCalendarPolicy::OnlyWithEvents,
-        );
-
-        let result_df = result_lf.collect().unwrap();
+        let result_df = market_lf
+            .join_with_economic_calendar_overlay(
+                empty_calendar,
+                EpisodeLength::Day,
+                EconomicCalendarPolicy::OnlyWithEvents,
+            )
+            .collect()
+            .unwrap();
 
         assert_eq!(
             result_df.height(),
@@ -1881,11 +2299,11 @@ mod test {
     }
 
     // ============================================================================
-    // 3. TRADING WINDOW FILTER TESTS
+    // 2. TRADING WINDOW FILTER TESTS
     // ============================================================================
 
-    // Helper to wrap a LazyFrame into the specific map structure your functions expect.
-    // We use "BTC" as a dummy key.
+    // Helper to wrap a LazyFrame into the specific map structure your functions
+    // expect. We use "BTC" as a dummy key.
     const KEY: &str = "__key";
     fn wrap_in_map(mut lf: LazyFrame) -> HashMap<String, (SchemaRef, LazyFrame)> {
         let schema = lf.collect_schema().unwrap();
@@ -1908,7 +2326,7 @@ mod test {
         // Tue 10:00 (Fail day)
         // Wed 15:00 (Pass Wed window)
         let df = df!(
-            "timestamp" => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-05T08:00:00Z"), // Mon - Too early
                 ts_micros("2026-01-05T10:00:00Z"), // Mon - OK
                 ts_micros("2026-01-05T17:00:00Z"), // Mon - Too late (if 9-17)
@@ -1918,7 +2336,7 @@ mod test {
             "open" => &[100.0, 101.0, 102.0, 103.0, 104.0]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         // Define Rules
         let mut allowed = BTreeMap::new();
@@ -1938,7 +2356,7 @@ mod test {
         assert_eq!(result.height(), 2);
 
         let valid_ts = result
-            .column(CanonicalCol::Timestamp.as_str())
+            .column(CanonicalCol::PointInTime.as_str())
             .unwrap()
             .datetime()
             .unwrap()
@@ -1964,10 +2382,10 @@ mod test {
     #[test]
     fn test_filter_empty_rules_drops_all() {
         let df = df!(
-            "timestamp" => &[ts_micros("2026-01-01T10:00:00Z")]
+            CanonicalCol::PointInTime.as_str() => &[ts_micros("2026-01-01T10:00:00Z")]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         let allowed = BTreeMap::new(); // Empty rules
 
@@ -1981,14 +2399,14 @@ mod test {
     fn test_filter_multi_window_same_day() {
         // Split sessions (e.g., Morning 0-4, Evening 20-24)
         let df = df!(
-            "timestamp" => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-06T02:00:00Z"), // Tue 02:00 (Pass)
                 ts_micros("2026-01-06T12:00:00Z"), // Tue 12:00 (Fail - Lunch)
                 ts_micros("2026-01-06T21:00:00Z"), // Tue 21:00 (Pass)
             ]
         )
         .unwrap();
-        let mut lf_map = wrap_in_map(with_ts_cols(df, &["timestamp"]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         let mut allowed = BTreeMap::new();
         allowed.insert(
@@ -2004,13 +2422,17 @@ mod test {
 
         assert_eq!(result.height(), 2);
         // Verify the 12:00 entry is gone
-        let times = result.column("timestamp").unwrap().datetime().unwrap();
+        let times = result
+            .column(CanonicalCol::PointInTime.as_str())
+            .unwrap()
+            .datetime()
+            .unwrap();
         assert!(times.physical().get(0).is_some());
         // We rely on height=2 and inputs to know 12:00 is the one missing
     }
 
     // ============================================================================
-    // 4. DATA SORTING TESTS
+    // 3. DATA SORTING TESTS
     // ============================================================================
 
     #[test]
@@ -2020,9 +2442,10 @@ mod test {
         // Secondary Sort: REMOVED.
         //
         // NOTE: We previously sorted by Open Time as a secondary index.
-        // However, not all data sources (e.g. tick data, economic calendar, etc.) provide an
-        // OpenTimestamp. To support generic inputs, we strictly sort by the Canonical
-        // Timestamp (Close Time, the time when an event is truly available).
+        // However, not all data sources (e.g. tick data, economic calendar, etc.)
+        // provide an OpenTimestamp. To support generic inputs, we strictly sort
+        // by the Canonical Timestamp (Close Time, the time when an event is
+        // truly available).
         //
         // IMPLICATION: If two rows have the exact same Canonical Timestamp, their
         // relative order is nondeterministic (unstable sort). In production, this
@@ -2042,18 +2465,23 @@ mod test {
         // - Middle: ID 2 & 3 (10:00) -> The Collision
         // - Tail: ID 4 (11:00)
         let df_shuffled = df!(
-            "id"             => &[4,      3,      1,      2     ],
-            "timestamp"      => &[t_1100, t_1000, t_0900, t_1000], // Close Time
-            "open_timestamp" => &[t_1000, t_0930, t_0800, t_0900]  // Open Time (Ignored)
+            "id"                                 => &[4,      3,      1,      2     ],
+            CanonicalCol::PointInTime.as_str()   => &[t_1100, t_1000, t_0900, t_1000], // Close Time
+            CanonicalCol::OpenTimestamp.as_str() => &[t_1000, t_0930, t_0800, t_0900]  // Open Time (Ignored)
         )
         .unwrap();
 
         // Wrap for the function under test
-        let mut lf_map =
-            wrap_in_map(with_ts_cols(df_shuffled, &["timestamp", "open_timestamp"]).lazy());
+        let mut lf_map = wrap_in_map(
+            with_ts_cols(
+                df_shuffled,
+                &[CanonicalCol::PointInTime, CanonicalCol::OpenTimestamp],
+            )
+            .lazy(),
+        );
 
         // ACTION
-        apply_sort(&mut lf_map).expect("failed to apply sort");
+        apply_sort(&mut lf_map);
 
         // ASSERTION
         let result = unwrap_map(lf_map);
@@ -2066,7 +2494,7 @@ mod test {
             .collect::<Vec<_>>();
 
         let times = result
-            .column("timestamp")
+            .column(CanonicalCol::PointInTime.as_str())
             .unwrap()
             .datetime()
             .unwrap()
@@ -2096,27 +2524,55 @@ mod test {
     }
 
     // ============================================================================
-    // 5. DATA EXTRACTION TESTS
+    // 4. DATA EXTRACTION TESTS
     // ============================================================================
 
     /// Helper to create a microsecond timestamp for Polars test data.
     fn ts_micros(dt_str: &str) -> i64 {
         DateTime::parse_from_rfc3339(dt_str)
-            .unwrap()
+            .unwrap_or_else(|_| panic!("Failed to parse rfc3339 timestamp '{dt_str}'"))
             .with_timezone(&Utc)
             .timestamp_micros()
     }
 
-    /// Helper to cast timestamp columns to the correct Logical Type expected by extractors.
-    fn with_ts_cols(df: DataFrame, cols: &[&str]) -> DataFrame {
-        let mut lf = df.lazy();
-        for &c in cols {
-            lf = lf.with_column(col(c).cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(polars::prelude::TimeZone::UTC),
-            )));
+    /// Helper to create a proper Date object for Polars test data.
+    /// Expects format: "YYYY-MM-DD"
+    fn naive_date(dt_str: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(dt_str, "%Y-%m-%d").unwrap_or_else(|_| {
+            panic!("Failed to parse date '{dt_str}'. Expected format 'YYYY-MM-DD'")
+        })
+    }
+
+    /// Helper to cast columns to their correct canonical types based on a
+    /// schema.
+    fn with_schema(df: DataFrame, schema: &SchemaRef) -> DataFrame {
+        let mut cast_exprs = Vec::new();
+
+        for (name, target_dtype) in schema.iter() {
+            assert!(df.schema().get(name).is_some(), "expected column '{name}'");
+            cast_exprs.push(col(name.clone()).cast(target_dtype.clone()));
         }
-        lf.collect().unwrap()
+
+        if cast_exprs.is_empty() {
+            df
+        } else {
+            df.lazy()
+                .with_columns(cast_exprs)
+                .collect()
+                .expect("Failed to cast columns to target schema")
+        }
+    }
+
+    /// Asserts that the `DataFrame` exactly matches the expected schema (same
+    /// columns, same types, same order).
+    fn assert_schema_equal(df: &DataFrame, expected: &SchemaRef) {
+        let df_schema = df.schema();
+
+        assert_eq!(
+            df_schema.as_ref(),
+            expected.as_ref(),
+            "DataFrame schema does not match the expected schema"
+        );
     }
 
     // Helper for standard aggregation config
@@ -2125,20 +2581,23 @@ mod test {
     }
 
     #[test]
-    fn test_extract_technical_indicator() {
+    fn test_extract_price_timeseries() {
+        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+
         // 1. Setup Data
         let df = df!(
-            CanonicalCol::Timestamp.as_str() => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"),
                 ts_micros("2026-01-01T11:00:00Z"),
             ],
             CanonicalCol::Price.as_str() => &[100.5, 101.0],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         // 2. Extract
-        let events = extract_ema(df).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
 
         // 3. Verify
         assert_eq!(events.len(), 2);
@@ -2159,14 +2618,16 @@ mod test {
     }
 
     #[test]
-    fn test_extract_technical_indicator_skips_warmup_nones() {
+    fn test_extract_price_timeseries_skips_warmup_nones() {
+        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+
         // 1. Setup Data
         // Simulate a "Price" column that is actually an Indicator (e.g., SMA)
         // Row 1: None (Warming up)
         // Row 2: 100.5 (Ready)
         // Row 3: 101.0 (Ready)
         let df = df!(
-            CanonicalCol::Timestamp.as_str() => &[
+            CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"), // Index 0
                 ts_micros("2026-01-01T11:00:00Z"), // Index 1
                 ts_micros("2026-01-01T12:00:00Z"), // Index 2
@@ -2180,11 +2641,12 @@ mod test {
         .unwrap();
 
         // Ensure timestamp is properly cast to Microseconds
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
         // 2. Extract
         // We use extract_ema as a proxy for any technical indicator extractor
-        let events = extract_ema(df).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
 
         // 3. Verify
         // We entered 3 rows, but expect 2 events because the first one was None
@@ -2206,31 +2668,242 @@ mod test {
     }
 
     #[test]
+    fn test_extract_atr_maps_range_and_skips_warmup_nones() {
+        let schema = BatchOhlcvIndicator::Atr(AtrConfig::new(1)).output_schema();
+
+        // ATR maps the `Price` column onto a `PriceDelta` range. The first row is a
+        // warm-up null and must be skipped defensively.
+        let df = df!(
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+                ts_micros("2026-01-01T12:00:00Z"),
+            ],
+            CanonicalCol::Price.as_str() => &[None::<f64>, Some(12.5), Some(9.0)],
+        )
+        .unwrap();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+
+        let events = extract_atr(&df).expect("failed to extract atr");
+
+        assert_eq!(events.len(), 2, "warm-up null row should be skipped");
+        assert_eq!(
+            events[0].timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 1, 11, 0, 0).unwrap()
+        );
+        assert_eq!(events[0].range, PriceDelta(12.5));
+        assert_eq!(events[1].range, PriceDelta(9.0));
+    }
+
+    #[test]
+    fn test_extract_vwap_ohlcv_and_trades() {
+        let schema = BatchOhlcvIndicator::Vwap(AggregatedPrice::Hlc3).output_schema();
+
+        // Both VWAP extractors share the price-timeseries path: map `Price` -> `Price`
+        // and skip null rows.
+        let df = df!(
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+            ],
+            CanonicalCol::Price.as_str() => &[Some(100.0), None::<f64>],
+        )
+        .unwrap();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+
+        let ohlcv_vwap = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
+        assert_eq!(ohlcv_vwap.len(), 1, "null row should be skipped");
+        assert_eq!(ohlcv_vwap[0].price, Price(100.0));
+
+        let trades_vwap = extract_trades_vwap(&df).expect("failed to extract trades vwap");
+        assert_eq!(trades_vwap.len(), 1, "null row should be skipped");
+        assert_eq!(trades_vwap[0].price, Price(100.0));
+    }
+
+    #[test]
+    fn test_extract_roc_full_mapping_and_skips_nulls() {
+        let schema = BatchOhlcvIndicator::RateOfChange(LookbackWindow::Bars(1)).output_schema();
+
+        // Row 0 is a warm-up row (null absolute/percentage) and must be skipped, while
+        // row 1 maps every field.
+        let df = df!(
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-01T09:00:00Z"),
+                ts_micros("2026-01-01T10:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-01T10:00:00Z"),
+                ts_micros("2026-01-01T11:00:00Z"),
+            ],
+            CanonicalCol::RocAbsolute.as_str() => &[None::<f64>, Some(5.0)],
+            CanonicalCol::Roc.as_str() => &[None::<f64>, Some(0.05)],
+        )
+        .unwrap();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+
+        let events = extract_roc(&df).expect("failed to extract roc");
+
+        assert_eq!(events.len(), 1, "warm-up null row should be skipped");
+        let roc = &events[0];
+        assert_eq!(
+            roc.window_start,
+            Utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap()
+        );
+        assert_eq!(
+            roc.timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 1, 11, 0, 0).unwrap()
+        );
+        assert_eq!(roc.absolute_change, PriceDelta(5.0));
+        assert!((roc.percentage - 0.05).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_extract_trades_session_full_mapping_and_skips_nulls() {
+        let schema =
+            BatchTradesIndicator::OvernightRange(SessionWindow::us_core_session()).output_schema();
+
+        // Row 1 carries a null aggregate (`SessionVwap`) and must be skipped.
+        let df = df!(
+            CanonicalCol::Date.as_str() => &[
+                naive_date("2026-01-02"),
+                naive_date("2026-01-03")
+            ],
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-02T08:00:00Z"),
+                ts_micros("2026-01-03T08:00:00Z"),
+            ],
+            CanonicalCol::SessionHigh.as_str() => &[Some(110.0), Some(120.0)],
+            CanonicalCol::SessionLow.as_str() => &[Some(90.0), Some(95.0)],
+            CanonicalCol::SessionVolume.as_str() => &[Some(1000.0), Some(2000.0)],
+            CanonicalCol::SessionVwap.as_str() => &[Some(100.0), None::<f64>],
+        )
+        .unwrap();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+
+        let events = extract_trades_session(&df).expect("failed to extract trades session");
+
+        assert_eq!(events.len(), 1, "row with null aggregate should be skipped");
+        let session = &events[0];
+        assert_eq!(
+            session.session,
+            SessionDate(
+                Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0)
+                    .unwrap()
+                    .date_naive()
+            )
+        );
+        assert_eq!(
+            session.open_timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap()
+        );
+        assert_eq!(
+            session.close_timestamp,
+            Utc.with_ymd_and_hms(2026, 1, 2, 8, 0, 0).unwrap()
+        );
+        assert_eq!(session.high, Price(110.0));
+        assert_eq!(session.low, Price(90.0));
+        assert_eq!(session.volume, Quantity(1000.0));
+        assert_eq!(session.vwap, Price(100.0));
+    }
+
+    #[test]
+    fn test_extract_ohlcv_session_full_mapping_and_skips_nulls() {
+        let schema = BatchOhlcvIndicator::OvernightRange(SessionCfg {
+            window: SessionWindow::us_core_session(),
+            price_aggregation: AggregatedPrice::Hlc3,
+        })
+        .output_schema();
+
+        // Row 1 carries a null aggregate (`SessionLowestClose`) and must be skipped.
+        let df = df!(
+            CanonicalCol::Date.as_str() => &[
+                naive_date("2026-01-02"),
+                naive_date("2026-01-03"),
+            ],
+            CanonicalCol::OpenTimestamp.as_str() => &[
+                ts_micros("2026-01-02T00:00:00Z"),
+                ts_micros("2026-01-03T00:00:00Z"),
+            ],
+            CanonicalCol::PointInTime.as_str() => &[
+                ts_micros("2026-01-02T08:00:00Z"),
+                ts_micros("2026-01-03T08:00:00Z"),
+            ],
+            CanonicalCol::SessionHigh.as_str() => &[Some(110.0), Some(120.0)],
+            CanonicalCol::SessionLow.as_str() => &[Some(90.0), Some(95.0)],
+            CanonicalCol::SessionHighestClose.as_str() => &[Some(108.0), Some(118.0)],
+            CanonicalCol::SessionLowestClose.as_str() => &[Some(92.0), None::<f64>],
+            CanonicalCol::SessionVolume.as_str() => &[Some(1000.0), Some(2000.0)],
+            CanonicalCol::SessionVwap.as_str() => &[Some(100.0), Some(110.0)],
+        )
+        .unwrap();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+
+        let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
+
+        assert_eq!(events.len(), 1, "row with null aggregate should be skipped");
+        let session = &events[0];
+        assert_eq!(
+            session.session,
+            SessionDate(
+                Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0)
+                    .unwrap()
+                    .date_naive()
+            )
+        );
+        assert_eq!(session.high, Price(110.0));
+        assert_eq!(session.low, Price(90.0));
+        assert_eq!(session.highest_close, Price(108.0));
+        assert_eq!(session.lowest_close, Price(92.0));
+        assert_eq!(session.volume, Quantity(1000.0));
+        assert_eq!(session.vwap, Price(100.0));
+    }
+
+    #[test]
     fn test_extract_ohlcv() {
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str() => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()      => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()      => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::Open.as_str()           => &[150.0],
             CanonicalCol::High.as_str()           => &[155.0],
             CanonicalCol::Low.as_str()            => &[149.0],
             CanonicalCol::Close.as_str()          => &[152.0],
             CanonicalCol::Volume.as_str()         => &[1000.0],
             // Optionals
-            CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(152000.0)],
-            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50i64)],
+            CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(152_000.0)],
+            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50_i64)],
             CanonicalCol::TakerBuyBaseAssetVolume.as_str()  => &[Some(600.0)],
             CanonicalCol::TakerBuyQuoteAssetVolume.as_str() => &[None::<f64>],
         )
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
+        // assert_canonical_schema(
+        //     &df,
+        //     &[
+        //         CanonicalCol::OpenTimestamp.as_str(),
+        //         CanonicalCol::PointInTime.as_str(),
+        //     ],
+        // );
+        // assert_canonical_schema(
+        //     &df,
+        //     &[
+        //         CanonicalCol::OpenTimestamp.as_str(),
+        //         CanonicalCol::PointInTime.as_str(),
+        //     ],
+        // );
 
-        let events = extract_ohlcv(df).expect("failed to extract ohlcv");
+        let events = extract_ohlcv(&df).expect("failed to extract ohlcv");
 
         assert_eq!(events.len(), 1);
         let candle = &events[0];
@@ -2251,31 +2924,32 @@ mod test {
         assert_eq!(candle.volume, Quantity(1000.0));
 
         // Optional Fields
-        assert_eq!(candle.quote_asset_volume, Some(Quantity(152000.0)));
+        assert_eq!(candle.quote_asset_volume, Some(Quantity(152_000.0)));
         assert_eq!(candle.number_of_trades, Some(Count(50)));
         assert_eq!(candle.taker_buy_base_asset_volume, Some(Quantity(600.0)));
         assert_eq!(candle.taker_buy_quote_asset_volume, None);
     }
 
     #[test]
-    fn test_extract_trade() {
+    fn test_extract_trades() {
+        let schema = trades_spot_schema();
         let df = df!(
-            CanonicalCol::Timestamp.as_str()          => &[
+            CanonicalCol::TradeId.as_str()            => &[Some(12345_i64), None],
+            CanonicalCol::Price.as_str()              => &[20000.0, 20001.0],
+            CanonicalCol::Volume.as_str()             => &[0.5, 1.0], // Maps to quantity
+            CanonicalCol::QuoteAssetVolume.as_str()   => &[Some(10000.0), None],
+            CanonicalCol::PointInTime.as_str()        => &[
                 ts_micros("2026-01-01T12:00:01Z"),
                 ts_micros("2026-01-01T12:00:02Z")
             ],
-            CanonicalCol::Price.as_str()              => &[20000.0, 20001.0],
-            CanonicalCol::Volume.as_str()             => &[0.5, 1.0], // Maps to quantity
-            // Optionals
-            CanonicalCol::TradeId.as_str()            => &[Some(12345i64), None],
-            CanonicalCol::QuoteAssetVolume.as_str()   => &[Some(10000.0), None],
             CanonicalCol::IsBuyerMaker.as_str()       => &[Some(true), Some(false)],
             CanonicalCol::IsBestMatch.as_str()        => &[Some(true), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
-        let events = extract_trade(df).expect("failed to extract trade");
+        let events = extract_trades(&df).expect("failed to extract trade");
 
         assert_eq!(events.len(), 2);
 
@@ -2317,30 +2991,30 @@ mod test {
     #[test]
     fn test_extract_economic() {
         let df = df!(
-            CanonicalCol::Timestamp.as_str()            => &[
+            CanonicalCol::DataSource.as_str()           => &["investingcom", "fred"],
+            CanonicalCol::Category.as_str()             => &["employment", "inflation"],
+            CanonicalCol::PointInTime.as_str()          => &[
                 ts_micros("2026-10-01T08:30:00Z"),
                 ts_micros("2026-10-02T09:00:00Z")
             ],
-            CanonicalCol::DataSource.as_str()           => &["investingcom", "fred"],
-            CanonicalCol::Category.as_str()             => &["employment", "inflation"],
+            CanonicalCol::NewsType.as_str()             => &[Some("NFP"), None],
+            CanonicalCol::NewsTypeConfidence.as_str()   => &[Some(1.0), None],
+            CanonicalCol::NewsTypeSource.as_str()       => &[Some("manual"), None],
+            CanonicalCol::Period.as_str()               => &[Some("mom"), None],
             CanonicalCol::NewsName.as_str()             => &["Non-Farm Payrolls", "Minor Index"],
             CanonicalCol::CountryCode.as_str()          => &["US", "EZ"],
             CanonicalCol::CurrencyCode.as_str()         => &["USD", "EUR"],
-            CanonicalCol::EconomicImpact.as_str()       => &[3i64, 1i64], // 3=High, 1=Low
-
-            // Optionals
-            CanonicalCol::NewsType.as_str()             => &[Some("NFP"), None],
-            CanonicalCol::NewsTypeSource.as_str()       => &[Some("manual"), None],
-            CanonicalCol::Period.as_str()               => &[Some("mom"), None],
-            CanonicalCol::NewsTypeConfidence.as_str()   => &[Some(1.0), None],
+            CanonicalCol::EconomicImpact.as_str()       => &[3_i64, 1_i64], // 3=High, 1=Low
             CanonicalCol::Actual.as_str()               => &[Some(150.0), None],
             CanonicalCol::Forecast.as_str()             => &[Some(170.0), None],
             CanonicalCol::Previous.as_str()             => &[Some(160.0), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::Timestamp.as_str()]);
+        let schema = economic_calendar_schema();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
-        let events = extract_economic(df).expect("failed to extract economic");
+        let events = extract_economic(&df).expect("failed to extract economic");
 
         assert_eq!(events.len(), 2);
 
@@ -2393,19 +3067,16 @@ mod test {
         let n = prices.len();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => vec![ts_open; n],
-            CanonicalCol::Timestamp.as_str()       => vec![ts_close; n],
+            CanonicalCol::PointInTime.as_str()       => vec![ts_close; n],
             CanonicalCol::PriceBinStart.as_str() => prices,
             CanonicalCol::PriceBinEnd.as_str()   => prices.iter().map(|p| p + 1.0).collect::<Vec<_>>(),
             CanonicalCol::TimeSlotCount.as_str() => counts,
         )
         .unwrap();
-        with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
-        )
+        let schema = tpo_spot_schema();
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
+        df
     }
 
     #[test]
@@ -2423,7 +3094,7 @@ mod test {
             &[10, 50],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 1);
         let tpo = &profiles[0];
@@ -2465,23 +3136,19 @@ mod test {
         let t1 = ts_micros("2026-01-01T08:00:00Z");
         let t2 = ts_micros("2026-01-01T09:00:00Z");
 
+        let schema = tpo_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[t1, t2],
-            CanonicalCol::Timestamp.as_str()       => &[t1 + 1000, t2 + 1000],
+            CanonicalCol::PointInTime.as_str()       => &[t1 + 1000, t2 + 1000],
             CanonicalCol::PriceBinStart.as_str() => &[100.0, 200.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0, 201.0],
-            CanonicalCol::TimeSlotCount.as_str() => &[5i64, 10i64],
+            CanonicalCol::TimeSlotCount.as_str() => &[5_i64, 10_i64],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
-        );
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 2, "Failed to flush distinct TPO windows");
 
@@ -2501,7 +3168,7 @@ mod test {
         // SCENARIO: TPO requires 'time_slot_count'. If missing, it should fail nicely.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T08:00:00Z")],
-            CanonicalCol::Timestamp.as_str()       => &[ts_micros("2026-01-01T08:30:00Z")],
+            CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T08:30:00Z")],
             CanonicalCol::PriceBinStart.as_str() => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0],
             // "time_slot_count" is MISSING
@@ -2510,13 +3177,10 @@ mod test {
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
 
-        let result = extract_tpo(df, &default_agg());
+        let result = extract_tpo(&df, &default_agg());
 
         assert!(result.is_err());
         match result {
@@ -2539,7 +3203,7 @@ mod test {
             &[0, 10, 0],
         );
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
         let tpo = &profiles[0];
 
         assert_eq!(tpo.poc, Price(101.0));
@@ -2552,11 +3216,13 @@ mod test {
 
     #[test]
     fn test_vp_full_field_mapping() {
-        // SCENARIO: Ensure every single column, including Optionals, is mapped correctly.
-        // Also checks that 'volume' is converted to Quantity/Volume types correctly.
+        // SCENARIO: Ensure every single column, including Optionals, is mapped
+        // correctly. Also checks that 'volume' is converted to Quantity/Volume
+        // types correctly.
+        let schema = volume_profile_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()               => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()                    => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()                    => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::PriceBinStart.as_str()              => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()                => &[101.0],
             CanonicalCol::Volume.as_str()                       => &[1000.0],
@@ -2566,20 +3232,15 @@ mod test {
             CanonicalCol::QuoteAssetVolume.as_str()           => &[Some(100_000.0)],
             CanonicalCol::TakerBuyQuoteAssetVolume.as_str() => &[Some(60_000.0)],
             CanonicalCol::TakerSellQuoteAssetVolume.as_str()=> &[Some(40_000.0)],
-            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50i64)],
-            CanonicalCol::NumberOfBuyTrades.as_str()         => &[Some(30i64)],
-            CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20i64)],
+            CanonicalCol::NumberOfTrades.as_str()             => &[Some(50_i64)],
+            CanonicalCol::NumberOfBuyTrades.as_str()         => &[Some(30_i64)],
+            CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20_i64)],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
-        );
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
-        let profiles = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
 
         assert_eq!(profiles.len(), 1);
         let vp = &profiles[0];
@@ -2614,7 +3275,7 @@ mod test {
         // The extractor should handle iterators yielding None gracefully.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T09:00:00Z")],
-            CanonicalCol::Timestamp.as_str()       => &[ts_micros("2026-01-01T10:00:00Z")],
+            CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T10:00:00Z")],
             CanonicalCol::PriceBinStart.as_str() => &[100.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0],
             CanonicalCol::Volume.as_str()          => &[1000.0],
@@ -2624,13 +3285,10 @@ mod test {
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
 
-        let profiles = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
         let bin = &profiles[0].bins[0];
 
         // Ensure required fields exist
@@ -2645,33 +3303,30 @@ mod test {
 
     #[test]
     fn test_multi_window_grouping_logic() {
-        // SCENARIO: Tests the loop state machine: `if Some(ts_val) != current_window_start`.
+        // SCENARIO: Tests the loop state machine: `if Some(ts_val) !=
+        // current_window_start`.
 
         // Window 1: 09:00 (2 bins)
         // Window 2: 10:00 (1 bin)
+        let schema = tpo_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[
                 ts_micros("2026-01-01T09:00:00Z"), ts_micros("2026-01-01T09:00:00Z"),
                 ts_micros("2026-01-01T10:00:00Z")
             ],
-            CanonicalCol::Timestamp.as_str()       => &[
+            CanonicalCol::PointInTime.as_str()       => &[
                 ts_micros("2026-01-01T09:30:00Z"), ts_micros("2026-01-01T09:30:00Z"),
                 ts_micros("2026-01-01T10:30:00Z")
             ],
             CanonicalCol::PriceBinStart.as_str() => &[100.0, 101.0, 200.0],
             CanonicalCol::PriceBinEnd.as_str()   => &[101.0, 102.0, 201.0],
-            CanonicalCol::TimeSlotCount.as_str() => &[10i64, 20, 5],
+            CanonicalCol::TimeSlotCount.as_str() => &[10_i64, 20, 5],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::Timestamp.as_str(),
-            ],
-        );
+        let df = with_schema(df, &schema);
+        assert_schema_equal(&df, &schema);
 
-        let profiles = extract_tpo(df, &default_agg()).expect("failed to extract tpo");
+        let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
         assert_eq!(profiles.len(), 2, "Should have flushed 2 distinct profiles");
 
@@ -2690,21 +3345,33 @@ mod test {
     #[test]
     fn test_empty_dataframe_returns_empty_slice() {
         let df = DataFrame::empty();
-        let events = extract_economic(df.clone()).expect("failed to extract economic");
+        let events = extract_economic(&df).expect("failed to extract economic");
         assert!(events.is_empty());
-        let events = extract_ema(df.clone()).expect("failed to extract ema");
+        let events = extract_ema(&df).expect("failed to extract ema");
         assert!(events.is_empty());
-        let events = extract_ohlcv(df.clone()).expect("failed to extract ohlcv");
+        let events = extract_ohlcv(&df).expect("failed to extract ohlcv");
         assert!(events.is_empty());
-        let events = extract_rsi(df.clone()).expect("failed to extract rsi");
+        let events = extract_rsi(&df).expect("failed to extract rsi");
         assert!(events.is_empty());
-        let events = extract_sma(df.clone()).expect("failed to extract sma");
+        let events = extract_sma(&df).expect("failed to extract sma");
         assert!(events.is_empty());
-        let events = extract_trade(df.clone()).expect("failed to extract trade");
+        let events = extract_trades(&df).expect("failed to extract trade");
         assert!(events.is_empty());
-        let events = extract_tpo(df.clone(), &default_agg()).expect("failed to extract tpo");
+        let events = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
         assert!(events.is_empty());
-        let events = extract_vp(df, &default_agg()).expect("failed to extract vp");
+        let events = extract_vp(&df, &default_agg()).expect("failed to extract vp");
+        assert!(events.is_empty());
+        let events = extract_atr(&df).expect("failed to extract atr");
+        assert!(events.is_empty());
+        let events = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
+        assert!(events.is_empty());
+        let events = extract_trades_vwap(&df).expect("failed to extract trades vwap");
+        assert!(events.is_empty());
+        let events = extract_roc(&df).expect("failed to extract roc");
+        assert!(events.is_empty());
+        let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
+        assert!(events.is_empty());
+        let events = extract_trades_session(&df).expect("failed to extract trades session");
         assert!(events.is_empty());
     }
 }

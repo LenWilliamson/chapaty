@@ -1,4 +1,3 @@
-pub mod batch_indicator;
 pub mod common;
 pub mod domain;
 pub mod episode;

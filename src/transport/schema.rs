@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use polars::prelude::{DataType, Field, PlSmallStr, Schema, SchemaRef, TimeUnit, TimeZone};
-use strum::{Display, EnumString, IntoStaticStr};
+use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
 /// The standardized vocabulary for all Chapaty market data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, IntoStaticStr, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum CanonicalCol {
     // ========================================================================
@@ -20,12 +20,15 @@ pub enum CanonicalCol {
     // ========================================================================
     // Time Definitions
     // ========================================================================
+    /// The date of the data point.
+    Date,
+
     /// The primary index timestamp.
     /// - OHLCV: Close time (When the candle is complete).
     /// - Trade: Trade time.
     /// - TPO/VP: Window End time (When the profile is complete).
     /// - Economic Events: Event Timestamp
-    Timestamp,
+    PointInTime,
 
     /// The start time of an interval.
     /// - OHLCV: Open time.
@@ -92,9 +95,9 @@ pub enum CanonicalCol {
     Category,
     /// Specific event type (e.g., "CPI", "NFP").
     NewsType,
-    /// Confidence score (0.0 - 1.0) for the inferred NewsType.
+    /// Confidence score (0.0 - 1.0) for the inferred `NewsType`.
     NewsTypeConfidence,
-    /// Method used to classify the NewsType (e.g., "ml", "rule").
+    /// Method used to classify the `NewsType` (e.g., "ml", "rule").
     NewsTypeSource,
     /// Full display name of the event.
     NewsName,
@@ -108,6 +111,33 @@ pub enum CanonicalCol {
     Forecast,
     /// The value from the previous period.
     Previous,
+
+    // ========================================================================
+    // Derived Technical Indicators
+    // ========================================================================
+
+    // === Momentum ===
+    /// Rate of Change, expressed as a percentage.
+    Roc,
+    /// Absolute price change over the Rate of Change lookback.
+    RocAbsolute,
+
+    // === Session / Overnight Range ===
+    /// Anchor date identifying the session a row belongs to (null when outside
+    /// any session).
+    SessionDate,
+    /// Running session high.
+    SessionHigh,
+    /// Running session low.
+    SessionLow,
+    /// Running session highest close.
+    SessionHighestClose,
+    /// Running session lowest close.
+    SessionLowestClose,
+    /// Running session cumulative volume.
+    SessionVolume,
+    /// Running session VWAP.
+    SessionVwap,
 }
 
 impl From<CanonicalCol> for PlSmallStr {
@@ -117,15 +147,15 @@ impl From<CanonicalCol> for PlSmallStr {
 }
 
 impl CanonicalCol {
-    pub fn name(&self) -> PlSmallStr {
-        (*self).into()
-    }
-
-    pub fn as_str(&self) -> &'static str {
+    pub fn name(self) -> PlSmallStr {
         self.into()
     }
 
-    pub fn dtype(&self) -> DataType {
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
+
+    pub const fn dtype(self) -> DataType {
         match self {
             // Strings
             Self::DataSource
@@ -162,10 +192,21 @@ impl CanonicalCol {
             | Self::Actual
             | Self::Forecast
             | Self::Previous
-            | Self::NewsTypeConfidence => DataType::Float64,
+            | Self::NewsTypeConfidence
+            | Self::Roc
+            | Self::RocAbsolute
+            | Self::SessionHigh
+            | Self::SessionLow
+            | Self::SessionHighestClose
+            | Self::SessionLowestClose
+            | Self::SessionVolume
+            | Self::SessionVwap => DataType::Float64,
+
+            // Date (calendar day, no time component)
+            Self::Date | Self::SessionDate => DataType::Date,
 
             // Time
-            Self::Timestamp | Self::OpenTimestamp => {
+            Self::PointInTime | Self::OpenTimestamp => {
                 DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC))
             }
 
@@ -174,7 +215,7 @@ impl CanonicalCol {
         }
     }
 
-    pub fn field(&self) -> Field {
+    pub fn field(self) -> Field {
         Field::new(self.name(), self.dtype())
     }
 }
@@ -187,7 +228,7 @@ pub fn ohlcv_future_schema() -> SchemaRef {
         CanonicalCol::Low.field(),
         CanonicalCol::Close.field(),
         CanonicalCol::Volume.field(),
-        CanonicalCol::Timestamp.field(), // CloseTimestamp
+        CanonicalCol::PointInTime.field(), // CloseTimestamp
     ]);
 
     Arc::new(s)
@@ -201,7 +242,7 @@ pub fn ohlcv_spot_schema() -> SchemaRef {
         CanonicalCol::Low.field(),
         CanonicalCol::Close.field(),
         CanonicalCol::Volume.field(),
-        CanonicalCol::Timestamp.field(), // CloseTimestamp
+        CanonicalCol::PointInTime.field(), // CloseTimestamp
         CanonicalCol::QuoteAssetVolume.field(),
         CanonicalCol::NumberOfTrades.field(),
         CanonicalCol::TakerBuyBaseAssetVolume.field(),
@@ -216,8 +257,8 @@ pub fn trades_spot_schema() -> SchemaRef {
         CanonicalCol::TradeId.field(),
         CanonicalCol::Price.field(),
         CanonicalCol::Volume.field(),           // Maps to 'quantity'
-        CanonicalCol::QuoteAssetVolume.field(), // Maps to 'quote_quantity'
-        CanonicalCol::Timestamp.field(),        // Maps to 'trade_timestamp'
+        CanonicalCol::QuoteAssetVolume.field(), // Maps to 'quote_asset_quantity'
+        CanonicalCol::PointInTime.field(),      // Maps to 'trade_timestamp'
         CanonicalCol::IsBuyerMaker.field(),
         CanonicalCol::IsBestMatch.field(),
     ]);
@@ -229,7 +270,7 @@ pub fn volume_profile_spot_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // Profile Bins
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -253,7 +294,7 @@ pub fn tpo_spot_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // TPO Data
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -266,7 +307,7 @@ pub fn tpo_future_schema() -> SchemaRef {
     let s = Schema::from_iter([
         // Window Metadata
         CanonicalCol::OpenTimestamp.field(), // window_start
-        CanonicalCol::Timestamp.field(),     // window_end
+        CanonicalCol::PointInTime.field(),   // window_end
         // TPO Data
         CanonicalCol::PriceBinStart.field(),
         CanonicalCol::PriceBinEnd.field(),
@@ -288,7 +329,7 @@ pub fn economic_calendar_schema() -> SchemaRef {
         CanonicalCol::DataSource.field(),
         CanonicalCol::Category.field(),
         // Primary Time Index (event_timestamp)
-        CanonicalCol::Timestamp.field(),
+        CanonicalCol::PointInTime.field(),
         // Classification Metadata
         CanonicalCol::NewsType.field(),
         CanonicalCol::NewsTypeConfidence.field(), // maps to news_type_confidence

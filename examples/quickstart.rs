@@ -1,7 +1,8 @@
+use std::{env, fs, path::Path, sync::Arc, time::Instant};
+
 use anyhow::{Context, Result};
 use chapaty::prelude::*;
 use serde::Serialize;
-use std::{env, fs, path::Path, sync::Arc, time::Instant};
 use time::macros::format_description;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -14,9 +15,9 @@ const REPORTS_SUBDIR: &str = "examples/reports/quickstart";
 // ================================================================================================
 // No-Op Agent
 //
-// A placeholder agent that never trades. It exists only to demonstrate the evaluation API
-// (single-agent journals + parallel leaderboards) and the logging setup, without bundling any
-// real strategy logic into the core crate.
+// A placeholder agent that never trades. It exists only to demonstrate the
+// evaluation API (single-agent journals + parallel leaderboards) and the
+// logging setup, without bundling any real strategy logic into the core crate.
 //
 // For real, ready-to-run strategies, see chapaty-zoo:
 // https://github.com/LenWilliamson/chapaty-zoo
@@ -44,7 +45,8 @@ impl Agent for NoOpAgent {
     fn reset(&mut self) {}
 
     // `act` is called millions of times.
-    // Keep logging here at `debug` so it stays silent under the default `info` filter.
+    // Keep logging here at `debug` so it stays silent under the default `info`
+    // filter.
     #[tracing::instrument(skip_all)]
     fn act(&mut self, _obs: Observation) -> ChapatyResult<Actions> {
         debug!("Returning no actions, guaranteeing 0 trades");
@@ -58,7 +60,7 @@ impl Agent for NoOpAgent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _guard = init_tracing()?;
+    let guard = init_tracing()?;
     info!("Starting evaluation example...");
 
     let build_start = Instant::now();
@@ -105,7 +107,7 @@ async fn main() -> Result<()> {
     );
 
     // The WorkerGuard ensures all buffered logs are flushed when dropped.
-    drop(_guard);
+    drop(guard);
     Ok(())
 }
 
@@ -123,9 +125,14 @@ async fn environment() -> Result<Environment> {
 // ================================================================================================
 // Tracing Configuration
 //
-// JSON to stdout in containers, or to a timestamped file under the OS state dir locally.
+// JSON to stdout in containers, or to a timestamped file under the OS state dir
+// locally.
 // ================================================================================================
 
+#[expect(
+    clippy::expect_used,
+    reason = "the example assumes a standard environment with a discoverable home directory"
+)]
 fn init_tracing() -> Result<Option<WorkerGuard>> {
     let app_name = "chapaty";
 
@@ -149,17 +156,18 @@ fn init_tracing() -> Result<Option<WorkerGuard>> {
         Ok(None)
     } else {
         // Local mode: log to file
-        let log_dir = dirs::state_dir()
-            .map(|mut p| {
-                p.push(app_name);
-                p.push("logs");
-                p
-            })
-            .unwrap_or_else(|| {
+        let log_dir = dirs::state_dir().map_or_else(
+            || {
                 let mut home = dirs::home_dir().expect("Failed to find home directory");
                 home.push(format!(".local/state/{app_name}/logs"));
                 home
-            });
+            },
+            |mut p| {
+                p.push(app_name);
+                p.push("logs");
+                p
+            },
+        );
         fs::create_dir_all(&log_dir)?;
 
         let timestamp = time::OffsetDateTime::now_utc()

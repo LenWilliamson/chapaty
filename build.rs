@@ -1,7 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // MAINTAINER NOTE:
     // This build script is disabled by default to allow users to build the crate
-    // without needing `protoc` installed or the external `chapaty-bq-export-proto` repo.
+    // without needing `protoc` installed or the external `chapaty-bq-export-proto`
+    // repo.
     //
     // The generated Rust code is committed to `src/proto_gen`.
     //
@@ -14,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let proto_root_path = std::fs::canonicalize("../chapaty-bq-export-proto/proto")?;
-    let proto_root = proto_root_path.to_str().ok_or("Invalid path")?.to_string();
+    let proto_root = proto_root_path.to_str().ok_or("Invalid path")?.to_owned();
 
     let proto_files = [
         format!("{proto_root}/chapaty/bq_exporter/v1/service.proto"),
@@ -29,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for proto_file in &proto_files {
-        println!("cargo:rerun-if-changed={}", proto_file);
+        println!("cargo:rerun-if-changed={proto_file}");
     }
 
     tonic_prost_build::configure()
@@ -38,10 +39,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/proto_gen")
         .compile_protos(&proto_files, &[proto_root])?;
 
-    std::process::Command::new("cargo")
+    // Formatting the generated protobuf code is a best-effort cosmetic step:
+    // surface failures as build warnings rather than silently discarding the
+    // command's status.
+    match std::process::Command::new("cargo")
         .args(["fmt", "--", "src/proto_gen/*.rs"])
         .status()
-        .ok();
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => println!("cargo:warning=rustfmt on generated protos exited with {status}"),
+        Err(e) => println!("cargo:warning=failed to run rustfmt on generated protos: {e}"),
+    }
 
     Ok(())
 }

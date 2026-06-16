@@ -4,21 +4,20 @@ use ndarray::Array;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
-use crate::{
-    error::{ChapatyResult, DataError},
-    impl_add_sub_mul_div_primitive, impl_from_primitive,
-};
+use crate::error::{ChapatyResult, DataError};
 
 pub mod trading;
 
 /// Represents a reward value in whole dollars.
 ///
-/// This struct wraps an `i64` to avoid floating-point precision issues, ensuring
-/// exact comparisons and efficient operations in financial calculations.
+/// This struct wraps an `i64` to avoid floating-point precision issues,
+/// ensuring exact comparisons and efficient operations in financial
+/// calculations.
 ///
 /// # Rationale
 ///
-/// - Using `i64` avoids floating-point inaccuracies (e.g., `0.1 + 0.2 != 0.3` in `f64`).
+/// - Using `i64` avoids floating-point inaccuracies (e.g., `0.1 + 0.2 != 0.3`
+///   in `f64`).
 /// - `i64` ensures deterministic ordering and equality comparisons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Reward(pub i64);
@@ -53,7 +52,8 @@ impl From<InvalidActionPenalty> for Reward {
 ///
 /// # Lifecycle
 ///
-/// The environment follows a finite state machine (FSM) with the following valid transitions. Other transitions return an error.
+/// The environment follows a finite state machine (FSM) with the following
+/// valid transitions. Other transitions return an error.
 ///
 /// ```md
 /// Current State (optional step context)           | Action  | Next State  | Notes
@@ -71,7 +71,8 @@ pub enum EnvStatus {
 
     /// An episode is active and the environment is ready for `step()` calls.
     ///
-    /// The attached `Episode` value tracks the current episode number, starting from 0.
+    /// The attached `Episode` value tracks the current episode number, starting
+    /// from 0.
     Running,
 
     /// The active episode has reached a terminal state.
@@ -84,19 +85,23 @@ pub enum EnvStatus {
 }
 
 impl EnvStatus {
-    pub fn is_ready(&self) -> bool {
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
     }
 
-    pub fn is_running(&self) -> bool {
+    #[must_use]
+    pub const fn is_running(&self) -> bool {
         matches!(self, Self::Running)
     }
 
-    pub fn is_episode_done(&self) -> bool {
+    #[must_use]
+    pub const fn is_episode_done(&self) -> bool {
         matches!(self, Self::EpisodeDone)
     }
 
-    pub fn is_done(&self) -> bool {
+    #[must_use]
+    pub const fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
 }
@@ -113,19 +118,23 @@ pub enum StepOutcome {
 }
 
 impl StepOutcome {
-    pub fn is_done(&self) -> bool {
+    #[must_use]
+    pub const fn is_done(&self) -> bool {
         matches!(self, Self::Done)
     }
 
-    pub fn is_terminated(&self) -> bool {
+    #[must_use]
+    pub const fn is_terminated(&self) -> bool {
         matches!(self, Self::Terminated)
     }
 
-    pub fn is_truncated(&self) -> bool {
+    #[must_use]
+    pub const fn is_truncated(&self) -> bool {
         matches!(self, Self::Truncated)
     }
 
-    pub fn is_terminal(&self) -> bool {
+    #[must_use]
+    pub const fn is_terminal(&self) -> bool {
         self.is_terminated() || self.is_truncated()
     }
 }
@@ -142,18 +151,25 @@ pub struct GridAxis {
     end: f64,
     step: f64,
     /// Number of decimal places to round to, inferred from the `step` string.
-    precision: u32,
+    precision: i32,
 }
 
 impl GridAxis {
     /// Create a new axis from string parameters.
-    /// Returns a Result instead of panicking.
+    ///
+    /// # Errors
+    /// Returns an error when any bound/step string cannot be parsed as `f64`.
     pub fn new(start: &str, end: &str, step: &str) -> ChapatyResult<Self> {
         let start_f = f64::from_str(start).map_err(DataError::from)?;
         let end_f = f64::from_str(end).map_err(DataError::from)?;
         let step_f = f64::from_str(step).map_err(DataError::from)?;
 
-        let precision = step.split('.').nth(1).map(|s| s.len() as u32).unwrap_or(0);
+        let precision = step
+            .split('.')
+            .nth(1)
+            .map(|s| i32::try_from(s.len()).map_err(DataError::from))
+            .transpose()?
+            .unwrap_or(0);
 
         Ok(Self {
             start: start_f,
@@ -163,8 +179,9 @@ impl GridAxis {
         })
     }
 
+    #[must_use]
     pub fn generate(&self) -> Vec<f64> {
-        let factor = 10_f64.powi(self.precision as i32);
+        let factor = 10_f64.powi(self.precision);
 
         Array::range(self.start, self.end, self.step)
             .iter()
@@ -177,12 +194,15 @@ impl GridAxis {
 //  Core Agent Definitions
 // ============================================================================
 
-/// Represents the unique identifier of an agent, used for tracking actions in reports.
-/// This enum is designed to help identify which agent performed a specific action during
-/// the backtesting or trading process. Each variant contains a `String` that uniquely
-/// identifies the agent for reporting purposes.
+/// Represents the unique identifier of an agent, used for tracking actions in
+/// reports.
 ///
-/// The `String` can represent custom agent names or predefined types (e.g., "NewsCounter").
+/// This enum is designed to help identify which agent performed a specific
+/// action during the backtesting or trading process. Each variant contains a
+/// `String` that uniquely identifies the agent for reporting purposes.
+///
+/// The `String` can represent custom agent names or predefined types (e.g.,
+/// "`NewsCounter`").
 #[derive(
     Clone,
     Debug,

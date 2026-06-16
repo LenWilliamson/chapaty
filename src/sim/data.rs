@@ -5,11 +5,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::event::{
-        EconomicCalendarId, EmaId, MarketEvent, MarketId, OhlcvId, RsiId, SmaId, StreamId, TpoId,
-        TradesId, VolumeProfileId,
+        EconomicCalendarId, MarketEvent, MarketId, OhlcvId, StreamId, TpoId, TradesId,
+        VolumeProfileId,
     },
-    error::{ChapatyResult, IoError, SystemError},
+    error::{ChapatyResult, DataError, IoError, SystemError},
     gym::trading::config::EnvConfig,
+    indicator::batch::event::{
+        AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
+        TradesVwapId,
+    },
     io::{IoConfig, SerdeFormat},
     sorted_vec_map::SortedVecMap,
 };
@@ -23,9 +27,15 @@ pub type TpoEventMap = EventMap<TpoId>;
 pub type EmaEventMap = EventMap<EmaId>;
 pub type SmaEventMap = EventMap<SmaId>;
 pub type RsiEventMap = EventMap<RsiId>;
+pub type TradesVwapEventMap = EventMap<TradesVwapId>;
+pub type OhlcvVwapEventMap = EventMap<OhlcvVwapId>;
+pub type TradesSessionEventMap = EventMap<TradesSessionId>;
+pub type OhlcvSessionEventMap = EventMap<OhlcvSessionId>;
+pub type AtrEventMap = EventMap<AtrId>;
+pub type RocEventMap = EventMap<RocId>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Streams {
+pub struct Streams {
     ohlcv: OhlcvEventMap,
     trade: TradeEventMap,
     economic_cal: EconomicCalEventMap,
@@ -34,6 +44,13 @@ pub(crate) struct Streams {
     ema: EmaEventMap,
     sma: SmaEventMap,
     rsi: RsiEventMap,
+    // IDIOMATIC SORTING ???
+    trades_vwap: TradesVwapEventMap,
+    ohlcv_vwap: OhlcvVwapEventMap,
+    trades_session: TradesSessionEventMap,
+    ohlcv_session: OhlcvSessionEventMap,
+    atr: AtrEventMap,
+    roc: RocEventMap,
 }
 
 impl Default for Streams {
@@ -47,6 +64,12 @@ impl Default for Streams {
             ema: EmaEventMap::new(),
             sma: SmaEventMap::new(),
             rsi: RsiEventMap::new(),
+            trades_vwap: TradesVwapEventMap::new(),
+            ohlcv_vwap: OhlcvVwapEventMap::new(),
+            trades_session: TradesSessionEventMap::new(),
+            ohlcv_session: OhlcvSessionEventMap::new(),
+            atr: AtrEventMap::new(),
+            roc: RocEventMap::new(),
         }
     }
 }
@@ -89,12 +112,46 @@ impl Streams {
     pub(crate) fn with_rsi(self, rsi: RsiEventMap) -> Self {
         Self { rsi, ..self }
     }
+
+    pub(crate) fn with_trades_vwap(self, trades_vwap: TradesVwapEventMap) -> Self {
+        Self {
+            trades_vwap,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_ohlcv_vwap(self, ohlcv_vwap: OhlcvVwapEventMap) -> Self {
+        Self { ohlcv_vwap, ..self }
+    }
+
+    pub(crate) fn with_trades_session(self, trades_session: TradesSessionEventMap) -> Self {
+        Self {
+            trades_session,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_ohlcv_session(self, ohlcv_session: OhlcvSessionEventMap) -> Self {
+        Self {
+            ohlcv_session,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_atr(self, atr: AtrEventMap) -> Self {
+        Self { atr, ..self }
+    }
+
+    pub(crate) fn with_roc(self, roc: RocEventMap) -> Self {
+        Self { roc, ..self }
+    }
 }
 
 impl Streams {
     /// Returns a unified list of all data streams as trait objects.
-    /// This allows generic iteration over "Time" without worrying about the underlying Types.
-    fn as_array(&self) -> [&dyn StreamTimeInfo; 8] {
+    /// This allows generic iteration over "Time" without worrying about the
+    /// underlying Types.
+    fn as_array(&self) -> [&dyn StreamTimeInfo; 14] {
         [
             &self.ohlcv,
             &self.trade,
@@ -104,6 +161,12 @@ impl Streams {
             &self.ema,
             &self.sma,
             &self.rsi,
+            &self.trades_vwap,
+            &self.ohlcv_vwap,
+            &self.trades_session,
+            &self.ohlcv_session,
+            &self.atr,
+            &self.roc,
         ]
     }
 }
@@ -118,74 +181,104 @@ pub struct SimulationData {
 }
 
 impl SimulationData {
-    pub fn ohlcv(&self) -> &OhlcvEventMap {
+    pub const fn ohlcv(&self) -> &OhlcvEventMap {
         &self.streams.ohlcv
     }
 
-    pub fn trade(&self) -> &TradeEventMap {
+    pub const fn trade(&self) -> &TradeEventMap {
         &self.streams.trade
     }
 
-    pub fn economic_cal(&self) -> &EconomicCalEventMap {
+    pub const fn economic_cal(&self) -> &EconomicCalEventMap {
         &self.streams.economic_cal
     }
 
-    pub fn volume_profile(&self) -> &VolumeProfileEventMap {
+    pub const fn volume_profile(&self) -> &VolumeProfileEventMap {
         &self.streams.volume_profile
     }
 
-    pub fn tpo(&self) -> &TpoEventMap {
+    pub const fn tpo(&self) -> &TpoEventMap {
         &self.streams.tpo
     }
 
-    pub fn ema(&self) -> &EmaEventMap {
+    pub const fn ema(&self) -> &EmaEventMap {
         &self.streams.ema
     }
 
-    pub fn sma(&self) -> &SmaEventMap {
+    pub const fn sma(&self) -> &SmaEventMap {
         &self.streams.sma
     }
 
-    pub fn rsi(&self) -> &RsiEventMap {
+    pub const fn rsi(&self) -> &RsiEventMap {
         &self.streams.rsi
     }
 
+    pub const fn trades_vwap(&self) -> &TradesVwapEventMap {
+        &self.streams.trades_vwap
+    }
+
+    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapEventMap {
+        &self.streams.ohlcv_vwap
+    }
+
+    pub const fn trades_session(&self) -> &TradesSessionEventMap {
+        &self.streams.trades_session
+    }
+
+    pub const fn ohlcv_session(&self) -> &OhlcvSessionEventMap {
+        &self.streams.ohlcv_session
+    }
+
+    pub const fn atr(&self) -> &AtrEventMap {
+        &self.streams.atr
+    }
+
+    pub const fn roc(&self) -> &RocEventMap {
+        &self.streams.roc
+    }
+
     pub fn market_ids(&self) -> Arc<[MarketId]> {
-        self.market_ids.clone()
+        Arc::clone(&self.market_ids)
     }
 
     /// Returns the absolute earliest moment any data becomes available.
-    /// Use this to initialize the global clock at the very start of the simulation.
-    pub fn global_availability_start(&self) -> DateTime<Utc> {
+    /// Use this to initialize the global clock at the very start of the
+    /// simulation.
+    pub const fn global_availability_start(&self) -> DateTime<Utc> {
         self.global_availability_start
     }
 
-    /// Returns the absolute earliest moment any market activity begins (Window Open).
+    /// Returns the absolute earliest moment any market activity begins (Window
+    /// Open).
     ///
-    /// Use this to initialize the Simulation's internal clock or "Episode" tracking.
-    pub fn global_open_start(&self) -> DateTime<Utc> {
+    /// Use this to initialize the Simulation's internal clock or "Episode"
+    /// tracking.
+    pub const fn global_open_start(&self) -> DateTime<Utc> {
         self.global_open_start
     }
 }
 
 impl SimulationData {
-    /// Reads and deserializes SimulationData from a given storage location.
+    /// Reads and deserializes `SimulationData` from a given storage location.
     ///
     /// # Cache Behavior
     ///
-    /// This function attempts to read cached simulation data based on the hash derived from
-    /// `env_cfg`. If the file doesn't exist or deserialization fails, it returns an error
-    /// that should typically be handled as a **cache miss**.
+    /// This function attempts to read cached simulation data based on the hash
+    /// derived from `env_cfg`. If the file doesn't exist or deserialization
+    /// fails, it returns an error that should typically be handled as a
+    /// **cache miss**.
     ///
     /// # Important Limitations
     ///
     /// **Schema-less formats (Postcard, Pickle) have no versioning:**
-    /// - If the `SimulationData` struct definition changes between writes and reads,
-    ///   deserialization will fail or produce corrupt data
+    /// - If the `SimulationData` struct definition changes between writes and
+    ///   reads, deserialization will fail or produce corrupt data
     /// - The hash is based on `EnvConfig`, not on the struct schema
-    /// - **Cache misses can occur even with identical `EnvConfig` if the code changed**
+    /// - **Cache misses can occur even with identical `EnvConfig` if the code
+    ///   changed**
     ///
-    /// This is a convenience caching mechanism, not a production-grade solution.
+    /// This is a convenience caching mechanism, not a production-grade
+    /// solution.
     ///
     /// # Returns
     ///
@@ -197,8 +290,9 @@ impl SimulationData {
     /// # Errors
     ///
     /// This function returns an error on cache miss or deserialization failure.
-    /// **These errors should typically be caught and treated as cache misses** rather
-    /// than fatal errors, allowing the system to regenerate the data.
+    /// **These errors should typically be caught and treated as cache misses**
+    /// rather than fatal errors, allowing the system to regenerate the
+    /// data.
     #[tracing::instrument(skip(io_cfg, env_cfg), fields(format = ?io_cfg.format))]
     pub(crate) async fn read(env_cfg: &EnvConfig, io_cfg: &IoConfig<'_>) -> ChapatyResult<Self> {
         let IoConfig {
@@ -208,10 +302,10 @@ impl SimulationData {
             file_stem: custom_file_stem,
         } = io_cfg;
         let hash = env_cfg.hash()?;
-        let filename = match custom_file_stem {
-            Some(stem) => format!("{stem}.{format}"),
-            None => format!("{hash}.{format}"),
-        };
+        let filename = custom_file_stem.as_ref().map_or_else(
+            || format!("{hash}.{format}"),
+            |stem| format!("{stem}.{format}"),
+        );
 
         tracing::debug!(
             filename = %filename,
@@ -235,7 +329,8 @@ impl SimulationData {
         let result = tokio::task::spawn_blocking(move || match format {
             SerdeFormat::Postcard => {
                 const MB: u64 = 1024 * 1024;
-                let capacity = file_size.unwrap_or(100 * MB) as usize;
+                let capacity =
+                    usize::try_from(file_size.unwrap_or(100 * MB)).map_err(DataError::from)?;
                 let mut data = Vec::with_capacity(capacity);
 
                 reader
@@ -265,11 +360,12 @@ impl SimulationData {
         result
     }
 
-    /// Serializes and writes the SimulationData to a given storage location.
+    /// Serializes and writes the `SimulationData` to a given storage location.
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` on successful write, or an error if serialization or I/O fails.
+    /// Returns `Ok(())` on successful write, or an error if serialization or
+    /// I/O fails.
     #[tracing::instrument(skip(self, cfg), fields(hash = %self.hash, format = ?cfg.format))]
     pub(crate) async fn write(self: Arc<Self>, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
         let IoConfig {
@@ -278,10 +374,10 @@ impl SimulationData {
             buffer_size,
             file_stem: custom_file_stem,
         } = cfg;
-        let filename = match custom_file_stem {
-            Some(name) => format!("{name}.{format}"),
-            None => format!("{}.{format}", self.hash),
-        };
+        let filename = custom_file_stem.as_ref().map_or_else(
+            || format!("{}.{format}", self.hash),
+            |name| format!("{name}.{format}"),
+        );
 
         tracing::debug!(
             filename = %filename,
@@ -297,16 +393,17 @@ impl SimulationData {
                     .map_err(|e| IoError::WriteFailed(e.to_string()).into()),
             };
 
-            if res.is_ok() {
-                let _ = writer.flush();
-            }
-            res
+            res.and_then(|()| {
+                writer
+                    .flush()
+                    .map_err(|e| IoError::WriteFailed(e.to_string()).into())
+            })
         })
         .await
         .map_err(|e| SystemError::Generic(e.to_string()))?;
 
         match &result {
-            Ok(_) => tracing::info!(
+            Ok(()) => tracing::info!(
                 filename = %filename,
                 "Successfully wrote simulation data"
             ),
@@ -320,8 +417,9 @@ impl SimulationData {
         result
     }
 
-    /// Estimates the maximum required capacity for time-series allocations (like Equity Curves)
-    /// by finding the longest single data stream in the simulation.
+    /// Estimates the maximum required capacity for time-series allocations
+    /// (like Equity Curves) by finding the longest single data stream in
+    /// the simulation.
     pub(crate) fn max_capacity_hint(&self) -> usize {
         self.streams
             .as_array()
@@ -334,7 +432,8 @@ impl SimulationData {
 
 /// Object-safe trait for querying time properties of a data stream.
 pub trait StreamTimeInfo {
-    /// The absolute earliest point in time any data becomes immutable and available.
+    /// The absolute earliest point in time any data becomes immutable and
+    /// available.
     fn min_availability(&self) -> Option<DateTime<Utc>>;
 
     /// The absolute earliest timestamp any data window opens.
@@ -370,16 +469,16 @@ impl<S: StreamId> StreamTimeInfo for EventMap<S> {
 // SimulationData Builder
 // ================================================================================================
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct SimulationDataBuilder {
+pub struct SimulationDataBuilder {
     streams: Streams,
 }
 
 impl SimulationDataBuilder {
-    pub(crate) fn new(streams: Streams) -> Self {
+    pub(crate) const fn new(streams: Streams) -> Self {
         Self { streams }
     }
 
-    pub(crate) fn build(self, env_cfg: EnvConfig) -> ChapatyResult<SimulationData> {
+    pub(crate) fn build(self, env_cfg: &EnvConfig) -> ChapatyResult<SimulationData> {
         let hash = env_cfg.hash()?;
         let global_availability_start = self.global_availability_start();
         let global_open_start = self.global_open_start();
@@ -397,7 +496,8 @@ impl SimulationDataBuilder {
 
 impl SimulationDataBuilder {
     /// Returns the absolute earliest moment any data becomes available.
-    /// Use this to initialize the global clock at the very start of the simulation.
+    /// Use this to initialize the global clock at the very start of the
+    /// simulation.
     fn global_availability_start(&self) -> DateTime<Utc> {
         self.streams
             .as_array()
@@ -407,9 +507,11 @@ impl SimulationDataBuilder {
             .unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
 
-    /// Returns the absolute earliest moment any market activity begins (Window Open).
+    /// Returns the absolute earliest moment any market activity begins (Window
+    /// Open).
     ///
-    /// Use this to initialize the Simulation's internal clock or "Episode" tracking.
+    /// Use this to initialize the Simulation's internal clock or "Episode"
+    /// tracking.
     fn global_open_start(&self) -> DateTime<Utc> {
         self.streams
             .as_array()
@@ -419,7 +521,7 @@ impl SimulationDataBuilder {
             .unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
 
-    /// Returns a deterministic (sorted) list of unique MarketIds.
+    /// Returns a deterministic (sorted) list of unique `MarketIds`.
     fn collect_sorted_market_ids(&self) -> Vec<MarketId> {
         let mut unique_markets = HashSet::new();
 
@@ -440,6 +542,11 @@ impl SimulationDataBuilder {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use super::*;
     use crate::{
         DataSource, SelfHostedApi, StorageLocation,
@@ -703,7 +810,7 @@ mod tests {
     // Postcard Serialization Roundtrip
     // ============================================================================================
 
-    /// Creates a minimal EnvConfig for testing serialization.
+    /// Creates a minimal `EnvConfig` for testing serialization.
     fn make_test_env_config() -> EnvConfig {
         // Minimal config - just needs to produce a consistent hash
         EnvConfig::default()
@@ -737,8 +844,9 @@ mod tests {
             )
     }
 
-    /// Creates SimulationData with some test OHLCV and economic calendar events.
-    fn make_test_simulation_data(env_cfg: EnvConfig) -> SimulationData {
+    /// Creates `SimulationData` with some test OHLCV and economic calendar
+    /// events.
+    fn make_test_simulation_data(env_cfg: &EnvConfig) -> SimulationData {
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
         let ohlcv_id = make_ohlcv_id(symbol);
 
@@ -770,7 +878,7 @@ mod tests {
     async fn file_based_roundtrip_succeeds() {
         // 1. Create test data
         let env_cfg = make_test_env_config();
-        let sim_data = Arc::new(make_test_simulation_data(env_cfg.clone()));
+        let sim_data = Arc::new(make_test_simulation_data(&env_cfg));
 
         // 2. Set up temp directory for cache
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache");
@@ -778,8 +886,7 @@ mod tests {
         let io_cfg = IoConfig::new(storage);
 
         // 3. Write to file using SimulationData::write()
-        sim_data
-            .clone()
+        Arc::clone(&sim_data)
             .write(&io_cfg)
             .await
             .expect("write() failed");
@@ -788,8 +895,9 @@ mod tests {
         let cache_path = temp_dir.join(format!("{hash}.postcard"));
 
         assert!(cache_path.exists(), "Cache file was not created");
-        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get file metadata").len();
-        // println!("Cache file written: {} ({} bytes)", cache_path.display(), file_size);
+        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get file
+        // metadata").len(); println!("Cache file written: {} ({} bytes)",
+        // cache_path.display(), file_size);
 
         // 4. Read back using SimulationData::read()
         let loaded = SimulationData::read(&env_cfg, &io_cfg)
@@ -819,7 +927,7 @@ mod tests {
 
         // 1. Create test data
         let env_cfg = make_test_env_config();
-        let sim_data = Arc::new(make_test_simulation_data(env_cfg.clone()));
+        let sim_data = Arc::new(make_test_simulation_data(&env_cfg));
 
         // 2. Set up temp directory with a custom file stem
         let temp_dir = std::env::temp_dir().join("chapaty_test_cache_custom");
@@ -827,8 +935,7 @@ mod tests {
         let io_cfg = IoConfig::new(storage).with_file_stem(CUSTOM_NAME);
 
         // 3. Write using the custom filename
-        sim_data
-            .clone()
+        Arc::clone(&sim_data)
             .write(&io_cfg)
             .await
             .expect("write() failed");

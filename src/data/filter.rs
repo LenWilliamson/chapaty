@@ -1,7 +1,9 @@
-use crate::error::{ChapatyResult, EnvError};
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
+
+use crate::error::{ChapatyResult, EnvError};
 
 /// Configuration for filtering market data based on time and economic events.
 ///
@@ -43,24 +45,28 @@ pub struct FilterConfig {
     /// Allowlist of trading hours by weekday.
     ///
     /// - `None`: Trading is unrestricted by time of day (24/7).
-    /// - `Some(map)`: Trading is only allowed during the specified windows for the specified days.
-    ///   Days missing from the map will have **no allowed trading hours**.
+    /// - `Some(map)`: Trading is only allowed during the specified windows for
+    ///   the specified days. Days missing from the map will have **no allowed
+    ///   trading hours**.
     pub allowed_trading_hours: Option<BTreeMap<Weekday, Vec<TradingWindow>>>,
 }
 
 impl FilterConfig {
     /// Returns true if no filters are active (all data allowed).
-    pub fn is_unrestricted(&self) -> bool {
+    #[must_use]
+    pub const fn is_unrestricted(&self) -> bool {
         self.economic_news_policy.is_none()
             && self.allowed_years.is_none()
             && self.allowed_trading_hours.is_none()
     }
 }
 
-/// Defines how the environment filters trading days based on the Economic Calendar.
+/// Defines how the environment filters trading days based on the Economic
+/// Calendar.
 ///
-/// This policy controls which simulation timeframes (e.g., Days, Weeks) are eligible for training
-/// based on the presence or absence of economic events (e.g., NFP, CPI releases).
+/// This policy controls which simulation timeframes (e.g., Days, Weeks) are
+/// eligible for training based on the presence or absence of economic events
+/// (e.g., NFP, CPI releases).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, Display, EnumString,
 )]
@@ -68,36 +74,41 @@ impl FilterConfig {
 pub enum EconomicCalendarPolicy {
     /// **Default.** No calendar-based filtering is applied.
     ///
-    /// Trading is allowed during all valid market hours, regardless of whether economic
-    /// events are occurring. The agent sees all days.
+    /// Trading is allowed during all valid market hours, regardless of whether
+    /// economic events are occurring. The agent sees all days.
     #[default]
     Unrestricted,
 
-    /// **Volatility Seeking.** Restrict trading *only* to timeframes containing economic events.
+    /// **Volatility Seeking.** Restrict trading *only* to timeframes containing
+    /// economic events.
     ///
-    /// Use this to train agents specifically on how to handle high-volatility news events
-    /// (e.g., only train on days where "Non-Farm Payrolls" or "CPI" are released).
-    /// Timeframes without events are dropped.
+    /// Use this to train agents specifically on how to handle high-volatility
+    /// news events (e.g., only train on days where "Non-Farm Payrolls" or
+    /// "CPI" are released). Timeframes without events are dropped.
     OnlyWithEvents,
 
-    /// **Volatility Avoidance.** Restrict trading to timeframes *without* economic events.
+    /// **Volatility Avoidance.** Restrict trading to timeframes *without*
+    /// economic events.
     ///
-    /// Use this to train agents that operate in "normal" market conditions and should
-    /// sit out during high-risk/unpredictable news releases.
+    /// Use this to train agents that operate in "normal" market conditions and
+    /// should sit out during high-risk/unpredictable news releases.
     /// Timeframes containing events are dropped.
     ExcludeEvents,
 }
 
 impl EconomicCalendarPolicy {
-    pub fn is_unrestricted(&self) -> bool {
+    #[must_use]
+    pub const fn is_unrestricted(&self) -> bool {
         matches!(self, Self::Unrestricted)
     }
 
-    pub fn is_only_with_events(&self) -> bool {
+    #[must_use]
+    pub const fn is_only_with_events(&self) -> bool {
         matches!(self, Self::OnlyWithEvents)
     }
 
-    pub fn is_exclude_events(&self) -> bool {
+    #[must_use]
+    pub const fn is_exclude_events(&self) -> bool {
         matches!(self, Self::ExcludeEvents)
     }
 }
@@ -111,8 +122,9 @@ impl EconomicCalendarPolicy {
 ///
 /// # MVP Constraints
 /// * **UTC Only:** Users must manually convert local times to UTC.
-/// * **No Wrapping:** Windows cannot wrap around midnight (e.g., 22:00 to 02:00 is invalid).
-///   To define an overnight session, define two windows: `[22, 24)` on Day A and `[0, 2)` on Day B.
+/// * **No Wrapping:** Windows cannot wrap around midnight (e.g., 22:00 to 02:00
+///   is invalid). To define an overnight session, define two windows: `[22,
+///   24)` on Day A and `[0, 2)` on Day B.
 ///
 /// # Example
 /// `start=9, end=17` means 09:00:00 UTC up to (but not including) 17:00:00 UTC.
@@ -166,17 +178,20 @@ impl TradingWindow {
     }
 
     /// Helper for the full 24-hour day [0, 24).
-    pub fn full_day() -> Self {
+    #[must_use]
+    pub const fn full_day() -> Self {
         Self { start: 0, end: 24 }
     }
 
     /// Returns the inclusive start hour (UTC).
-    pub fn start(&self) -> u8 {
+    #[must_use]
+    pub const fn start(&self) -> u8 {
         self.start
     }
 
     /// Returns the exclusive end hour (UTC).
-    pub fn end(&self) -> u8 {
+    #[must_use]
+    pub const fn end(&self) -> u8 {
         self.end
     }
 }
@@ -210,13 +225,13 @@ pub enum Weekday {
 impl From<chrono::Weekday> for Weekday {
     fn from(weekday: chrono::Weekday) -> Self {
         match weekday {
-            chrono::Weekday::Mon => Weekday::Monday,
-            chrono::Weekday::Tue => Weekday::Tuesday,
-            chrono::Weekday::Wed => Weekday::Wednesday,
-            chrono::Weekday::Thu => Weekday::Thursday,
-            chrono::Weekday::Fri => Weekday::Friday,
-            chrono::Weekday::Sat => Weekday::Saturday,
-            chrono::Weekday::Sun => Weekday::Sunday,
+            chrono::Weekday::Mon => Self::Monday,
+            chrono::Weekday::Tue => Self::Tuesday,
+            chrono::Weekday::Wed => Self::Wednesday,
+            chrono::Weekday::Thu => Self::Thursday,
+            chrono::Weekday::Fri => Self::Friday,
+            chrono::Weekday::Sat => Self::Saturday,
+            chrono::Weekday::Sun => Self::Sunday,
         }
     }
 }
@@ -224,13 +239,13 @@ impl From<chrono::Weekday> for Weekday {
 impl From<Weekday> for chrono::Weekday {
     fn from(weekday: Weekday) -> Self {
         match weekday {
-            Weekday::Monday => chrono::Weekday::Mon,
-            Weekday::Tuesday => chrono::Weekday::Tue,
-            Weekday::Wednesday => chrono::Weekday::Wed,
-            Weekday::Thursday => chrono::Weekday::Thu,
-            Weekday::Friday => chrono::Weekday::Fri,
-            Weekday::Saturday => chrono::Weekday::Sat,
-            Weekday::Sunday => chrono::Weekday::Sun,
+            Weekday::Monday => Self::Mon,
+            Weekday::Tuesday => Self::Tue,
+            Weekday::Wednesday => Self::Wed,
+            Weekday::Thursday => Self::Thu,
+            Weekday::Friday => Self::Fri,
+            Weekday::Saturday => Self::Sat,
+            Weekday::Sunday => Self::Sun,
         }
     }
 }

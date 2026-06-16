@@ -58,10 +58,12 @@ impl From<LeaderboardCol> for PlSmallStr {
 }
 
 impl LeaderboardCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -72,8 +74,7 @@ impl ToSchema for Leaderboard {
         let fields = LeaderboardCol::iter()
             .map(|col| {
                 let dtype = match col {
-                    LeaderboardCol::Rank => DataType::UInt32,
-                    LeaderboardCol::AgentUid => DataType::UInt64,
+                    LeaderboardCol::Rank | LeaderboardCol::AgentUid => DataType::UInt64,
 
                     LeaderboardCol::AgentParameterization
                     | LeaderboardCol::PortfolioPerformanceMetric => DataType::String,
@@ -92,28 +93,31 @@ impl ToSchema for Leaderboard {
 pub struct Leaderboard {
     /// A typed report representing the **leaderboard of agents**.
     ///
-    /// Each row corresponds to a single agent’s placement for a given portfolio performance
-    /// metric. The schema is defined by the [`Leaderboard`] key type, ensuring column consistency.
+    /// Each row corresponds to a single agent’s placement for a given portfolio
+    /// performance metric. The schema is defined by the [`Leaderboard`] key
+    /// type, ensuring column consistency.
     ///
     /// # Columns
     ///
-    /// - `Metric`: Portfolio performance metric (e.g. `sharpe_ratio`, `net_profit`).
+    /// - `Metric`: Portfolio performance metric (e.g. `sharpe_ratio`,
+    ///   `net_profit`).
     /// - `Rank`: Position of the agent for the given metric (1 = best).
     /// - `AgentUid`: Unique identifier of the agent.
     /// - `Value`: Numeric value of the metric for this agent.
-    /// - `AgentParameterization`: JSON serialization of the agent’s parameterization/configuration.
+    /// - `AgentParameterization`: JSON serialization of the agent’s
+    ///   parameterization/configuration.
     ///
     /// # Example Table
     ///
-    /// | portfolio_performance_metric | rank | value     | agent_uid  | agent_parameterization                                         |
+    /// | `portfolio_performance_metric` | rank | value     | `agent_uid`  | `agent_parameterization`                                         |
     /// |------------------------------|------|-----------|------------|----------------------------------------------------------------|
-    /// | sharpe_ratio                 | 1    | 2.85      | 45201      | { "wait_duration": 300, "take_profit_risk_factor": 1.0, ... }  |
-    /// | sharpe_ratio                 | 2    | 2.81      | 18934      | { "wait_duration": 600, "take_profit_risk_factor": 0.8, ... }  |
-    /// | net_profit                   | 1    | 150234.60 | 78103      | { "wait_duration": 120, "take_profit_risk_factor": 1.2, ... }  |
-    /// | net_profit                   | 2    | 149875.10 | 45201      | { "wait_duration": 300, "take_profit_risk_factor": 1.0, ... }  |
+    /// | `sharpe_ratio`                 | 1    | 2.85      | 45201      | { "`wait_duration"`: 300, "`take_profit_risk_factor"`: 1.0, ... }  |
+    /// | `sharpe_ratio`                 | 2    | 2.81      | 18934      | { "`wait_duration"`: 600, "`take_profit_risk_factor"`: 0.8, ... }  |
+    /// | `net_profit`                   | 1    | 150234.60 | 78103      | { "`wait_duration"`: 120, "`take_profit_risk_factor"`: 1.2, ... }  |
+    /// | `net_profit`                   | 2    | 149875.10 | 45201      | { "`wait_duration"`: 300, "`take_profit_risk_factor"`: 1.0, ... }  |
     ///
-    /// This makes it easy to export leaderboard data to external systems (e.g. DataFrames, CSV, or
-    /// dashboards) while retaining schema guarantees.
+    /// This makes it easy to export leaderboard data to external systems (e.g.
+    /// `DataFrames`, CSV, or dashboards) while retaining schema guarantees.
     df: DataFrame,
 }
 
@@ -139,14 +143,17 @@ impl Report for Leaderboard {
 
 /// A report tracking the top-k performing agents for each performance metric.
 ///
-/// This report maintains a **min-heap** (`BinaryHeap<Reverse<LeaderboardEntry>>`)
-/// to efficiently track the **top-k best-performing agents** per metric.
+/// This report maintains a **min-heap**
+/// (`BinaryHeap<Reverse<LeaderboardEntry>>`) to efficiently track the **top-k
+/// best-performing agents** per metric.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentLeaderboard<T> {
-    /// A mapping from performance metrics to **min-heaps** tracking the top-k performing agents.
+    /// A mapping from performance metrics to **min-heaps** tracking the top-k
+    /// performing agents.
     ///
-    /// Each entry in the heap is wrapped in `Reverse` to ensure that the smallest (i.e.
-    /// the worst-performing among the top-k) entry is always at the top.
+    /// Each entry in the heap is wrapped in `Reverse` to ensure that the
+    /// smallest (i.e. the worst-performing among the top-k) entry is always
+    /// at the top.
     pub top_per_metric:
         SortedVecMap<PortfolioPerformanceCol, BinaryHeap<Reverse<LeaderboardEntry>>>,
 
@@ -171,11 +178,13 @@ where
 }
 
 impl<T> AgentLeaderboard<T> {
-    /// Creates a new, empty `AgentPerformanceReport` with the specified heap capacity `k`.
+    /// Creates a new, empty `AgentPerformanceReport` with the specified heap
+    /// capacity `k`.
     ///
     /// # Arguments
     ///
-    /// * `k` - The maximum number of top entries to retain for each reward statistic.
+    /// * `k` - The maximum number of top entries to retain for each reward
+    ///   statistic.
     ///
     /// # Returns
     ///
@@ -223,6 +232,10 @@ impl<T> AgentLeaderboard<T> {
         self.garbage_collect(new_entries[0].agent_uid, &potentially_evicted);
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "every metric heap is registered at construction, so a merged metric is always present"
+    )]
     pub(crate) fn merge(mut self, other: Self) -> Self {
         for (metric, other_heap) in other.top_per_metric {
             let heap = self.top_per_metric.get_mut(&metric).expect(
@@ -256,6 +269,10 @@ impl<T> AgentLeaderboard<T> {
             .any(|heap| heap.iter().any(|entry| entry.0.agent_uid == uid))
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "every metric heap is registered at construction, so the looked-up metric is always present"
+    )]
     fn process_entry(&mut self, entry: &LeaderboardEntry) -> HeapAction {
         let heap = self
             .top_per_metric
@@ -304,13 +321,13 @@ where
                 let uid = entry.agent_uid();
 
                 let agent = self.agent_data.get(&uid).ok_or_else(|| {
-                    SystemError::MissingField(format!("Agent UID {} missing from cache", uid))
+                    SystemError::MissingField(format!("Agent UID {uid} missing from cache"))
                 })?;
 
                 let param_str = serde_json::to_string(agent).map_err(IoError::Json)?;
 
                 metric_col.push(metric.to_string());
-                rank_col.push((i + 1) as u32);
+                rank_col.push((i + 1) as u64);
                 agent_uid_col.push(uid);
                 value_col.push(entry.denormalized_reward());
                 agent_parameterization_col.push(param_str);
@@ -335,7 +352,7 @@ enum HeapAction {
 
 struct LeaderboardSoA {
     portofolio_performance_metric: Vec<String>,
-    rank: Vec<u32>,
+    rank: Vec<u64>,
     value: Vec<f64>,
     agent_uid: Vec<u64>,
     agent_parameterization: Vec<String>,
@@ -358,11 +375,12 @@ impl TryFrom<LeaderboardSoA> for DataFrame {
 
 /// Represents a single performance record for an agent.
 ///
-/// This structure wraps an agent along with its corresponding reward statistic and the
-/// calculated reward value. The ordering for this structure is defined solely by the `reward`
-/// field, meaning that two entries are compared based on their reward value. This makes it
-/// convenient for use in a min-heap (by wrapping with `std::cmp::Reverse`) when keeping track
-/// of the top-k performers.
+/// This structure wraps an agent along with its corresponding reward statistic
+/// and the calculated reward value. The ordering for this structure is defined
+/// solely by the `reward` field, meaning that two entries are compared based on
+/// their reward value. This makes it convenient for use in a min-heap (by
+/// wrapping with `std::cmp::Reverse`) when keeping track of the top-k
+/// performers.
 #[derive(Copy, Clone, Debug)]
 pub struct LeaderboardEntry {
     /// The agent associated with this performance record.
@@ -375,13 +393,15 @@ pub struct LeaderboardEntry {
 
 impl LeaderboardEntry {
     /// Returns the unique identifier of the agent associated with this entry.
-    pub fn agent_uid(&self) -> u64 {
+    #[must_use]
+    pub const fn agent_uid(&self) -> u64 {
         self.agent_uid
     }
 
     /// Returns the performance metric used for ranking this entry
     /// (e.g. Sharpe ratio, net profit, drawdown).
-    pub fn metric(&self) -> PortfolioPerformanceCol {
+    #[must_use]
+    pub const fn metric(&self) -> PortfolioPerformanceCol {
         self.metric
     }
 
@@ -390,7 +410,8 @@ impl LeaderboardEntry {
     /// Certain metrics (e.g. drawdowns, errors) are minimized, so they are
     /// transformed into a score where *larger is always better*. This value
     /// is what the leaderboard compares to decide ordering.
-    pub fn normalized_reward(&self) -> f64 {
+    #[must_use]
+    pub const fn normalized_reward(&self) -> f64 {
         self.reward.0
     }
 
@@ -399,6 +420,7 @@ impl LeaderboardEntry {
     /// This is the human-facing score as reported in evaluation tables
     /// (e.g. Sharpe ratio `2.85`, net profit `150_234.60`).
     /// Use this when displaying results instead of the normalized value.
+    #[must_use]
     pub fn denormalized_reward(&self) -> f64 {
         self.metric.from_heap_score(self.normalized_reward())
     }
@@ -426,6 +448,11 @@ impl Ord for LeaderboardEntry {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use polars::prelude::{IntoLazy, col, lit};
     use serde::{Deserialize, Serialize};
 
@@ -443,7 +470,7 @@ mod tests {
         }
     }
 
-    /// Helper to create a LeaderboardEntry for a given metric.
+    /// Helper to create a `LeaderboardEntry` for a given metric.
     fn make_entry(
         agent_uid: u64,
         metric: PortfolioPerformanceCol,
@@ -472,8 +499,7 @@ mod tests {
         for metric in PortfolioPerformanceCol::iter() {
             assert!(
                 leaderboard.top_per_metric.contains_key(&metric),
-                "Leaderboard missing initialization for metric: {:?}",
-                metric
+                "Leaderboard missing initialization for metric: {metric:?}"
             );
         }
 
@@ -514,9 +540,8 @@ mod tests {
         let heap = board.top_per_metric.get(&metric).unwrap();
         assert_eq!(heap.len(), 1, "Heap should only contain the valid agent");
 
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
         assert!(
-            !uids.contains(&2),
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 2),
             "Zero-entry agent should not be in the heap"
         );
 
@@ -536,7 +561,8 @@ mod tests {
         // Act: Insert K entries
         for i in 0..k {
             let uid = i as u64;
-            let entry = make_entry(uid, metric, (i + 1) as f64 * 10.0);
+            let rank = u32::try_from(i + 1).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, f64::from(rank) * 10.0);
             let agent = TestAgent::new(uid);
             board.update(&[entry], agent);
         }
@@ -559,7 +585,8 @@ mod tests {
         // Fill with rewards 10.0, 20.0, 30.0 (agents 1, 2, 3)
         for i in 1..=k {
             let uid = i as u64;
-            let entry = make_entry(uid, metric, i as f64 * 10.0);
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, f64::from(rank) * 10.0);
             board.update(&[entry], TestAgent::new(uid));
         }
 
@@ -572,9 +599,8 @@ mod tests {
         assert_eq!(heap.len(), k, "Heap size should remain unchanged");
 
         // Verify agent 100 is NOT in the heap
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
         assert!(
-            !uids.contains(&100),
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 100),
             "Worse agent should not be in the heap"
         );
 
@@ -632,8 +658,10 @@ mod tests {
 
         // Assert: Tie should be rejected (strict > inequality)
         let heap = board.top_per_metric.get(&metric).unwrap();
-        let uids = heap.iter().map(|r| r.0.agent_uid).collect::<Vec<_>>();
-        assert!(!uids.contains(&999), "Tied agent should not be in the heap");
+        assert!(
+            !heap.iter().map(|r| r.0.agent_uid).any(|uid| uid == 999),
+            "Tied agent should not be in the heap"
+        );
         assert_eq!(heap.len(), k, "Heap size should remain unchanged");
         assert!(
             !board.agent_data.contains_key(&999),
@@ -653,16 +681,18 @@ mod tests {
 
         // Board A: agents with rewards 10, 20, 30
         let mut board_a = AgentLeaderboard::<TestAgent>::new(k);
-        for i in 1..=3u64 {
-            let entry = make_entry(i, metric, i as f64 * 10.0);
+        for i in 1..=3_u64 {
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(i, metric, f64::from(rank) * 10.0);
             board_a.update(&[entry], TestAgent::new(i));
         }
 
         // Board B: agents with rewards 25, 35, 45
         let mut board_b = AgentLeaderboard::<TestAgent>::new(k);
-        for i in 1..=3u64 {
+        for i in 1..=3_u64 {
             let uid = 100 + i;
-            let entry = make_entry(uid, metric, (i as f64 * 10.0) + 15.0);
+            let rank = u32::try_from(i).expect("rank index exceeds u32 range");
+            let entry = make_entry(uid, metric, f64::from(rank).mul_add(10.0, 15.0));
             board_b.update(&[entry], TestAgent::new(uid));
         }
 
@@ -756,9 +786,9 @@ mod tests {
 
         // Insert agents with known rewards (out of order to test sorting)
         let entries = [
-            (42u64, 50.0),
-            (17u64, 100.0), // Best
-            (99u64, 75.0),
+            (42_u64, 50.0),
+            (17_u64, 100.0), // Best
+            (99_u64, 75.0),
         ];
 
         for (uid, reward) in entries {
@@ -785,7 +815,7 @@ mod tests {
         let ranks = filtered
             .column(LeaderboardCol::Rank.as_str())
             .unwrap()
-            .u32()
+            .u64()
             .unwrap()
             .into_no_null_iter()
             .collect::<Vec<_>>();
@@ -799,8 +829,9 @@ mod tests {
             .unwrap()
             .into_no_null_iter()
             .collect::<Vec<_>>();
-        assert_eq!(
-            values[0], 100.0,
+        assert_f64_eq!(
+            values[0],
+            100.0,
             "Rank 1 should have the highest reward value"
         );
         assert!(
@@ -830,7 +861,7 @@ mod tests {
             .unwrap()
             .str()
             .unwrap()
-            .into_no_null_iter()
+            .no_null_iter()
             .collect::<Vec<_>>();
 
         // Verify JSON can be parsed and contains correct id
@@ -866,12 +897,11 @@ mod tests {
         match err {
             ChapatyError::System(SystemError::MissingField(msg)) => {
                 assert!(
-                    msg.contains("2"),
-                    "Error should mention the missing UID: {}",
-                    msg
+                    msg.contains('2'),
+                    "Error should mention the missing UID: {msg}"
                 );
             }
-            other => panic!("Expected SystemError::MissingField, got: {:?}", other),
+            other => panic!("Expected SystemError::MissingField, got: {other:?}"),
         }
     }
 

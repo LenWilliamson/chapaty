@@ -17,7 +17,7 @@ use crate::{
             action::{CancelCmd, MarketCloseCmd, ModifyCmd, OpenCmd},
             context::UpdateCtx,
             state::active::CloseOutcome,
-            types::{RiskRewardRatio, StateKind, TerminationReason, TradeType},
+            types::{RiskRewardRatio, StateKind, TerminationReason, TradeKind},
         },
     },
     sorted_vec_map::SortedVecMap,
@@ -41,10 +41,12 @@ pub struct Pending {
 }
 
 impl Pending {
-    pub fn created_at(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
-    pub fn limit_price(&self) -> Price {
+    #[must_use]
+    pub const fn limit_price(&self) -> Price {
         self.limit_price
     }
 }
@@ -61,23 +63,28 @@ pub struct Active {
 }
 
 impl Active {
-    pub fn entry_ts(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
-    pub fn entry_price(&self) -> Price {
+    #[must_use]
+    pub const fn entry_price(&self) -> Price {
         self.entry_price
     }
 
-    pub fn current_ts(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
 
-    pub fn current_price(&self) -> Price {
+    #[must_use]
+    pub const fn current_price(&self) -> Price {
         self.current_price
     }
 
-    pub fn unrealized_pnl(&self) -> f64 {
+    #[must_use]
+    pub const fn unrealized_pnl(&self) -> f64 {
         self.unrealized_pnl
     }
 }
@@ -95,27 +102,33 @@ pub struct Closed {
 }
 
 impl Closed {
-    pub fn entry_ts(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn entry_ts(&self) -> DateTime<Utc> {
         self.entry_ts
     }
 
-    pub fn entry_price(&self) -> Price {
+    #[must_use]
+    pub const fn entry_price(&self) -> Price {
         self.entry_price
     }
 
-    pub fn exit_ts(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn exit_ts(&self) -> DateTime<Utc> {
         self.exit_ts
     }
 
-    pub fn exit_price(&self) -> Price {
+    #[must_use]
+    pub const fn exit_price(&self) -> Price {
         self.exit_price
     }
 
-    pub fn termination_reason(&self) -> TerminationReason {
+    #[must_use]
+    pub const fn termination_reason(&self) -> TerminationReason {
         self.termination_reason
     }
 
-    pub fn realized_pnl(&self) -> f64 {
+    #[must_use]
+    pub const fn realized_pnl(&self) -> f64 {
         self.realized_pnl
     }
 }
@@ -125,24 +138,28 @@ impl TradeState for Closed {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Canceled {
     created_at: DateTime<Utc>,
-    canceled_at: DateTime<Utc>,
+    cancel_ts: DateTime<Utc>,
     limit_price: Price,
 }
 
 impl Canceled {
-    pub fn created_at(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
 
-    pub fn canceled_at(&self) -> DateTime<Utc> {
-        self.canceled_at
+    #[must_use]
+    pub const fn canceled_at(&self) -> DateTime<Utc> {
+        self.cancel_ts
     }
 
-    pub fn termination_reason(&self) -> TerminationReason {
+    #[must_use]
+    pub const fn termination_reason(&self) -> TerminationReason {
         TerminationReason::Canceled
     }
 
-    pub fn limit_price(&self) -> Price {
+    #[must_use]
+    pub const fn limit_price(&self) -> Price {
         self.limit_price
     }
 }
@@ -154,7 +171,7 @@ impl TradeState for Canceled {}
 pub struct Trade<S: TradeState> {
     uid: TradeId,
     agent_id: AgentIdentifier,
-    trade_type: TradeType,
+    kind: TradeKind,
     quantity: Quantity,
     stop_loss: Option<Price>,
     take_profit: Option<Price>,
@@ -162,42 +179,44 @@ pub struct Trade<S: TradeState> {
 }
 
 impl<S: TradeState> Trade<S> {
-    pub fn uid(&self) -> TradeId {
+    pub const fn uid(&self) -> TradeId {
         self.uid
     }
 
-    pub fn agent_id(&self) -> &AgentIdentifier {
+    pub const fn agent_id(&self) -> &AgentIdentifier {
         &self.agent_id
     }
 
-    pub fn trade_type(&self) -> &TradeType {
-        &self.trade_type
+    pub const fn trade_type(&self) -> &TradeKind {
+        &self.kind
     }
 
-    pub fn quantity(&self) -> Quantity {
+    pub const fn quantity(&self) -> Quantity {
         self.quantity
     }
 
-    pub fn stop_loss(&self) -> Option<Price> {
+    pub const fn stop_loss(&self) -> Option<Price> {
         self.stop_loss
     }
 
-    pub fn take_profit(&self) -> Option<Price> {
+    pub const fn take_profit(&self) -> Option<Price> {
         self.take_profit
     }
 
-    pub fn state(&self) -> &S {
+    pub const fn state(&self) -> &S {
         &self.state
     }
+}
 
-    pub fn map<NewState: TradeState, F>(self, f: F) -> Trade<NewState>
+impl<S: TradeState> Trade<S> {
+    fn map<NewState: TradeState, F>(self, f: F) -> Trade<NewState>
     where
         F: FnOnce(S) -> NewState,
     {
         Trade {
             uid: self.uid,
             agent_id: self.agent_id,
-            trade_type: self.trade_type,
+            kind: self.kind,
             quantity: self.quantity,
             stop_loss: self.stop_loss,
             take_profit: self.take_profit,
@@ -205,20 +224,15 @@ impl<S: TradeState> Trade<S> {
         }
     }
 
-    pub fn try_map<NewState: TradeState, E, F>(self, f: F) -> Result<Trade<NewState>, E>
-    where
-        F: FnOnce(S) -> Result<NewState, E>,
-    {
-        let new_state = f(self.state)?;
-        Ok(Trade {
-            uid: self.uid,
-            agent_id: self.agent_id,
-            trade_type: self.trade_type,
-            quantity: self.quantity,
-            stop_loss: self.stop_loss,
-            take_profit: self.take_profit,
-            state: new_state,
-        })
+    fn with_take_profit(self, take_profit: Option<Price>) -> Self {
+        Self {
+            take_profit,
+            ..self
+        }
+    }
+
+    fn with_stop_loss(self, stop_loss: Option<Price>) -> Self {
+        Self { stop_loss, ..self }
     }
 }
 
@@ -295,86 +309,97 @@ impl TryFrom<State> for Trade<Canceled> {
 }
 
 impl State {
-    pub fn trade_id(&self) -> TradeId {
+    #[must_use]
+    pub const fn trade_id(&self) -> TradeId {
         match self {
-            State::Pending(t) => t.uid,
-            State::Active(t) => t.uid,
-            State::Closed(t) => t.uid,
-            State::Canceled(t) => t.uid,
+            Self::Pending(t) => t.uid,
+            Self::Active(t) => t.uid,
+            Self::Closed(t) => t.uid,
+            Self::Canceled(t) => t.uid,
         }
     }
 
-    pub fn agent_id(&self) -> &AgentIdentifier {
+    #[must_use]
+    pub const fn agent_id(&self) -> &AgentIdentifier {
         match self {
-            State::Pending(t) => &t.agent_id,
-            State::Active(t) => &t.agent_id,
-            State::Closed(t) => &t.agent_id,
-            State::Canceled(t) => &t.agent_id,
+            Self::Pending(t) => &t.agent_id,
+            Self::Active(t) => &t.agent_id,
+            Self::Closed(t) => &t.agent_id,
+            Self::Canceled(t) => &t.agent_id,
         }
     }
 
-    pub fn trade_type(&self) -> &TradeType {
+    #[must_use]
+    pub const fn trade_type(&self) -> &TradeKind {
         match self {
-            State::Pending(t) => &t.trade_type,
-            State::Active(t) => &t.trade_type,
-            State::Closed(t) => &t.trade_type,
-            State::Canceled(t) => &t.trade_type,
+            Self::Pending(t) => &t.kind,
+            Self::Active(t) => &t.kind,
+            Self::Closed(t) => &t.kind,
+            Self::Canceled(t) => &t.kind,
         }
     }
 
-    pub fn quantity(&self) -> Quantity {
+    #[must_use]
+    pub const fn quantity(&self) -> Quantity {
         match self {
-            State::Pending(t) => t.quantity,
-            State::Active(t) => t.quantity,
-            State::Closed(t) => t.quantity,
-            State::Canceled(t) => t.quantity,
+            Self::Pending(t) => t.quantity,
+            Self::Active(t) => t.quantity,
+            Self::Closed(t) => t.quantity,
+            Self::Canceled(t) => t.quantity,
         }
     }
 
-    pub fn stop_loss(&self) -> Option<Price> {
+    #[must_use]
+    pub const fn stop_loss(&self) -> Option<Price> {
         match self {
-            State::Pending(t) => t.stop_loss,
-            State::Active(t) => t.stop_loss,
-            State::Closed(t) => t.stop_loss,
-            State::Canceled(t) => t.stop_loss,
+            Self::Pending(t) => t.stop_loss,
+            Self::Active(t) => t.stop_loss,
+            Self::Closed(t) => t.stop_loss,
+            Self::Canceled(t) => t.stop_loss,
         }
     }
 
-    pub fn take_profit(&self) -> Option<Price> {
+    #[must_use]
+    pub const fn take_profit(&self) -> Option<Price> {
         match self {
-            State::Pending(t) => t.take_profit,
-            State::Active(t) => t.take_profit,
-            State::Closed(t) => t.take_profit,
-            State::Canceled(t) => t.take_profit,
+            Self::Pending(t) => t.take_profit,
+            Self::Active(t) => t.take_profit,
+            Self::Closed(t) => t.take_profit,
+            Self::Canceled(t) => t.take_profit,
         }
     }
 
-    pub fn anticipated_entry_price(&self) -> Price {
+    #[must_use]
+    pub const fn anticipated_entry_price(&self) -> Price {
         match self {
-            State::Pending(t) => t.state.limit_price,
-            State::Active(t) => t.state.entry_price,
-            State::Closed(t) => t.state.entry_price,
-            State::Canceled(t) => t.state.limit_price,
+            Self::Pending(t) => t.state.limit_price,
+            Self::Active(t) => t.state.entry_price,
+            Self::Closed(t) => t.state.entry_price,
+            Self::Canceled(t) => t.state.limit_price,
         }
     }
 
     /// Calculates the expected loss in Ticks based on the Stop Loss.
-    pub fn expected_loss_in_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    #[must_use]
+    pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
         let diff = self.trade_type().price_diff(ref_price, sl);
-        // Result is usually negative for a Stop Loss; we want magnitude (absolute ticks).
+        // Result is usually negative for a Stop Loss; we want magnitude (absolute
+        // ticks).
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
     /// Calculates the expected profit in Ticks based on the Take Profit.
-    pub fn expected_profit_in_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    #[must_use]
+    pub fn expected_profit_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, tp) = self.get_reward_params()?;
         let diff = self.trade_type().price_diff(ref_price, tp);
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
     /// Calculates the expected loss in USD (Absolute Value) based on Stop Loss.
-    pub fn expected_loss_in_usd(&self, symbol: &Symbol) -> Option<f64> {
+    #[must_use]
+    pub fn expected_loss_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, sl) = self.get_risk_params()?;
         let qty = self.quantity(); // Uses the helper we defined earlier
 
@@ -383,8 +408,10 @@ impl State {
         Some(pnl.abs())
     }
 
-    /// Calculates the expected profit in USD (Absolute Value) based on Take Profit.
-    pub fn expected_profit_in_usd(&self, symbol: &Symbol) -> Option<f64> {
+    /// Calculates the expected profit in USD (Absolute Value) based on Take
+    /// Profit.
+    #[must_use]
+    pub fn expected_profit_in_usd(&self, symbol: Symbol) -> Option<f64> {
         let (ref_price, tp) = self.get_reward_params()?;
         let qty = self.quantity();
 
@@ -393,7 +420,8 @@ impl State {
     }
 
     /// Computes the Risk-Reward Ratio based on SL/TP settings.
-    pub fn risk_reward_ratio(&self, symbol: &Symbol) -> Option<RiskRewardRatio> {
+    #[must_use]
+    pub fn risk_reward_ratio(&self, symbol: Symbol) -> Option<RiskRewardRatio> {
         // We need both parameters to exist to calculate a ratio
         let risk = self.expected_loss_in_usd(symbol)?;
         let reward = self.expected_profit_in_usd(symbol)?;
@@ -401,14 +429,15 @@ impl State {
         Some(RiskRewardRatio::new(risk, reward))
     }
 
-    /// Returns the "Clean" USD PnL directly from the storage fields.
-    pub fn pnl_usd(&self) -> Option<f64> {
+    /// Returns the "Clean" USD `PnL` directly from the storage fields.
+    #[must_use]
+    pub const fn pnl_usd(&self) -> Option<f64> {
         match self {
             // Already calculated via tick-math during `update`
-            State::Active(t) => Some(t.state.unrealized_pnl),
+            Self::Active(t) => Some(t.state.unrealized_pnl),
 
             // Already calculated via tick-math during `close`
-            State::Closed(t) => Some(t.state.realized_pnl),
+            Self::Closed(t) => Some(t.state.realized_pnl),
 
             _ => None,
         }
@@ -416,92 +445,109 @@ impl State {
 
     /// Calculates the Price Distance in Ticks.
     ///
-    /// We re-calculate this on the fly because `Active` state stores USD, not Ticks.
-    /// However, because `entry` and `current/exit` are **Guaranteed Clean** (snapped to grid),
-    /// this calculation is strictly deterministic and free of artifacts.
-    pub fn pnl_ticks(&self, symbol: &Symbol) -> Option<Tick> {
+    /// We re-calculate this on the fly because `Active` state stores USD, not
+    /// Ticks. However, because `entry` and `current/exit` are **Guaranteed
+    /// Clean** (snapped to grid), this calculation is strictly
+    /// deterministic and free of artifacts.
+    #[must_use]
+    pub fn pnl_ticks(&self, symbol: Symbol) -> Option<Tick> {
         match self {
-            State::Active(t) => {
+            Self::Active(t) => {
                 // Use your existing helper
                 let diff = t
-                    .trade_type
+                    .kind
                     .price_diff(t.state.entry_price, t.state.current_price);
                 Some(symbol.price_to_ticks(diff))
             }
-            State::Closed(t) => {
+            Self::Closed(t) => {
                 // Use your existing helper
-                let diff = t
-                    .trade_type
-                    .price_diff(t.state.entry_price, t.state.exit_price);
+                let diff = t.kind.price_diff(t.state.entry_price, t.state.exit_price);
                 Some(symbol.price_to_ticks(diff))
             }
             _ => None,
         }
     }
 
-    /// Returns the timestamp when the trade was effectively entered (Active/Closed only).
-    pub fn entry_ts(&self) -> Option<DateTime<Utc>> {
+    /// Returns the timestamp when the trade was effectively entered
+    /// (Active/Closed only).
+    #[must_use]
+    pub const fn entry_ts(&self) -> Option<DateTime<Utc>> {
         match self {
-            State::Active(t) => Some(t.state.entry_ts),
-            State::Closed(t) => Some(t.state.entry_ts),
+            Self::Active(t) => Some(t.state.entry_ts),
+            Self::Closed(t) => Some(t.state.entry_ts),
             // Pending/Canceled never entered the market
-            State::Pending(_) | State::Canceled(_) => None,
+            Self::Pending(_) | Self::Canceled(_) => None,
         }
     }
 
     /// Returns the timestamp when the trade ended (Closed/Canceled only).
-    pub fn exit_ts(&self) -> Option<DateTime<Utc>> {
+    #[must_use]
+    pub const fn exit_ts(&self) -> Option<DateTime<Utc>> {
         match self {
-            State::Closed(t) => Some(t.state.exit_ts),
-            State::Canceled(t) => Some(t.state.canceled_at),
+            Self::Closed(t) => Some(t.state.exit_ts),
+            Self::Canceled(t) => Some(t.state.cancel_ts),
             _ => None,
         }
     }
 
     /// Returns the price at which the trade was closed.
-    pub fn exit_price(&self) -> Option<Price> {
+    #[must_use]
+    pub const fn exit_price(&self) -> Option<Price> {
         match self {
-            State::Closed(t) => Some(t.state.exit_price),
+            Self::Closed(t) => Some(t.state.exit_price),
             // Canceled orders don't have a price execution
             _ => None,
         }
     }
 
     /// Returns the reason why the trade ended.
-    pub fn exit_reason(&self) -> Option<TerminationReason> {
+    #[must_use]
+    pub const fn exit_reason(&self) -> Option<TerminationReason> {
         match self {
-            State::Closed(t) => Some(t.state.termination_reason()),
+            Self::Closed(t) => Some(t.state.termination_reason()),
             // Canceled usually implies "Cancel" reason, handled by the struct helper
-            State::Canceled(t) => Some(t.state.termination_reason()),
+            Self::Canceled(t) => Some(t.state.termination_reason()),
             _ => None,
         }
     }
 
+    #[must_use]
     pub fn kind(&self) -> StateKind {
         self.into()
     }
 
-    pub fn is_pending(&self) -> bool {
-        matches!(self, State::Pending(_))
+    #[must_use]
+    pub const fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending(_))
     }
 
-    pub fn is_active(&self) -> bool {
-        matches!(self, State::Active(_))
+    #[must_use]
+    pub const fn is_active(&self) -> bool {
+        matches!(self, Self::Active(_))
     }
 
-    pub fn is_closed(&self) -> bool {
-        matches!(self, State::Closed(_))
+    #[must_use]
+    pub const fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed(_))
     }
 
-    pub fn is_canceled(&self) -> bool {
-        matches!(self, State::Canceled(_))
+    #[must_use]
+    pub const fn is_canceled(&self) -> bool {
+        matches!(self, Self::Canceled(_))
     }
 }
 
 impl State {
-    // ========================================================================
-    // Internal Helpers to Extract Params
-    // ========================================================================
+    /// Restores the original Stop Loss and Take Profit values across any valid
+    /// state.
+    fn with_restored_triggers(self, sl: Option<Price>, tp: Option<Price>) -> Self {
+        match self {
+            Self::Pending(t) => Self::Pending(t.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Active(t) => Self::Active(t.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Closed(c) => Self::Closed(c.with_stop_loss(sl).with_take_profit(tp)),
+            Self::Canceled(c) => Self::Canceled(c.with_stop_loss(sl).with_take_profit(tp)),
+        }
+    }
 
     /// Extracts (Entry/Limit Price, Stop Loss Price) if SL exists.
     fn get_risk_params(&self) -> Option<(Price, Price)> {
@@ -549,7 +595,7 @@ pub struct States {
     /// We never iterate this during updates.
     archive: SortedVecMap<MarketId, Vec<State>>,
 
-    /// Secondary Index: TradeId -> idx
+    /// Secondary Index: `TradeId` -> idx
     /// Allows O(1) lookup of any trade in live.
     live_index: HashMap<TradeId, (MarketId, usize)>,
 
@@ -557,8 +603,8 @@ pub struct States {
     /// Resets to `0.0` after every step.
     step_reward: f64,
 
-    /// **PERSISTENT:** `Total Realized + Unrealized PnL` since the episode began.
-    /// Does NOT reset. Monotonically tracks the portfolio curve.
+    /// **PERSISTENT:** `Total Realized + Unrealized PnL` since the episode
+    /// began. Does NOT reset. Monotonically tracks the portfolio curve.
     cumulative_pnl: f64,
 }
 
@@ -579,18 +625,22 @@ impl States {
     // Global Metrics
     // ========================================================================
 
-    /// Returns `true` if there are NO active or pending trades currently in the system.
-    /// This checks the Hot Path only (O(M) where M is number of markets).
+    /// Returns `true` if there are NO active or pending trades currently in the
+    /// system. This checks the Hot Path only (O(M) where M is number of
+    /// markets).
+    #[must_use]
     pub fn all_closed(&self) -> bool {
         // If the map is empty, or all vectors within it are empty
         self.live.iter().all(|(_, list)| list.is_empty())
     }
 
-    pub fn pnl(&self) -> f64 {
+    #[must_use]
+    pub const fn pnl(&self) -> f64 {
         self.cumulative_pnl
     }
 
-    /// Returns the markets that currently have allocated memory for live trades.
+    /// Returns the markets that currently have allocated memory for live
+    /// trades.
     pub fn markets(&self) -> impl Iterator<Item = &MarketId> {
         self.live.keys()
     }
@@ -605,7 +655,7 @@ impl States {
         self.live.iter().flat_map(|(_, list)| list.iter())
     }
 
-    /// Iterates Active/Pending trades tupled with their MarketId.
+    /// Iterates Active/Pending trades tupled with their `MarketId`.
     pub fn iter_live_with_market(&self) -> impl Iterator<Item = (MarketId, &State)> {
         self.live
             .iter()
@@ -632,29 +682,34 @@ impl States {
     // O(1) Lookups & Agent Queries
     // ========================================================================
 
-    /// Returns the active vector for a specific market if it exists, else empty slice.
+    /// Returns the active vector for a specific market if it exists, else empty
+    /// slice.
+    #[must_use]
     pub fn get_live_trades(&self, market: &MarketId) -> &[State] {
         self.live
             .get(market)
-            .map(|v| v.as_slice())
+            .map(std::vec::Vec::as_slice)
             .unwrap_or_default()
     }
 
     /// Retrieves a reference to a LIVE trade.
     /// Returns None if the trade is closed/canceled or doesn't exist.
+    #[must_use]
     pub fn get_by_id(&self, uid: &TradeId) -> Option<&State> {
         let (m_id, idx) = self.live_index.get(uid)?;
         self.live.get(m_id)?.get(*idx)
     }
 
-    /// Checks if a specific agent has any **Active** (not just pending) positions.
-    /// Filters the Hot Path (fast).
+    /// Checks if a specific agent has any **Active** (not just pending)
+    /// positions. Filters the Hot Path (fast).
+    #[must_use]
     pub fn any_active_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
         self.iter_live()
             .any(|s| s.is_active() && s.agent_id() == id)
     }
 
     /// Finds the first active trade for a specific agent.
+    #[must_use]
     pub fn find_active_trade_for_agent(&self, id: &AgentIdentifier) -> Option<(MarketId, &State)> {
         self.iter_live_with_market()
             .find(|(_, s)| s.is_active() && s.agent_id() == id)
@@ -672,9 +727,10 @@ impl States {
         F: FnMut(MarketId, ChapatyResult<Option<TerminationReason>>) -> ChapatyResult<()>,
     {
         let markets = self.markets().copied().collect::<Vec<_>>();
-        markets.into_iter().try_for_each(|market_id| {
-            self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))
-        })
+        for market_id in markets {
+            self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))?;
+        }
+        Ok(())
     }
 
     /// Factory: Creates a new State repository with pre-allocated memory.
@@ -708,12 +764,13 @@ impl States {
         }
     }
 
-    /// Clones the state repository while explicitly preserving the allocated capacity
-    /// of the internal vectors.
+    /// Clones the state repository while explicitly preserving the allocated
+    /// capacity of the internal vectors.
     ///
-    /// Standard `#[derive(Clone)]` on an empty `Vec` will yield a new `Vec` with 0 capacity.
-    /// By using this method, we guarantee that the new episode inherits the exact memory
-    /// footprint reserved in the original prototype.
+    /// Standard `#[derive(Clone)]` on an empty `Vec` will yield a new `Vec`
+    /// with 0 capacity. By using this method, we guarantee that the new
+    /// episode inherits the exact memory footprint reserved in the original
+    /// prototype.
     pub(super) fn clone_with_capacity(&self) -> Self {
         let live: SortedVecMap<MarketId, Vec<State>> = self
             .live
@@ -746,10 +803,31 @@ impl States {
     }
 
     /// Consumes and resets the accumulated step reward.
+    /// Clamps overflows safely to `i64::MAX` or `i64::MIN` and logs warnings.
+    #[tracing::instrument(skip(self))]
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "reward is rounded and explicitly checked for NaN and saturated against i64::MIN/MAX before the cast, so no meaningful range or precision is lost"
+    )]
     pub(super) fn pop_reward(&mut self) -> Reward {
         let r = self.step_reward;
         self.step_reward = 0.0;
-        Reward(r.round() as i64)
+
+        let rounded = r.round();
+
+        if rounded.is_nan() {
+            tracing::error!("Accumulated step reward is NaN! Defaulting to 0.");
+            Reward(0)
+        } else if rounded >= (i64::MAX as f64) {
+            tracing::warn!("Reward overflow detected (value: {r}). Saturating to i64::MAX.");
+            Reward(i64::MAX)
+        } else if rounded <= (i64::MIN as f64) {
+            tracing::warn!("Reward underflow detected (value: {r}). Saturating to i64::MIN.");
+            Reward(i64::MIN)
+        } else {
+            Reward(rounded as i64)
+        }
     }
 
     pub(super) fn open(
@@ -767,7 +845,7 @@ impl States {
         }
 
         let ts = market.current_timestamp();
-        let symbol = &market_id.symbol;
+        let symbol = market_id.symbol;
 
         let state = if let Some(limit_price) = cmd.entry_price {
             // Case A: Limit Order -> Pending
@@ -783,45 +861,42 @@ impl States {
         Ok(())
     }
 
-    pub(super) fn modify(&mut self, cmd: ModifyCmd) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+    pub(super) fn modify(&mut self, cmd: &ModifyCmd) -> ChapatyResult<()> {
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
 
         self.modify_state_at(m_id, loc, |state| match state {
-            State::Active(mut t) => {
-                t.modify(&cmd, &m_id.symbol)?;
+            State::Active(t) => {
+                let modifed_trade = t.modify(cmd, m_id.symbol)?;
                 Ok(Transition {
-                    new_state: State::Active(t),
+                    new_state: State::Active(modifed_trade),
                     output: (),
                 })
             }
-            State::Pending(mut t) => {
-                t.modify(&cmd, &m_id.symbol)?;
+            State::Pending(t) => {
+                let modifed_trade = t.modify(cmd, m_id.symbol)?;
                 Ok(Transition {
-                    new_state: State::Pending(t),
+                    new_state: State::Pending(modifed_trade),
                     output: (),
                 })
             }
             // Modifying a Closed/Canceled trade is generally invalid
-            other => {
-                Err(AgentError::InvalidInput(format!("Cannot modify state {:?}", other)).into())
-            }
+            other => Err(AgentError::InvalidInput(format!("Cannot modify state {other:?}")).into()),
         })
     }
 
     pub(super) fn market_close(
         &mut self,
-        cmd: MarketCloseCmd,
+        cmd: &MarketCloseCmd,
         market: &MarketView,
     ) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
         let ts = market.current_timestamp();
-        let symbol = &m_id.symbol;
+        let symbol = m_id.symbol;
         let exit_price = market.try_resolved_close_price(symbol)?;
 
-        // Output tuple: (Reward, Option<TradeToArchive>)
         let (reward, trade_to_archive) = self.modify_state_at(m_id, loc, |state| {
             let t: Trade<Active> = state.try_into()?;
-            let (outcome, reward) = t.market_close(&cmd, Price(exit_price.0), ts, symbol)?;
+            let (outcome, reward) = t.market_close(cmd, Price(exit_price.0), ts, symbol)?;
 
             match outcome {
                 // Case A: Full Close
@@ -833,10 +908,10 @@ impl States {
                 }),
 
                 // Case B: Partial Close
-                // 1. The remaining portion stays Active (Active -> Active).
-                //    Guard::commit() will update it in-place in the Active vector.
-                // 2. The 'Closed' portion is returned as 'output'.
-                //    We must manually archive this split child.
+                // 1. The remaining portion stays Active (Active -> Active). Guard::commit() will
+                //    update it in-place in the Active vector.
+                // 2. The 'Closed' portion is returned as 'output'. We must manually archive this
+                //    split child.
                 CloseOutcome::PartiallyClosed { closed, remaining } => Ok(Transition {
                     new_state: State::Active(remaining),
                     output: (reward, Some(State::Closed(closed))),
@@ -854,13 +929,13 @@ impl States {
         Ok(())
     }
 
-    pub(super) fn cancel(&mut self, cmd: CancelCmd, market: &MarketView) -> ChapatyResult<()> {
-        let (m_id, loc) = self.get_index(&cmd.trade_id)?;
+    pub(super) fn cancel(&mut self, cmd: &CancelCmd, market: &MarketView) -> ChapatyResult<()> {
+        let (m_id, loc) = self.get_index(cmd.trade_id)?;
         let ts = market.current_timestamp();
 
         self.modify_state_at(m_id, loc, |state| {
             let t: Trade<Pending> = state.try_into()?;
-            let canceled = t.cancel(&cmd, ts)?;
+            let canceled = t.cancel(cmd, ts)?;
 
             // State changes to Canceled.
             // Guard::commit() will automatically move it from Active -> Archive.
@@ -871,28 +946,26 @@ impl States {
         })
     }
 
-    /// Returns an iterator over ALL states (Live + Archived) coupled with their MarketId.
-    /// Useful for reporting, logging, or serialization of the entire state.
+    /// Returns an iterator over ALL states (Live + Archived) coupled with their
+    /// `MarketId`. Useful for reporting, logging, or serialization of the
+    /// entire state.
     pub(super) fn flattened(&self) -> impl Iterator<Item = (&MarketId, &State)> {
-        // 1. Iterator for Hot Path
         let active_iter = self
             .live
             .iter()
             .flat_map(|(m_id, list)| list.iter().map(move |s| (m_id, s)));
 
-        // 2. Iterator for Cold Path
         let archive_iter = self
             .archive
             .iter()
             .flat_map(|(m_id, list)| list.iter().map(move |s| (m_id, s)));
 
-        // 3. Chain them together
         active_iter.chain(archive_iter)
     }
 }
 
 impl States {
-    /// Internal helper to register a PnL change.
+    /// Internal helper to register a `PnL` change.
     /// This updates BOTH the transient signal and the persistent score.
     fn record_pnl_change(&mut self, delta: f64) {
         self.step_reward += delta;
@@ -907,7 +980,8 @@ impl States {
     /// The caller provides a callback `f` to process the result of each update.
     ///
     /// This handles the "Swap-Remove" shift automatically:
-    /// - If `f` returns a closed state, we stay at `idx` (because a new trade swapped in).
+    /// - If `f` returns a closed state, we stay at `idx` (because a new trade
+    ///   swapped in).
     /// - If `f` returns an active state, we advance `idx`.
     fn update_live_trades_scan<F>(
         &mut self,
@@ -921,19 +995,19 @@ impl States {
         let mut idx = 0;
 
         // We re-evaluate len() every loop because it shrinks when trades close.
-        while idx < self.live.get(&m_id).map(|v| v.len()).unwrap_or(0) {
+        while idx < self.live.get(&m_id).map_or(0, std::vec::Vec::len) {
             // 1. Perform the transactional update
             let update_result = self.update_single_at_idx(m_id, idx, ctx);
 
             // 2. Capture the outcome (Did it close?)
             let is_closed = match &update_result {
-                Ok(Some(_)) => true, // Closed/Canceled
-                Ok(None) => false,   // Still Active
-                Err(_) => false,     // Error (state didn't change)
+                Ok(Some(_)) => true,        // Closed/Canceled
+                Ok(None) | Err(_) => false, // Still Active or error (state didn't change)
             };
 
             // 3. Notify the caller (Ledger) so it can log/react
-            // We pass the result *before* we decide index logic, so Ledger knows what happened.
+            // We pass the result *before* we decide index logic, so Ledger knows what
+            // happened.
             on_update(update_result)?;
 
             // 4. Control Flow (The "Core" Safety Logic)
@@ -961,8 +1035,8 @@ impl States {
         let (reward, exit) = self.modify_state_at(m_id, idx, |state| {
             // 1. Delegate Logic
             let (new_state, r) = match state {
-                State::Active(t) => active::update(t, &m_id, ctx)?,
-                State::Pending(t) => pending::update(t, &m_id, ctx)?,
+                State::Active(t) => t.update(m_id, ctx)?,
+                State::Pending(t) => t.update(m_id, ctx)?,
                 other => {
                     // This branch implies data corruption (Cold trade in Hot vec)
                     warn!(
@@ -1000,8 +1074,9 @@ impl States {
     /// Executes a transaction on a specific trade location (Hot or Cold).
     ///
     /// # Safety
-    /// This uses `StateGuard` to clone the state first. The vector is NOT modified
-    /// until the closure returns successfully and `guard.commit()` is called.
+    /// This uses `StateGuard` to clone the state first. The vector is NOT
+    /// modified until the closure returns successfully and `guard.commit()`
+    /// is called.
     fn modify_state_at<F, R>(&mut self, m_id: MarketId, idx: usize, f: F) -> ChapatyResult<R>
     where
         // Closure returns a clear 'Transition' struct
@@ -1027,9 +1102,9 @@ impl States {
     // Index Management
     // ============================================================================
 
-    fn get_index(&self, uid: &TradeId) -> ChapatyResult<(MarketId, usize)> {
+    fn get_index(&self, uid: TradeId) -> ChapatyResult<(MarketId, usize)> {
         self.live_index
-            .get(uid)
+            .get(&uid)
             .copied()
             .ok_or_else(|| ChapatyError::Data(DataError::KeyNotFound(format!("Trade {uid:?}"))))
     }
@@ -1051,14 +1126,17 @@ impl States {
 // StateGuard: The Traffic Controller
 // ================================================================================================
 
-/// RAII Guard that manages state transitions between Hot (Active) and Cold (Archive) storage.
+/// RAII Guard that manages state transitions between Hot (Active) and Cold
+/// (Archive) storage.
 ///
 /// # Mechanism
-/// 1. `new()`: Clones the state from source vector. Does NOT remove it yet (Snapshot).
+/// 1. `new()`: Clones the state from source vector. Does NOT remove it yet
+///    (Snapshot).
 /// 2. `commit()`: Determines if state stays Hot or moves to Cold.
 ///    - If Hot->Hot: Overwrites the slot in-place (O(1)).
 ///    - If Hot->Cold: Swap-removes from Hot, pushes to Cold (O(1)).
-/// 3. `drop()`: If not committed, does nothing. The original state remains in the vector (Rollback).
+/// 3. `drop()`: If not committed, does nothing. The original state remains in
+///    the vector (Rollback).
 #[must_use = "StateGuard must be committed to persist changes"]
 #[derive(Debug)]
 struct StateGuard<'a> {
@@ -1090,7 +1168,11 @@ impl<'a> StateGuard<'a> {
         })
     }
 
-    fn get(&self) -> &State {
+    const fn get(&self) -> &State {
+        #[expect(
+            clippy::expect_used,
+            reason = "StateGuard enforces an structural invariant where `working_state` must be valid."
+        )]
         self.working_state
             .as_ref()
             .expect("StateGuard invariant violated: state missing")
@@ -1126,7 +1208,7 @@ impl<'a> StateGuard<'a> {
     }
 }
 
-impl<'a> Drop for StateGuard<'a> {
+impl Drop for StateGuard<'_> {
     fn drop(&mut self) {
         // If we drop without commit, we do NOTHING.
         // The original state is still sitting safely in the vector.
@@ -1138,7 +1220,7 @@ impl<'a> Drop for StateGuard<'a> {
 // Helper Functions
 // ================================================================================================
 
-fn sanitize_price(symbol: &Symbol, original: f64, field_name: &str) -> f64 {
+fn sanitize_price(symbol: Symbol, original: f64, field_name: &str) -> f64 {
     let sanitized = symbol.normalize_price(original);
 
     if (original - sanitized).abs() > f64::EPSILON * 100.0 {
@@ -1166,6 +1248,13 @@ struct Transition<T> {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use std::panic::{self, AssertUnwindSafe};
+
     use chrono::Duration;
 
     use super::*;
@@ -1180,7 +1269,6 @@ mod tests {
             data::{SimulationData, SimulationDataBuilder, Streams},
         },
     };
-    use std::panic::{self, AssertUnwindSafe};
 
     // ========================================================================
     // 0. The "Invariant Checker"
@@ -1208,7 +1296,7 @@ mod tests {
 
         // 2. Backward Check: Live count must match index count
         // (Archive is not indexed)
-        let total_live = states.live.values().map(|v| v.len()).sum::<usize>();
+        let total_live = states.live.values().map(std::vec::Vec::len).sum::<usize>();
 
         assert_eq!(
             counted_states, total_live,
@@ -1240,7 +1328,7 @@ mod tests {
         State::Pending(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(1.0),
             stop_loss: None,
             take_profit: None,
@@ -1255,13 +1343,13 @@ mod tests {
         State::Canceled(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(1.0),
             stop_loss: None,
             take_profit: None,
             state: Canceled {
                 created_at: t0(),
-                canceled_at: t0() + Duration::minutes(10),
+                cancel_ts: t0() + Duration::minutes(10),
                 limit_price: Price(100.0),
             },
         })
@@ -1276,7 +1364,7 @@ mod tests {
         State::Active(Trade {
             uid: TradeId(uid),
             agent_id: AgentIdentifier::Random,
-            trade_type: TradeType::Long,
+            kind: TradeKind::Long,
             quantity: Quantity(qty),
             stop_loss: None,
             take_profit: None,
@@ -1309,7 +1397,7 @@ mod tests {
         (states, m_id)
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
+    /// A lightweight wrapper around the heavy `SimulationData`.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -1333,7 +1421,7 @@ mod tests {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -1349,10 +1437,10 @@ mod tests {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }
@@ -1374,7 +1462,7 @@ mod tests {
         // We know from setup that Qty is 1.0, but let's be explicit.
         let original_ptr = states.live.get(&m_id).unwrap().as_ptr();
         let original_val = states.get_by_id(&TradeId(20)).unwrap().clone();
-        assert_eq!(original_val.quantity().0, 1.0);
+        assert_f64_eq!(original_val.quantity().0, 1.0);
         check_invariants(&states);
 
         // Action: Checkout Trade(20) at index 1.
@@ -1383,13 +1471,13 @@ mod tests {
 
             // CHECK 1: Guard holds a perfect CLONE
             assert_eq!(guard.get().trade_id().0, 20);
-            assert_eq!(guard.get().quantity().0, 1.0);
+            assert_f64_eq!(guard.get().quantity().0, 1.0);
 
             // CHECK 2: Vector is UNTOUCHED
             // The original state "20" is still sitting in the vector.
             assert_eq!(guard.live_vec.len(), 3);
             assert_eq!(guard.live_vec[1].trade_id().0, 20);
-            assert_eq!(guard.live_vec[1].quantity().0, 1.0); // Data integrity check
+            assert_f64_eq!(guard.live_vec[1].quantity().0, 1.0); // Data integrity check
 
             // CHECK 3: Memory Stability (Optional but powerful)
             // Prove that the vector didn't reallocate or shift
@@ -1405,7 +1493,7 @@ mod tests {
 
         // Final sanity check: The data is still there after drop
         let final_state = states.get_by_id(&TradeId(20)).unwrap();
-        assert_eq!(final_state.quantity().0, 1.0);
+        assert_f64_eq!(final_state.quantity().0, 1.0);
         check_invariants(&states);
     }
 
@@ -1415,7 +1503,7 @@ mod tests {
 
         // PRE-CHECK: Verify initial quantity is 1.0
         let original = states.get_by_id(&TradeId(20)).unwrap();
-        assert_eq!(original.quantity().0, 1.0, "Pre-condition failed");
+        assert_f64_eq!(original.quantity().0, 1.0, "Pre-condition failed");
         check_invariants(&states);
 
         // Checkout Trade(20) at index 1
@@ -1439,10 +1527,10 @@ mod tests {
         assert_eq!(vec[2].trade_id().0, 30);
 
         // CHECK 3: Data was actually mutated
-        assert_eq!(vec[1].quantity().0, 999.0, "Update was lost!");
+        assert_f64_eq!(vec[1].quantity().0, 999.0, "Update was lost!");
 
         // CHECK 4: Index Map unchanged
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
 
         check_invariants(&states);
     }
@@ -1481,9 +1569,9 @@ mod tests {
 
         // CHECK 3: Indices updated
         // Trade 30 swapped to index 1
-        assert_eq!(states.get_index(&TradeId(30)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(30)).unwrap().1, 1);
         // Trade 20 removed from index (archived trades are NOT indexed)
-        assert!(states.get_index(&TradeId(20)).is_err());
+        assert!(states.get_index(TradeId(20)).is_err());
 
         check_invariants(&states);
     }
@@ -1527,18 +1615,18 @@ mod tests {
         // CHECK 2: Index Integrity
         // Trade 30 must now point to Index 0
         assert_eq!(
-            states.get_index(&TradeId(30)).unwrap().1,
+            states.get_index(TradeId(30)).unwrap().1,
             0,
             "Index for 30 not updated"
         );
         // Trade 20 must still point to Index 1
         assert_eq!(
-            states.get_index(&TradeId(20)).unwrap().1,
+            states.get_index(TradeId(20)).unwrap().1,
             1,
             "Index for 20 should be stable"
         );
         // Trade 10 must be gone
-        assert!(states.get_index(&TradeId(10)).is_err());
+        assert!(states.get_index(TradeId(10)).is_err());
 
         // CHECK 3: Archive
         let archive_vec = states.archive.get(&m_id).unwrap();
@@ -1554,25 +1642,26 @@ mod tests {
 
         // PRE-CHECK: Confirm it starts at Index 1
         assert_eq!(
-            states.get_index(&TradeId(20)).unwrap().1,
+            states.get_index(TradeId(20)).unwrap().1,
             1,
             "Pre-condition: Trade 20 must start at idx 1"
         );
         check_invariants(&states);
 
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ = states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
-                assert_eq!(state.trade_id().0, 20);
+            let _ignored =
+                states.modify_state_at(m_id, 1, |state| -> ChapatyResult<Transition<()>> {
+                    assert_eq!(state.trade_id().0, 20);
 
-                panic!(
-                    "\n\n\
+                    panic!(
+                        "\n\n\
                         ┌───────────────────────────────────────────────────────┐\n\
                         │ **[TEST EXPECTED]:** Intentional Panic Triggered.     │\n\
                         │ PURPOSE: Simulating crash to verify Clone Safety.     │\n\
                         │ STATUS: If you see this, the test harness is working. │\n\
                         └───────────────────────────────────────────────────────┘\n\n"
-                );
-            });
+                    );
+                });
         }));
 
         assert!(result.is_err(), "Should have caught the panic");
@@ -1584,7 +1673,7 @@ mod tests {
         assert_eq!(state.quantity(), original_qty);
 
         // CHECK: It is STILL at index 1
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
         check_invariants(&states);
     }
 
@@ -1595,7 +1684,7 @@ mod tests {
         // PRE-CHECK: Establish the Baseline
         // We must prove it starts at 1.0 to prove it was 'restored' to 1.0
         let original = states.live.get(&m_id).unwrap().first().unwrap();
-        assert_eq!(
+        assert_f64_eq!(
             original.quantity().0,
             1.0,
             "Pre-condition: Quantity must start at 1.0"
@@ -1603,7 +1692,7 @@ mod tests {
         check_invariants(&states);
 
         // Action: Attempt modification that fails
-        let _ = states.modify_state_at(m_id, 0, |mut s| -> ChapatyResult<Transition<()>> {
+        let _ignored = states.modify_state_at(m_id, 0, |mut s| -> ChapatyResult<Transition<()>> {
             // Mutate the local CLONE
             if let State::Pending(ref mut t) = s {
                 t.quantity = Quantity(99999.0);
@@ -1618,13 +1707,12 @@ mod tests {
         let current = states.live.get(&m_id).unwrap().first().unwrap();
 
         // It should NOT be the mutated value
-        assert_ne!(
-            current.quantity().0,
-            99999.0,
+        assert!(
+            (current.quantity().0 - 99999.0).abs() > f64::EPSILON,
             "Transaction should not have committed"
         );
         // It SHOULD be the original value
-        assert_eq!(
+        assert_f64_eq!(
             current.quantity().0,
             1.0,
             "State should have rolled back to 1.0"
@@ -1664,7 +1752,8 @@ mod tests {
 
         // CHECK 2: Stability (The Critical Check)
         // Verify that NEITHER 10 nor 20 moved.
-        // This proves the operation acted as a stable 'pop', avoiding the reordering of a typical swap_remove.
+        // This proves the operation acted as a stable 'pop', avoiding the reordering of
+        // a typical swap_remove.
         assert_eq!(
             live_vec[0].trade_id().0,
             10,
@@ -1682,10 +1771,10 @@ mod tests {
         assert_eq!(archive_vec[0].trade_id().0, 30);
 
         // CHECK 4: Indices
-        assert_eq!(states.get_index(&TradeId(10)).unwrap().1, 0);
-        assert_eq!(states.get_index(&TradeId(20)).unwrap().1, 1);
+        assert_eq!(states.get_index(TradeId(10)).unwrap().1, 0);
+        assert_eq!(states.get_index(TradeId(20)).unwrap().1, 1);
         // Trade 30 removed from index
-        assert!(states.get_index(&TradeId(30)).is_err());
+        assert!(states.get_index(TradeId(30)).is_err());
 
         check_invariants(&states);
     }
@@ -1702,7 +1791,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             ChapatyError::System(SystemError::IndexOutOfBounds(_)) => {} // Expected
-            e => panic!("Expected IndexOutOfBounds, got {:?}", e),
+            e => panic!("Expected IndexOutOfBounds, got {e:?}"),
         }
         check_invariants(&states);
     }
@@ -1716,24 +1805,24 @@ mod tests {
         let (mut states, _) = setup_ledger(vec![]);
 
         // PRE-CHECK: Start at absolute zero
-        assert_eq!(states.step_reward, 0.0);
-        assert_eq!(states.cumulative_pnl, 0.0);
+        assert_f64_eq!(states.step_reward, 0.0);
+        assert_f64_eq!(states.cumulative_pnl, 0.0);
         check_invariants(&states);
 
         // Record first PnL change
         states.record_pnl_change(100.0);
-        assert_eq!(states.step_reward, 100.0);
-        assert_eq!(states.cumulative_pnl, 100.0);
+        assert_f64_eq!(states.step_reward, 100.0);
+        assert_f64_eq!(states.cumulative_pnl, 100.0);
 
         // Record second PnL change - both accumulate
         states.record_pnl_change(50.5);
-        assert_eq!(states.step_reward, 150.5);
-        assert_eq!(states.cumulative_pnl, 150.5);
+        assert_f64_eq!(states.step_reward, 150.5);
+        assert_f64_eq!(states.cumulative_pnl, 150.5);
 
         // Record negative PnL (loss)
         states.record_pnl_change(-30.0);
-        assert_eq!(states.step_reward, 120.5);
-        assert_eq!(states.cumulative_pnl, 120.5);
+        assert_f64_eq!(states.step_reward, 120.5);
+        assert_f64_eq!(states.cumulative_pnl, 120.5);
 
         check_invariants(&states);
     }
@@ -1746,8 +1835,8 @@ mod tests {
         states.record_pnl_change(400.6);
 
         // PRE-CHECK: Verify float state before pop
-        assert_eq!(states.step_reward, 400.6);
-        assert_eq!(states.cumulative_pnl, 400.6);
+        assert_f64_eq!(states.step_reward, 400.6);
+        assert_f64_eq!(states.cumulative_pnl, 400.6);
         check_invariants(&states);
 
         // Action: Pop the reward
@@ -1759,10 +1848,10 @@ mod tests {
         assert_eq!(reward.0, 401, "Reward should round to nearest integer");
 
         // CHECK 2: Step Reset (Transient)
-        assert_eq!(states.step_reward, 0.0);
+        assert_f64_eq!(states.step_reward, 0.0);
 
         // CHECK 3: Persistence (Cumulative is UNTOUCHED)
-        assert_eq!(states.cumulative_pnl, 400.6);
+        assert_f64_eq!(states.cumulative_pnl, 400.6);
 
         // Action 2: Pop empty
         let reward2 = states.pop_reward();
@@ -1823,7 +1912,7 @@ mod tests {
         let cmd1 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(100.0)), // Limit order
             stop_loss: None,
@@ -1839,14 +1928,14 @@ mod tests {
 
         // PRE-CHECK 2: Confirm first trade is settled
         let trade = states.get_by_id(&TradeId(42)).unwrap();
-        assert_eq!(trade.quantity().0, 1.0);
+        assert_f64_eq!(trade.quantity().0, 1.0);
         check_invariants(&states);
 
         // Second open with SAME UID 42 - should FAIL
         let cmd2 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42), // Duplicate!
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(2.0),
             entry_price: Some(Price(110.0)),
             stop_loss: None,
@@ -1858,7 +1947,7 @@ mod tests {
 
         // Verify original trade is untouched
         let trade_after = states.get_by_id(&TradeId(42)).unwrap();
-        assert_eq!(trade_after.quantity().0, 1.0);
+        assert_f64_eq!(trade_after.quantity().0, 1.0);
         check_invariants(&states);
     }
 
@@ -1877,7 +1966,7 @@ mod tests {
         let limit_cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(50000.0)), // Limit price
             stop_loss: Some(Price(49000.0)),
@@ -1892,7 +1981,7 @@ mod tests {
         assert!(trade.is_pending(), "Limit order should be Pending");
 
         // Verify it's in Hot Path (live) - index exists
-        let (_, idx) = states.get_index(&TradeId(1)).unwrap();
+        let (_, idx) = states.get_index(TradeId(1)).unwrap();
         assert_eq!(idx, 0, "Should be at index 0");
         check_invariants(&states);
     }
@@ -1903,7 +1992,7 @@ mod tests {
 
         // PRE-CHECK: Verify original entry price
         let original = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(original.anticipated_entry_price().0, 100.0); // Based on mock default
+        assert_f64_eq!(original.anticipated_entry_price().0, 100.0); // Based on mock default
         check_invariants(&states);
 
         // Case 1: Modify existing Pending trade - should succeed
@@ -1915,12 +2004,12 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result = states.modify(modify_cmd);
+        let result = states.modify(&modify_cmd);
         assert!(result.is_ok(), "Modifying Pending trade should succeed");
 
         // Verify the entry price was updated
         let trade = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(trade.anticipated_entry_price().0, 105.0);
+        assert_f64_eq!(trade.anticipated_entry_price().0, 105.0);
 
         // Case 2: Modify non-existent trade - should fail
         let bad_cmd = ModifyCmd {
@@ -1931,7 +2020,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result2 = states.modify(bad_cmd);
+        let result2 = states.modify(&bad_cmd);
         assert!(result2.is_err(), "Modifying non-existent trade should fail");
 
         // Case 3: Modify archived (Canceled) trade - should fail
@@ -1954,7 +2043,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result3 = states.modify(archived_cmd);
+        let result3 = states.modify(&archived_cmd);
         assert!(
             result3.is_err(),
             "Modifying archived (Canceled) trade should fail"
@@ -1982,7 +2071,7 @@ mod tests {
             trade_id: TradeId(20),
         };
 
-        let result = states.cancel(cancel_cmd, &market);
+        let result = states.cancel(&cancel_cmd, &market);
         assert!(result.is_ok(), "Cancel should succeed");
 
         // Verify: Live should have 2, Archive should have 1
@@ -1998,7 +2087,7 @@ mod tests {
         assert_eq!(archive_vec[0].trade_id().0, 20);
 
         // Verify trade is NO LONGER indexed (archived trades are not indexed)
-        assert!(states.get_index(&TradeId(20)).is_err());
+        assert!(states.get_index(TradeId(20)).is_err());
 
         check_invariants(&states);
     }
@@ -2026,7 +2115,7 @@ mod tests {
         let cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: None, // MARKET ORDER
             stop_loss: None,
@@ -2049,10 +2138,10 @@ mod tests {
 
         // 3. Entry Price matches Market Close (100.0)
         let active_trade: Trade<Active> = trade.clone().try_into().unwrap();
-        assert_eq!(active_trade.state().entry_price().0, 100.0);
+        assert_f64_eq!(active_trade.state().entry_price().0, 100.0);
 
         // 4. Index is correct
-        assert_eq!(states.get_index(&TradeId(1)).unwrap().1, 0);
+        assert_eq!(states.get_index(TradeId(1)).unwrap().1, 0);
         check_invariants(&states);
     }
 
@@ -2079,7 +2168,7 @@ mod tests {
         );
 
         // PRE-CHECK 3: PnL must be zero
-        assert_eq!(states.pnl(), 0.0, "PnL must start at zero");
+        assert_f64_eq!(states.pnl(), 0.0, "PnL must start at zero");
         check_invariants(&states);
 
         // 2. Command: Close at Market
@@ -2090,7 +2179,7 @@ mod tests {
         };
 
         // Action
-        let result = states.market_close(cmd, &market);
+        let result = states.market_close(&cmd, &market);
         assert!(result.is_ok());
 
         // VERIFY
@@ -2104,10 +2193,10 @@ mod tests {
 
         // 3. Exit Price matches Market (110.0)
         let close_trade: Trade<Closed> = closed.clone().try_into().unwrap();
-        assert_eq!(close_trade.state().exit_price().0, 110.0);
+        assert_f64_eq!(close_trade.state().exit_price().0, 110.0);
 
         // 4. PnL captured correctly (Long: 110 - 100 = 10)
-        assert_eq!(states.pnl(), 10.0);
+        assert_f64_eq!(states.pnl(), 10.0);
         check_invariants(&states);
     }
 
@@ -2129,8 +2218,8 @@ mod tests {
 
         // PRE-CHECK: Verify baseline
         let initial = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(initial.quantity().0, 2.0);
-        assert_eq!(states.pnl(), 0.0);
+        assert_f64_eq!(initial.quantity().0, 2.0);
+        assert_f64_eq!(states.pnl(), 0.0);
         check_invariants(&states);
 
         // 2. Command: Close 0.5 Units (Partial)
@@ -2141,13 +2230,13 @@ mod tests {
         };
 
         // Action
-        let result = states.market_close(cmd, &market);
+        let result = states.market_close(&cmd, &market);
         assert!(result.is_ok());
 
         // VERIFY 1: The Remainder stays in Live (Hot Path)
         // Original Qty 2.0 - Closed 0.5 = 1.5
         let live_trade = states.get_by_id(&TradeId(10)).unwrap();
-        assert_eq!(live_trade.quantity().0, 1.5, "Live trade should shrink");
+        assert_f64_eq!(live_trade.quantity().0, 1.5, "Live trade should shrink");
         assert!(live_trade.is_active());
 
         // VERIFY 2: The Closed Portion goes to Archive (Cold Path)
@@ -2156,7 +2245,7 @@ mod tests {
         let closed_portion = &archive[0];
 
         assert_eq!(closed_portion.trade_id().0, 10, "UIDs match");
-        assert_eq!(
+        assert_f64_eq!(
             closed_portion.quantity().0,
             0.5,
             "Archived qty matches command"
@@ -2164,7 +2253,7 @@ mod tests {
 
         // VERIFY 3: PnL Calculation
         // Profit = (Exit 110 - Entry 100) * Closed Qty 0.5 = 5.0
-        assert_eq!(
+        assert_f64_eq!(
             states.pnl(),
             5.0,
             "PnL should only reflect the closed portion"
@@ -2223,7 +2312,7 @@ mod tests {
 
         // 4. Action: Update Loop
         let mut seen_markets: Vec<MarketId> = Vec::new();
-        let _ = states.update_all_live_trades(&ctx, |market_id, _result| {
+        let _ignored = states.update_all_live_trades(&ctx, |market_id, _result| {
             seen_markets.push(market_id);
             Ok(())
         });
@@ -2287,7 +2376,8 @@ mod tests {
         let live = states.live.get(&m_id).unwrap();
 
         // 1. Only T20 should remain.
-        // If the loop was buggy (incrementing index after swap), it would have skipped T30.
+        // If the loop was buggy (incrementing index after swap), it would have skipped
+        // T30.
         assert_eq!(live.len(), 1, "Only T20 should remain active");
         assert_eq!(live[0].trade_id().0, 20, "T20 should be at index 0");
 

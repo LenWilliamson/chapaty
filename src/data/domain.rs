@@ -1,16 +1,21 @@
+use std::{cmp::Ordering, fmt, str::FromStr};
+
+use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
+use chrono_tz::Tz;
+use polars::prelude::{Expr, col, lit};
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
 use strum::{AsRefStr, Display, EnumIter, IntoStaticStr};
 use strum_macros::EnumString;
 
 use crate::{
     error::{ChapatyError, DataError, TransportError},
     generated::chapaty::{
-        bq_exporter::v1::EconomicCategory as RpcEconomicCategory,
-        bq_exporter::v1::EconomicImportance as RpcEconomicImportance,
+        bq_exporter::v1::{
+            EconomicCategory as RpcEconomicCategory, EconomicImportance as RpcEconomicImportance,
+        },
         data::v1::DataBroker as RpcDataBroker,
     },
-    impl_abs_primitive, impl_add_sub_mul_div_primitive, impl_from_primitive, impl_neg_primitive,
+    transport::schema::CanonicalCol,
 };
 
 // ================================================================================================
@@ -26,9 +31,21 @@ impl_from_primitive!(Price, f64);
 impl_add_sub_mul_div_primitive!(Price, f64);
 impl_neg_primitive!(Price, f64);
 impl_abs_primitive!(Price, f64);
+impl_min_max_primitive!(Price, f64);
+
+/// Represents a price level in the quote currency.
+///
+/// Used for: Open, High, Low, Close, Trade Price, Stops, and Take Profits.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct PriceDelta(pub f64);
+impl_from_primitive!(PriceDelta, f64);
+impl_add_sub_mul_div_primitive!(PriceDelta, f64);
+impl_neg_primitive!(PriceDelta, f64);
+impl_abs_primitive!(PriceDelta, f64);
+impl_min_max_primitive!(PriceDelta, f64);
 
 /// Represents the smallest discrete movement of an asset.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Tick(pub i64);
 impl_from_primitive!(Tick, i64);
 impl_add_sub_mul_div_primitive!(Tick, i64);
@@ -42,13 +59,14 @@ impl_abs_primitive!(Tick, i64);
 /// providing strong typing against Price or other metrics.
 ///
 /// # Semantics
-/// - **Negative values** are generally not allowed in storage but may appear
-///   in delta calculations.
+/// - **Negative values** are generally not allowed in storage but may appear in
+///   delta calculations.
 /// - **Precision** is handled via standard `f64` IEEE-754 semantics.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct Quantity(pub f64);
 impl_from_primitive!(Quantity, f64);
 impl_add_sub_mul_div_primitive!(Quantity, f64);
+impl_min_max_primitive!(Quantity, f64);
 
 /// Semantic alias for `Quantity` when referring to aggregated market activity.
 ///
@@ -78,6 +96,7 @@ impl_from_primitive!(TimeframeIdx, u32);
 pub struct EconomicValue(pub f64);
 impl_from_primitive!(EconomicValue, f64);
 impl_add_sub_mul_div_primitive!(EconomicValue, f64);
+impl_min_max_primitive!(EconomicValue, f64);
 
 /// Represents the directional outcome of a candlestick,
 /// based on the relationship between its open and close prices.
@@ -169,10 +188,11 @@ impl LiquiditySide {
     /// # Logic
     /// * If Maker = Buyer, then Aggressor = **Sell** (Red).
     /// * If Maker = Seller, then Aggressor = **Buy** (Green).
-    pub fn trade_side(&self) -> TradeSide {
+    #[must_use]
+    pub const fn trade_side(&self) -> TradeSide {
         match self {
-            LiquiditySide::Bid => TradeSide::Sell,
-            LiquiditySide::Ask => TradeSide::Buy,
+            Self::Bid => TradeSide::Sell,
+            Self::Ask => TradeSide::Buy,
         }
     }
 }
@@ -181,11 +201,7 @@ impl LiquiditySide {
 
 impl From<bool> for LiquiditySide {
     fn from(value: bool) -> Self {
-        if value {
-            LiquiditySide::Bid
-        } else {
-            LiquiditySide::Ask
-        }
+        if value { Self::Bid } else { Self::Ask }
     }
 }
 
@@ -201,6 +217,47 @@ impl From<&LiquiditySide> for bool {
 impl From<LiquiditySide> for bool {
     fn from(value: LiquiditySide) -> Self {
         (&value).into()
+    }
+}
+
+/// Selects which aggregated price of a bar is used for calculations.
+///
+/// Only meaningful for bar-like data that spans a range (e.g.
+/// [`crate::data::event::Ohlcv`]).
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+pub enum AggregatedPrice {
+    /// `(High + Low + Close) / 3`. The industry-standard typical price.
+    #[default]
+    Hlc3,
+    /// `(High + Low) / 2`. Weights the bar by its extremes only (Median price).
+    Hl2,
+    /// `(Open + High + Low + Close) / 4`. Equal weight to all four prices.
+    Ohlc4,
+    /// `Close` only. Ignores intra-bar movement entirely.
+    Close,
+}
+
+impl AggregatedPrice {
+    /// Converts the price aggregation type into its corresponding Polars
+    /// Expression.
+    pub(crate) fn to_expr(self) -> Expr {
+        match self {
+            Self::Close => col(CanonicalCol::Close),
+            Self::Hl2 => (col(CanonicalCol::High) + col(CanonicalCol::Low)) / lit(2.0),
+            Self::Ohlc4 => {
+                (col(CanonicalCol::Open)
+                    + col(CanonicalCol::High)
+                    + col(CanonicalCol::Low)
+                    + col(CanonicalCol::Close))
+                    / lit(4.0)
+            }
+            Self::Hlc3 => {
+                (col(CanonicalCol::High) + col(CanonicalCol::Low) + col(CanonicalCol::Close))
+                    / lit(3.0)
+            }
+        }
     }
 }
 
@@ -229,7 +286,8 @@ pub enum ExecutionDepth {
     /// at the top of the book was sufficient to fill this portion of the trade.
     TopOfBook,
 
-    /// The trade swept through the top of the book and matched at a worse price.
+    /// The trade swept through the top of the book and matched at a worse
+    /// price.
     ///
     /// This indicates that the Aggressor's order size exceeded the liquidity
     /// available at the BBO, forcing the engine to match against deeper
@@ -240,13 +298,14 @@ pub enum ExecutionDepth {
 impl From<bool> for ExecutionDepth {
     /// Converts a boolean value to a `TradeMatchQuality`.
     ///
-    /// If `true`, it indicates that the trade was filled at the best available price (`BestMatch`).
-    /// If `false`, it indicates that the best available quantity was insufficient (`NotBestMatch`).
+    /// If `true`, it indicates that the trade was filled at the best available
+    /// price (`BestMatch`). If `false`, it indicates that the best
+    /// available quantity was insufficient (`NotBestMatch`).
     fn from(is_best_match: bool) -> Self {
         if is_best_match {
-            ExecutionDepth::TopOfBook
+            Self::TopOfBook
         } else {
-            ExecutionDepth::BookSweep
+            Self::BookSweep
         }
     }
 }
@@ -254,10 +313,11 @@ impl From<bool> for ExecutionDepth {
 impl From<&ExecutionDepth> for bool {
     /// Converts a `TradeMatchQuality` into a boolean value.
     ///
-    /// `TradeMatchQuality::BestMatch` converts to `true`, meaning that the trade was filled entirely
-    /// at the best available price.
-    /// `TradeMatchQuality::NotBestMatch` converts to `false`, indicating that the best available quantity
-    /// was insufficient and additional price levels were used.
+    /// `TradeMatchQuality::BestMatch` converts to `true`, meaning that the
+    /// trade was filled entirely at the best available price.
+    /// `TradeMatchQuality::NotBestMatch` converts to `false`, indicating that
+    /// the best available quantity was insufficient and additional price
+    /// levels were used.
     fn from(trade_match_quality: &ExecutionDepth) -> Self {
         match trade_match_quality {
             ExecutionDepth::TopOfBook => true,
@@ -295,17 +355,18 @@ pub enum DataBroker {
 }
 
 impl DataBroker {
-    pub fn supports_economic_calendar(&self) -> bool {
-        matches!(self, DataBroker::InvestingCom)
+    #[must_use]
+    pub const fn supports_economic_calendar(&self) -> bool {
+        matches!(self, Self::InvestingCom)
     }
 }
 
 impl From<&DataBroker> for RpcDataBroker {
     fn from(broker: &DataBroker) -> Self {
         match broker {
-            DataBroker::Binance => RpcDataBroker::Binance,
-            DataBroker::NinjaTrader => RpcDataBroker::NinjaTrader,
-            DataBroker::InvestingCom => RpcDataBroker::InvestingCom,
+            DataBroker::Binance => Self::Binance,
+            DataBroker::NinjaTrader => Self::NinjaTrader,
+            DataBroker::InvestingCom => Self::InvestingCom,
         }
     }
 }
@@ -321,9 +382,9 @@ impl TryFrom<RpcDataBroker> for DataBroker {
 
     fn try_from(proto: RpcDataBroker) -> Result<Self, Self::Error> {
         match proto {
-            RpcDataBroker::Binance => Ok(DataBroker::Binance),
-            RpcDataBroker::NinjaTrader => Ok(DataBroker::NinjaTrader),
-            RpcDataBroker::InvestingCom => Ok(DataBroker::InvestingCom),
+            RpcDataBroker::Binance => Ok(Self::Binance),
+            RpcDataBroker::NinjaTrader => Ok(Self::NinjaTrader),
+            RpcDataBroker::InvestingCom => Ok(Self::InvestingCom),
 
             // Handle the 0-value case explicitly
             RpcDataBroker::Unspecified => Err(TransportError::RpcTypeNotFound(
@@ -359,18 +420,16 @@ impl TryFrom<DataBroker> for Exchange {
 
     fn try_from(broker: DataBroker) -> Result<Self, Self::Error> {
         match broker {
-            DataBroker::NinjaTrader => Ok(Exchange::Cme),
-            DataBroker::Binance => Ok(Exchange::Binance),
+            DataBroker::NinjaTrader => Ok(Self::Cme),
+            DataBroker::Binance => Ok(Self::Binance),
             DataBroker::InvestingCom => Err(DataError::UnexpectedEnumVariant(format!(
-                "{} does not map to an exchange",
-                broker
+                "{broker} does not map to an exchange"
             ))
             .into()),
         }
     }
 }
 
-// The eonomic data publisher (e.g., "investingcom", "cftc", "fred").
 #[derive(
     Copy,
     Clone,
@@ -395,9 +454,9 @@ impl TryFrom<DataBroker> for EconomicDataSource {
 
     fn try_from(broker: DataBroker) -> Result<Self, Self::Error> {
         match broker {
-            DataBroker::InvestingCom => Ok(EconomicDataSource::InvestingCom),
+            DataBroker::InvestingCom => Ok(Self::InvestingCom),
             DataBroker::NinjaTrader | DataBroker::Binance => Err(DataError::UnexpectedEnumVariant(
-                format!("{} does not map to an economic data source", broker),
+                format!("{broker} does not map to an economic data source"),
             )
             .into()),
         }
@@ -487,12 +546,6 @@ pub enum MarketType {
 
 impl From<Symbol> for MarketType {
     fn from(value: Symbol) -> Self {
-        (&value).into()
-    }
-}
-
-impl From<&Symbol> for MarketType {
-    fn from(value: &Symbol) -> Self {
         match value {
             Symbol::Future(_) => Self::Future,
             Symbol::Spot(_) => Self::Spot,
@@ -511,8 +564,8 @@ pub enum Symbol {
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Symbol::Spot(s) => write!(f, "{}", s),
-            Symbol::Future(s) => write!(f, "{}", s),
+            Self::Spot(s) => write!(f, "{s}"),
+            Self::Future(s) => write!(f, "{s}"),
         }
     }
 }
@@ -523,12 +576,12 @@ impl FromStr for Symbol {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Try parsing as SpotPair first
         if let Ok(spot) = SpotPair::from_str(s) {
-            return Ok(Symbol::Spot(spot));
+            return Ok(Self::Spot(spot));
         }
 
         // Try parsing as FutureContract
         if let Ok(future) = FutureContract::from_str(s) {
-            return Ok(Symbol::Future(future));
+            return Ok(Self::Future(future));
         }
 
         Err(DataError::InvalidSymbol(s.to_string()).into())
@@ -536,8 +589,9 @@ impl FromStr for Symbol {
 }
 
 impl Symbol {
+    #[must_use]
     pub fn market_type(&self) -> MarketType {
-        self.into()
+        (*self).into()
     }
 }
 
@@ -709,12 +763,17 @@ impl FromStr for FutureContract {
         // Expected format: root + month + year
         // e.g., "6ez5" = 6e (EurUsd) + z (December) + 5 (Year 5)
 
-        if s.len() < 3 {
+        if !s.is_ascii() {
             return Err(DataError::InvalidSymbol(format!(
-                "Future contract string too short: {}",
-                s
+                "Future contract string is not ASCII: {s}"
             ))
             .into());
+        }
+
+        if s.len() < 3 {
+            return Err(
+                DataError::InvalidSymbol(format!("Future contract string too short: {s}")).into(),
+            );
         }
 
         // Find where the root ends by trying to parse progressively longer prefixes
@@ -725,12 +784,12 @@ impl FromStr for FutureContract {
             // 3-character root (e.g., "btc")
             (&s[..3], &s[3..])
         } else {
-            return Err(DataError::InvalidSymbol(format!("Invalid future root in: {}", s)).into());
+            return Err(DataError::InvalidSymbol(format!("Invalid future root in: {s}")).into());
         };
 
         if remainder.len() != 2 {
             return Err(
-                DataError::InvalidSymbol(format!("Invalid future contract format: {}", s)).into(),
+                DataError::InvalidSymbol(format!("Invalid future contract format: {s}")).into(),
             );
         }
 
@@ -738,7 +797,7 @@ impl FromStr for FutureContract {
         let month = ContractMonth::from_str(&remainder[..1]).map_err(DataError::ParseEnum)?;
         let year = ContractYear::from_str(&remainder[1..]).map_err(DataError::ParseEnum)?;
 
-        Ok(FutureContract { root, month, year })
+        Ok(Self { root, month, year })
     }
 }
 
@@ -763,7 +822,8 @@ impl FromStr for FutureContract {
 )]
 #[strum(serialize_all = "camelCase")]
 pub enum EconomicCategory {
-    /// Employment-related indicators (e.g., Non-Farm Payrolls, Unemployment Rate).
+    /// Employment-related indicators (e.g., Non-Farm Payrolls, Unemployment
+    /// Rate).
     Employment = 1,
 
     /// Economic activity indicators (e.g., GDP, PMI, Retail Sales).
@@ -778,7 +838,8 @@ pub enum EconomicCategory {
     /// Central bank policy and actions (e.g., FOMC meetings, Rate Decisions).
     CentralBanks = 5,
 
-    /// Consumer and business confidence indicators (e.g., Consumer Confidence, Business Sentiment).
+    /// Consumer and business confidence indicators (e.g., Consumer Confidence,
+    /// Business Sentiment).
     ConfidenceIndex = 6,
 
     /// Balance of payments or trade balance indicators.
@@ -832,7 +893,8 @@ impl TryFrom<RpcEconomicCategory> for EconomicCategory {
     }
 }
 
-/// Importance level of an economic event as of investing.com (e.g., from 1 to 3 stars).
+/// Importance level of an economic event as of investing.com (e.g., from 1 to 3
+/// stars).
 #[derive(
     Debug,
     Clone,
@@ -946,28 +1008,89 @@ pub trait Instrument {
 
     // === CONVERSION LOGIC (Default Implementations) ===
 
-    /// Converts a raw USD PnL target into discrete Tick steps.
+    /// Converts a raw USD `PnL` target into discrete Tick steps.
     /// Uses `round` to snap to the nearest valid grid point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the calculated value is `NaN`, or if it falls outside the
+    /// representable range of a signed 64-bit integer (`i64::MIN` to
+    /// `i64::MAX`).
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "raw_ticks is rounded and asserted to be finite and within i64 bounds before the cast, so the conversion is exact"
+    )]
     fn usd_to_ticks(&self, usd: f64) -> Tick {
-        let ticks = (usd / self.tick_value_usd()).round() as i64;
+        let raw_ticks = (usd / self.tick_value_usd()).round();
+
+        assert!(
+            raw_ticks.is_finite()
+                && raw_ticks >= (i64::MIN as f64)
+                && raw_ticks <= (i64::MAX as f64),
+            "USD conversion overflowed signed i64 bounds or resulted in NaN"
+        );
+
+        let ticks = raw_ticks as i64;
         Tick(ticks)
     }
 
     /// Converts discrete Ticks back into a USD value.
-    /// This is the safest way to calculate realized PnL.
+    /// This is the safest way to calculate realized `PnL`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal tick count exceeds standard i32 ranges.
     fn ticks_to_usd(&self, ticks: Tick) -> f64 {
-        ticks.0 as f64 * self.tick_value_usd()
+        #[expect(
+            clippy::expect_used,
+            reason = "Tick spaces for valid assets realistically never exceed i32 max (~2.1B ticks); \
+                      a panic here implies highly corrupted input data."
+        )]
+        let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
+        f64::from(tick_count) * self.tick_value_usd()
     }
-
     /// Converts a raw price distance (e.g., target - entry) into Ticks.
+    /// Uses `round` to snap to the nearest valid grid point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the calculated value is `NaN`, or if it falls outside the
+    /// representable range of a signed 64-bit integer (`i64::MIN` to
+    /// `i64::MAX`).
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "The standard i64 bounds (±9.22e18) fit completely within the safe \
+                      lossless precision range of an f64 (~±9.0e15) for all realistic financial prices."
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "The upstream `.round()` call ensures the floating-point value is an exact \
+                      mathematical integer, meaning no fractional data is truncated during the `as i64` cast."
+    )]
     fn price_to_ticks(&self, price_dist: Price) -> Tick {
-        let ticks = (price_dist.0 / self.tick_size()).round() as i64;
+        let raw_ticks = (price_dist.0 / self.tick_size()).round();
+
+        assert!(
+            raw_ticks.is_finite()
+                && raw_ticks >= (i64::MIN as f64)
+                && raw_ticks <= (i64::MAX as f64),
+            "Price distance conversion overflowed signed i64 bounds or resulted in NaN"
+        );
+
+        let ticks = raw_ticks as i64;
         Tick(ticks)
     }
 
     /// Converts Ticks into a valid price distance.
     fn ticks_to_price(&self, ticks: Tick) -> Price {
-        Price(ticks.0 as f64 * self.tick_size())
+        #[expect(
+            clippy::expect_used,
+            reason = "Tick movements never realistically exceed i32 max (~2.1B ticks); \
+                          an overflow here implies critical data corruption."
+        )]
+        let tick_count = i32::try_from(ticks.0).expect("tick count exceeds i32 range");
+        Price(f64::from(tick_count) * self.tick_size())
     }
 
     /// Converts a USD target directly to a Price distance.
@@ -979,7 +1102,8 @@ pub trait Instrument {
     }
 
     /// Normalizes a raw price to the nearest valid tick.
-    /// Crucial for order entry validation to prevent "Invalid Tick Size" errors.
+    /// Crucial for order entry validation to prevent "Invalid Tick Size"
+    /// errors.
     fn normalize_price(&self, price: f64) -> f64 {
         let ticks = (price / self.tick_size()).round();
         ticks * self.tick_size()
@@ -989,8 +1113,8 @@ pub trait Instrument {
 impl Instrument for SpotPair {
     fn tick_size(&self) -> f64 {
         match self {
-            SpotPair::BtcUsdt | SpotPair::BnbUsdt | SpotPair::EthUsdt | SpotPair::SolUsdt => 0.01,
-            SpotPair::XrpUsdt | SpotPair::TrxUsdt | SpotPair::AdaUsdt | SpotPair::XlmUsdt => 0.0001,
+            Self::BtcUsdt | Self::BnbUsdt | Self::EthUsdt | Self::SolUsdt => 0.01,
+            Self::XrpUsdt | Self::TrxUsdt | Self::AdaUsdt | Self::XlmUsdt => 0.0001,
         }
     }
 
@@ -1002,25 +1126,20 @@ impl Instrument for SpotPair {
 impl Instrument for FutureRoot {
     fn tick_size(&self) -> f64 {
         match self {
-            FutureRoot::AudUsd | FutureRoot::CadUsd | FutureRoot::EurUsd | FutureRoot::NzdUsd => {
-                0.00005
-            }
-            FutureRoot::GbpUsd => 0.0001,
-            FutureRoot::JpyUsd => 0.0000005,
-            FutureRoot::Btc => 5.0,
-            FutureRoot::EminiSp500 | FutureRoot::EminiNasdaq100 => 0.25,
+            Self::AudUsd | Self::CadUsd | Self::EurUsd | Self::NzdUsd => 0.00005,
+            Self::GbpUsd => 0.0001,
+            Self::JpyUsd => 0.000_000_5,
+            Self::Btc => 5.0,
+            Self::EminiSp500 | Self::EminiNasdaq100 => 0.25,
         }
     }
 
     fn tick_value_usd(&self) -> f64 {
         match self {
-            FutureRoot::EurUsd | FutureRoot::GbpUsd | FutureRoot::JpyUsd => 6.25,
-            FutureRoot::AudUsd
-            | FutureRoot::CadUsd
-            | FutureRoot::NzdUsd
-            | FutureRoot::EminiNasdaq100 => 5.0,
-            FutureRoot::EminiSp500 => 12.50,
-            FutureRoot::Btc => 25.0,
+            Self::EurUsd | Self::GbpUsd | Self::JpyUsd => 6.25,
+            Self::AudUsd | Self::CadUsd | Self::NzdUsd | Self::EminiNasdaq100 => 5.0,
+            Self::EminiSp500 => 12.50,
+            Self::Btc => 25.0,
         }
     }
 }
@@ -1028,23 +1147,364 @@ impl Instrument for FutureRoot {
 impl Instrument for Symbol {
     fn tick_size(&self) -> f64 {
         match self {
-            Symbol::Spot(spot) => spot.tick_size(),
-            Symbol::Future(future) => future.root.tick_size(),
+            Self::Spot(spot) => spot.tick_size(),
+            Self::Future(future) => future.root.tick_size(),
         }
     }
 
     fn tick_value_usd(&self) -> f64 {
         match self {
-            Symbol::Spot(spot) => spot.tick_value_usd(),
-            Symbol::Future(future) => future.root.tick_value_usd(),
+            Self::Spot(spot) => spot.tick_value_usd(),
+            Self::Future(future) => future.root.tick_value_usd(),
         }
     }
 }
 
+// ================================================================================================
+// Session Window
+// ================================================================================================
+
+/// A timezone-aware accumulation window defined by a local start and end
+/// time-of-day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionWindow {
+    pub timezone: Tz,
+    pub start: NaiveTime,
+    pub end: NaiveTime,
+}
+
+impl PartialOrd for SessionWindow {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SessionWindow {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.start, self.end, self.timezone as usize).cmp(&(
+            other.start,
+            other.end,
+            other.timezone as usize,
+        ))
+    }
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "Used inside a `const fn` constructor where inputs are hardcoded, static literals. \
+              Any out-of-bounds inputs (e.g., hour > 23) will fail to compile immediately at build time."
+)]
+const fn hm(h: u32, m: u32) -> NaiveTime {
+    NaiveTime::from_hms_opt(h, m, 0).expect("invalid hour or minute")
+}
+
+impl SessionWindow {
+    #[must_use]
+    pub const fn new(timezone: Tz, start: NaiveTime, end: NaiveTime) -> Self {
+        Self {
+            timezone,
+            start,
+            end,
+        }
+    }
+
+    /// US Core Session: 09:30 to 16:00 New York time.
+    #[must_use]
+    pub const fn us_core_session() -> Self {
+        Self::new(Tz::America__New_York, hm(9, 30), hm(16, 0))
+    }
+
+    /// London Core Session: 08:00 to 16:30 London time.
+    #[must_use]
+    pub const fn london_core_session() -> Self {
+        Self::new(Tz::Europe__London, hm(8, 0), hm(16, 30))
+    }
+
+    /// US/Europe Overlap: 13:00 to 17:00 London time.
+    #[must_use]
+    pub const fn us_europe_overlap() -> Self {
+        Self::new(Tz::Europe__London, hm(13, 0), hm(17, 0))
+    }
+
+    /// Singapore Core Session: 09:00 to 17:00 Singapore time.
+    #[must_use]
+    pub const fn singapore_core_session() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
+    }
+
+    /// Sydney Core Session: 10:00 to 16:00 Sydney time.
+    #[must_use]
+    pub const fn sydney_core_session() -> Self {
+        Self::new(Tz::Australia__Sydney, hm(10, 0), hm(16, 0))
+    }
+
+    /// US Overnight: 16:00 to 09:30 New York time.
+    #[must_use]
+    pub const fn us_overnight() -> Self {
+        Self::new(Tz::America__New_York, hm(16, 0), hm(9, 30))
+    }
+
+    /// US Extended Overnight: 18:00 to 09:30 New York time.
+    #[must_use]
+    pub const fn us_extended_overnight() -> Self {
+        Self::new(Tz::America__New_York, hm(18, 0), hm(9, 30))
+    }
+
+    /// Tokyo Core Session: 09:00 to 15:00 Tokyo time.
+    #[must_use]
+    pub const fn tokyo_core_session() -> Self {
+        Self::new(Tz::Asia__Tokyo, hm(9, 0), hm(15, 0))
+    }
+
+    /// Asia Institutional Core: 09:00 to 17:00 Singapore time.
+    #[must_use]
+    pub const fn asia_institutional_core() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(9, 0), hm(17, 0))
+    }
+
+    /// Hong Kong Core Session: 09:30 to 16:00 Hong Kong time.
+    #[must_use]
+    pub const fn hong_kong_core_session() -> Self {
+        Self::new(Tz::Asia__Hong_Kong, hm(9, 30), hm(16, 0))
+    }
+
+    /// APAC Overnight: 17:00 to 08:00 Singapore time.
+    #[must_use]
+    pub const fn apac_overnight() -> Self {
+        Self::new(Tz::Asia__Singapore, hm(17, 0), hm(8, 0))
+    }
+
+    #[must_use]
+    pub fn pl_time_zone(&self) -> polars::datatypes::TimeZone {
+        polars::datatypes::TimeZone::from_chrono(&self.timezone)
+    }
+
+    #[must_use]
+    pub fn start_nanos_since_midnight(&self) -> i64 {
+        (i64::from(self.start.num_seconds_from_midnight()) * 1_000_000_000)
+            + i64::from(self.start.nanosecond())
+    }
+
+    #[must_use]
+    pub fn end_nanos_since_midnight(&self) -> i64 {
+        (i64::from(self.end.num_seconds_from_midnight()) * 1_000_000_000)
+            + i64::from(self.end.nanosecond())
+    }
+
+    #[must_use]
+    pub fn window_kind(&self) -> WindowKind {
+        match self.start.cmp(&self.end) {
+            Ordering::Less => WindowKind::Intraday,
+            Ordering::Equal | Ordering::Greater => WindowKind::Overnight,
+        }
+    }
+
+    /// Classifies a UTC timestamp against the window, resolving the session it
+    /// belongs to when inside.
+    ///
+    /// # Panics
+    /// Panics when classifying overnight windows if the local date is Chrono's
+    /// minimum representable date and cannot be decremented (`pred_opt` is
+    /// `None`).
+    #[must_use]
+    pub fn classify(&self, utc_ts: DateTime<Utc>) -> WindowPosition {
+        let local = utc_ts.with_timezone(&self.timezone);
+        let date = local.date_naive();
+        let now = local.time();
+
+        match self.window_kind() {
+            WindowKind::Intraday => {
+                if (self.start..self.end).contains(&now) {
+                    WindowPosition::Within(SessionDate(date))
+                } else {
+                    WindowPosition::Outside
+                }
+            }
+            WindowKind::Overnight => {
+                if now >= self.start {
+                    WindowPosition::Within(SessionDate(date))
+                } else if now < self.end {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "Active trading market data timestamps are bound to modern historical/real-time \
+                                      eras and cannot reasonably trigger Chrono's absolute minimum date boundary."
+                    )]
+                    let anchor_date = date.pred_opt().expect(
+                        "Market data timestamp violates Chrono's minimum representable date",
+                    );
+                    WindowPosition::Within(SessionDate(anchor_date))
+                } else {
+                    WindowPosition::Outside
+                }
+            }
+        }
+    }
+}
+
+/// Where an event falls relative to an accumulation window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowPosition {
+    /// Inside `[start, end)`, belonging to the given session.
+    Within(SessionDate),
+    /// Outside the window.
+    Outside,
+}
+
+/// The chronological shape of the session window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowKind {
+    Intraday,
+    Overnight,
+}
+
+impl WindowKind {
+    #[must_use]
+    pub const fn is_intraday(&self) -> bool {
+        matches!(self, Self::Intraday)
+    }
+
+    #[must_use]
+    pub const fn is_overnight(&self) -> bool {
+        matches!(self, Self::Overnight)
+    }
+}
+
+/// Identifies one accumulation session by its anchor date.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SessionDate(pub NaiveDate);
+
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
+    )]
+
+    use chrono::TimeZone;
+    use chrono_tz::America::New_York;
 
     use super::*;
+
+    // ============================================================================================
+    // Market Session Tetsts
+    // ============================================================================================
+
+    /// Helper to easily construct a UTC timestamp from a local timezone date
+    /// and time.
+    fn local_to_utc(
+        tz: Tz,
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        min: u32,
+        sec: u32,
+    ) -> DateTime<Utc> {
+        tz.with_ymd_and_hms(year, month, day, hour, min, sec)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    /// Helper to easily create a `NaiveDate`
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    #[test]
+    fn test_intraday_classify() {
+        let session = SessionWindow::us_core_session(); // 09:30 -> 16:00 ET
+
+        let test_date = date(2026, 6, 10);
+        let expected_session = WindowPosition::Within(SessionDate(test_date));
+
+        // 1. Before session starts (09:29:59) -> Outside
+        let before = local_to_utc(New_York, 2026, 6, 10, 9, 29, 59);
+        assert_eq!(session.classify(before), WindowPosition::Outside);
+
+        // 2. Exactly at start (09:30:00) -> [inclusive boundary] -> Within
+        let start = local_to_utc(New_York, 2026, 6, 10, 9, 30, 0);
+        assert_eq!(session.classify(start), expected_session);
+
+        // 3. Inside session (12:00:00) -> Within
+        let mid = local_to_utc(New_York, 2026, 6, 10, 12, 0, 0);
+        assert_eq!(session.classify(mid), expected_session);
+
+        // 4. Exactly at end (16:00:00) -> [exclusive boundary] -> Outside
+        let end = local_to_utc(New_York, 2026, 6, 10, 16, 0, 0);
+        assert_eq!(session.classify(end), WindowPosition::Outside);
+
+        // 5. After session ends (16:00:01) -> Outside
+        let after = local_to_utc(New_York, 2026, 6, 10, 16, 0, 1);
+        assert_eq!(session.classify(after), WindowPosition::Outside);
+    }
+
+    #[test]
+    fn test_overnight_classify() {
+        let session = SessionWindow::us_extended_overnight(); // 18:00 -> 09:30 ET
+
+        let anchor = date(2026, 6, 10); // The evening the session opened
+        let expected_session = WindowPosition::Within(SessionDate(anchor));
+
+        // 1. Just before the evening leg opens (17:59:59) -> Outside
+        let before_eve = local_to_utc(New_York, 2026, 6, 10, 17, 59, 59);
+        assert_eq!(session.classify(before_eve), WindowPosition::Outside);
+
+        // 2. Evening leg opens (18:00:00 on June 10) -> Within(June 10)
+        let eve_start = local_to_utc(New_York, 2026, 6, 10, 18, 0, 0);
+        assert_eq!(session.classify(eve_start), expected_session);
+
+        // 3. Evening leg middle (23:00:00 on June 10) -> Within(June 10)
+        let eve_mid = local_to_utc(New_York, 2026, 6, 10, 23, 0, 0);
+        assert_eq!(session.classify(eve_mid), expected_session);
+
+        // 4. Cross midnight / Morning leg begins (00:00:00 on June 11) -> Within(June
+        //    10)
+        let morn_start = local_to_utc(New_York, 2026, 6, 11, 0, 0, 0);
+        assert_eq!(session.classify(morn_start), expected_session);
+
+        // 5. Morning leg middle (08:00:00 on June 11) -> Within(June 10)
+        let morn_mid = local_to_utc(New_York, 2026, 6, 11, 8, 0, 0);
+        assert_eq!(session.classify(morn_mid), expected_session);
+
+        // 6. Morning leg ends (09:30:00 on June 11) -> [exclusive boundary] -> Outside
+        let morn_end = local_to_utc(New_York, 2026, 6, 11, 9, 30, 0);
+        assert_eq!(session.classify(morn_end), WindowPosition::Outside);
+
+        // 7. Middle of the daytime (12:00:00 on June 11) -> Outside
+        let day_mid = local_to_utc(New_York, 2026, 6, 11, 12, 0, 0);
+        assert_eq!(session.classify(day_mid), WindowPosition::Outside);
+    }
+
+    #[test]
+    fn test_24_hour_classify() {
+        // A 24-hour window wrapping at 17:00 (start == end implies Overnight logic)
+        let session = SessionWindow::new(New_York, hm(17, 0), hm(17, 0));
+
+        let anchor = date(2026, 6, 10);
+        let expected_session = WindowPosition::Within(SessionDate(anchor));
+
+        // 1. Right at start (17:00 on June 10) -> Anchored on June 10
+        let start = local_to_utc(New_York, 2026, 6, 10, 17, 0, 0);
+        assert_eq!(session.classify(start), expected_session);
+
+        // 2. Late evening (23:59 on June 10) -> Anchored on June 10
+        let eve = local_to_utc(New_York, 2026, 6, 10, 23, 59, 0);
+        assert_eq!(session.classify(eve), expected_session);
+
+        // 3. Next morning (08:00 on June 11) -> Anchored on June 10
+        let morn = local_to_utc(New_York, 2026, 6, 11, 8, 0, 0);
+        assert_eq!(session.classify(morn), expected_session);
+
+        // 4. Right before wrap (16:59:59 on June 11) -> Anchored on June 10
+        let before_wrap = local_to_utc(New_York, 2026, 6, 11, 16, 59, 59);
+        assert_eq!(session.classify(before_wrap), expected_session);
+
+        // 5. Window wraps/restarts (17:00:00 on June 11) -> Now anchored on June 11
+        let next_anchor = date(2026, 6, 11);
+        let next_expected_session = WindowPosition::Within(SessionDate(next_anchor));
+        let restart = local_to_utc(New_York, 2026, 6, 11, 17, 0, 0);
+        assert_eq!(session.classify(restart), next_expected_session);
+    }
 
     // ============================================================================================
     // Symbol String Conversion Tests
@@ -1100,7 +1560,7 @@ mod tests {
         for (root, month, year, expected) in cases {
             let contract = FutureContract { root, month, year };
             let symbol = Symbol::Future(contract);
-            assert_eq!(symbol.to_string(), expected, "Failed for {:?}", contract);
+            assert_eq!(symbol.to_string(), expected, "Failed for {contract:?}");
         }
     }
 
@@ -1142,9 +1602,9 @@ mod tests {
         for (input, root, month, year) in cases {
             let parsed: Symbol = input
                 .parse()
-                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{input}'"));
             let expected = Symbol::Future(FutureContract { root, month, year });
-            assert_eq!(parsed, expected, "Mismatch for '{}'", input);
+            assert_eq!(parsed, expected, "Mismatch for '{input}'");
         }
     }
 
@@ -1163,10 +1623,10 @@ mod tests {
         for (input, expected_root) in cases {
             let parsed: Symbol = input
                 .parse()
-                .unwrap_or_else(|_| panic!("Failed to parse '{}'", input));
+                .unwrap_or_else(|_| panic!("Failed to parse '{input}'"));
             match parsed {
                 Symbol::Future(contract) => assert_eq!(contract.root, expected_root),
-                _ => panic!("Expected Future variant for '{}'", input),
+                Symbol::Spot(_) => panic!("Expected Future variant for '{input}'"),
             }
         }
     }
@@ -1186,7 +1646,7 @@ mod tests {
 
         for input in invalid {
             let result: Result<Symbol, _> = input.parse();
-            assert!(result.is_err(), "Expected '{}' to fail parsing", input);
+            assert!(result.is_err(), "Expected '{input}' to fail parsing");
         }
     }
 
@@ -1214,11 +1674,7 @@ mod tests {
             let original = Symbol::Future(contract);
             let serialized = original.to_string();
             let deserialized: Symbol = serialized.parse().unwrap();
-            assert_eq!(
-                original, deserialized,
-                "Round-trip failed for {:?}",
-                contract
-            );
+            assert_eq!(original, deserialized, "Round-trip failed for {contract:?}");
         }
     }
 
@@ -1229,7 +1685,7 @@ mod tests {
         for input in canonical {
             let parsed: Symbol = input.parse().unwrap();
             let output = parsed.to_string();
-            assert_eq!(input, output, "Canonical form changed for '{}'", input);
+            assert_eq!(input, output, "Canonical form changed for '{input}'");
         }
     }
 
@@ -1254,8 +1710,8 @@ mod tests {
         let eur = future_sym(FutureRoot::EurUsd);
 
         // 1. Tick Size & Value Check
-        assert_eq!(eur.tick_size(), 0.00005);
-        assert_eq!(eur.tick_value_usd(), 6.25);
+        assert_f64_eq!(eur.tick_size(), 0.00005);
+        assert_f64_eq!(eur.tick_value_usd(), 6.25);
 
         // 2. Risk Calculation: "I want to risk $100"
         // $100 / $6.25 = 16 ticks
@@ -1286,7 +1742,7 @@ mod tests {
         let pnl = btc.ticks_to_usd(ticks);
 
         assert_eq!(ticks.0, 20);
-        assert_eq!(pnl, 500.0);
+        assert_f64_eq!(pnl, 500.0);
     }
 
     #[test]
@@ -1299,26 +1755,22 @@ mod tests {
 
         // Case 1: Artifact just ABOVE the valid price (e.g. 1.10000001)
         // Should round DOWN to 1.10000
-        let dirty_high = valid_price + 0.00000001;
+        let dirty_high = valid_price + 0.000_000_01;
         let norm_high = eur.normalize_price(dirty_high);
 
         assert!(
             (norm_high - valid_price).abs() < f64::EPSILON,
-            "Failed to round down dirty high input: {:.8} -> {:.8}",
-            dirty_high,
-            norm_high
+            "Failed to round down dirty high input: {dirty_high:.8} -> {norm_high:.8}"
         );
 
         // Case 2: Artifact just BELOW the valid price (e.g. 1.09999999)
         // Should round UP to 1.10000
-        let dirty_low = valid_price - 0.00000001;
+        let dirty_low = valid_price - 0.000_000_01;
         let norm_low = eur.normalize_price(dirty_low);
 
         assert!(
             (norm_low - valid_price).abs() < f64::EPSILON,
-            "Failed to round up dirty low input: {:.8} -> {:.8}",
-            dirty_low,
-            norm_low
+            "Failed to round up dirty low input: {dirty_low:.8} -> {norm_low:.8}"
         );
     }
 
@@ -1332,7 +1784,7 @@ mod tests {
         let expected_ticks = 10;
 
         // Test with positive noise (0.00050001 -> 10.0002 -> round to 10)
-        let noisy_dist = Price(clean_dist + 0.00000001);
+        let noisy_dist = Price(clean_dist + 0.000_000_01);
         let ticks = eur.price_to_ticks(noisy_dist);
         assert_eq!(
             ticks.0, expected_ticks,
@@ -1340,7 +1792,7 @@ mod tests {
         );
 
         // Test with negative noise (0.00049999 -> 9.9998 -> round to 10)
-        let noisy_dist_neg = Price(clean_dist - 0.00000001);
+        let noisy_dist_neg = Price(clean_dist - 0.000_000_01);
         let ticks_neg = eur.price_to_ticks(noisy_dist_neg);
         assert_eq!(
             ticks_neg.0, expected_ticks,

@@ -1,17 +1,21 @@
-use chrono::{DateTime, Utc};
 use std::{fmt::Debug, sync::Arc};
+
+use chrono::{DateTime, Utc};
 
 use crate::{
     data::{
         domain::{Price, Symbol},
         event::{
-            ClosePriceProvider, EconomicCalendarId, EmaId, MarketEvent, MarketId, Ohlcv, OhlcvId,
-            PriceReachable, RsiId, SmaId, StreamId, SymbolProvider, TpoId, TradesId,
-            VolumeProfileId,
+            ClosePriceProvider, EconomicCalendarId, MarketEvent, MarketId, Ohlcv, OhlcvId,
+            PriceReachable, StreamId, SymbolProvider, TpoId, TradesId, VolumeProfileId,
         },
     },
     error::{ChapatyError, ChapatyResult, DataError, SystemError},
-    gym::trading::types::TradeType,
+    gym::trading::types::TradeKind,
+    indicator::batch::event::{
+        AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
+        TradesVwapId,
+    },
     sim::{
         cursor::{Cursor, StreamEntity},
         cursor_group::CursorGroup,
@@ -32,15 +36,16 @@ pub trait StreamView<'env> {
     fn get_slice(&self, id: &Self::Id) -> Option<&'env [Self::Event]>;
 
     fn len(&self, id: &Self::Id) -> usize {
-        self.get_slice(id).map_or(0, |s| s.len())
+        self.get_slice(id).map_or(0, <[Self::Event]>::len)
     }
 
     fn last_event(&self, id: &Self::Id) -> Option<&'env Self::Event> {
         self.get_slice(id).and_then(|s| s.last())
     }
 
-    /// Returns an iterator over events in reverse chronological order (Newest -> Oldest).
-    /// This is the primary access pattern for RL agents reacting to recent news.
+    /// Returns an iterator over events in reverse chronological order (Newest
+    /// -> Oldest). This is the primary access pattern for RL agents
+    /// reacting to recent news.
     fn rev_iter(
         &self,
         id: &Self::Id,
@@ -64,20 +69,22 @@ pub trait StreamView<'env> {
 
 /// Trait for Views that contain events capable of checking if a price was hit.
 pub trait PriceCheckableView {
-    /// Checks if any *new* event (since `since_ts`) matching `target_symbol` hit the `price`.
+    /// Checks if any *new* event (since `since_ts`) matching `target_symbol`
+    /// hit the `price`.
     fn reached_price_since(
         &self,
-        target_symbol: &Symbol,
+        target_symbol: Symbol,
         price: Price,
-        direction: TradeType,
+        direction: TradeKind,
         since_ts: DateTime<Utc>,
     ) -> bool;
 }
 
 /// Trait for Views that contain events capable of providing a close price.
 pub trait ClosePriceView {
-    /// Finds the timestamp and price of the most recent event for the target symbol.
-    fn latest_price_for_symbol(&self, target_symbol: &Symbol) -> Option<(DateTime<Utc>, Price)>;
+    /// Finds the timestamp and price of the most recent event for the target
+    /// symbol.
+    fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)>;
 }
 
 /// A strictly typed view into a slice of simulation data.
@@ -94,6 +101,12 @@ pub type TpoView<'env> = View<'env, TpoId>;
 pub type EmaView<'env> = View<'env, EmaId>;
 pub type SmaView<'env> = View<'env, SmaId>;
 pub type RsiView<'env> = View<'env, RsiId>;
+pub type TradesVwapView<'env> = View<'env, TradesVwapId>;
+pub type OhlcvVwapView<'env> = View<'env, OhlcvVwapId>;
+pub type TradesSessionView<'env> = View<'env, TradesSessionId>;
+pub type OhlcvSessionView<'env> = View<'env, OhlcvSessionId>;
+pub type AtrView<'env> = View<'env, AtrId>;
+pub type RocView<'env> = View<'env, RocId>;
 
 impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     type Id = S;
@@ -104,16 +117,16 @@ impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     }
 }
 
-impl<'env, S> PriceCheckableView for View<'env, S>
+impl<S> PriceCheckableView for View<'_, S>
 where
     S: StreamId + SymbolProvider,
     S::Event: PriceReachable,
 {
     fn reached_price_since(
         &self,
-        target_symbol: &Symbol,
+        target_symbol: Symbol,
         price: Price,
-        direction: TradeType,
+        direction: TradeKind,
         since_ts: DateTime<Utc>,
     ) -> bool {
         // Linear scan of all streams in this view is cheap (M < 100).
@@ -134,12 +147,12 @@ where
     }
 }
 
-impl<'env, S> ClosePriceView for View<'env, S>
+impl<S> ClosePriceView for View<'_, S>
 where
     S: StreamId + SymbolProvider,
     S::Event: ClosePriceProvider,
 {
-    fn latest_price_for_symbol(&self, target_symbol: &Symbol) -> Option<(DateTime<Utc>, Price)> {
+    fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)> {
         self.data
             .iter()
             .filter(|(id, _)| id.symbol() == target_symbol)
@@ -159,6 +172,12 @@ pub struct MarketView<'env> {
     ema: EmaView<'env>,
     sma: SmaView<'env>,
     rsi: RsiView<'env>,
+    trades_vwap: TradesVwapView<'env>,
+    ohlcv_vwap: OhlcvVwapView<'env>,
+    trades_session: TradesSessionView<'env>,
+    ohlcv_session: OhlcvSessionView<'env>,
+    atr: AtrView<'env>,
+    roc: RocView<'env>,
 
     // Tradable Markets
     market_ids: Arc<[MarketId]>,
@@ -169,41 +188,78 @@ pub struct MarketView<'env> {
 }
 
 impl<'env> MarketView<'env> {
-    pub fn ohlcv(&self) -> &OhlcvView<'env> {
+    #[must_use]
+    pub const fn ohlcv(&self) -> &OhlcvView<'env> {
         &self.ohlcv
     }
-    pub fn trades(&self) -> &TradeView<'env> {
+    #[must_use]
+    pub const fn trades(&self) -> &TradeView<'env> {
         &self.trades
     }
-    pub fn economic_news(&self) -> &EconomicCalendarView<'env> {
+    #[must_use]
+    pub const fn economic_news(&self) -> &EconomicCalendarView<'env> {
         &self.economic_calendar
     }
-    pub fn volume_profile(&self) -> &VolumeProfileView<'env> {
+    #[must_use]
+    pub const fn volume_profile(&self) -> &VolumeProfileView<'env> {
         &self.volume_profile
     }
-    pub fn tpo(&self) -> &TpoView<'env> {
+    #[must_use]
+    pub const fn tpo(&self) -> &TpoView<'env> {
         &self.tpo
     }
-    pub fn ema(&self) -> &EmaView<'env> {
+    #[must_use]
+    pub const fn ema(&self) -> &EmaView<'env> {
         &self.ema
     }
-    pub fn sma(&self) -> &SmaView<'env> {
+    #[must_use]
+    pub const fn sma(&self) -> &SmaView<'env> {
         &self.sma
     }
-    pub fn rsi(&self) -> &RsiView<'env> {
+    #[must_use]
+    pub const fn rsi(&self) -> &RsiView<'env> {
         &self.rsi
     }
-    pub fn current_timestamp(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn trades_vwap(&self) -> &TradesVwapView<'env> {
+        &self.trades_vwap
+    }
+    #[must_use]
+    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
+        &self.ohlcv_vwap
+    }
+    #[must_use]
+    pub const fn trades_session(&self) -> &TradesSessionView<'env> {
+        &self.trades_session
+    }
+    #[must_use]
+    pub const fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
+        &self.ohlcv_session
+    }
+    #[must_use]
+    pub const fn atr(&self) -> &AtrView<'env> {
+        &self.atr
+    }
+    #[must_use]
+    pub const fn roc(&self) -> &RocView<'env> {
+        &self.roc
+    }
+    #[must_use]
+    pub const fn current_timestamp(&self) -> DateTime<Utc> {
         self.current_ts
     }
+    #[must_use]
     pub fn previous_timestamp(&self) -> DateTime<Utc> {
         self.previous_ts.unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
+    #[must_use]
     pub fn market_ids(&self) -> Arc<[MarketId]> {
-        self.market_ids.clone()
+        Arc::clone(&self.market_ids)
     }
 
-    /// Finds the candle active at the specific timestamp (Search: Newest to Oldest).
+    /// Finds the candle active at the specific timestamp (Search: Newest to
+    /// Oldest).
+    #[must_use]
     pub fn find_candle(&self, id: &OhlcvId, ts: DateTime<Utc>) -> Option<Ohlcv> {
         self.ohlcv
             .rev_iter(id)?
@@ -211,13 +267,10 @@ impl<'env> MarketView<'env> {
             .copied()
     }
 
-    /// Returns `true` if `price` was reached by any *new* event since the last step.
-    pub fn reached_price(
-        &self,
-        price: Price,
-        target_symbol: &Symbol,
-        direction: TradeType,
-    ) -> bool {
+    /// Returns `true` if `price` was reached by any *new* event since the last
+    /// step.
+    #[must_use]
+    pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
         let prev = self.previous_timestamp();
         self.all_price_checkable_views()
             .into_iter()
@@ -225,7 +278,11 @@ impl<'env> MarketView<'env> {
     }
 
     /// Resolves the most recent, non-leaky close price.
-    pub fn try_resolved_close_price(&self, target_symbol: &Symbol) -> ChapatyResult<Price> {
+    ///
+    /// # Errors
+    /// Returns an error when no close-price-capable stream has data for
+    /// `target_symbol` at or before the current cursor timestamp.
+    pub fn try_resolved_close_price(&self, target_symbol: Symbol) -> ChapatyResult<Price> {
         let best_price = self
             .close_price_views()
             .into_iter()
@@ -235,8 +292,7 @@ impl<'env> MarketView<'env> {
 
         best_price.ok_or_else(|| {
             ChapatyError::Data(DataError::KeyNotFound(format!(
-                "No price events found for symbol {:?}",
-                target_symbol
+                "No price events found for symbol {target_symbol:?}"
             )))
         })
     }
@@ -253,6 +309,12 @@ impl<'env> MarketView<'env> {
             ema: slice_map(sim_data.ema(), cursor.ema())?,
             sma: slice_map(sim_data.sma(), cursor.sma())?,
             rsi: slice_map(sim_data.rsi(), cursor.rsi())?,
+            trades_vwap: slice_map(sim_data.trades_vwap(), cursor.trades_vwap())?,
+            ohlcv_vwap: slice_map(sim_data.ohlcv_vwap(), cursor.ohlcv_vwap())?,
+            trades_session: slice_map(sim_data.trades_session(), cursor.trades_session())?,
+            ohlcv_session: slice_map(sim_data.ohlcv_session(), cursor.ohlcv_session())?,
+            atr: slice_map(sim_data.atr(), cursor.atr())?,
+            roc: slice_map(sim_data.roc(), cursor.roc())?,
             previous_ts: cursor.previous_ts(),
             current_ts: cursor.current_ts(),
             market_ids: sim_data.market_ids(),
@@ -260,13 +322,23 @@ impl<'env> MarketView<'env> {
     }
 }
 
-impl<'env> MarketView<'env> {
-    /// Returns a stack-allocated array of all views that support price checking.
-    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 5] {
-        [&self.ohlcv, &self.trades, &self.ema, &self.sma, &self.rsi]
+impl MarketView<'_> {
+    /// Returns a stack-allocated array of all views that support price
+    /// checking.
+    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 7] {
+        [
+            &self.ohlcv,
+            &self.trades,
+            &self.ema,
+            &self.sma,
+            &self.rsi,
+            &self.trades_vwap,
+            &self.ohlcv_vwap,
+        ]
     }
 
-    /// Returns a stack-allocated array of all views that provide a canonical market "Close" price.
+    /// Returns a stack-allocated array of all views that provide a canonical
+    /// market "Close" price.
     fn close_price_views(&self) -> [&dyn ClosePriceView; 2] {
         [&self.ohlcv, &self.trades]
     }
@@ -313,6 +385,11 @@ where
 
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
+    )]
+
     use super::*;
     use crate::data::domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair};
 
@@ -320,7 +397,7 @@ mod test {
     // Test Helpers
     // ============================================================================
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
@@ -354,7 +431,7 @@ mod test {
         ohlcv(open_ts, close_ts, 100.0, 110.0, 90.0, 105.0)
     }
 
-    /// Create an OhlcvId for testing.
+    /// Create an `OhlcvId` for testing.
     fn ohlcv_id(symbol: SpotPair, period: Period) -> OhlcvId {
         OhlcvId {
             broker: DataBroker::Binance,
@@ -364,12 +441,13 @@ mod test {
         }
     }
 
-    /// Helper to create a MarketView with specified OHLCV data and time state.
-    fn market_view_with_ohlcv<'a>(
-        ohlcv_data: SortedVecMap<OhlcvId, &'a [Ohlcv]>,
+    /// Helper to create a `MarketView` with specified OHLCV data and time
+    /// state.
+    fn market_view_with_ohlcv(
+        ohlcv_data: SortedVecMap<OhlcvId, &[Ohlcv]>,
         previous_ts: Option<DateTime<Utc>>,
         current_ts: DateTime<Utc>,
-    ) -> MarketView<'a> {
+    ) -> MarketView<'_> {
         MarketView {
             ohlcv: OhlcvView { data: ohlcv_data },
             trades: TradeView {
@@ -391,6 +469,24 @@ mod test {
                 data: SortedVecMap::new(),
             },
             rsi: RsiView {
+                data: SortedVecMap::new(),
+            },
+            trades_vwap: TradesVwapView {
+                data: SortedVecMap::new(),
+            },
+            ohlcv_vwap: OhlcvVwapView {
+                data: SortedVecMap::new(),
+            },
+            trades_session: TradesSessionView {
+                data: SortedVecMap::new(),
+            },
+            ohlcv_session: OhlcvSessionView {
+                data: SortedVecMap::new(),
+            },
+            atr: AtrView {
+                data: SortedVecMap::new(),
+            },
+            roc: RocView {
                 data: SortedVecMap::new(),
             },
             previous_ts,
@@ -440,31 +536,32 @@ mod test {
         );
 
         assert!(
-            market_view.reached_price(Price(110.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(110.0), symbol, TradeKind::Long),
             "High (110.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(90.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(90.0), symbol, TradeKind::Long),
             "Low (90.0) should be reached"
         );
         assert!(
-            market_view.reached_price(Price(100.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(100.0), symbol, TradeKind::Long),
             "Price in range (100.0) should be reached"
         );
         assert!(
-            !market_view.reached_price(Price(120.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(120.0), symbol, TradeKind::Long),
             "Price above high (120.0) should NOT be reached"
         );
         assert!(
-            !market_view.reached_price(Price(80.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(80.0), symbol, TradeKind::Long),
             "Price below low (80.0) should NOT be reached"
         );
     }
 
     #[test]
     fn test_reached_price_ignores_old_data() {
-        // Edge Case: Old data (events <= last_close_ts) hitting the price must be ignored.
-        // This tests the "reverse iteration" logic with `since_ts` filtering.
+        // Edge Case: Old data (events <= last_close_ts) hitting the price must be
+        // ignored. This tests the "reverse iteration" logic with `since_ts`
+        // filtering.
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
@@ -502,11 +599,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(150.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(150.0), symbol, TradeKind::Long),
             "Price 150 is in OLD candle (<=previous_ts), should be IGNORED"
         );
         assert!(
-            market_view.reached_price(Price(115.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(115.0), symbol, TradeKind::Long),
             "Price 115 is in NEW candle, should be reached"
         );
     }
@@ -570,13 +667,14 @@ mod test {
             ts("2025-03-01T10:00:00Z"), // current_ts at 10:00:00 to include 5m candle
         );
 
-        // Both candles are "new" (point_in_time > previous_ts), so both should be checked
+        // Both candles are "new" (point_in_time > previous_ts), so both should be
+        // checked
         assert!(
-            market_view.reached_price(Price(500.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(500.0), symbol, TradeKind::Long),
             "3m candle (new) contains 500, should be reached"
         );
         assert!(
-            market_view.reached_price(Price(200.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(200.0), symbol, TradeKind::Long),
             "5m candle (new) contains 200, should be reached"
         );
     }
@@ -589,8 +687,8 @@ mod test {
         let symbol = Symbol::Spot(SpotPair::EthUsdt);
 
         let events = vec![
-            // Candle 1: available at EXACTLY previous_ts - should be IGNORED (not strictly greater)
-            // Range: [90, 111] - contains price 111
+            // Candle 1: available at EXACTLY previous_ts - should be IGNORED (not strictly
+            // greater) Range: [90, 111] - contains price 111
             ohlcv(
                 ts("2025-04-01T00:02:00Z"),
                 ts("2025-04-01T00:03:00Z"), // point_in_time = 00:03:00
@@ -624,11 +722,11 @@ mod test {
         );
 
         assert!(
-            !market_view.reached_price(Price(111.0), &symbol, TradeType::Long),
+            !market_view.reached_price(Price(111.0), symbol, TradeKind::Long),
             "Price 111 is in candle at EXACTLY previous_ts, should be EXCLUDED (not > since_ts)"
         );
         assert!(
-            market_view.reached_price(Price(222.0), &symbol, TradeType::Long),
+            market_view.reached_price(Price(222.0), symbol, TradeKind::Long),
             "Price 222 is in candle 1 second after previous_ts, should be INCLUDED"
         );
     }
@@ -640,8 +738,9 @@ mod test {
 
     #[test]
     fn test_try_resolved_close_price_most_recent_wins() {
-        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59. Current TS is 09:59.
-        // The function must return the 5m close price (09:59), ignoring the 3m candle (08:59).
+        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59. Current TS is
+        // 09:59. The function must return the 5m close price (09:59), ignoring
+        // the 3m candle (08:59).
         let id_3m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let id_5m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(5));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
@@ -676,7 +775,7 @@ mod test {
             ts("2025-05-01T09:59:00Z"),
         );
 
-        let price = market_view.try_resolved_close_price(&symbol).unwrap();
+        let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
             price,
             Price(1000.0),
@@ -734,7 +833,7 @@ mod test {
             ts("2025-06-01T09:59:00Z"),
         );
 
-        let price = market_view.try_resolved_close_price(&symbol).unwrap();
+        let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
             price,
             Price(300.0),
@@ -754,7 +853,7 @@ mod test {
         );
 
         assert!(
-            market_view.try_resolved_close_price(&symbol).is_err(),
+            market_view.try_resolved_close_price(symbol).is_err(),
             "Should error when no data available for the symbol"
         );
     }

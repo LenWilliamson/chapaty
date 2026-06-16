@@ -1,11 +1,11 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use polars::{
     frame::DataFrame,
-    io::cloud::CloudOptions,
+    io::{cloud::CloudOptions, utils::sync_on_close::SyncOnCloseType},
     prelude::{
-        CsvWriterOptions, IntoLazy, LazyFrame, ParquetWriteOptions, PlPath, SchemaRef, SinkOptions,
-        SinkTarget,
+        CsvWriterOptions, FileWriteFormat, IntoLazy, LazyFrame, ParquetWriteOptions, PlRefPath,
+        SchemaRef, SinkDestination, SinkTarget, UnifiedSinkArgs,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -17,10 +17,6 @@ use crate::{
     error::{ChapatyError, ChapatyResult, DataError, IoError, SystemError},
     report::polars_ext::{DataFrameExt, LazyFrameExt},
 };
-
-// ================================================================================================
-// Core Types & Configurations
-// ================================================================================================
 
 /// Defines the target export format and holds specific Polars writing options.
 #[derive(Debug, Clone)]
@@ -41,7 +37,7 @@ pub struct FileConfig<'a> {
     pub dir: &'a Path,
     pub file_stem: Option<String>,
     pub format: ExportFormat,
-    pub sink_opts: SinkOptions,
+    pub sink_opts: UnifiedSinkArgs,
 }
 
 impl Default for FileConfig<'_> {
@@ -50,16 +46,18 @@ impl Default for FileConfig<'_> {
             dir: Path::new("./chapaty/reports"),
             file_stem: None,
             format: ExportFormat::default(),
-            sink_opts: SinkOptions::default(),
+            sink_opts: default_unified_sink_args(),
         }
     }
 }
 
 impl<'a> FileConfig<'a> {
+    #[must_use]
     pub fn with_dir(self, dir: &'a Path) -> Self {
         Self { dir, ..self }
     }
 
+    #[must_use]
     pub fn with_file_stem(self, file_stem: impl Into<String>) -> Self {
         Self {
             file_stem: Some(file_stem.into()),
@@ -67,11 +65,13 @@ impl<'a> FileConfig<'a> {
         }
     }
 
+    #[must_use]
     pub fn with_format(self, format: ExportFormat) -> Self {
         Self { format, ..self }
     }
 
-    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+    #[must_use]
+    pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
 }
@@ -79,37 +79,41 @@ impl<'a> FileConfig<'a> {
 /// Configuration for exporting reports to cloud storage (GCS, S3, Azure).
 ///
 /// # Important: Full URIs Required
-/// To prevent URL malformation, `CloudConfig` requires the **complete URI**, including
-/// the file name and extension (e.g., `gs://bucket/path/to/my_report.csv`).
-/// Do not pass a directory URI.
+/// To prevent URL malformation, `CloudConfig` requires the **complete URI**,
+/// including the file name and extension (e.g.,
+/// `gs://bucket/path/to/my_report.csv`). Do not pass a directory URI.
 #[derive(Debug, Clone)]
 pub struct CloudConfig<'a> {
     pub uri: &'a str,
     pub format: ExportFormat,
     pub cloud_opts: CloudOptions,
-    pub sink_opts: SinkOptions,
+    pub sink_opts: UnifiedSinkArgs,
 }
 
 impl<'a> CloudConfig<'a> {
     /// Creates a new `CloudConfig` targeting a specific, complete Cloud URI.
+    #[must_use]
     pub fn new(uri: &'a str) -> Self {
         Self {
             uri,
             format: ExportFormat::default(),
             cloud_opts: CloudOptions::default(),
-            sink_opts: SinkOptions::default(),
+            sink_opts: default_unified_sink_args(),
         }
     }
 
+    #[must_use]
     pub fn with_format(self, format: ExportFormat) -> Self {
         Self { format, ..self }
     }
 
+    #[must_use]
     pub fn with_cloud_opts(self, cloud_opts: CloudOptions) -> Self {
         Self { cloud_opts, ..self }
     }
 
-    pub fn with_sink_opts(self, sink_opts: SinkOptions) -> Self {
+    #[must_use]
+    pub fn with_sink_opts(self, sink_opts: UnifiedSinkArgs) -> Self {
         Self { sink_opts, ..self }
     }
 }
@@ -118,12 +122,13 @@ impl<'a> CloudConfig<'a> {
 // Traits
 // ================================================================================================
 
-/// Defines a common interface for all Report types (Journal, TradeStats, etc.).
+/// Defines a common interface for all Report types (Journal, `TradeStats`,
+/// etc.).
 pub trait Report {
-    /// Access the underlying DataFrame (Immutable).
+    /// Access the underlying `DataFrame` (Immutable).
     fn as_df(&self) -> &DataFrame;
 
-    /// Access the underlying DataFrame (Mutable).
+    /// Access the underlying `DataFrame` (Mutable).
     fn as_df_mut(&mut self) -> &mut DataFrame;
 }
 
@@ -143,6 +148,9 @@ pub trait AsFormattedLazyFrame {
 pub trait ToJson {
     /// Serializes the report to a generic JSON Value.
     /// Returns a `Value::Array` containing row objects.
+    ///
+    /// # Errors
+    /// Returns an error if `DataFrame` rows cannot be converted to JSON.
     fn to_json(&self) -> ChapatyResult<serde_json::Value>;
 }
 
@@ -150,7 +158,12 @@ pub trait ExportSync {
     /// Writes the report to a local file system (blocking).
     ///
     /// - Creates directories if they do not exist.
-    /// - Automatically generates a file name if one is not provided in `FileConfig`.
+    /// - Automatically generates a file name if one is not provided in
+    ///   `FileConfig`.
+    ///
+    /// # Errors
+    /// Returns an error if path resolution, serialization, or file writing
+    /// fails.
     fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()>;
 }
 
@@ -196,10 +209,10 @@ where
 {
     fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()> {
         let ext: FileExtension = (&config.format).into();
-        let filename = match &config.file_stem {
-            Some(stem) => format!("{stem}.{ext}"),
-            None => format!("{}.{ext}", self.base_name()),
-        };
+        let filename = config.file_stem.as_ref().map_or_else(
+            || format!("{}.{ext}", self.base_name()),
+            |stem| format!("{stem}.{ext}"),
+        );
         let file_path = config.dir.join(&filename);
 
         if !config.dir.exists() {
@@ -219,16 +232,24 @@ where
             ))
         })?;
 
-        let target = SinkTarget::Path(PlPath::new(uri));
-        let sink_opts = &config.sink_opts;
+        let target = SinkTarget::Path(PlRefPath::new(uri));
         let lf = self.as_formatted_lf();
+        let unified_args = config.sink_opts.clone();
 
         let sink_plan = match &config.format {
             ExportFormat::Csv(opts) => lf
-                .sink_csv(target, opts.clone(), None, sink_opts.clone())
+                .sink(
+                    SinkDestination::File { target },
+                    FileWriteFormat::Csv(opts.clone()),
+                    unified_args,
+                )
                 .map_err(|e| DataError::DataFrame(format!("Failed to build CSV sink plan: {e}"))),
             ExportFormat::Parquet(opts) => lf
-                .sink_parquet(target, opts.clone(), None, sink_opts.clone())
+                .sink(
+                    SinkDestination::File { target },
+                    FileWriteFormat::Parquet(Arc::new(opts.clone())),
+                    unified_args,
+                )
                 .map_err(|e| {
                     DataError::DataFrame(format!("Failed to build Parquet sink plan: {e}"))
                 }),
@@ -252,31 +273,40 @@ where
 {
     async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()> {
         let lf = self.as_formatted_lf();
-        let target = SinkTarget::Path(PlPath::new(config.uri));
-        let cloud_opts = config.cloud_opts;
-        let sink_opts = config.sink_opts;
+        let target = SinkTarget::Path(PlRefPath::new(config.uri));
         let format = config.format;
 
         // Clone URI to move into the blocking task safely
         let uri_string = config.uri.to_string();
 
+        let mut unified_args = config.sink_opts.clone();
+        unified_args.cloud_options = Some(Arc::new(config.cloud_opts.clone()));
+
         tokio::task::spawn_blocking(move || {
             let sink_plan = match format {
                 ExportFormat::Csv(opts) => lf
-                    .sink_csv(target, opts, Some(cloud_opts), sink_opts)
+                    .sink(
+                        SinkDestination::File { target },
+                        FileWriteFormat::Csv(opts),
+                        unified_args,
+                    )
                     .map_err(|e| {
                         DataError::DataFrame(format!("Failed to build Cloud CSV plan: {e}"))
                     }),
                 ExportFormat::Parquet(opts) => lf
-                    .with_new_streaming(true)
-                    .sink_parquet(target, opts, Some(cloud_opts), sink_opts)
+                    .with_streaming(true)
+                    .sink(
+                        SinkDestination::File { target },
+                        FileWriteFormat::Parquet(Arc::new(opts)),
+                        unified_args,
+                    )
                     .map_err(|e| {
                         DataError::DataFrame(format!("Failed to build Cloud Parquet plan: {e}"))
                     }),
             }?;
 
             let _ = sink_plan.collect().map_err(|e| {
-                DataError::DataFrame(format!("Streaming upload failed to '{}': {e}", uri_string))
+                DataError::DataFrame(format!("Streaming upload failed to '{uri_string}': {e}"))
             })?;
 
             Ok(())
@@ -289,6 +319,18 @@ where
 // ================================================================================================
 // Helpers
 // ================================================================================================
+
+/// Provides reasonable default arguments for the unified sink API since it
+/// lacks a direct `Default` implementation.
+fn default_unified_sink_args() -> UnifiedSinkArgs {
+    UnifiedSinkArgs {
+        mkdir: true,
+        maintain_order: true,
+        sync_on_close: SyncOnCloseType::default(),
+        cloud_options: None,
+        sinked_paths_callback: None,
+    }
+}
 
 #[derive(
     Debug,
@@ -327,7 +369,7 @@ impl From<ExportFormat> for FileExtension {
 /// Generates a base name dynamically based on the presence of grouping columns.
 ///
 /// # Logic
-/// 1. Scans the DataFrame column names.
+/// 1. Scans the `DataFrame` column names.
 /// 2. Filters for columns starting with `__` (the `GroupCol` prefix).
 /// 3. Strips the prefix to get clean names (e.g., `__symbol` -> `symbol`).
 /// 4. Joins them to form a prefix for the file.
@@ -353,12 +395,16 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
         base_name.to_string()
     } else {
         let prefix = group_keys.join("_");
-        format!("{}_{}", prefix, base_name)
+        format!("{prefix}_{base_name}")
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
     use polars::{
@@ -366,9 +412,8 @@ mod tests {
         prelude::{LazyCsvReader, LazyFileListReader},
     };
 
-    use crate::{data::common::RiskMetricsConfig, report::journal::Journal};
-
     use super::*;
+    use crate::{data::common::RiskMetricsConfig, report::journal::Journal};
 
     #[test]
     fn test_generate_dynamic_base_name() {
@@ -408,7 +453,7 @@ mod tests {
     fn test_to_json_rows() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlPath::new(
+        let path = PlRefPath::new(
             pb.as_os_str()
                 .to_str()
                 .expect("failed to convert input file path to string"),
@@ -417,14 +462,14 @@ mod tests {
         let schema = Journal::to_schema();
         let df = LazyCsvReader::new(path)
             .with_has_header(true)
-            .with_schema(Some(schema.clone()))
+            .with_schema(Some(schema))
             .with_try_parse_dates(true)
             .finish()
             .expect("failed to create LazyFrame from CSV")
             .collect()
             .expect("failed to collect DataFrame from LazyFrame");
 
-        let journal = Journal::new(df, RiskMetricsConfig::default())
+        let journal = Journal::new(&df, RiskMetricsConfig::default())
             .expect("failed to create Journal from DataFrame");
 
         let have = journal

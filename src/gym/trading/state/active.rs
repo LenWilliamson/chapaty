@@ -28,7 +28,7 @@ impl Trade<Active> {
         cmd: OpenCmd,
         entry_price: Price,
         ts: DateTime<Utc>,
-        symbol: &Symbol,
+        symbol: Symbol,
     ) -> ChapatyResult<Self> {
         // 1. Sanitize (Snap to Grid)
         let clean_entry_val = sanitize_price(symbol, entry_price.0, "entry");
@@ -50,7 +50,7 @@ impl Trade<Active> {
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            trade_type: cmd.trade_type,
+            kind: cmd.trade_type,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -64,7 +64,12 @@ impl Trade<Active> {
         })
     }
 
-    pub(super) fn modify(&mut self, cmd: &ModifyCmd, symbol: &Symbol) -> ChapatyResult<()> {
+    /// Adjusts the stop-loss / take-profit of an Active trade.
+    ///
+    /// Consumes the trade and returns a fresh one with the new protective
+    /// orders applied. Validation runs against the candidate (SL, entry, TP)
+    /// ordering before anything is committed.
+    pub(super) fn modify(self, cmd: &ModifyCmd, symbol: Symbol) -> ChapatyResult<Self> {
         if self.agent_id != cmd.agent_id {
             return Err(ChapatyError::System(SystemError::AccessDenied(
                 "Agent mismatch".to_string(),
@@ -80,7 +85,8 @@ impl Trade<Active> {
         }
 
         // 1. Calculate Candidates (Transactional Preparation)
-        // If the command has a new value, sanitize it. Otherwise, keep the current value.
+        // If the command has a new value, sanitize it. Otherwise, keep the current
+        // value.
         let candidate_sl = if let Some(raw_sl) = cmd.new_stop_loss {
             Some(Price(sanitize_price(symbol, raw_sl.0, "modify_sl")))
         } else {
@@ -96,17 +102,17 @@ impl Trade<Active> {
         // 2. Validate Logic
         // We check if the NEW combination of (SL, Entry, TP) is valid.
         // Note: Active trades always have a fixed entry price.
-        self.trade_type.price_ordering_validation(
+        self.kind.price_ordering_validation(
             candidate_sl,
             Some(self.state.entry_price),
             candidate_tp,
         )?;
 
-        // 3. Commit Changes (Only reached if validation passes)
-        self.stop_loss = candidate_sl;
-        self.take_profit = candidate_tp;
-
-        Ok(())
+        // 3. Commit (only reached if validation passed): a fresh trade with the
+        // new protective orders, every other field carried over unchanged.
+        Ok(self
+            .with_stop_loss(candidate_sl)
+            .with_take_profit(candidate_tp))
     }
 
     pub(super) fn market_close(
@@ -114,147 +120,221 @@ impl Trade<Active> {
         cmd: &MarketCloseCmd,
         exit_price: Price,
         ts: DateTime<Utc>,
-        symbol: &Symbol,
+        symbol: Symbol,
     ) -> ChapatyResult<(CloseOutcome, f64)> {
         if self.agent_id != cmd.agent_id {
             return Err(SystemError::AccessDenied("Agent mismatch".to_string()).into());
         }
-
         let qty = cmd.quantity.unwrap_or(self.quantity);
         if (qty.0 - self.quantity.0) > f64::EPSILON {
             return Err(AgentError::InvalidInput("Close qty > Open qty".to_string()).into());
         }
 
-        self.execute_close(qty, exit_price, ts, TerminationReason::MarketClose, symbol)
+        Ok(self.execute_close(&CloseParams {
+            qty,
+            exit_price,
+            ts,
+            reason: TerminationReason::MarketClose,
+            symbol,
+        }))
+    }
+
+    /// Advances an Active trade by one market step.
+    ///
+    /// Consumes the trade and returns its next state plus the **reward
+    /// increment** for this step (change in `PnL` since the previous mark):
+    /// - No exit: a fresh `Active` clone marked to the current price.
+    /// - SL/TP hit: the resulting `Closed` trade.
+    ///
+    /// On an exit we intentionally do **not** re-mark first: the trade fills at
+    /// the SL/TP price, not the bar close, so `self.state.unrealized_pnl`
+    /// is left at the previous mark and `execute_close` reads it as the
+    /// baseline. The current-bar mark is only meaningful (and only applied)
+    /// when the trade survives.
+    pub(super) fn update(self, m_id: MarketId, ctx: &UpdateCtx) -> ChapatyResult<(State, f64)> {
+        let symbol = m_id.symbol;
+
+        // 1. Capture START value.
+        let prev_unrealized_pnl = self.state.unrealized_pnl;
+
+        // 2. Resolve this bar's mark price / timestamp.
+        let raw_price = ctx.market.try_resolved_close_price(symbol)?.0;
+        let current_price = Price(sanitize_price(symbol, raw_price, "mark_price"));
+        let ts = ctx.market.current_timestamp();
+
+        // Clean (tick-multiple) unrealized PnL at the current price. Used only on
+        // the survival branch; on an exit the trade fills at the SL/TP price instead.
+        let current_unrealized_pnl =
+            self.kind
+                .calculate_pnl(self.state.entry_price, current_price, self.quantity, symbol);
+
+        // 3. Check Triggers.
+        let tp_exit = self
+            .take_profit
+            .filter(|&tp| ctx.market.reached_price(tp, symbol, self.kind))
+            .map(|tp| (TerminationReason::TakeProfit, tp.0));
+
+        let sl_exit = self
+            .stop_loss
+            .filter(|&sl| ctx.market.reached_price(sl, symbol, self.kind))
+            .map(|sl| (TerminationReason::StopLoss, sl.0));
+
+        // Resolve conflict (priority by execution bias).
+        let exit = match ctx.bias {
+            // Pessimistic: StopLoss wins if both trigger.
+            ExecutionBias::Pessimistic => sl_exit.or(tp_exit),
+            // Optimistic: TakeProfit wins if both trigger.
+            ExecutionBias::Optimistic => tp_exit.or(sl_exit),
+        };
+
+        // 4. Execute exit if triggered.
+        if let Some((reason, raw_exit_price)) = exit {
+            let exit_price = Price(sanitize_price(symbol, raw_exit_price, "exit_price"));
+            let qty = self.quantity;
+
+            // `self.state.unrealized_pnl` is still `prev` (we never re-marked), so
+            // `execute_close` reads the correct baseline off the trade itself.
+            let (outcome, step_delta) = self.execute_close(&CloseParams {
+                qty,
+                exit_price,
+                ts,
+                reason,
+                symbol,
+            });
+
+            match outcome {
+                CloseOutcome::FullyClosed(c) => Ok((State::Closed(c), step_delta)),
+                CloseOutcome::PartiallyClosed { .. } => Err(SystemError::InvariantViolation(
+                    "execute_close(full_qty) returned Partial. Logic Error.".to_string(),
+                )
+                .into()),
+            }
+        } else {
+            // Survives: produce a fresh marked clone (Active -> Active) via the
+            // functor map, carrying the new mark.
+            let marked = self.map(|s| Active {
+                current_ts: ts,
+                current_price,
+                unrealized_pnl: current_unrealized_pnl,
+                ..s
+            });
+            let step_delta = current_unrealized_pnl - prev_unrealized_pnl;
+            Ok((State::Active(marked), step_delta))
+        }
     }
 }
 
 impl Trade<Active> {
-    fn execute_close(
-        self,
-        qty: Quantity,
-        exit_price: Price,
-        ts: DateTime<Utc>,
-        reason: TerminationReason,
-        symbol: &Symbol,
-    ) -> ChapatyResult<(CloseOutcome, f64)> {
-        let clean_exit_val = sanitize_price(symbol, exit_price.0, "exit");
-        let clean_exit_price = Price(clean_exit_val);
+    /// Closes all (or part) of the position and reports the **reward
+    /// increment**.
+    ///
+    /// The reward is a _delta against the trade's last recorded mark_, not the
+    /// absolute realized `PnL`. Every reward emitted is the "change since the
+    /// previous mark", and a close is just a final mark at the exit price. The
+    /// baseline is read straight off `self.state.unrealized_pnl`. The closed
+    /// trade's `realized_pnl` still stores the _absolute_ realized `PnL`
+    /// for the journal.
+    fn execute_close(self, close_params: &CloseParams) -> (CloseOutcome, f64) {
+        let CloseParams {
+            qty,
+            exit_price,
+            ts,
+            reason,
+            symbol,
+        } = close_params;
+        let clean_exit_price = Price(sanitize_price(*symbol, exit_price.0, "exit"));
+        let last_marked_unrealized_pnl = self.state.unrealized_pnl;
 
         let realized_pnl =
-            self.trade_type
-                .calculate_pnl(self.state.entry_price, clean_exit_price, qty, symbol);
-
+            self.kind
+                .calculate_pnl(self.state.entry_price, clean_exit_price, *qty, *symbol);
         let is_full_close = (self.quantity.0 - qty.0).abs() < f64::EPSILON;
 
         if is_full_close {
+            // The whole booked unrealized belongs to this close.
+            let step_delta = realized_pnl - last_marked_unrealized_pnl;
+
             let closed = self.map(|s| Closed {
                 entry_ts: s.entry_ts,
                 entry_price: s.entry_price,
-                exit_ts: ts,
+                exit_ts: *ts,
                 exit_price: clean_exit_price,
-                termination_reason: reason,
+                termination_reason: *reason,
                 realized_pnl,
             });
-            Ok((CloseOutcome::FullyClosed(closed), realized_pnl))
+            (CloseOutcome::FullyClosed(closed), step_delta)
         } else {
-            let remaining = Trade {
-                quantity: self.quantity - qty,
+            // Split the booked unrealized between the closed slice and the survivor,
+            // proportional to quantity.
+            let closed_fraction = qty.0 / self.quantity.0;
+            let closed_booked_unrealized = last_marked_unrealized_pnl * closed_fraction;
+            let remaining_booked_unrealized = last_marked_unrealized_pnl - closed_booked_unrealized;
+
+            // The closed slice only adds, what it gained beyond its already-booked share.
+            let step_delta = realized_pnl - closed_booked_unrealized;
+
+            let remaining = Self {
+                quantity: self.quantity - *qty,
+                state: Active {
+                    // The survivor must carry only its share of the unrealized PnL.
+                    unrealized_pnl: remaining_booked_unrealized,
+                    ..self.state.clone()
+                },
                 ..self.clone()
             };
-            let mut closed = self.map(|s| Closed {
-                entry_ts: s.entry_ts,
-                entry_price: s.entry_price,
-                exit_ts: ts,
-                exit_price: clean_exit_price,
-                termination_reason: reason,
-                realized_pnl,
-            });
-            closed.quantity = qty;
-            Ok((
+
+            let closed = Trade {
+                quantity: *qty,
+                ..self.map(|s| Closed {
+                    entry_ts: s.entry_ts,
+                    entry_price: s.entry_price,
+                    exit_ts: *ts,
+                    exit_price: clean_exit_price,
+                    termination_reason: *reason,
+                    realized_pnl,
+                })
+            };
+
+            (
                 CloseOutcome::PartiallyClosed { closed, remaining },
-                realized_pnl,
-            ))
+                step_delta,
+            )
         }
     }
 }
 
-pub(super) fn update(
-    mut trade: Trade<Active>,
-    m_id: &MarketId,
-    ctx: &UpdateCtx,
-) -> ChapatyResult<(State, f64)> {
-    let symbol = &m_id.symbol;
+// ================================================================================================
+// Helper Types
+// ================================================================================================
 
-    // 1. Capture START Value
-    let prev_unrealized_pnl = trade.state.unrealized_pnl;
+/// Parameters for closing (all or part of) an [`Active`] trade.
+struct CloseParams {
+    /// Quantity to close. Equal to the trade's quantity for a full close, or
+    /// strictly less for a partial close (the remainder stays [`Active`]).
+    qty: Quantity,
 
-    // 2. Mark to Market
-    let raw_price = ctx.market.try_resolved_close_price(symbol)?.0;
-    let current_price = Price(sanitize_price(symbol, raw_price, "mark_price"));
-    let ts = ctx.market.current_timestamp();
+    /// The fill price for this close, before grid snapping.
+    exit_price: Price,
 
-    trade.state.current_price = current_price;
-    trade.state.current_ts = ts;
+    /// Timestamp of the close.
+    ts: DateTime<Utc>,
 
-    // Clean Unrealized PnL
-    let current_unrealized_pnl = trade.trade_type.calculate_pnl(
-        trade.state.entry_price,
-        current_price,
-        trade.quantity,
-        symbol,
-    );
-    trade.state.unrealized_pnl = current_unrealized_pnl;
+    /// Why the trade is closing.
+    reason: TerminationReason,
 
-    // 3. Check Triggers
-    // A. Detect Triggers (Independent Checks)
-    let tp_exit = trade
-        .take_profit
-        .filter(|&tp| ctx.market.reached_price(tp, symbol, trade.trade_type))
-        .map(|tp| (TerminationReason::TakeProfit, tp.0));
-
-    let sl_exit = trade
-        .stop_loss
-        .filter(|&sl| ctx.market.reached_price(sl, symbol, trade.trade_type))
-        .map(|sl| (TerminationReason::StopLoss, sl.0));
-
-    // B. Resolve Conflict (Priority Logic)
-    let exit = match ctx.bias {
-        // Pessimistic: StopLoss triggers first (overrides TP if both occur)
-        // If SL didn't trigger, we check if TP triggered.
-        ExecutionBias::Pessimistic => sl_exit.or(tp_exit),
-
-        // Optimistic: TakeProfit triggers first (overrides SL if both occur)
-        // If TP didn't trigger, we check if SL triggered.
-        ExecutionBias::Optimistic => tp_exit.or(sl_exit),
-    };
-
-    // 4. Execute Exit if triggered
-    if let Some((reason, raw_exit_price)) = exit {
-        let exit_price = Price(sanitize_price(symbol, raw_exit_price, "exit_price"));
-
-        let qty = trade.quantity;
-        let (outcome, clean_realized_pnl) =
-            trade.execute_close(qty, exit_price, ts, reason, symbol)?;
-
-        match outcome {
-            CloseOutcome::FullyClosed(c) => {
-                let step_delta = clean_realized_pnl - prev_unrealized_pnl;
-                Ok((State::Closed(c), step_delta))
-            }
-            _ => Err(SystemError::InvariantViolation(
-                "execute_close(full_qty) returned Partial. Logic Error.".to_string(),
-            )
-            .into()),
-        }
-    } else {
-        let step_delta = current_unrealized_pnl - prev_unrealized_pnl;
-        Ok((State::Active(trade), step_delta))
-    }
+    /// The instrument's symbol, used for tick-grid price sanitization and for
+    /// the discrete, tick-multiple `PnL` computation in `calculate_pnl`.
+    symbol: Symbol,
 }
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use super::*;
     use crate::{
         data::{
             domain::{
@@ -268,7 +348,7 @@ mod tests {
             AgentIdentifier,
             trading::{
                 config::{EnvConfig, ExecutionBias},
-                types::TradeType,
+                types::TradeKind,
             },
         },
         sim::{
@@ -277,8 +357,6 @@ mod tests {
         },
         sorted_vec_map::SortedVecMap,
     };
-
-    use super::*;
 
     // ============================================================================
     // Test Helpers
@@ -301,8 +379,9 @@ mod tests {
         }
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
-    /// It allows us to create a valid MarketView with a simple (low, high, close) API.
+    /// A lightweight wrapper around the heavy `SimulationData`.
+    /// It allows us to create a valid `MarketView` with a simple (low, high,
+    /// close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -316,7 +395,7 @@ mod tests {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -332,16 +411,17 @@ mod tests {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }
 
-        /// Returns a valid MarketView borrowing from the owned SimulationData
+        /// Returns a valid `MarketView` borrowing from the owned
+        /// `SimulationData`
         fn view(&self) -> MarketView<'_> {
             MarketView::new(&self.sim_data, &self.cursor).unwrap()
         }
@@ -354,7 +434,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(1),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -362,7 +442,7 @@ mod tests {
             },
             Price(entry_price),
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration")
     }
@@ -374,7 +454,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(2),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Short,
+                trade_type: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -382,7 +462,7 @@ mod tests {
             },
             Price(entry_price),
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration")
     }
@@ -397,7 +477,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves up to 1.105
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.105, 1.105);
@@ -406,12 +486,11 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade.clone(), &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Extract new trade
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         // New unrealized should be positive (price went up, long position)
@@ -423,7 +502,7 @@ mod tests {
         );
 
         // step_delta should equal new_unrealized - prev_unrealized
-        assert_eq!(step_delta, new_unrealized - 0.0);
+        assert_f64_eq!(step_delta, new_unrealized - 0.0);
     }
 
     #[test]
@@ -432,7 +511,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves down to 1.095
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.095, 1.1, 1.095);
@@ -441,11 +520,10 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -453,7 +531,7 @@ mod tests {
             new_unrealized < 0.0,
             "Long should have negative PnL when price falls"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -462,7 +540,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves up to 1.105 (unfavorable for short)
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.105, 1.105);
@@ -471,11 +549,10 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -483,7 +560,7 @@ mod tests {
             new_unrealized < 0.0,
             "Short should have negative PnL when price rises"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -492,7 +569,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Market moves down to 1.095 (favorable for short)
         let fixture = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.095, 1.1, 1.095);
@@ -501,11 +578,10 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, step_delta) = trade.update(m_id, &ctx).unwrap();
 
-        let updated = match new_state {
-            State::Active(t) => t,
-            _ => panic!("Expected Active state"),
+        let State::Active(updated) = new_state else {
+            panic!("Expected Active state");
         };
 
         let new_unrealized = updated.state.unrealized_pnl;
@@ -513,7 +589,7 @@ mod tests {
             new_unrealized > 0.0,
             "Short should have positive PnL when price falls"
         );
-        assert_eq!(step_delta, new_unrealized);
+        assert_f64_eq!(step_delta, new_unrealized);
     }
 
     #[test]
@@ -522,7 +598,7 @@ mod tests {
         let m_id: MarketId = ohlcv_id().into();
 
         // Initial state: unrealized = 0.0
-        assert_eq!(trade.state.unrealized_pnl, 0.0);
+        assert_f64_eq!(trade.state.unrealized_pnl, 0.0);
 
         // Step 1: Price moves to 1.102
         let fixture1 = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.102, 1.102);
@@ -531,11 +607,10 @@ mod tests {
             market: &view1,
             bias: ExecutionBias::Optimistic,
         };
-        let (state1, delta1) = super::update(trade, &m_id, &ctx1).unwrap();
+        let (state1, delta1) = trade.update(m_id, &ctx1).unwrap();
 
-        let trade1 = match state1 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(trade1) = state1 else {
+            panic!("Expected Active");
         };
         let pnl1 = trade1.state.unrealized_pnl;
 
@@ -546,17 +621,16 @@ mod tests {
             market: &view2,
             bias: ExecutionBias::Optimistic,
         };
-        let (state2, delta2) = super::update(trade1, &m_id, &ctx2).unwrap();
+        let (state2, delta2) = trade1.update(m_id, &ctx2).unwrap();
 
-        let trade2 = match state2 {
-            State::Active(t) => t,
-            _ => panic!("Expected Active"),
+        let State::Active(trade2) = state2 else {
+            panic!("Expected Active");
         };
         let pnl2 = trade2.state.unrealized_pnl;
 
         // Verify delta is incremental
-        assert_eq!(delta1, pnl1 - 0.0, "First delta should be pnl1 - 0");
-        assert_eq!(delta2, pnl2 - pnl1, "Second delta should be pnl2 - pnl1");
+        assert_f64_eq!(delta1, pnl1 - 0.0, "First delta should be pnl1 - 0");
+        assert_f64_eq!(delta2, pnl2 - pnl1, "Second delta should be pnl2 - pnl1");
     }
 
     // ============================================================================
@@ -577,7 +651,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Must close with StopLoss
         match new_state {
@@ -603,7 +677,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _step_delta) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _step_delta) = trade.update(m_id, &ctx).unwrap();
 
         // Must close with TakeProfit
         match new_state {
@@ -628,7 +702,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Pessimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -650,7 +724,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -672,7 +746,7 @@ mod tests {
             market: &view,
             bias: ExecutionBias::Optimistic,
         };
-        let (new_state, _) = super::update(trade, &m_id, &ctx).unwrap();
+        let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
         match new_state {
             State::Closed(c) => {
@@ -694,15 +768,15 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(10),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
-                stop_loss: Some(Price(1.095567)),   // Off-grid
-                take_profit: Some(Price(1.105123)), // Off-grid
+                stop_loss: Some(Price(1.095_567)),   // Off-grid
+                take_profit: Some(Price(1.105_123)), // Off-grid
                 entry_price: None,
             },
-            Price(1.100789), // Off-grid entry
+            Price(1.100_789), // Off-grid entry
             ts("2026-01-19T10:00:00Z"),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration");
 
@@ -712,9 +786,9 @@ mod tests {
         // 1.095567 -> 1.09555
         // 1.105123 -> 1.10510
 
-        assert_eq!(trade.state.entry_price.0, 1.10080);
-        assert_eq!(trade.stop_loss.unwrap().0, 1.09555);
-        assert_eq!(trade.take_profit.unwrap().0, 1.10510);
+        assert_f64_eq!(trade.state.entry_price.0, 1.10080);
+        assert_f64_eq!(trade.stop_loss.unwrap().0, 1.09555);
+        assert_f64_eq!(trade.take_profit.unwrap().0, 1.10510);
         // Check they're on grid (divisible by tick_size with some tolerance)
         let remainder = (trade.state.entry_price.0 / 0.00005) % 1.0;
         assert!(remainder.abs() < f64::EPSILON, "Entry price not on grid");
@@ -726,7 +800,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_cannot_change_entry() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         let cmd = ModifyCmd {
@@ -737,7 +811,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.modify(&cmd, symbol);
         assert!(
             result.is_err(),
             "Should not allow modifying entry price of Active trade"
@@ -746,7 +820,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_valid_sl_tp() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         let cmd = ModifyCmd {
@@ -757,7 +831,7 @@ mod tests {
             new_take_profit: Some(Price(1.11)),
         };
 
-        trade.modify(&cmd, &symbol).unwrap();
+        let trade = trade.modify(&cmd, symbol).unwrap();
 
         assert_eq!(trade.stop_loss, Some(Price(1.098)));
         assert_eq!(trade.take_profit, Some(Price(1.11)));
@@ -779,16 +853,16 @@ mod tests {
         };
 
         let (outcome, reward) = trade
-            .market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), &symbol)
+            .market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), symbol)
             .unwrap();
 
         match outcome {
             CloseOutcome::FullyClosed(c) => {
                 assert_eq!(c.state.termination_reason, TerminationReason::MarketClose);
                 assert!(reward > 0.0, "Should have positive PnL");
-                assert_eq!(reward, 625.0);
+                assert_f64_eq!(reward, 625.0);
             }
-            _ => panic!("Expected FullyClosed"),
+            CloseOutcome::PartiallyClosed { .. } => panic!("Expected FullyClosed"),
         }
     }
 
@@ -806,14 +880,15 @@ mod tests {
 
         // Action: Close at 1.105 (Profit)
         let (outcome, reward) = trade
-            .market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), &symbol)
+            .market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), symbol)
             .unwrap();
 
         // Verification: Reward Logic
         // Diff: 0.00500 -> 100 ticks
         // Value: 100 ticks * $6.25 * 0.5 qty = $312.50
-        assert_eq!(
-            reward, 312.5,
+        assert_f64_eq!(
+            reward,
+            312.5,
             "Reward calculation incorrect for partial close"
         );
 
@@ -821,8 +896,9 @@ mod tests {
             CloseOutcome::PartiallyClosed { closed, remaining } => {
                 // Check Closed Portion
                 assert_eq!(closed.quantity, Quantity(0.5));
-                assert_eq!(
-                    closed.state.realized_pnl, 312.5,
+                assert_f64_eq!(
+                    closed.state.realized_pnl,
+                    312.5,
                     "Closed state PnL mismatch"
                 );
                 assert_eq!(
@@ -834,7 +910,7 @@ mod tests {
                 assert_eq!(remaining.quantity, Quantity(0.5));
                 assert_eq!(remaining.state.entry_price, Price(1.1));
             }
-            _ => panic!("Expected PartiallyClosed outcome"),
+            CloseOutcome::FullyClosed(_) => panic!("Expected PartiallyClosed outcome"),
         }
     }
 
@@ -849,7 +925,7 @@ mod tests {
             quantity: Some(Quantity(2.0)), // More than position
         };
 
-        let result = trade.market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), &symbol);
+        let result = trade.market_close(&cmd, Price(1.105), ts("2026-01-19T12:00:00Z"), symbol);
         assert!(result.is_err(), "Should reject close qty > position qty");
     }
 
@@ -859,7 +935,7 @@ mod tests {
 
     #[test]
     fn test_modify_active_invalid_ordering() {
-        let mut trade = create_long_active(1.1, Some(1.095), Some(1.105));
+        let trade = create_long_active(1.1, Some(1.095), Some(1.105));
         let symbol = ohlcv_id().symbol;
 
         // Try to set SL above entry (invalid for long)
@@ -871,7 +947,7 @@ mod tests {
             new_take_profit: None,
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.clone().modify(&cmd, symbol);
         assert!(result.is_err(), "Should reject invalid SL ordering");
 
         // Verify state unchanged (transactional)
@@ -887,11 +963,11 @@ mod tests {
         });
 
         // Setup: Long Pending Trade @ 1.1, SL @ 1.09000
-        let mut trade = Trade::<Active>::new(
+        let trade = Trade::<Active>::new(
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeType::Long,
+                trade_type: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,
@@ -899,7 +975,7 @@ mod tests {
             },
             Price(1.1),
             Utc::now(),
-            &symbol,
+            symbol,
         )
         .expect("invalid trade configuration");
 
@@ -913,7 +989,7 @@ mod tests {
             new_take_profit: Some(Price(1.12000)), // Valid
         };
 
-        let result = trade.modify(&cmd, &symbol);
+        let result = trade.clone().modify(&cmd, symbol);
 
         // 1. Assert Error
         assert!(
@@ -932,5 +1008,110 @@ mod tests {
             Some(Price(1.09000)),
             "SL should remain unchanged"
         );
+    }
+
+    #[test]
+    fn test_market_close_reports_increment_after_marking() {
+        // Regression: a marked-then-market-closed trade must add its PnL to the
+        // curve exactly once. Pre-fix this returned the full realized on top of
+        // the already-booked unrealized (the 2x bug).
+        let trade = create_long_active(1.1, None, None);
+        let m_id: MarketId = ohlcv_id().into();
+        let symbol = ohlcv_id().symbol;
+
+        // Mark to 1.103: +60 ticks * $6.25 * qty 1.0 = $375 unrealized.
+        let fx = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.103, 1.103);
+        let view = fx.view();
+        let ctx = UpdateCtx {
+            market: &view,
+            bias: ExecutionBias::Optimistic,
+        };
+        let (state, mark_delta) = trade.update(m_id, &ctx).unwrap();
+        let State::Active(marked) = state else {
+            panic!("Expected Active after marking");
+        };
+        assert_f64_eq!(marked.state.unrealized_pnl, 375.0);
+        assert_f64_eq!(mark_delta, 375.0);
+
+        // Market close at 1.105: realized = 100 ticks * $6.25 * 1.0 = $625.
+        let cmd = MarketCloseCmd {
+            agent_id: marked.agent_id.clone(),
+            trade_id: marked.uid,
+            quantity: None,
+        };
+        let (outcome, close_delta) = marked
+            .market_close(&cmd, Price(1.105), ts("2026-01-19T10:02:00Z"), symbol)
+            .unwrap();
+
+        let CloseOutcome::FullyClosed(closed) = outcome else {
+            panic!("Expected FullyClosed");
+        };
+        // Absolute realized is preserved for the journal.
+        assert_f64_eq!(closed.state.realized_pnl, 625.0);
+        // Reward channel reports only the increment beyond the last mark.
+        assert_f64_eq!(close_delta, 625.0 - 375.0);
+        // Telescoping invariant: marks + close == realized, booked exactly once.
+        assert_f64_eq!(mark_delta + close_delta, 625.0);
+    }
+
+    #[test]
+    fn test_partial_market_close_splits_unrealized_and_survivor_continues() {
+        let trade = create_long_active(1.1, None, None);
+        let m_id: MarketId = ohlcv_id().into();
+        let symbol = ohlcv_id().symbol;
+
+        // Mark full position to 1.102: +40 ticks * $6.25 * 1.0 = $250.
+        let fx1 = MarketFixture::new(ts("2026-01-19T10:01:00Z"), 1.1, 1.102, 1.102);
+        let v1 = fx1.view();
+        let c1 = UpdateCtx {
+            market: &v1,
+            bias: ExecutionBias::Optimistic,
+        };
+        let (s1, d1) = trade.update(m_id, &c1).unwrap();
+        let State::Active(marked) = s1 else {
+            panic!("Expected Active");
+        };
+        assert_f64_eq!(marked.state.unrealized_pnl, 250.0);
+        assert_f64_eq!(d1, 250.0);
+
+        // Close 0.5 @ 1.105: realized = 100 ticks * $6.25 * 0.5 = $312.5.
+        let cmd = MarketCloseCmd {
+            agent_id: marked.agent_id.clone(),
+            trade_id: marked.uid,
+            quantity: Some(Quantity(0.5)),
+        };
+        let (outcome, close_delta) = marked
+            .market_close(&cmd, Price(1.105), ts("2026-01-19T10:02:00Z"), symbol)
+            .unwrap();
+
+        let CloseOutcome::PartiallyClosed { closed, remaining } = outcome else {
+            panic!("Expected PartiallyClosed");
+        };
+        assert_eq!(closed.quantity, Quantity(0.5));
+        assert_f64_eq!(closed.state.realized_pnl, 312.5);
+        // Closed slice's prior share was 250 * 0.5 = 125; increment = 312.5 - 125.
+        assert_f64_eq!(close_delta, 187.5);
+        // FIX: survivor carries only its 0.5 share of the unrealized, not the full 250.
+        assert_eq!(remaining.quantity, Quantity(0.5));
+        assert_f64_eq!(remaining.state.unrealized_pnl, 125.0);
+
+        // Survivor must mark correctly off its own baseline, not a stale full-position
+        // one. Mark to 1.103: +60 ticks * $6.25 * 0.5 = $187.5.
+        let fx2 = MarketFixture::new(ts("2026-01-19T10:03:00Z"), 1.102, 1.103, 1.103);
+        let v2 = fx2.view();
+        let c2 = UpdateCtx {
+            market: &v2,
+            bias: ExecutionBias::Optimistic,
+        };
+        let (s2, d2) = remaining.update(m_id, &c2).unwrap();
+        let State::Active(marked2) = s2 else {
+            panic!("Expected Active");
+        };
+        assert_f64_eq!(marked2.state.unrealized_pnl, 187.5);
+        assert_f64_eq!(d2, 62.5); // 187.5 - 125.0, not polluted by the stale 250 baseline
+
+        // End-to-end: every recorded delta sums to realized(closed) +
+        // unrealized(survivor).
+        assert_f64_eq!(d1 + close_delta + d2, 312.5 + 187.5);
     }
 }

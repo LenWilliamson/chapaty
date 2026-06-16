@@ -1,12 +1,21 @@
 use std::{
     io::{BufReader, BufWriter, Cursor, Read, Write},
     path::Path,
+    sync::Arc,
 };
 
 use bytes::Bytes;
+use object_store::ObjectStoreExt;
 use polars::{
-    io::cloud::{BlockingCloudWriter, CloudOptions, build_object_store, object_path_from_str},
-    prelude::PlPathRef,
+    io::{
+        cloud::{
+            CloudOptions, build_object_store,
+            cloud_writer::{CloudWriter, CloudWriterIoTraitWrap},
+            object_path_from_str,
+        },
+        metrics::IOMetrics,
+    },
+    prelude::PlRefPath,
 };
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString, IntoStaticStr};
@@ -19,8 +28,8 @@ use crate::error::{ChapatyError, ChapatyResult, IoError};
 
 /// Configuration for loading and caching environment data.
 ///
-/// Encapsulates the storage location, serialization format, and I/O buffer settings
-/// to standardize reads and writes across Chapaty environments.
+/// Encapsulates the storage location, serialization format, and I/O buffer
+/// settings to standardize reads and writes across Chapaty environments.
 #[derive(Debug, Clone)]
 pub struct IoConfig<'a> {
     /// The storage location (local directory, cloud path, or HF dataset).
@@ -41,6 +50,7 @@ impl<'a> IoConfig<'a> {
     /// * `file_stem`: `None` (auto-generates from the configuration hash)
     /// * `format`: `SerdeFormat::Postcard`
     /// * `buffer_size`: 128 KiB
+    #[must_use]
     pub fn new(location: StorageLocation<'a>) -> Self {
         Self {
             location,
@@ -51,6 +61,7 @@ impl<'a> IoConfig<'a> {
     }
 
     /// Sets an explicit base filename (without extension).
+    #[must_use]
     pub fn with_file_stem(self, file_stem: &'a str) -> Self {
         Self {
             file_stem: Some(file_stem),
@@ -59,11 +70,13 @@ impl<'a> IoConfig<'a> {
     }
 
     /// Sets a specific serialization format.
+    #[must_use]
     pub fn with_format(self, format: SerdeFormat) -> Self {
         Self { format, ..self }
     }
 
     /// Sets a custom internal I/O buffer size in bytes.
+    #[must_use]
     pub fn with_buffer_size(self, size: usize) -> Self {
         Self {
             buffer_size: size,
@@ -78,14 +91,19 @@ impl<'a> IoConfig<'a> {
 
 /// An async cloud file reader that can be used synchronously via `Read`.
 #[derive(Default, Debug, Clone)]
-pub(crate) struct CloudReader {
+pub struct CloudReader {
     inner: Cursor<Bytes>,
 }
 
 impl CloudReader {
+    /// # Errors
+    ///
+    /// Returns an error if object-store initialization fails, if the object
+    /// path cannot be built, or if the remote object cannot be read into
+    /// memory.
     pub async fn new(uri: &str, cloud_options: Option<&CloudOptions>) -> ChapatyResult<Self> {
         let (cloud_location, object_store) =
-            build_object_store(PlPathRef::new(uri), cloud_options, false)
+            build_object_store(PlRefPath::new(uri), cloud_options, false)
                 .await
                 .map_err(|e| IoError::ObjectStoreBuild(e.to_string()))?;
 
@@ -101,7 +119,7 @@ impl CloudReader {
 
         let bytes = result.bytes().await.map_err(map_object_store_err)?;
 
-        Ok(CloudReader {
+        Ok(Self {
             inner: Cursor::new(bytes),
         })
     }
@@ -113,6 +131,10 @@ impl Read for CloudReader {
     }
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 fn map_object_store_err(err: object_store::Error) -> ChapatyError {
     IoError::ReadBytesFailed(err.to_string()).into()
 }
@@ -120,6 +142,47 @@ fn map_object_store_err(err: object_store::Error) -> ChapatyError {
 // ================================================================================================
 // Storage Location
 // ================================================================================================
+
+/// Configuration for tuning cloud storage multipart uploads.
+///
+/// This struct allows fine-grained control over how data is chunked and
+/// uploaded to cloud object stores (e.g., AWS S3, GCS, Azure), as well as
+/// optionally tracking real-time network I/O metrics during the write process.
+#[derive(Debug, Clone)]
+pub struct CloudWriteConfig {
+    /// The size of each chunk uploaded to the cloud, in bytes.
+    ///
+    /// **Default:** 8 MiB.
+    pub upload_chunk_size: usize,
+
+    /// The maximum number of concurrent chunk uploads.
+    ///
+    /// **Default:** `8`.
+    pub max_concurrency: std::num::NonZeroUsize,
+
+    /// Optional thread-safe metrics tracker.
+    ///
+    /// **Default:** `None`.
+    pub io_metrics: Option<Arc<IOMetrics>>,
+}
+
+impl Default for CloudWriteConfig {
+    /// Provides defaults for cloud uploads:
+    /// - 8 MiB chunk size
+    /// - Maximum concurrency of 8
+    /// - No I/O metrics tracking
+    #[expect(
+        clippy::expect_used,
+        reason = "the literal 8 is a non-zero constant, so the NonZeroUsize conversion cannot fail"
+    )]
+    fn default() -> Self {
+        Self {
+            upload_chunk_size: 8 * 1024 * 1024,
+            max_concurrency: std::num::NonZeroUsize::new(8).expect("8 is non-zero"),
+            io_metrics: None,
+        }
+    }
+}
 
 /// Storage location for simulation data.
 ///
@@ -131,6 +194,7 @@ pub enum StorageLocation<'a> {
     Cloud {
         path: &'a str,
         options: CloudOptions,
+        write_config: Option<CloudWriteConfig>,
     },
     /// Local storage location (directory only, not a file path).
     Local { path: &'a Path },
@@ -144,29 +208,41 @@ pub enum StorageLocation<'a> {
     HuggingFace { version: Option<&'a str> },
 }
 
-impl<'a> StorageLocation<'a> {
+impl StorageLocation<'_> {
     pub(crate) async fn writer(
         &self,
         filename: &str,
         buffer_size: usize,
     ) -> ChapatyResult<Box<dyn Write + Send>> {
         match self {
-            Self::Cloud { path, options } => {
+            Self::Cloud { path, options, write_config } => {
                 let full_path = format!("{path}/{filename}");
-                BlockingCloudWriter::new(PlPathRef::new(&full_path), Some(options))
+                let (cloud_location, store) = build_object_store(PlRefPath::new(&full_path), Some(options), false)
                     .await
-                    .map(|writer| {
-                        Box::new(BufWriter::with_capacity(buffer_size, writer))
-                            as Box<dyn Write + Send>
-                    })
-                    .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))
+                    .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))?;
+
+                let object_path = object_path_from_str(&cloud_location.prefix)
+                    .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))?;
+
+                let write_cfg = write_config.clone().unwrap_or_default();
+                let cloud_writer = CloudWriter::new(
+                    store,
+                    object_path,
+                    write_cfg.upload_chunk_size,
+                    write_cfg.max_concurrency,
+                    write_cfg.io_metrics,
+                );
+
+                let io_writer = CloudWriterIoTraitWrap::from(cloud_writer);
+                Ok(Box::new(BufWriter::with_capacity(buffer_size, io_writer)) as Box<dyn Write + Send>)
             }
+
             Self::Local { path } => {
                 if !path.exists() {
+                    let path_display = path.display();
                     std::fs::create_dir_all(path).map_err(|e| {
                         ChapatyError::Io(IoError::WriterCreation(format!(
-                            "Failed to create directory {:?}: {}",
-                            path, e
+                            "Failed to create directory {path_display}: {e}"
                         )))
                     })?;
                 }
@@ -179,7 +255,10 @@ impl<'a> StorageLocation<'a> {
                     })
                     .map_err(|e| ChapatyError::Io(IoError::WriterCreation(e.to_string())))
             }
-            Self::HuggingFace { .. } => Err(ChapatyError::Io(IoError::WriterCreation("Writing directly to Hugging Face from environments is not supported. Use the upload CLI by Hugging Face.".to_string()))),
+
+            Self::HuggingFace { .. } => Err(ChapatyError::Io(IoError::WriterCreation(
+                "Writing directly to Hugging Face from environments is not supported. Use the upload CLI by Hugging Face.".to_string()
+            ))),
         }
     }
 
@@ -193,7 +272,7 @@ impl<'a> StorageLocation<'a> {
         buffer_size: usize,
     ) -> ChapatyResult<(Box<dyn Read + Send>, Option<u64>)> {
         match self {
-            Self::Cloud { path, options } => {
+            Self::Cloud { path, options, .. } => {
                 let full_path = format!("{path}/{filename}");
                 let cloud_reader = CloudReader::new(&full_path, Some(options)).await?;
                 Ok((
@@ -207,9 +286,10 @@ impl<'a> StorageLocation<'a> {
                 open_local_file(&full_path, buffer_size)
             }
             Self::HuggingFace { version } => {
-                let revision = version
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| format!("v{}", crate::VERSION));
+                let revision = version.map_or_else(
+                    || format!("v{}", crate::VERSION),
+                    std::string::ToString::to_string,
+                );
 
                 let api = hf_hub::api::tokio::Api::new().map_err(|e| {
                     ChapatyError::Io(IoError::ReaderCreation(format!(

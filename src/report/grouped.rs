@@ -22,29 +22,43 @@ pub struct GroupedJournal<'a> {
     group_keys: Vec<GroupCol>,
 }
 
-impl<'a> GroupedJournal<'a> {
+impl GroupedJournal<'_> {
     /// Access raw Polars lazy API for custom queries
     pub fn lazy(&self) -> LazyGroupBy {
         let group_cols: Vec<Expr> = self.group_keys.iter().map(GroupCol::as_expr).collect();
         self.journal.as_df().clone().lazy().group_by(group_cols)
     }
 
+    /// Computes grouped cumulative-return reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to cumulative returns fails.
     pub fn cumulative_returns(&self) -> ChapatyResult<CumulativeReturns> {
         self.try_into()
     }
 
+    /// Computes grouped portfolio-performance reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to portfolio performance fails.
     pub fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
         self.try_into()
     }
 
+    /// Computes grouped trade-statistics reports.
+    ///
+    /// # Errors
+    /// Returns an error if grouped conversion to trade statistics fails.
     pub fn trade_stats(&self) -> ChapatyResult<TradeStatistics> {
         self.try_into()
     }
 
-    pub fn source(&self) -> &Journal {
+    #[must_use]
+    pub const fn source(&self) -> &Journal {
         self.journal
     }
 
+    #[must_use]
     pub fn group_criteria(&self) -> &[GroupCol] {
         &self.group_keys
     }
@@ -58,11 +72,12 @@ impl<'a> GroupedJournal<'a> {
         }
     }
 
-    /// Materializes virtual group columns and partitions the DataFrame.
+    /// Materializes virtual group columns and partitions the `DataFrame`.
     ///
     /// # Returns
     /// * `Vec<DataFrame>` - The partitions (one per group).
-    /// * `Vec<GroupCol>` - The group keys (e.g., [GroupCol::Symbol, GroupCol::EntryYear]).
+    /// * `Vec<GroupCol>` - The group keys (e.g., [`GroupCol::Symbol`,
+    ///   `GroupCol::EntryYear`]).
     pub(crate) fn to_partitions(&self) -> ChapatyResult<(Vec<DataFrame>, Vec<GroupCol>)> {
         let group_exprs = self
             .group_keys
@@ -90,7 +105,7 @@ impl<'a> GroupedJournal<'a> {
 /// Represents the subset of columns valid for grouping operations.
 ///
 /// This strictly enforces that users cannot group by continuous variables
-/// (like Price or PnL) or unique identifiers (like RowId), preventing
+/// (like Price or `PnL`) or unique identifiers (like `RowId`), preventing
 /// logical errors at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString, Display, IntoStaticStr, EnumIter)]
 #[strum(serialize_all = "snake_case", prefix = "__")]
@@ -106,7 +121,8 @@ pub enum GroupCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
@@ -140,29 +156,27 @@ impl From<GroupCol> for JournalCol {
     fn from(col: GroupCol) -> Self {
         match col {
             // === Identifiers ===
-            GroupCol::EpisodeId => JournalCol::EpisodeId,
-            GroupCol::TradeState => JournalCol::TradeState,
-            GroupCol::AgentId => JournalCol::AgentId,
+            GroupCol::EpisodeId => Self::EpisodeId,
+            GroupCol::TradeState => Self::TradeState,
+            GroupCol::AgentId => Self::AgentId,
 
             // === Market spec ===
-            GroupCol::DataBroker => JournalCol::DataBroker,
-            GroupCol::Exchange => JournalCol::Exchange,
-            GroupCol::Symbol => JournalCol::Symbol,
-            GroupCol::MarketType => JournalCol::MarketType,
+            GroupCol::DataBroker => Self::DataBroker,
+            GroupCol::Exchange => Self::Exchange,
+            GroupCol::Symbol => Self::Symbol,
+            GroupCol::MarketType => Self::MarketType,
 
             // === Trade configuration ===
-            GroupCol::TradeType => JournalCol::TradeType,
+            GroupCol::TradeType => Self::TradeType,
 
             // === Timestamps (Mapped to parent TS columns) ===
             GroupCol::EntryYear | GroupCol::EntryQuarter | GroupCol::EntryMonth => {
-                JournalCol::EntryTimestamp
+                Self::EntryTimestamp
             }
-            GroupCol::ExitYear | GroupCol::ExitQuarter | GroupCol::ExitMonth => {
-                JournalCol::ExitTimestamp
-            }
+            GroupCol::ExitYear | GroupCol::ExitQuarter | GroupCol::ExitMonth => Self::ExitTimestamp,
 
             // === Realized outcomes ===
-            GroupCol::ExitReason => JournalCol::ExitReason,
+            GroupCol::ExitReason => Self::ExitReason,
         }
     }
 }
@@ -180,10 +194,12 @@ impl From<&GroupCol> for PlSmallStr {
 }
 
 impl GroupCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -204,15 +220,10 @@ impl GroupCol {
             | Self::TradeType
             | Self::ExitReason => col(source_col),
 
-            // === Virtual Time Columns (Entry) ===
-            Self::EntryYear => col(source_col).dt().year(),
-            Self::EntryQuarter => col(source_col).dt().quarter(),
-            Self::EntryMonth => col(source_col).dt().month(),
-
-            // === Virtual Time Columns (Exit) ===
-            Self::ExitYear => col(source_col).dt().year(),
-            Self::ExitQuarter => col(source_col).dt().quarter(),
-            Self::ExitMonth => col(source_col).dt().month(),
+            // === Virtual Time Columns ===
+            Self::EntryYear | Self::ExitYear => col(source_col).dt().year(),
+            Self::EntryQuarter | Self::ExitQuarter => col(source_col).dt().quarter(),
+            Self::EntryMonth | Self::ExitMonth => col(source_col).dt().month(),
         };
 
         expr.alias(*self)
@@ -221,8 +232,15 @@ impl GroupCol {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use std::path::PathBuf;
+
     use polars::prelude::{
-        LazyCsvReader, LazyFileListReader, PlPath, StrptimeOptions, TimeUnit, TimeZone, df, lit,
+        LazyCsvReader, LazyFileListReader, PlRefPath, StrptimeOptions, TimeUnit, TimeZone, df, lit,
     };
 
     use super::*;
@@ -233,7 +251,6 @@ mod tests {
             trade_statistics::TradeStatCol,
         },
     };
-    use std::path::PathBuf;
 
     #[test]
     fn test_to_partitions_logic() {
@@ -267,7 +284,7 @@ mod tests {
             .expect("Failed to cast dates");
 
         let journal =
-            Journal::new(df, RiskMetricsConfig::default()).expect("Failed to instantiate Journal");
+            Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to instantiate Journal");
 
         // 2. Create Grouped Journal
         // Grouping by Symbol AND EntryYear
@@ -342,7 +359,7 @@ mod tests {
 
         // Load with strict schema enforcement
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),
@@ -356,7 +373,7 @@ mod tests {
         .expect("Failed to collect DataFrame");
 
         let journal =
-            Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal");
+            Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal");
 
         // ========================================================================
         // 2. Group by Symbol + Entry Year
@@ -413,7 +430,7 @@ mod tests {
             .unwrap()
             .get(0)
             .unwrap();
-        assert_eq!(net_profit, 2500.0, "ETH/2026 net profit should be 2500");
+        assert_f64_eq!(net_profit, 2500.0, "ETH/2026 net profit should be 2500");
 
         // ========================================================================
         // 5. Test Cumulative Returns (Transformation: N -> N, no aggregation)
@@ -462,7 +479,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let non_null_count = peak_values.iter().filter(|v| v.is_some()).count();
+        let non_null_count = peak_values.iter().flatten().count();
         assert_eq!(
             non_null_count, 3,
             "All BTC/2025 rows should have calculated metrics"
@@ -473,7 +490,7 @@ mod tests {
     // Helper Function
     // ========================================================================
 
-    /// Filters DataFrame to a specific (symbol, year) group.
+    /// Filters `DataFrame` to a specific (symbol, year) group.
     fn filter_group(df: &DataFrame, symbol: &str, year: i32) -> DataFrame {
         df.clone()
             .lazy()
