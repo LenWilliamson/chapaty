@@ -99,7 +99,9 @@ mod tests {
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
     use super::*;
-    use polars::prelude::{DataType, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit};
+    use polars::prelude::{
+        DataType, LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt, TimeUnit,
+    };
     use std::path::PathBuf;
 
     // ============================================================================
@@ -188,20 +190,52 @@ mod tests {
 
             // 3. Assert
             let result_df = result_lf.collect().unwrap();
+            let schema = case.indicator.output_schema();
+
+            // Verify that the result matches the promised schema
+            assert_eq!(
+                result_df.schema().as_ref(),
+                schema.as_ref(),
+                "Result schema mismatch for test case: {}",
+                case.name
+            );
 
             let expected_file = fixtures_path().join("expected").join(case.expected_file);
-            let expected_df = LazyCsvReader::new(PlRefPath::new(
+            let mut expected_lf = LazyCsvReader::new(PlRefPath::new(
                 expected_file.as_os_str().to_str().expect("filepath"),
             ))
             .with_has_header(true)
             .finish()
-            .unwrap()
-            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(polars::prelude::TimeZone::UTC),
-            )))
-            .collect()
             .unwrap();
+
+            let expected_schema = expected_lf.collect_schema().unwrap();
+
+            // Dynamically align expected DataFrame with the required schema
+            for field in schema.iter_fields() {
+                let name = field.name();
+                let dtype = field.dtype();
+
+                if expected_schema.contains(name.as_str()) {
+                    expected_lf = expected_lf.with_column(col(name.as_str()).cast(dtype.clone()));
+                } else if name.as_str() == CanonicalCol::PointInTime.as_str()
+                    && expected_schema.contains("timestamp")
+                {
+                    // Handle "timestamp" -> "point_in_time" legacy alias
+                    expected_lf = expected_lf
+                        .with_column(col("timestamp").cast(dtype.clone()).alias(name.as_str()));
+                }
+            }
+
+            let expected_df = expected_lf
+                .select(
+                    result_df
+                        .get_column_names()
+                        .iter()
+                        .map(|n| col(n.as_str()))
+                        .collect::<Vec<_>>(),
+                )
+                .collect()
+                .unwrap();
 
             assert_eq!(
                 result_df, expected_df,

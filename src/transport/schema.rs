@@ -202,10 +202,10 @@ impl CanonicalCol {
             | Self::SessionVwap => DataType::Float64,
 
             // Date (calendar day, no time component)
-            Self::SessionDate => DataType::Date,
+            Self::Date | Self::SessionDate => DataType::Date,
 
             // Time
-            Self::Date | Self::PointInTime | Self::OpenTimestamp => {
+            Self::PointInTime | Self::OpenTimestamp => {
                 DataType::Datetime(TimeUnit::Microseconds, Some(TimeZone::UTC))
             }
 
