@@ -477,14 +477,15 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
+    use polars::prelude::AnyValue;
+    use prost_types::Timestamp;
+
     use super::*;
     use crate::generated::chapaty::data::v1::{
         EconomicCalendarBatch, EconomicCalendarEvent, OhlcvFutureBatch, OhlcvFutureEvent,
         OhlcvSpotBatch, OhlcvSpotEvent, TpoFutureBatch, TpoFutureEvent, TpoSpotBatch, TpoSpotEvent,
         TradesSpotBatch, TradesSpotEvent, VolumeProfileSpotBatch, VolumeProfileSpotEvent,
     };
-    use polars::prelude::AnyValue;
-    use prost_types::Timestamp;
 
     // ========================================================================
     // Test Helpers

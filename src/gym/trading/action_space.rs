@@ -176,6 +176,8 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
+    use chrono::{DateTime, Utc};
+
     use super::*;
     use crate::{
         data::{
@@ -193,7 +195,6 @@ mod tests {
         },
         sorted_vec_map::SortedVecMap,
     };
-    use chrono::{DateTime, Utc};
 
     // ========================================================================
     // 1. Fixtures & Helpers

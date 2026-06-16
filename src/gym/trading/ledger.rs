@@ -782,6 +782,7 @@ mod test {
     use polars::prelude::SchemaExt;
     use strum::IntoEnumIterator;
 
+    use super::*;
     use crate::{
         data::{
             domain::{Period, SpotPair},
@@ -796,8 +797,6 @@ mod test {
         },
         sorted_vec_map::SortedVecMap,
     };
-
-    use super::*;
 
     // ============================================================================
     // Test Helpers

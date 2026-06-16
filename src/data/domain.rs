@@ -1,8 +1,9 @@
+use std::{cmp::Ordering, fmt, str::FromStr};
+
 use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
 use chrono_tz::Tz;
 use polars::prelude::{Expr, col, lit};
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, fmt, str::FromStr};
 use strum::{AsRefStr, Display, EnumIter, IntoStaticStr};
 use strum_macros::EnumString;
 
@@ -1365,9 +1366,10 @@ mod tests {
         reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
     )]
 
-    use super::*;
     use chrono::TimeZone;
     use chrono_tz::America::New_York;
+
+    use super::*;
 
     // ============================================================================================
     // Market Session Tetsts

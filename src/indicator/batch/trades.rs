@@ -98,11 +98,13 @@ mod tests {
         clippy::similar_names,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
-    use super::*;
+    use std::path::PathBuf;
+
     use polars::prelude::{
         DataType, LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt, TimeUnit,
     };
-    use std::path::PathBuf;
+
+    use super::*;
 
     // ============================================================================
     // Test Fixtures & Helpers

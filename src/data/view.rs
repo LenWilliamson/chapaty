@@ -1,5 +1,6 @@
-use chrono::{DateTime, Utc};
 use std::{fmt::Debug, sync::Arc};
+
+use chrono::{DateTime, Utc};
 
 use crate::{
     data::{

@@ -330,6 +330,7 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
+    use super::*;
     use crate::{
         data::{
             domain::{
@@ -352,8 +353,6 @@ mod tests {
         },
         sorted_vec_map::SortedVecMap,
     };
-
-    use super::*;
 
     // ============================================================================
     // Test Helpers

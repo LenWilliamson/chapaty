@@ -626,9 +626,8 @@ mod tests {
 
     use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
 
-    use crate::data::common::RiskMetricsConfig;
-
     use super::*;
+    use crate::data::common::RiskMetricsConfig;
 
     // ========================================================================
     // Helper: Load Journal Fixture

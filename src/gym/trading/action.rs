@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumCount, EnumIter, EnumString};
+
 use crate::{
     data::{
         domain::{Price, Quantity, TradeId},
@@ -7,8 +10,6 @@ use crate::{
     gym::{AgentIdentifier, trading::types::TradeKind},
     sorted_vec_map::SortedVecMap,
 };
-use serde::{Deserialize, Serialize};
-use strum::{Display, EnumCount, EnumIter, EnumString};
 
 // ================================================================================================
 // Command Trait

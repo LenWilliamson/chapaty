@@ -283,9 +283,8 @@ impl StateKind {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::domain::{ContractMonth, ContractYear, FutureContract, FutureRoot};
-
     use super::*;
+    use crate::data::domain::{ContractMonth, ContractYear, FutureContract, FutureRoot};
 
     // Convenience constructors
     fn sl(v: f64) -> Price {

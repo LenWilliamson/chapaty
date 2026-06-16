@@ -1,7 +1,9 @@
-use crate::error::{ChapatyResult, EnvError};
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
+
+use crate::error::{ChapatyResult, EnvError};
 
 /// Configuration for filtering market data based on time and economic events.
 ///

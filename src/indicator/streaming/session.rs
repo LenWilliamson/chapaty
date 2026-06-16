@@ -458,9 +458,10 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
-    use super::*;
     use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
     use chrono_tz::{America::New_York, Tz};
+
+    use super::*;
 
     /// Helper to easily construct a UTC timestamp from a local timezone date and time.
     fn local_to_utc(

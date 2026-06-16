@@ -312,8 +312,9 @@ mod tests {
         clippy::unwrap_used,
         reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
     )]
-    use super::*;
     use chrono::TimeZone;
+
+    use super::*;
 
     // ============================================================================================
     // Helper Functions

@@ -1,7 +1,8 @@
+use std::{env, fs, path::Path, sync::Arc, time::Instant};
+
 use anyhow::{Context, Result};
 use chapaty::prelude::*;
 use serde::Serialize;
-use std::{env, fs, path::Path, sync::Arc, time::Instant};
 use time::macros::format_description;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;

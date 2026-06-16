@@ -21,7 +21,6 @@ mod transport;
 // === Facades (Re-exporting internals) ===
 // Expose specific IO items without making the whole module public
 pub use crate::io::{SerdeFormat, StorageLocation};
-
 // Expose specific Transport items
 pub use crate::transport::source::{
     ApiKey, DataSource, EndpointUrl, HostedApi, SelfHostedApi, SourceGroup,
@@ -31,5 +30,7 @@ pub use crate::transport::source::{
 pub mod prelude;
 pub mod ring_buffer;
 pub mod sorted_vec_map;
-pub use crate::gym::trading::factory::{load, make};
-pub use crate::indicator::streaming::StreamingIndicator;
+pub use crate::{
+    gym::trading::factory::{load, make},
+    indicator::streaming::StreamingIndicator,
+};

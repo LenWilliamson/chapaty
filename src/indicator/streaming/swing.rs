@@ -1,5 +1,7 @@
 use std::{cmp::Ordering, collections::VecDeque};
 
+use chrono::{DateTime, Utc};
+
 use crate::{
     data::{
         domain::{CandleDirection, Price, PriceSource},
@@ -7,7 +9,6 @@ use crate::{
     },
     indicator::streaming::StreamingIndicator,
 };
-use chrono::{DateTime, Utc};
 
 /// Represents the geometric type of a single pivot point.
 ///

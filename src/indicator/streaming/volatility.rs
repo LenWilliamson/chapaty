@@ -276,10 +276,10 @@ impl StreamingIndicator for StreamingTradesVwap {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::domain::Quantity;
+    use chrono::{DateTime, Utc};
 
     use super::*;
-    use chrono::{DateTime, Utc};
+    use crate::data::domain::Quantity;
 
     fn mock_candle(open: f64, high: f64, low: f64, close: f64, vol: f64) -> Ohlcv {
         Ohlcv {

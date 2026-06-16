@@ -17,9 +17,6 @@
 //! assert_eq!(keys, vec!["apple", "zebra"]);
 //! ```
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 use std::{
     cmp::Ordering,
     collections::HashMap,
@@ -27,6 +24,10 @@ use std::{
     hash::{Hash, Hasher},
     ops::{Index, IndexMut, Range},
 };
+
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 /// A map that maintains entries in sorted order, optimized for small collections.
 ///

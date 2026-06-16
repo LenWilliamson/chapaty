@@ -1,6 +1,7 @@
+use std::collections::VecDeque;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 use crate::{
     error::{ChapatyResult, DataError},
@@ -159,8 +160,9 @@ mod tests {
         clippy::unwrap_used,
         reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
     )]
-    use super::*;
     use chrono::TimeZone;
+
+    use super::*;
 
     fn ts(seconds: i64) -> DateTime<Utc> {
         Utc.timestamp_opt(seconds, 0).single().unwrap()

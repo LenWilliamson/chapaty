@@ -363,11 +363,11 @@ mod tests {
     )]
     use std::{collections::HashSet, path::PathBuf};
 
-    use crate::data::common::RiskMetricsConfig;
-
-    use super::*;
     use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
     use strum::IntoEnumIterator;
+
+    use super::*;
+    use crate::data::common::RiskMetricsConfig;
 
     // ========================================================================
     // Helper: Load Journal Fixture

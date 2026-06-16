@@ -1237,6 +1237,8 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
+    use std::panic::{self, AssertUnwindSafe};
+
     use chrono::Duration;
 
     use super::*;
@@ -1251,7 +1253,6 @@ mod tests {
             data::{SimulationData, SimulationDataBuilder, Streams},
         },
     };
-    use std::panic::{self, AssertUnwindSafe};
 
     // ========================================================================
     // 0. The "Invariant Checker"

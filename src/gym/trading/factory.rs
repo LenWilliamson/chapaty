@@ -1,3 +1,20 @@
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+    pin::Pin,
+    sync::Arc,
+};
+
+use chrono::{DateTime, Utc};
+use itertools::izip;
+use polars::prelude::{
+    BooleanType, ChunkedArray, DataFrame, DataType, DateType, DatetimeType, Float64Type, Int32Type,
+    Int64Type, JoinArgs, JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector,
+    SortMultipleOptions, StringType, TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
+};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tracing::{debug, info, warn};
+
 use crate::{
     data::{
         common::ProfileAggregation,
@@ -47,22 +64,6 @@ use crate::{
         source::{Connect, SourceGroup},
     },
 };
-
-use chrono::{DateTime, Utc};
-use itertools::izip;
-use polars::prelude::{
-    BooleanType, ChunkedArray, DataFrame, DataType, DateType, DatetimeType, Float64Type, Int32Type,
-    Int64Type, JoinArgs, JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector,
-    SortMultipleOptions, StringType, TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
-};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{
-    collections::{BTreeMap, HashMap},
-    hash::Hash,
-    pin::Pin,
-    sync::Arc,
-};
-use tracing::{debug, info, warn};
 
 /// Builds a trading environment from this configuration.
 ///
@@ -2048,21 +2049,26 @@ mod test {
         clippy::similar_names,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
-    use super::*;
-    use crate::data::domain::AggregatedPrice;
-    use crate::data::domain::SessionDate;
-    use crate::data::domain::SessionWindow;
-    use crate::indicator::batch::ohlcv::SessionCfg;
-    use crate::indicator::config::{AtrConfig, LookbackWindow};
-    use crate::transport::schema::{
-        economic_calendar_schema, tpo_spot_schema, trades_spot_schema, volume_profile_spot_schema,
-    };
+    use std::path::PathBuf;
+
     use chrono::{NaiveDate, TimeZone, Timelike};
     use polars::{
         df,
         prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit},
     };
-    use std::path::PathBuf;
+
+    use super::*;
+    use crate::{
+        data::domain::{AggregatedPrice, SessionDate, SessionWindow},
+        indicator::{
+            batch::ohlcv::SessionCfg,
+            config::{AtrConfig, LookbackWindow},
+        },
+        transport::schema::{
+            economic_calendar_schema, tpo_spot_schema, trades_spot_schema,
+            volume_profile_spot_schema,
+        },
+    };
 
     // ============================================================================
     // Test Fixtures & Helpers

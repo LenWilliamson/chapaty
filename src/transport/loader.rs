@@ -1,14 +1,14 @@
 use std::{collections::HashMap, time::Duration};
 
+use polars::prelude::{LazyFrame, SchemaRef};
+use tokio::{sync::mpsc, task::JoinSet};
+use tokio_util::sync::CancellationToken;
+use tracing::error;
+
 use crate::{
     error::{ChapatyError, ChapatyResult, IoError, TransportError},
     transport::{fetcher::Fetchable, source::ChapatyClient},
 };
-use polars::prelude::{LazyFrame, SchemaRef};
-use tokio::sync::mpsc;
-use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
-use tracing::error;
 
 #[derive(Debug, Clone, Copy)]
 struct Year(pub u16);
@@ -99,12 +99,14 @@ pub async fn load_batch<T: Fetchable>(
 // ================================================================================================
 
 mod generator {
+    use std::collections::BTreeMap;
+
+    use tokio_util::sync::CancellationToken;
+
     use crate::{
         error::ChapatyResult,
         transport::loader::{Fetchable, Year},
     };
-    use std::collections::BTreeMap;
-    use tokio_util::sync::CancellationToken;
 
     pub struct Args<T: Fetchable> {
         pub cx: CancellationToken,
@@ -161,6 +163,8 @@ mod generator {
 // ================================================================================================
 
 mod fetcher {
+    use tokio_util::sync::CancellationToken;
+
     use crate::{
         error::{ChapatyResult, TransportError},
         transport::{
@@ -168,7 +172,6 @@ mod fetcher {
             source::ChapatyClient,
         },
     };
-    use tokio_util::sync::CancellationToken;
 
     pub struct Args<T: Fetchable> {
         pub cx: CancellationToken,

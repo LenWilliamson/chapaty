@@ -235,6 +235,8 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
+    use std::path::PathBuf;
+
     use polars::prelude::{
         LazyCsvReader, LazyFileListReader, PlRefPath, StrptimeOptions, TimeUnit, TimeZone, df, lit,
     };
@@ -247,7 +249,6 @@ mod tests {
             trade_statistics::TradeStatCol,
         },
     };
-    use std::path::PathBuf;
 
     #[test]
     fn test_to_partitions_logic() {

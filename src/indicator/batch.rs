@@ -180,10 +180,11 @@ mod tests {
         clippy::expect_used,
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
-    use super::*;
-    use crate::transport::schema::CanonicalCol;
     use chrono::{TimeZone, Utc};
     use polars::prelude::{IntoLazy, NamedFrom, Series};
+
+    use super::*;
+    use crate::transport::schema::CanonicalCol;
 
     fn utc_micros(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
         Utc.with_ymd_and_hms(y, mo, d, h, mi, 0)

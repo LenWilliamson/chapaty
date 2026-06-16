@@ -408,9 +408,8 @@ mod tests {
         prelude::{LazyCsvReader, LazyFileListReader},
     };
 
-    use crate::{data::common::RiskMetricsConfig, report::journal::Journal};
-
     use super::*;
+    use crate::{data::common::RiskMetricsConfig, report::journal::Journal};
 
     #[test]
     fn test_generate_dynamic_base_name() {

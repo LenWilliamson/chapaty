@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     data::event::Ohlcv, indicator::streaming::StreamingIndicator, ring_buffer::RingBuffer,
@@ -530,9 +531,8 @@ mod tests {
     )]
     use chrono::{DateTime, Utc};
 
-    use crate::data::domain::{Price, Quantity};
-
     use super::*;
+    use crate::data::domain::{Price, Quantity};
 
     /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts(s: &str) -> DateTime<Utc> {

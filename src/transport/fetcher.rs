@@ -1,3 +1,8 @@
+use std::fmt::Debug;
+
+use polars::prelude::SchemaRef;
+use tonic::async_trait;
+
 use crate::{
     data::query::{
         EconomicCalendarQuery, OhlcvFutureQuery, OhlcvSpotQuery, QueryId, TpoFutureQuery,
@@ -23,9 +28,6 @@ use crate::{
         source::ChapatyClient,
     },
 };
-use polars::prelude::SchemaRef;
-use std::fmt::Debug;
-use tonic::async_trait;
 
 /// Defines how a specific Config/Spec fetches its data.
 #[async_trait]
