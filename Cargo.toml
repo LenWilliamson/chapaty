@@ -103,6 +103,7 @@ expect_used = "warn"
 # Attributes & Code Discipline lints
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
+unnecessary_import_braces = "warn"
 
 [dev-dependencies]
 dirs = "6.0"

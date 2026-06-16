@@ -51,9 +51,9 @@ use crate::{
 use chrono::{DateTime, Utc};
 use itertools::izip;
 use polars::prelude::{
-    BooleanType, ChunkedArray, DataFrame, DataType, DatetimeType, Float64Type, Int64Type, JoinArgs,
-    JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector, SortMultipleOptions, StringType,
-    TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
+    BooleanType, ChunkedArray, DataFrame, DataType, DateType, DatetimeType, Float64Type, Int32Type,
+    Int64Type, JoinArgs, JoinType, LazyFrame, Logical, PlSmallStr, SchemaRef, Selector,
+    SortMultipleOptions, StringType, TimeUnit, UnionArgs, UniqueKeepStrategy, col, lit,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
@@ -1605,7 +1605,7 @@ fn extract_trades_session(df: &DataFrame) -> ChapatyResult<Box<[TradesSession]>>
         return Ok(Box::new([]));
     }
 
-    let date_logical = df.dt_logical(CanonicalCol::Date)?;
+    let date_logical = df.date_logical(CanonicalCol::Date)?;
     let date_ca = date_logical.physical();
     let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let open_ts_ca = open_dt_logical.physical();
@@ -1665,7 +1665,7 @@ fn extract_ohlcv_session(df: &DataFrame) -> ChapatyResult<Box<[OhlcvSession]>> {
         return Ok(Box::new([]));
     }
 
-    let date_logical = df.dt_logical(CanonicalCol::Date)?;
+    let date_logical = df.date_logical(CanonicalCol::Date)?;
     let date_ca = date_logical.physical();
     let open_dt_logical = df.dt_logical(CanonicalCol::OpenTimestamp)?;
     let open_ts_ca = open_dt_logical.physical();
@@ -1781,9 +1781,11 @@ where
     Ok(events.into_boxed_slice())
 }
 
-fn parse_session_date(date_opt: Option<i64>) -> ChapatyResult<SessionDate> {
-    let dt = micros_to_utc(date_opt, CanonicalCol::Date)?;
-    Ok(SessionDate(dt.date_naive()))
+fn parse_session_date(days_opt: Option<i32>) -> ChapatyResult<SessionDate> {
+    let days = days_opt.ok_or_else(|| DataError::DataFrame("Missing Date".to_string()))?;
+    let date =
+        chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap() + chrono::Duration::days(days as i64);
+    Ok(SessionDate(date))
 }
 
 fn micros_to_utc(ts_opt: Option<i64>, col: CanonicalCol) -> ChapatyResult<DateTime<Utc>> {
@@ -1917,6 +1919,7 @@ impl LazyFrameCalendarExt for LazyFrame {
 
 trait DataFrameExt {
     fn dt_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DatetimeType, Int64Type>>;
+    fn date_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DateType, Int32Type>>;
     fn f64_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<Float64Type>>;
     fn i64_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<Int64Type>>;
     fn str_ca(&self, col: CanonicalCol) -> ChapatyResult<&ChunkedArray<StringType>>;
@@ -1943,6 +1946,27 @@ impl DataFrameExt for DataFrame {
 
         casted.datetime().cloned().map_err(|_| {
             DataError::DataFrame(format!("Cast produced invalid Datetime for {col:?}")).into()
+        })
+    }
+
+    fn date_logical(&self, col: CanonicalCol) -> ChapatyResult<Logical<DateType, Int32Type>> {
+        let s = self
+            .column(col.as_str())
+            .map_err(|_| DataError::DataFrame(format!("Failed to get column {col:?}")))?;
+
+        if matches!(s.dtype(), DataType::Date) {
+            return s
+                .date()
+                .cloned()
+                .map_err(|_| DataError::DataFrame(format!("Column {col:?} is not Date")).into());
+        }
+
+        let casted = s
+            .cast(&DataType::Date)
+            .map_err(|e| DataError::DataFrame(format!("Failed to cast {col:?} to Date: {e}")))?;
+
+        casted.date().cloned().map_err(|_| {
+            DataError::DataFrame(format!("Cast produced invalid Date for {col:?}")).into()
         })
     }
 
@@ -2025,7 +2049,15 @@ mod test {
         reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
     )]
     use super::*;
-    use chrono::{TimeZone, Timelike};
+    use crate::data::domain::AggregatedPrice;
+    use crate::data::domain::SessionDate;
+    use crate::data::domain::SessionWindow;
+    use crate::indicator::batch::ohlcv::SessionCfg;
+    use crate::indicator::config::{AtrConfig, LookbackWindow};
+    use crate::transport::schema::{
+        economic_calendar_schema, tpo_spot_schema, trades_spot_schema, volume_profile_spot_schema,
+    };
+    use chrono::{NaiveDate, TimeZone, Timelike};
     use polars::{
         df,
         prelude::{DataType, IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, TimeUnit},
@@ -2094,6 +2126,23 @@ mod test {
                     .alias(CanonicalCol::PointInTime.as_str()),
                 col("category").alias(CanonicalCol::Category.as_str()),
             ])
+    }
+
+    /// Helper to cast columns to their correct canonical logical type.
+    fn with_ts_cols(df: DataFrame, cols: &[CanonicalCol]) -> DataFrame {
+        let mut lf = df.lazy();
+        for &c in cols {
+            let dtype = c.dtype();
+            lf = lf.with_column(
+                col(c)
+                    .cast(DataType::Datetime(
+                        TimeUnit::Microseconds,
+                        Some(polars::prelude::TimeZone::UTC),
+                    ))
+                    .cast(dtype),
+            );
+        }
+        lf.collect().unwrap()
     }
 
     // ============================================================================
@@ -2269,8 +2318,7 @@ mod test {
             "open" => &[100.0, 101.0, 102.0, 103.0, 104.0]
         )
         .unwrap();
-        let mut lf_map =
-            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         // Define Rules
         let mut allowed = BTreeMap::new();
@@ -2319,8 +2367,7 @@ mod test {
             CanonicalCol::PointInTime.as_str() => &[ts_micros("2026-01-01T10:00:00Z")]
         )
         .unwrap();
-        let mut lf_map =
-            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         let allowed = BTreeMap::new(); // Empty rules
 
@@ -2341,8 +2388,7 @@ mod test {
             ]
         )
         .unwrap();
-        let mut lf_map =
-            wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]).lazy());
+        let mut lf_map = wrap_in_map(with_ts_cols(df, &[CanonicalCol::PointInTime]).lazy());
 
         let mut allowed = BTreeMap::new();
         allowed.insert(
@@ -2410,10 +2456,7 @@ mod test {
         let mut lf_map = wrap_in_map(
             with_ts_cols(
                 df_shuffled,
-                &[
-                    CanonicalCol::PointInTime.as_str(),
-                    CanonicalCol::OpenTimestamp.as_str(),
-                ],
+                &[CanonicalCol::PointInTime, CanonicalCol::OpenTimestamp],
             )
             .lazy(),
         );
@@ -2468,21 +2511,47 @@ mod test {
     /// Helper to create a microsecond timestamp for Polars test data.
     fn ts_micros(dt_str: &str) -> i64 {
         DateTime::parse_from_rfc3339(dt_str)
-            .unwrap()
+            .expect(&format!("Failed to parse rfc3339 timestamp '{dt_str}'"))
             .with_timezone(&Utc)
             .timestamp_micros()
     }
 
-    /// Helper to cast timestamp columns to the correct Logical Type expected by extractors.
-    fn with_ts_cols(df: DataFrame, cols: &[&str]) -> DataFrame {
-        let mut lf = df.lazy();
-        for &c in cols {
-            lf = lf.with_column(col(c).cast(DataType::Datetime(
-                TimeUnit::Microseconds,
-                Some(polars::prelude::TimeZone::UTC),
-            )));
+    /// Helper to create a proper Date object for Polars test data.
+    /// Expects format: "YYYY-MM-DD"
+    fn naive_date(dt_str: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(dt_str, "%Y-%m-%d").expect(&format!(
+            "Failed to parse date '{dt_str}'. Expected format 'YYYY-MM-DD'",
+        ))
+    }
+
+    /// Helper to cast columns to their correct canonical types based on a schema.
+    fn with_schema(df: DataFrame, schema: SchemaRef) -> DataFrame {
+        let mut cast_exprs = Vec::new();
+
+        for (name, target_dtype) in schema.iter() {
+            assert!(df.schema().get(name).is_some(), "expected column '{name}'");
+            cast_exprs.push(col(name.clone()).cast(target_dtype.clone()));
         }
-        lf.collect().unwrap()
+
+        if cast_exprs.is_empty() {
+            df
+        } else {
+            df.lazy()
+                .with_columns(cast_exprs)
+                .collect()
+                .expect("Failed to cast columns to target schema")
+        }
+    }
+
+    /// Asserts that the DataFrame exactly matches the expected schema (same columns, same types, same order).
+    fn assert_schema_equal(df: &DataFrame, expected: SchemaRef) {
+        let df_schema = df.schema();
+
+        assert_eq!(
+            df_schema.as_ref(),
+            expected.as_ref(),
+            "DataFrame schema does not match the expected schema"
+        );
     }
 
     // Helper for standard aggregation config
@@ -2492,6 +2561,8 @@ mod test {
 
     #[test]
     fn test_extract_price_timeseries() {
+        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+
         // 1. Setup Data
         let df = df!(
             CanonicalCol::PointInTime.as_str() => &[
@@ -2501,7 +2572,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[100.5, 101.0],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         // 2. Extract
         let events = extract_ema(&df).expect("failed to extract ema");
@@ -2526,6 +2598,8 @@ mod test {
 
     #[test]
     fn test_extract_price_timeseries_skips_warmup_nones() {
+        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+
         // 1. Setup Data
         // Simulate a "Price" column that is actually an Indicator (e.g., SMA)
         // Row 1: None (Warming up)
@@ -2546,7 +2620,8 @@ mod test {
         .unwrap();
 
         // Ensure timestamp is properly cast to Microseconds
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         // 2. Extract
         // We use extract_ema as a proxy for any technical indicator extractor
@@ -2573,6 +2648,8 @@ mod test {
 
     #[test]
     fn test_extract_atr_maps_range_and_skips_warmup_nones() {
+        let schema = BatchOhlcvIndicator::Atr(AtrConfig::new(1)).output_schema();
+
         // ATR maps the `Price` column onto a `PriceDelta` range. The first row is a
         // warm-up null and must be skipped defensively.
         let df = df!(
@@ -2584,7 +2661,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[None::<f64>, Some(12.5), Some(9.0)],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_atr(&df).expect("failed to extract atr");
 
@@ -2599,6 +2677,8 @@ mod test {
 
     #[test]
     fn test_extract_vwap_ohlcv_and_trades() {
+        let schema = BatchOhlcvIndicator::Vwap(AggregatedPrice::Hlc3).output_schema();
+
         // Both VWAP extractors share the price-timeseries path: map `Price` -> `Price`
         // and skip null rows.
         let df = df!(
@@ -2609,7 +2689,8 @@ mod test {
             CanonicalCol::Price.as_str() => &[Some(100.0), None::<f64>],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let ohlcv_vwap = extract_ohlcv_vwap(&df).expect("failed to extract ohlcv vwap");
         assert_eq!(ohlcv_vwap.len(), 1, "null row should be skipped");
@@ -2622,6 +2703,8 @@ mod test {
 
     #[test]
     fn test_extract_roc_full_mapping_and_skips_nulls() {
+        let schema = BatchOhlcvIndicator::RateOfChange(LookbackWindow::Bars(1)).output_schema();
+
         // Row 0 is a warm-up row (null absolute/percentage) and must be skipped, while
         // row 1 maps every field.
         let df = df!(
@@ -2637,13 +2720,8 @@ mod test {
             CanonicalCol::Roc.as_str() => &[None::<f64>, Some(0.05)],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_roc(&df).expect("failed to extract roc");
 
@@ -2663,11 +2741,14 @@ mod test {
 
     #[test]
     fn test_extract_trades_session_full_mapping_and_skips_nulls() {
+        let schema =
+            BatchTradesIndicator::OvernightRange(SessionWindow::us_core_session()).output_schema();
+
         // Row 1 carries a null aggregate (`SessionVwap`) and must be skipped.
         let df = df!(
             CanonicalCol::Date.as_str() => &[
-                ts_micros("2026-01-02T00:00:00Z"),
-                ts_micros("2026-01-03T00:00:00Z"),
+                naive_date("2026-01-02"),
+                naive_date("2026-01-03")
             ],
             CanonicalCol::OpenTimestamp.as_str() => &[
                 ts_micros("2026-01-02T00:00:00Z"),
@@ -2683,14 +2764,8 @@ mod test {
             CanonicalCol::SessionVwap.as_str() => &[Some(100.0), None::<f64>],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::Date.as_str(),
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_trades_session(&df).expect("failed to extract trades session");
 
@@ -2720,11 +2795,17 @@ mod test {
 
     #[test]
     fn test_extract_ohlcv_session_full_mapping_and_skips_nulls() {
+        let schema = BatchOhlcvIndicator::OvernightRange(SessionCfg {
+            window: SessionWindow::us_core_session(),
+            price_aggregation: AggregatedPrice::Hlc3,
+        })
+        .output_schema();
+
         // Row 1 carries a null aggregate (`SessionLowestClose`) and must be skipped.
         let df = df!(
             CanonicalCol::Date.as_str() => &[
-                ts_micros("2026-01-02T00:00:00Z"),
-                ts_micros("2026-01-03T00:00:00Z"),
+                naive_date("2026-01-02"),
+                naive_date("2026-01-03"),
             ],
             CanonicalCol::OpenTimestamp.as_str() => &[
                 ts_micros("2026-01-02T00:00:00Z"),
@@ -2742,14 +2823,8 @@ mod test {
             CanonicalCol::SessionVwap.as_str() => &[Some(100.0), Some(110.0)],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::Date.as_str(),
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_ohlcv_session(&df).expect("failed to extract ohlcv session");
 
@@ -2790,11 +2865,22 @@ mod test {
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
+        // assert_canonical_schema(
+        //     &df,
+        //     &[
+        //         CanonicalCol::OpenTimestamp.as_str(),
+        //         CanonicalCol::PointInTime.as_str(),
+        //     ],
+        // );
+        // assert_canonical_schema(
+        //     &df,
+        //     &[
+        //         CanonicalCol::OpenTimestamp.as_str(),
+        //         CanonicalCol::PointInTime.as_str(),
+        //     ],
+        // );
 
         let events = extract_ohlcv(&df).expect("failed to extract ohlcv");
 
@@ -2824,22 +2910,23 @@ mod test {
     }
 
     #[test]
-    fn test_extract_trade() {
+    fn test_extract_trades() {
+        let schema = trades_spot_schema();
         let df = df!(
-            CanonicalCol::PointInTime.as_str()          => &[
+            CanonicalCol::TradeId.as_str()            => &[Some(12345_i64), None],
+            CanonicalCol::Price.as_str()              => &[20000.0, 20001.0],
+            CanonicalCol::Volume.as_str()             => &[0.5, 1.0], // Maps to quantity
+            CanonicalCol::QuoteAssetVolume.as_str()   => &[Some(10000.0), None],
+            CanonicalCol::PointInTime.as_str()        => &[
                 ts_micros("2026-01-01T12:00:01Z"),
                 ts_micros("2026-01-01T12:00:02Z")
             ],
-            CanonicalCol::Price.as_str()              => &[20000.0, 20001.0],
-            CanonicalCol::Volume.as_str()             => &[0.5, 1.0], // Maps to quantity
-            // Optionals
-            CanonicalCol::TradeId.as_str()            => &[Some(12345_i64), None],
-            CanonicalCol::QuoteAssetVolume.as_str()   => &[Some(10000.0), None],
             CanonicalCol::IsBuyerMaker.as_str()       => &[Some(true), Some(false)],
             CanonicalCol::IsBestMatch.as_str()        => &[Some(true), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_trades(&df).expect("failed to extract trade");
 
@@ -2883,28 +2970,28 @@ mod test {
     #[test]
     fn test_extract_economic() {
         let df = df!(
-            CanonicalCol::PointInTime.as_str()            => &[
+            CanonicalCol::DataSource.as_str()           => &["investingcom", "fred"],
+            CanonicalCol::Category.as_str()             => &["employment", "inflation"],
+            CanonicalCol::PointInTime.as_str()          => &[
                 ts_micros("2026-10-01T08:30:00Z"),
                 ts_micros("2026-10-02T09:00:00Z")
             ],
-            CanonicalCol::DataSource.as_str()           => &["investingcom", "fred"],
-            CanonicalCol::Category.as_str()             => &["employment", "inflation"],
+            CanonicalCol::NewsType.as_str()             => &[Some("NFP"), None],
+            CanonicalCol::NewsTypeConfidence.as_str()   => &[Some(1.0), None],
+            CanonicalCol::NewsTypeSource.as_str()       => &[Some("manual"), None],
+            CanonicalCol::Period.as_str()               => &[Some("mom"), None],
             CanonicalCol::NewsName.as_str()             => &["Non-Farm Payrolls", "Minor Index"],
             CanonicalCol::CountryCode.as_str()          => &["US", "EZ"],
             CanonicalCol::CurrencyCode.as_str()         => &["USD", "EUR"],
             CanonicalCol::EconomicImpact.as_str()       => &[3_i64, 1_i64], // 3=High, 1=Low
-
-            // Optionals
-            CanonicalCol::NewsType.as_str()             => &[Some("NFP"), None],
-            CanonicalCol::NewsTypeSource.as_str()       => &[Some("manual"), None],
-            CanonicalCol::Period.as_str()               => &[Some("mom"), None],
-            CanonicalCol::NewsTypeConfidence.as_str()   => &[Some(1.0), None],
             CanonicalCol::Actual.as_str()               => &[Some(150.0), None],
             CanonicalCol::Forecast.as_str()             => &[Some(170.0), None],
             CanonicalCol::Previous.as_str()             => &[Some(160.0), None],
         )
         .unwrap();
-        let df = with_ts_cols(df, &[CanonicalCol::PointInTime.as_str()]);
+        let schema = economic_calendar_schema();
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let events = extract_economic(&df).expect("failed to extract economic");
 
@@ -2965,13 +3052,10 @@ mod test {
             CanonicalCol::TimeSlotCount.as_str() => counts,
         )
         .unwrap();
-        with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        )
+        let schema = tpo_spot_schema();
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
+        df
     }
 
     #[test]
@@ -3031,6 +3115,7 @@ mod test {
         let t1 = ts_micros("2026-01-01T08:00:00Z");
         let t2 = ts_micros("2026-01-01T09:00:00Z");
 
+        let schema = tpo_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[t1, t2],
             CanonicalCol::PointInTime.as_str()       => &[t1 + 1000, t2 + 1000],
@@ -3039,13 +3124,8 @@ mod test {
             CanonicalCol::TimeSlotCount.as_str() => &[5_i64, 10_i64],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
@@ -3076,10 +3156,7 @@ mod test {
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
 
         let result = extract_tpo(&df, &default_agg());
@@ -3120,6 +3197,7 @@ mod test {
     fn test_vp_full_field_mapping() {
         // SCENARIO: Ensure every single column, including Optionals, is mapped correctly.
         // Also checks that 'volume' is converted to Quantity/Volume types correctly.
+        let schema = volume_profile_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()               => &[ts_micros("2026-01-01T09:00:00Z")],
             CanonicalCol::PointInTime.as_str()                    => &[ts_micros("2026-01-01T10:00:00Z")],
@@ -3137,13 +3215,8 @@ mod test {
             CanonicalCol::NumberOfSellTrades.as_str()        => &[Some(20_i64)],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
 
@@ -3190,10 +3263,7 @@ mod test {
         .unwrap();
         let df = with_ts_cols(
             df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
+            &[CanonicalCol::OpenTimestamp, CanonicalCol::PointInTime],
         );
 
         let profiles = extract_vp(&df, &default_agg()).expect("failed to extract vp");
@@ -3215,6 +3285,7 @@ mod test {
 
         // Window 1: 09:00 (2 bins)
         // Window 2: 10:00 (1 bin)
+        let schema = tpo_spot_schema();
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[
                 ts_micros("2026-01-01T09:00:00Z"), ts_micros("2026-01-01T09:00:00Z"),
@@ -3229,13 +3300,8 @@ mod test {
             CanonicalCol::TimeSlotCount.as_str() => &[10_i64, 20, 5],
         )
         .unwrap();
-        let df = with_ts_cols(
-            df,
-            &[
-                CanonicalCol::OpenTimestamp.as_str(),
-                CanonicalCol::PointInTime.as_str(),
-            ],
-        );
+        let df = with_schema(df, schema.clone());
+        assert_schema_equal(&df, schema);
 
         let profiles = extract_tpo(&df, &default_agg()).expect("failed to extract tpo");
 
