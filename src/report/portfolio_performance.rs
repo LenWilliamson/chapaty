@@ -20,7 +20,7 @@ use crate::{
         },
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
-        journal::{Journal, JournalCol},
+        journal::{ExprDefineExt, Journal, JournalCol, JournalExprExt},
         polars_ext::{ExprExt, polars_to_chapaty_error},
         trade_statistics::executed_trade_count_expr,
     },
@@ -125,7 +125,7 @@ impl TryFrom<&Journal> for PortfolioPerformance {
     type Error = ChapatyError;
 
     fn try_from(j: &Journal) -> ChapatyResult<Self> {
-        if j.as_df().is_empty() {
+        if j.as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -146,7 +146,7 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().is_empty() {
+        if gj.source().as_df().height() == 0 {
             return Ok(Self::default());
         }
 
@@ -189,209 +189,255 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "assembles the complete set of Polars risk-metric expressions in one place so the metric definitions stay together"
+)]
 fn exprs(cfg: RiskMetricsConfig) -> Vec<Expr> {
     let return_col = JournalCol::RealizedReturnDollars;
     let exit_reason_col = JournalCol::ExitReason;
+    let trade_state_col = JournalCol::TradeState;
     let init_val = cfg.initial_portfolio_value();
 
     vec![
         // === Profitability ===
-        net_profit_expr(return_col)
-            .alias(PortfolioPerformanceCol::NetProfit)
-            .cast(DataType::Float64),
-        avg_trade_profit_expr(return_col)
-            .alias(PortfolioPerformanceCol::AvgTradeProfit)
-            .cast(DataType::Float64),
-        expected_value_per_trade_expr(return_col)
-            .alias(PortfolioPerformanceCol::ExpectedValuePerTrade)
-            .cast(DataType::Float64),
-        total_win_profit_expr(return_col)
-            .alias(PortfolioPerformanceCol::TotalWinProfit)
-            .cast(DataType::Float64),
-        total_loss_expr(return_col)
-            .alias(PortfolioPerformanceCol::TotalLoss)
-            .cast(DataType::Float64),
-        total_win_profit_by_total_loss_expr(return_col)
-            .alias(PortfolioPerformanceCol::TotalWinProfitByTotalLoss)
-            .cast(DataType::Float64),
+        net_profit_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::NetProfit, DataType::Float64),
+        avg_trade_profit_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::AvgTradeProfit, DataType::Float64),
+        expected_value_per_trade_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::ExpectedValuePerTrade,
+            DataType::Float64,
+        ),
+        total_win_profit_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::TotalWinProfit, DataType::Float64),
+        total_loss_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::TotalLoss, DataType::Float64),
+        total_win_profit_by_total_loss_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::TotalWinProfitByTotalLoss,
+            DataType::Float64,
+        ),
         // === Risk-adjusted returns ===
-        trade_sharpe_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::TradeSharpeRatio)
-            .cast(DataType::Float64),
-        trade_sortino_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::TradeSortinoRatio)
-            .cast(DataType::Float64),
-        trade_omega_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::TradeOmegaRatio)
-            .cast(DataType::Float64),
-        trade_calmar_ratio_expr(return_col, cfg)
-            .alias(PortfolioPerformanceCol::TradeCalmarRatio)
-            .cast(DataType::Float64),
-        trade_recovery_factor_expr(return_col, init_val)
-            .alias(PortfolioPerformanceCol::TradeRecoveryFactor)
-            .cast(DataType::Float64),
+        trade_sharpe_ratio_expr(return_col, trade_state_col, cfg)
+            .define_as(PortfolioPerformanceCol::TradeSharpeRatio, DataType::Float64),
+        trade_sortino_ratio_expr(return_col, trade_state_col, cfg).define_as(
+            PortfolioPerformanceCol::TradeSortinoRatio,
+            DataType::Float64,
+        ),
+        trade_omega_ratio_expr(return_col, trade_state_col, cfg)
+            .define_as(PortfolioPerformanceCol::TradeOmegaRatio, DataType::Float64),
+        trade_calmar_ratio_expr(return_col, trade_state_col, cfg)
+            .define_as(PortfolioPerformanceCol::TradeCalmarRatio, DataType::Float64),
+        trade_recovery_factor_expr(return_col, trade_state_col, init_val).define_as(
+            PortfolioPerformanceCol::TradeRecoveryFactor,
+            DataType::Float64,
+        ),
         // === Risk measures ===
-        max_realized_drawdown_usd_expr(init_val)
-            .alias(PortfolioPerformanceCol::MaxRealizedDrawdownUsd)
-            .cast(DataType::Float64),
-        max_realized_drawdown_pct_expr(init_val)
-            .alias(PortfolioPerformanceCol::MaxRealizedDrawdownPct)
-            .cast(DataType::Float64),
+        max_realized_drawdown_usd_expr(init_val).define_as(
+            PortfolioPerformanceCol::MaxRealizedDrawdownUsd,
+            DataType::Float64,
+        ),
+        max_realized_drawdown_pct_expr(init_val).define_as(
+            PortfolioPerformanceCol::MaxRealizedDrawdownPct,
+            DataType::Float64,
+        ),
         // === Win/loss structure ===
-        win_rate_expr(return_col)
-            .alias(PortfolioPerformanceCol::WinRate)
-            .cast(DataType::Float64),
-        avg_win_to_avg_loss_ratio_expr(return_col)
-            .alias(PortfolioPerformanceCol::AvgWinToAvgLossRatio)
-            .cast(DataType::Float64),
+        win_rate_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::WinRate, DataType::Float64),
+        avg_win_to_avg_loss_ratio_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::AvgWinToAvgLossRatio,
+            DataType::Float64,
+        ),
         // === Trade return distribution ===
-        trade_return_std_dev_expr(return_col)
-            .alias(PortfolioPerformanceCol::TradeReturnStdDev)
-            .cast(DataType::Float64),
-        trade_return_variance_expr(return_col)
-            .alias(PortfolioPerformanceCol::TradeReturnVariance)
-            .cast(DataType::Float64),
-        lower_quantile_trade_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::LowerQuantileTradeReturn)
-            .cast(DataType::Float64),
-        median_trade_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::MedianTradeReturn)
-            .cast(DataType::Float64),
-        upper_quantile_trade_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::UpperQuantileTradeReturn)
-            .cast(DataType::Float64),
+        trade_return_std_dev_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::TradeReturnStdDev,
+            DataType::Float64,
+        ),
+        trade_return_variance_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::TradeReturnVariance,
+            DataType::Float64,
+        ),
+        lower_quantile_trade_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::LowerQuantileTradeReturn,
+            DataType::Float64,
+        ),
+        median_trade_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::MedianTradeReturn,
+            DataType::Float64,
+        ),
+        upper_quantile_trade_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::UpperQuantileTradeReturn,
+            DataType::Float64,
+        ),
         // === Winning trade return distribution ===
-        avg_win_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::AvgWinReturn)
-            .cast(DataType::Float64),
-        lower_quantile_win_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::LowerQuantileWinReturn)
-            .cast(DataType::Float64),
-        median_win_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::MedianWinReturn)
-            .cast(DataType::Float64),
-        upper_quantile_win_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::UpperQuantileWinReturn)
-            .cast(DataType::Float64),
+        avg_win_return_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::AvgWinReturn, DataType::Float64),
+        lower_quantile_win_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::LowerQuantileWinReturn,
+            DataType::Float64,
+        ),
+        median_win_return_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::MedianWinReturn, DataType::Float64),
+        upper_quantile_win_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::UpperQuantileWinReturn,
+            DataType::Float64,
+        ),
         // === Losing trade return distribution ===
-        avg_loss_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::AvgLossReturn)
-            .cast(DataType::Float64),
-        lower_quantile_loss_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::LowerQuantileLossReturn)
-            .cast(DataType::Float64),
-        median_loss_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::MedianLossReturn)
-            .cast(DataType::Float64),
-        upper_quantile_loss_return_expr(return_col)
-            .alias(PortfolioPerformanceCol::UpperQuantileLossReturn)
-            .cast(DataType::Float64),
+        avg_loss_return_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::AvgLossReturn, DataType::Float64),
+        lower_quantile_loss_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::LowerQuantileLossReturn,
+            DataType::Float64,
+        ),
+        median_loss_return_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::MedianLossReturn, DataType::Float64),
+        upper_quantile_loss_return_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::UpperQuantileLossReturn,
+            DataType::Float64,
+        ),
         // === Extremes ===
-        largest_win_expr(return_col)
-            .alias(PortfolioPerformanceCol::LargestWin)
-            .cast(DataType::Float64),
-        largest_loss_expr(return_col)
-            .alias(PortfolioPerformanceCol::LargestLoss)
-            .cast(DataType::Float64),
+        largest_win_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::LargestWin, DataType::Float64),
+        largest_loss_expr(return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::LargestLoss, DataType::Float64),
         // === Unrealized ===
-        unrealized_win_profit_expr(exit_reason_col, return_col)
-            .alias(PortfolioPerformanceCol::UnrealizedWinProfit)
-            .cast(DataType::Float64),
-        unrealized_loss_expr(exit_reason_col, return_col)
-            .alias(PortfolioPerformanceCol::UnrealizedLoss)
-            .cast(DataType::Float64),
-        clean_win_profit_expr(exit_reason_col, return_col)
-            .alias(PortfolioPerformanceCol::CleanWinProfit)
-            .cast(DataType::Float64),
-        clean_loss_expr(exit_reason_col, return_col)
-            .alias(PortfolioPerformanceCol::CleanLoss)
-            .cast(DataType::Float64),
+        unrealized_win_profit_expr(exit_reason_col, return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::UnrealizedWinProfit,
+            DataType::Float64,
+        ),
+        unrealized_loss_expr(exit_reason_col, return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::UnrealizedLoss, DataType::Float64),
+        clean_win_profit_expr(exit_reason_col, return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::CleanWinProfit, DataType::Float64),
+        clean_loss_expr(exit_reason_col, return_col, trade_state_col)
+            .define_as(PortfolioPerformanceCol::CleanLoss, DataType::Float64),
         // === Curve deviation from target or benchmark ===
-        rmsd_expr(return_col)
-            .alias(PortfolioPerformanceCol::RootMeanSquareDeviation)
-            .cast(DataType::Float64),
-        mae_expr(return_col)
-            .alias(PortfolioPerformanceCol::MeanAbsoluteError)
-            .cast(DataType::Float64),
+        rmsd_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::RootMeanSquareDeviation,
+            DataType::Float64,
+        ),
+        mae_expr(return_col, trade_state_col).define_as(
+            PortfolioPerformanceCol::MeanAbsoluteError,
+            DataType::Float64,
+        ),
     ]
 }
 
 // ================================================================================================
 // === Profitability ===
 // ================================================================================================
-fn net_profit_expr(return_col: JournalCol) -> Expr {
-    col(return_col).sum()
-}
-
-pub fn avg_trade_profit_expr(return_col: JournalCol) -> Expr {
-    col(return_col).mean()
-}
-
-pub fn expected_value_per_trade_expr(return_col: JournalCol) -> Expr {
-    col(return_col).mean()
-}
-
-fn total_win_profit_expr(return_col: JournalCol) -> Expr {
-    col(return_col).filter(col(return_col).gt(lit(0))).sum()
-}
-
-fn total_loss_expr(return_col: JournalCol) -> Expr {
+fn net_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(return_col).lt_eq(lit(0)))
+        .filter(col(trade_state_col).trade_executed())
+        .sum()
+}
+
+pub fn avg_trade_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .mean()
+}
+
+pub fn expected_value_per_trade_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .mean()
+}
+
+fn total_win_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(
+            col(trade_state_col)
+                .trade_executed()
+                .and(col(return_col).gt(lit(0))),
+        )
+        .sum()
+}
+
+fn total_loss_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(
+            col(trade_state_col)
+                .trade_executed()
+                .and(col(return_col).lt_eq(lit(0))),
+        )
         .sum()
         .abs()
 }
 
-fn total_win_profit_by_total_loss_expr(return_col: JournalCol) -> Expr {
-    let total_win = total_win_profit_expr(return_col);
-    let total_loss = total_loss_expr(return_col);
+fn total_win_profit_by_total_loss_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
+    let total_win = total_win_profit_expr(return_col, trade_state_col);
+    let total_loss = total_loss_expr(return_col, trade_state_col);
     total_win.safe_div(total_loss, None).abs()
 }
 
 // ================================================================================================
 // === Risk-adjusted returns ===
 // ================================================================================================
-/// Computes the annualized Sharpe ratio for a series of absolute USD trade returns.
+/// Computes the annualized Sharpe ratio for a series of absolute USD trade
+/// returns.
 ///
 /// # Arguments
-/// - `return_col`: The column containing per-trade PnL in USD.
-/// - `cfg`: Risk metric config holding initial portfolio value and annual risk-free rate.
+/// - `return_col`: The column containing per-trade `PnL` in USD.
+/// - `cfg`: Risk metric config holding initial portfolio value and annual
+///   risk-free rate.
 ///
 /// # Assumptions
 /// - Returns are absolute profit/loss per trade (not percentages).
-/// - Equity is tracked using cumulative sum of returns starting from `initial_value`.
-/// - Risk-free rate is annualized, so we compute trades-per-year to annualize returns.
+/// - Equity is tracked using cumulative sum of returns starting from
+///   `initial_value`.
+/// - Risk-free rate is annualized, so we compute trades-per-year to annualize
+///   returns.
 ///
 /// # Why we annualize
 /// The Sharpe ratio is a standardized measure of risk-adjusted return,
-/// typically expressed on an **annualized basis** so it can be compared across strategies or time periods.
-/// We annualize the mean return and standard deviation based on the average number of trades per year.
+/// typically expressed on an **annualized basis** so it can be compared across
+/// strategies or time periods. We annualize the mean return and standard
+/// deviation based on the average number of trades per year.
 ///
 /// # Returns
 /// An expression that evaluates to a scalar Sharpe ratio.
-fn trade_sharpe_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
-    let excess = excess_return_expr(return_col, &cfg);
-    let std = annualized_return_std_expr(return_col, cfg.initial_portfolio_value());
+fn trade_sharpe_ratio_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    cfg: RiskMetricsConfig,
+) -> Expr {
+    let excess = excess_return_expr(return_col, trade_state_col, cfg);
+    let std =
+        annualized_return_std_expr(return_col, trade_state_col, cfg.initial_portfolio_value());
     excess.safe_div(std, None)
 }
 
-/// Computes the annualized Sortino ratio for a series of absolute USD trade returns.
+/// Computes the annualized Sortino ratio for a series of absolute USD trade
+/// returns.
 ///
 /// # Returns
 /// An expression evaluating to the Sortino ratio, using downside deviation
 /// (standard deviation of negative returns only) instead of total volatility.
-fn trade_sortino_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
-    let excess = excess_return_expr(return_col, &cfg);
-    let std = annualized_downside_return_std_expr(return_col, cfg.initial_portfolio_value());
+fn trade_sortino_ratio_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    cfg: RiskMetricsConfig,
+) -> Expr {
+    let excess = excess_return_expr(return_col, trade_state_col, cfg);
+    let std = annualized_downside_return_std_expr(
+        return_col,
+        trade_state_col,
+        cfg.initial_portfolio_value(),
+    );
     excess.safe_div(std, None)
 }
 
 /// Computes the **Omega Ratio** for a series of per-trade percentage returns.
 ///
 /// # Definition
-/// The **Omega Ratio** measures the **risk-adjusted performance** of a strategy by comparing the
-/// probability-weighted gains **above** a minimum acceptable return (threshold, usually the risk-free rate)
-/// against the probability-weighted **shortfalls** below it.
+/// The **Omega Ratio** measures the **risk-adjusted performance** of a strategy
+/// by comparing the probability-weighted gains **above** a minimum acceptable
+/// return (threshold, usually the risk-free rate) against the
+/// probability-weighted **shortfalls** below it.
 ///
 /// The formula is:
 ///
@@ -404,44 +450,64 @@ fn trade_sortino_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> E
 /// - `θ` (theta) is the target threshold (e.g. the annual risk-free rate).
 ///
 /// # Interpretation
-/// - **Omega > 1.0**: The strategy generates more upside than downside relative to the threshold.
-/// - **Omega < 1.0**: More shortfall than excess gain (underperforming threshold).
-/// - **Omega = 1.0**: Symmetric outcome around threshold (breakeven performance).
+/// - **Omega > 1.0**: The strategy generates more upside than downside relative
+///   to the threshold.
+/// - **Omega < 1.0**: More shortfall than excess gain (underperforming
+///   threshold).
+/// - **Omega = 1.0**: Symmetric outcome around threshold (breakeven
+///   performance).
 ///
 /// # Example
 /// If the threshold is set to a 2% return per trade:
 /// - A +5% return contributes **3% gain**.
 /// - A +1% return contributes **1% loss**.
-/// - The Omega Ratio aggregates these to indicate strategy efficiency **relative to that 2% goal**.
+/// - The Omega Ratio aggregates these to indicate strategy efficiency
+///   **relative to that 2% goal**.
 ///
 /// # Note
-/// This formulation differs from the Sharpe and Sortino ratios by avoiding reliance on standard deviation
-/// and instead directly comparing weighted return distributions.
-fn trade_omega_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+/// This formulation differs from the Sharpe and Sortino ratios by avoiding
+/// reliance on standard deviation and instead directly comparing weighted
+/// return distributions.
+fn trade_omega_ratio_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    cfg: RiskMetricsConfig,
+) -> Expr {
     let pct_returns = pct_trade_returns_expr(return_col, cfg.initial_portfolio_value());
     let threshold_expr = lit(cfg.risk_free_rate_f64());
+    let executed = col(trade_state_col).trade_executed();
 
-    // Sum of excess returns ABOVE the threshold. This is equivalent to E[max(0, R - θ)].
     let gains = (pct_returns.clone() - threshold_expr.clone())
-        .filter(pct_returns.clone().gt(threshold_expr.clone()))
+        .filter(
+            executed
+                .clone()
+                .and(pct_returns.clone().gt(threshold_expr.clone())),
+        )
         .sum();
-    // Sum of shortfalls BELOW the threshold. This is equivalent to E[max(0, θ - R)].
     let losses = (threshold_expr.clone() - pct_returns.clone())
-        .filter(pct_returns.lt_eq(threshold_expr))
+        .filter(executed.and(pct_returns.lt_eq(threshold_expr)))
         .sum();
 
     gains.safe_div(losses, None)
 }
 
-fn trade_calmar_ratio_expr(return_col: JournalCol, cfg: RiskMetricsConfig) -> Expr {
+fn trade_calmar_ratio_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    cfg: RiskMetricsConfig,
+) -> Expr {
     let annualized_mean_return =
-        annualized_mean_return_expr(return_col, cfg.initial_portfolio_value());
+        annualized_mean_return_expr(return_col, trade_state_col, cfg.initial_portfolio_value());
     let max_drawdown_pct = max_realized_drawdown_pct_expr(cfg.initial_portfolio_value());
     annualized_mean_return.safe_div(max_drawdown_pct, None)
 }
 
-fn trade_recovery_factor_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    let net_profit = net_profit_expr(return_col);
+fn trade_recovery_factor_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    let net_profit = net_profit_expr(return_col, trade_state_col);
     let max_drawdown_abs = max_realized_drawdown_usd_expr(initial_value);
     net_profit.safe_div(max_drawdown_abs, None)
 }
@@ -480,176 +546,274 @@ fn max_realized_drawdown_pct_expr(initial_value: u32) -> Expr {
 // ================================================================================================
 // === Win/loss structure ===
 // ================================================================================================
-fn win_rate_expr(return_col: JournalCol) -> Expr {
-    col(return_col).gt(lit(0)).mean().fill_null(lit(0.0))
+fn win_rate_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .gt(lit(0))
+        .mean()
+        .fill_null(lit(0.0))
 }
 
-fn avg_win_to_avg_loss_ratio_expr(return_col: JournalCol) -> Expr {
-    let avg_win = avg_win_return_expr(return_col);
-    let avg_loss = avg_loss_return_expr(return_col);
+fn avg_win_to_avg_loss_ratio_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    let avg_win = avg_win_return_expr(return_col, trade_state_col);
+    let avg_loss = avg_loss_return_expr(return_col, trade_state_col);
     avg_win.safe_div(avg_loss, None).abs()
 }
 
 // ================================================================================================
 // === Trade return distribution ===
 // ================================================================================================
-fn trade_return_std_dev_expr(return_col: JournalCol) -> Expr {
-    col(return_col).std(0)
+fn trade_return_std_dev_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .std(0)
 }
 
-fn trade_return_variance_expr(return_col: JournalCol) -> Expr {
-    col(return_col).var(0)
+fn trade_return_variance_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .var(0)
 }
 
-fn lower_quantile_trade_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.25, TradeSubset::All)
+fn lower_quantile_trade_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.25, TradeSubset::All)
 }
 
-pub fn median_trade_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.5, TradeSubset::All)
+pub fn median_trade_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.5, TradeSubset::All)
 }
 
-fn upper_quantile_trade_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.75, TradeSubset::All)
+fn upper_quantile_trade_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.75, TradeSubset::All)
 }
 
 // ================================================================================================
 // === Winning trade return distribution ===
 // ================================================================================================
-fn avg_win_return_expr(return_col: JournalCol) -> Expr {
+fn avg_win_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(return_col).gt(lit(0)))
+        .filter(
+            col(trade_state_col)
+                .trade_executed()
+                .and(col(return_col).gt(lit(0))),
+        )
         .mean()
         .fill_null(lit(0.0))
 }
 
-fn lower_quantile_win_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.25, TradeSubset::Wins)
+fn lower_quantile_win_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.25, TradeSubset::Wins)
 }
 
-fn median_win_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.5, TradeSubset::Wins)
+fn median_win_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.5, TradeSubset::Wins)
 }
 
-fn upper_quantile_win_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.75, TradeSubset::Wins)
+fn upper_quantile_win_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.75, TradeSubset::Wins)
 }
 
 // ================================================================================================
 // === Losing trade return distribution ===
 // ================================================================================================
-fn avg_loss_return_expr(return_col: JournalCol) -> Expr {
+fn avg_loss_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
-        .filter(col(return_col).lt_eq(lit(0)))
+        .filter(
+            col(trade_state_col)
+                .trade_executed()
+                .and(col(return_col).lt_eq(lit(0))),
+        )
         .mean()
         .fill_null(lit(0.0))
         .abs()
 }
 
-fn lower_quantile_loss_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.25, TradeSubset::Losses).abs()
+fn lower_quantile_loss_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.25, TradeSubset::Losses).abs()
 }
 
-fn median_loss_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.5, TradeSubset::Losses).abs()
+fn median_loss_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.5, TradeSubset::Losses).abs()
 }
 
-fn upper_quantile_loss_return_expr(return_col: JournalCol) -> Expr {
-    quantile_return_expr_by_subset(return_col, 0.75, TradeSubset::Losses).abs()
+fn upper_quantile_loss_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    quantile_return_expr_by_subset(return_col, trade_state_col, 0.75, TradeSubset::Losses).abs()
 }
 
 // ================================================================================================
 // === Extremes ===
 // ================================================================================================
-fn largest_win_expr(return_col: JournalCol) -> Expr {
-    col(return_col).max()
+fn largest_win_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .max()
 }
 
-fn largest_loss_expr(return_col: JournalCol) -> Expr {
-    col(return_col).min().abs()
+fn largest_loss_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(return_col)
+        .filter(col(trade_state_col).trade_executed())
+        .min()
+        .abs()
 }
 
 // ================================================================================================
 // === Unrealized ===
 // ================================================================================================
-fn unrealized_win_profit_expr(exit_reason_col: JournalCol, return_col: JournalCol) -> Expr {
-    unrealized_filtered_sum_expr_by_subset(exit_reason_col, return_col, TradeSubset::Wins)
+fn unrealized_win_profit_expr(
+    exit_reason_col: JournalCol,
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
+    unrealized_filtered_sum_expr_by_subset(
+        exit_reason_col,
+        return_col,
+        trade_state_col,
+        TradeSubset::Wins,
+    )
 }
 
-fn unrealized_loss_expr(exit_reason_col: JournalCol, return_col: JournalCol) -> Expr {
-    unrealized_filtered_sum_expr_by_subset(exit_reason_col, return_col, TradeSubset::Losses).abs()
+fn unrealized_loss_expr(
+    exit_reason_col: JournalCol,
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
+    unrealized_filtered_sum_expr_by_subset(
+        exit_reason_col,
+        return_col,
+        trade_state_col,
+        TradeSubset::Losses,
+    )
+    .abs()
 }
 
-fn clean_win_profit_expr(exit_reason_col: JournalCol, return_col: JournalCol) -> Expr {
-    total_win_profit_expr(return_col) - unrealized_win_profit_expr(exit_reason_col, return_col)
+fn clean_win_profit_expr(
+    exit_reason_col: JournalCol,
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
+    total_win_profit_expr(return_col, trade_state_col)
+        - unrealized_win_profit_expr(exit_reason_col, return_col, trade_state_col)
 }
 
-fn clean_loss_expr(exit_reason_col: JournalCol, return_col: JournalCol) -> Expr {
-    total_loss_expr(return_col) - unrealized_loss_expr(exit_reason_col, return_col).abs()
+fn clean_loss_expr(
+    exit_reason_col: JournalCol,
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
+    total_loss_expr(return_col, trade_state_col)
+        - unrealized_loss_expr(exit_reason_col, return_col, trade_state_col).abs()
 }
 
 // ================================================================================================
 // === Curve deviation from target or benchmark ===
 // ================================================================================================
-fn rmsd_expr(return_col: JournalCol) -> Expr {
-    let mean_return = avg_trade_profit_expr(return_col);
+fn rmsd_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    let mean_return = avg_trade_profit_expr(return_col, trade_state_col);
 
-    (col(return_col) - mean_return).pow(lit(2.0)).mean().sqrt()
+    (col(return_col).filter(col(trade_state_col).trade_executed()) - mean_return)
+        .pow(lit(2.0))
+        .mean()
+        .sqrt()
 }
 
-fn mae_expr(return_col: JournalCol) -> Expr {
-    let mean_return = avg_trade_profit_expr(return_col);
+fn mae_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    let mean_return = avg_trade_profit_expr(return_col, trade_state_col);
 
-    (col(return_col) - mean_return).abs().mean()
+    (col(return_col).filter(col(trade_state_col).trade_executed()) - mean_return)
+        .abs()
+        .mean()
 }
 
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
+#[derive(Clone, Copy)]
 enum TradeSubset {
     All,
     Wins,
     Losses,
 }
 
-fn mean_return_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    pct_trade_returns_expr(return_col, initial_value).mean()
+fn mean_return_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    pct_trade_returns_expr(return_col, initial_value)
+        .filter(col(trade_state_col).trade_executed())
+        .mean()
 }
 
-fn annualized_mean_return_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    mean_return_expr(return_col, initial_value) * n_trades_per_year_expr()
+fn annualized_mean_return_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    mean_return_expr(return_col, trade_state_col, initial_value) * n_trades_per_year_expr()
 }
 
-fn return_std_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    pct_trade_returns_expr(return_col, initial_value).std(1)
+fn return_std_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    pct_trade_returns_expr(return_col, initial_value)
+        .filter(col(trade_state_col).trade_executed())
+        .std(1)
 }
 
-fn annualized_return_std_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    return_std_expr(return_col, initial_value) * n_trades_per_year_sqrt_expr()
+fn annualized_return_std_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    return_std_expr(return_col, trade_state_col, initial_value) * n_trades_per_year_sqrt_expr()
 }
 
-fn downside_return_expr(return_col: JournalCol, initial_value: u32) -> Expr {
+fn downside_return_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
     let pct_returns = pct_trade_returns_expr(return_col, initial_value);
-    pct_returns.clone().filter(pct_returns.lt(lit(0.0)))
+    pct_returns.clone().filter(
+        col(trade_state_col)
+            .trade_executed()
+            .and(pct_returns.lt(lit(0.0))),
+    )
 }
 
-fn downside_return_std_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    downside_return_expr(return_col, initial_value).std(1)
+fn downside_return_std_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    downside_return_expr(return_col, trade_state_col, initial_value).std(1)
 }
 
-fn annualized_downside_return_std_expr(return_col: JournalCol, initial_value: u32) -> Expr {
-    downside_return_std_expr(return_col, initial_value) * n_trades_per_year_sqrt_expr()
+fn annualized_downside_return_std_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    initial_value: u32,
+) -> Expr {
+    downside_return_std_expr(return_col, trade_state_col, initial_value)
+        * n_trades_per_year_sqrt_expr()
 }
 
-fn excess_return_expr(return_col: JournalCol, cfg: &RiskMetricsConfig) -> Expr {
-    annualized_mean_return_expr(return_col, cfg.initial_portfolio_value())
+fn excess_return_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+    cfg: RiskMetricsConfig,
+) -> Expr {
+    annualized_mean_return_expr(return_col, trade_state_col, cfg.initial_portfolio_value())
         - lit(cfg.risk_free_rate_f64())
 }
 
 /// Computes the average number of trades per year based on timestamp duration.
 ///
-/// Uses the difference between earliest entry and latest exit timestamp to derive
-/// total backtest duration in seconds and converts that to fractional years.
+/// Uses the difference between earliest entry and latest exit timestamp to
+/// derive total backtest duration in seconds and converts that to fractional
+/// years.
 ///
 /// This value is used to annualize per-trade metrics like Sharpe or Sortino.
 fn n_trades_per_year_expr() -> Expr {
@@ -687,11 +851,12 @@ fn n_trades_per_year_sqrt_expr() -> Expr {
 /// If `previous_equity_i == 0`, returns `0.0` to avoid division-by-zero.
 ///
 /// # Requirements
-/// - The input DataFrame must be sorted chronologically by trade.
-/// - `return_col` must contain **per-trade realized PnL** (in USD), not cumulative.
+/// - The input `DataFrame` must be sorted chronologically by trade.
+/// - `return_col` must contain **per-trade realized `PnL`** (in USD), not
+///   cumulative.
 ///
 /// # Arguments
-/// - `return_col`: Column of per-trade PnL (realized return in USD).
+/// - `return_col`: Column of per-trade `PnL` (realized return in USD).
 /// - `initial_value`: Starting portfolio value (cannot be negative).
 ///
 /// # Returns
@@ -706,13 +871,15 @@ fn pct_trade_returns_expr(return_col: JournalCol, initial_value: u32) -> Expr {
 
 fn quantile_return_expr_by_subset(
     return_col: JournalCol,
+    trade_state_col: JournalCol,
     quantile: f64,
     subset: TradeSubset,
 ) -> Expr {
+    let executed = col(trade_state_col).trade_executed();
     let filter = match subset {
-        TradeSubset::All => None,
-        TradeSubset::Wins => Some(col(return_col).gt(lit(0))),
-        TradeSubset::Losses => Some(col(return_col).lt_eq(lit(0))),
+        TradeSubset::All => Some(executed),
+        TradeSubset::Wins => Some(executed.and(col(return_col).gt(lit(0)))),
+        TradeSubset::Losses => Some(executed.and(col(return_col).lt_eq(lit(0)))),
     };
 
     quantile_return_expr(return_col, quantile, filter)
@@ -732,10 +899,13 @@ fn quantile_return_expr(return_col: JournalCol, quantile: f64, filter: Option<Ex
 fn unrealized_filtered_sum_expr_by_subset(
     exit_reason_col: JournalCol,
     return_col: JournalCol,
+    trade_state_col: JournalCol,
     subset: TradeSubset,
 ) -> Expr {
     let return_expr = col(return_col);
-    let unrealized_filter = col(exit_reason_col).is_null();
+    let unrealized_filter = col(exit_reason_col)
+        .is_null()
+        .and(col(trade_state_col).trade_executed());
 
     let combined_filter = match subset {
         TradeSubset::All => unrealized_filter,
@@ -756,73 +926,68 @@ pub enum OptimizationDirection {
 }
 
 impl PortfolioPerformanceCol {
-    pub fn direction(&self) -> OptimizationDirection {
-        use OptimizationDirection::*;
-        use PortfolioPerformanceCol::*;
+    #[must_use]
+    pub const fn direction(&self) -> OptimizationDirection {
+        use OptimizationDirection::{Maximize, Minimize};
+        use PortfolioPerformanceCol::{
+            AvgLossReturn, AvgTradeProfit, AvgWinReturn, AvgWinToAvgLossRatio, CleanLoss,
+            CleanWinProfit, ExpectedValuePerTrade, LargestLoss, LargestWin,
+            LowerQuantileLossReturn, LowerQuantileTradeReturn, LowerQuantileWinReturn,
+            MaxRealizedDrawdownPct, MaxRealizedDrawdownUsd, MeanAbsoluteError, MedianLossReturn,
+            MedianTradeReturn, MedianWinReturn, NetProfit, RootMeanSquareDeviation, TotalLoss,
+            TotalWinProfit, TotalWinProfitByTotalLoss, TradeCalmarRatio, TradeOmegaRatio,
+            TradeRecoveryFactor, TradeReturnStdDev, TradeReturnVariance, TradeSharpeRatio,
+            TradeSortinoRatio, UnrealizedLoss, UnrealizedWinProfit, UpperQuantileLossReturn,
+            UpperQuantileTradeReturn, UpperQuantileWinReturn, WinRate,
+        };
 
         match self {
-            // === Profitability ===
-            NetProfit => Maximize,
-            AvgTradeProfit => Maximize,
-            ExpectedValuePerTrade => Maximize,
-            TotalWinProfit => Maximize,
-            TotalLoss => Minimize,
-            TotalWinProfitByTotalLoss => Maximize,
+            NetProfit
+            | AvgTradeProfit
+            | ExpectedValuePerTrade
+            | TotalWinProfit
+            | TotalWinProfitByTotalLoss
+            | TradeSharpeRatio
+            | TradeSortinoRatio
+            | TradeOmegaRatio
+            | TradeCalmarRatio
+            | TradeRecoveryFactor
+            | WinRate
+            | AvgWinToAvgLossRatio
+            | LowerQuantileTradeReturn
+            | MedianTradeReturn
+            | UpperQuantileTradeReturn
+            | AvgWinReturn
+            | LowerQuantileWinReturn
+            | MedianWinReturn
+            | UpperQuantileWinReturn
+            | LargestWin
+            | UnrealizedWinProfit
+            | CleanWinProfit => Maximize,
 
-            // === Risk-adjusted returns ===
-            TradeSharpeRatio => Maximize,
-            TradeSortinoRatio => Maximize,
-            TradeOmegaRatio => Maximize,
-            TradeCalmarRatio => Maximize,
-            TradeRecoveryFactor => Maximize,
-
-            // === Risk measures ===
-            MaxRealizedDrawdownUsd => Minimize,
-            MaxRealizedDrawdownPct => Minimize,
-
-            // === Win/loss structure ===
-            WinRate => Maximize,
-            AvgWinToAvgLossRatio => Maximize,
-
-            // === Trade return distribution ===
-            TradeReturnStdDev => Minimize,
-            TradeReturnVariance => Minimize,
-            LowerQuantileTradeReturn => Maximize,
-            MedianTradeReturn => Maximize,
-            UpperQuantileTradeReturn => Maximize,
-
-            // === Winning trade return distribution ===
-            AvgWinReturn => Maximize,
-            LowerQuantileWinReturn => Maximize,
-            MedianWinReturn => Maximize,
-            UpperQuantileWinReturn => Maximize,
-
-            // === Losing trade return distribution ===
-            AvgLossReturn => Minimize,
-            LowerQuantileLossReturn => Minimize,
-            MedianLossReturn => Minimize,
-            UpperQuantileLossReturn => Minimize,
-
-            // === Extremes ===
-            LargestWin => Maximize,
-            LargestLoss => Minimize,
-
-            // === Unrealized ===
-            UnrealizedWinProfit => Maximize,
-            UnrealizedLoss => Minimize,
-            CleanWinProfit => Maximize,
-            CleanLoss => Minimize,
-
-            // === Curve deviation from target or benchmark ===
-            RootMeanSquareDeviation => Minimize,
-            MeanAbsoluteError => Minimize,
+            TotalLoss
+            | MaxRealizedDrawdownUsd
+            | MaxRealizedDrawdownPct
+            | TradeReturnStdDev
+            | TradeReturnVariance
+            | AvgLossReturn
+            | LowerQuantileLossReturn
+            | MedianLossReturn
+            | UpperQuantileLossReturn
+            | LargestLoss
+            | UnrealizedLoss
+            | CleanLoss
+            | RootMeanSquareDeviation
+            | MeanAbsoluteError => Minimize,
         }
     }
 }
 
-/// Aggregate performance and risk metrics for a portfolio or strategy over a backtest window.
+/// Aggregate performance and risk metrics for a portfolio or strategy over a
+/// backtest window.
 ///
-/// These metrics help quantify profitability, risk-adjusted returns, drawdowns, and return distributions.
+/// These metrics help quantify profitability, risk-adjusted returns, drawdowns,
+/// and return distributions.
 #[derive(
     Debug,
     Clone,
@@ -843,11 +1008,12 @@ impl PortfolioPerformanceCol {
 #[strum(serialize_all = "snake_case")]
 pub enum PortfolioPerformanceCol {
     // === Profitability ===
-    /// Total net PnL (profit and loss) in absolute terms.
+    /// Total net `PnL` (profit and loss) in absolute terms.
     NetProfit,
     /// Average profit per trade.
     AvgTradeProfit,
-    /// Expected value per trade: (win_rate * avg_win) - ((1 - win_rate) * avg_loss).
+    /// Expected value per trade: (`win_rate` * `avg_win`) - ((1 - `win_rate`) *
+    /// `avg_loss`).
     ExpectedValuePerTrade,
     /// Total reward from winning trades.
     TotalWinProfit,
@@ -914,15 +1080,18 @@ impl From<PortfolioPerformanceCol> for PlSmallStr {
 }
 
 impl PortfolioPerformanceCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
 
     /// Converts the raw metric value into a comparable "score" for the heap
+    #[must_use]
     pub fn to_heap_score(&self, raw_value: f64) -> f64 {
         match self.direction() {
             OptimizationDirection::Maximize => raw_value,
@@ -931,6 +1100,7 @@ impl PortfolioPerformanceCol {
     }
 
     /// Converts a heap score back into the original metric value
+    #[must_use]
     pub fn from_heap_score(&self, score: f64) -> f64 {
         match self.direction() {
             OptimizationDirection::Maximize => score,
@@ -941,9 +1111,14 @@ impl PortfolioPerformanceCol {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::{collections::HashSet, path::PathBuf};
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath, SchemaExt};
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
 
     use super::*;
 
@@ -963,7 +1138,7 @@ mod tests {
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlPath::new(
+        let df = LazyCsvReader::new(PlRefPath::new(
             fixture_path
                 .to_str()
                 .expect("Invalid UTF-8 in fixture path"),
@@ -976,7 +1151,7 @@ mod tests {
         .collect()
         .expect("Failed to collect DataFrame");
 
-        Journal::new(df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
     }
 
     // ========================================================================
@@ -1020,8 +1195,7 @@ mod tests {
         for col in &expected_columns {
             assert!(
                 df.column(col.as_str()).is_ok(),
-                "Missing expected column: {}",
-                col
+                "Missing expected column: {col}"
             );
         }
 
@@ -1035,11 +1209,11 @@ mod tests {
                 let actual = df
                     .get_column_names()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let expected = expected_columns
                     .iter()
-                    .map(|c| c.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
                 let missing: Vec<_> = expected.difference(&actual).cloned().collect();
                 let extra: Vec<_> = actual.difference(&expected).cloned().collect();
@@ -1064,13 +1238,12 @@ mod tests {
             let expected_dtype = field.dtype();
             let actual_dtype = df
                 .column(col_name)
-                .unwrap_or_else(|_| panic!("Column '{}' not found", col_name))
+                .unwrap_or_else(|_| panic!("Column '{col_name}' not found"))
                 .dtype();
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Data type mismatch for '{}': expected {:?}, found {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Data type mismatch for '{col_name}': expected {expected_dtype:?}, found {actual_dtype:?}"
             );
         }
     }
@@ -1095,8 +1268,9 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(
-            net_profit, 2000.0,
+        assert_f64_eq!(
+            net_profit,
+            2000.0,
             "Net profit should be 2000 (sum of all returns)"
         );
 
@@ -1111,8 +1285,7 @@ mod tests {
 
         assert!(
             (avg_profit - 333.33).abs() < 0.01,
-            "Average trade profit should be ~333.33, got {}",
-            avg_profit
+            "Average trade profit should be ~333.33, got {avg_profit}"
         );
     }
 
@@ -1136,7 +1309,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(win_rate, 0.5, "Win rate should be 0.5 (50%)");
+        assert_f64_eq!(win_rate, 0.5, "Win rate should be 0.5 (50%)");
 
         // Total win profit: 2000 + 500 + 1000 = 3500
         let total_wins = df
@@ -1147,7 +1320,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(total_wins, 3500.0, "Total win profit should be 3500");
+        assert_f64_eq!(total_wins, 3500.0, "Total win profit should be 3500");
 
         // Total loss: abs(-1000 + -500 + 0) = 1500
         let total_loss = df
@@ -1158,7 +1331,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(total_loss, 1500.0, "Total loss should be 1500");
+        assert_f64_eq!(total_loss, 1500.0, "Total loss should be 1500");
     }
 
     // ========================================================================
@@ -1180,7 +1353,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median, 250.0, "Median trade return should be 250");
+        assert_f64_eq!(median, 250.0, "Median trade return should be 250");
 
         // Largest win: 2000
         let largest_win = df
@@ -1191,7 +1364,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(largest_win, 2000.0, "Largest win should be 2000");
+        assert_f64_eq!(largest_win, 2000.0, "Largest win should be 2000");
 
         // Largest loss: abs(-1000) = 1000
         let largest_loss = df
@@ -1202,7 +1375,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(largest_loss, 1000.0, "Largest loss should be 1000");
+        assert_f64_eq!(largest_loss, 1000.0, "Largest loss should be 1000");
     }
 
     // ========================================================================
@@ -1279,8 +1452,9 @@ mod tests {
         // peak at each step: [9000, 9000, 9000, 10500, 11000, 12000]
         // drawdowns: [0, 500, 500, 0, 0, 0]
         // Max drawdown: 500
-        assert_eq!(
-            max_dd_usd, 500.0,
+        assert_f64_eq!(
+            max_dd_usd,
+            500.0,
             "Max drawdown USD should be 500 (peak 9000, trough 8500)"
         );
 
@@ -1295,8 +1469,7 @@ mod tests {
         // Max drawdown %: 500 / 9000 = 0.0555...
         assert!(
             (max_dd_pct - 0.0556).abs() < 0.001,
-            "Max drawdown % should be ~5.56%, got {}",
-            max_dd_pct
+            "Max drawdown % should be ~5.56%, got {max_dd_pct}"
         );
     }
 
@@ -1324,8 +1497,7 @@ mod tests {
         // Expected value: 0.5 * 1166.67 + 0.5 * (-500) = 583.33 - 250 = 333.33
         assert!(
             (expected_val - 333.33).abs() < 0.01,
-            "Expected value per trade should be ~333.33, got {}",
-            expected_val
+            "Expected value per trade should be ~333.33, got {expected_val}"
         );
     }
 
@@ -1351,8 +1523,7 @@ mod tests {
 
         assert!(
             (avg_win - 1166.67).abs() < 0.01,
-            "Average win return should be ~1166.67, got {}",
-            avg_win
+            "Average win return should be ~1166.67, got {avg_win}"
         );
 
         // Median winning trade: 1000
@@ -1364,7 +1535,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median_win, 1000.0, "Median win return should be 1000");
+        assert_f64_eq!(median_win, 1000.0, "Median win return should be 1000");
     }
 
     // ========================================================================
@@ -1387,7 +1558,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(avg_loss, 500.0, "Average loss return should be 500");
+        assert_f64_eq!(avg_loss, 500.0, "Average loss return should be 500");
 
         // Median losing trade: abs(-500)
         let median_loss = df
@@ -1398,7 +1569,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(median_loss, 500.0, "Median loss return should be 500");
+        assert_f64_eq!(median_loss, 500.0, "Median loss return should be 500");
     }
 
     // ========================================================================
@@ -1420,8 +1591,9 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(
-            unrealized_win, 1000.0,
+        assert_f64_eq!(
+            unrealized_win,
+            1000.0,
             "Unrealized win profit should be 1000"
         );
 
@@ -1433,7 +1605,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(unrealized_loss, 0.0, "Unrealized loss should be 0");
+        assert_f64_eq!(unrealized_loss, 0.0, "Unrealized loss should be 0");
 
         // Clean win profit = total wins - unrealized wins = 3500 - 1000 = 2500
         let clean_wins = df
@@ -1444,7 +1616,7 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        assert_eq!(clean_wins, 2500.0, "Clean win profit should be 2500");
+        assert_f64_eq!(clean_wins, 2500.0, "Clean win profit should be 2500");
     }
 
     // ========================================================================
@@ -1460,7 +1632,7 @@ mod tests {
             .first(PortfolioPerformanceCol::NetProfit)
             .expect("Net profit should be available");
 
-        assert_eq!(net_profit, 2000.0, "Net profit via accessor should be 2000");
+        assert_f64_eq!(net_profit, 2000.0, "Net profit via accessor should be 2000");
     }
 
     // ========================================================================
@@ -1470,7 +1642,7 @@ mod tests {
     #[test]
     fn test_empty_journal() {
         let empty_df = DataFrame::empty_with_schema(&Journal::to_schema());
-        let journal = Journal::new(empty_df, RiskMetricsConfig::default())
+        let journal = Journal::new(&empty_df, RiskMetricsConfig::default())
             .expect("Failed to create empty Journal");
 
         let result = PortfolioPerformance::try_from(&journal);
@@ -1540,7 +1712,7 @@ mod tests {
 
         // Variance should be std_dev squared
         assert!(
-            (variance - std_dev.powi(2)).abs() < 0.01,
+            std_dev.mul_add(-std_dev, variance).abs() < 0.01,
             "Variance should equal std_dev squared"
         );
 
@@ -1568,8 +1740,9 @@ mod tests {
             .expect("Missing value");
 
         // Recovery factor = net_profit / max_drawdown = 2000 / 500 = 4.0
-        assert_eq!(
-            recovery, 4.0,
+        assert_f64_eq!(
+            recovery,
+            4.0,
             "Recovery factor should be 4.0 (2000 profit / 500 drawdown)"
         );
     }

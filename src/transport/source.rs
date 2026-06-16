@@ -12,7 +12,6 @@ use tracing::info;
 use crate::{
     error::{ChapatyResult, TransportError},
     generated::chapaty::bq_exporter::v1::exporter_service_client::ExporterServiceClient,
-    impl_from_primitive,
 };
 
 // Define the concrete type of your authenticated client
@@ -26,7 +25,7 @@ pub type ChapatyClient = ExporterServiceClient<InterceptedService<Channel, ApiKe
 /// # Examples
 ///
 /// ```rust
-/// use chapaty::prelude::*;
+/// # use chapaty::prelude::*;
 /// let url = EndpointUrl::from("https://api.example.com".to_string());
 /// assert_eq!(url.0, "https://api.example.com");
 /// ```
@@ -36,7 +35,7 @@ impl_from_primitive!(EndpointUrl, String);
 
 impl From<&str> for EndpointUrl {
     fn from(value: &str) -> Self {
-        EndpointUrl(value.to_string())
+        Self(value.to_string())
     }
 }
 
@@ -48,7 +47,7 @@ impl From<&str> for EndpointUrl {
 /// # Examples
 ///
 /// ```rust
-/// use chapaty::prelude::*;
+/// # use chapaty::prelude::*;
 /// let key = ApiKey::from("my-secret-key".to_string());
 /// assert_eq!(key.0, "my-secret-key");
 /// ```
@@ -58,7 +57,7 @@ impl_from_primitive!(ApiKey, String);
 
 impl From<&str> for ApiKey {
     fn from(value: &str) -> Self {
-        ApiKey(value.to_string())
+        Self(value.to_string())
     }
 }
 
@@ -133,8 +132,8 @@ pub enum DataSource {
 impl Connect for DataSource {
     async fn connect(&self) -> ChapatyResult<ChapatyClient> {
         match self {
-            DataSource::Hosted => HostedApi.connect().await,
-            DataSource::SelfHosted(rpc) => rpc.connect().await,
+            Self::Hosted => HostedApi.connect().await,
+            Self::SelfHosted(rpc) => rpc.connect().await,
         }
     }
 }
@@ -150,7 +149,7 @@ pub struct SourceGroup<T, S: Connect = DataSource> {
 }
 
 impl<T, S: Connect> SourceGroup<T, S> {
-    pub fn new(source: S) -> Self {
+    pub const fn new(source: S) -> Self {
         Self {
             source,
             items: Vec::new(),
@@ -185,9 +184,9 @@ async fn create_default_client(
         .keep_alive_while_idle(true)
         // Overall connection timeout: 10 minutes for long-running operations
         // This is the timeout for individual RPC calls
-        .timeout(Duration::from_secs(600))
+        .timeout(Duration::from_mins(10))
         // TCP keepalive to detect broken connections at TCP level
-        .tcp_keepalive(Some(Duration::from_secs(60)))
+        .tcp_keepalive(Some(Duration::from_mins(1)))
         // Connection timeout: how long to wait for initial connection
         .connect_timeout(Duration::from_secs(30))
         // Initial connection window size for flow control
@@ -218,6 +217,16 @@ pub struct ApiKeyInterceptor {
 }
 
 impl ApiKeyInterceptor {
+    /// Creates an interceptor that injects the optional API key into request
+    /// metadata.
+    ///
+    /// # Panics
+    /// Panics if the provided API key cannot be parsed into ASCII metadata.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "a non-token API key is a configuration error; failing fast here surfaces it immediately at setup"
+    )]
     pub fn new(api_key: Option<ApiKey>) -> Self {
         let metadata_value = api_key.map(|key| {
             key.0

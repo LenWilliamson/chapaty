@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        batch_indicator::{BatchOhlcvIndicator, WithBatchIndicators},
         common::ProfileAggregation,
         domain::{
             CountryCode, DataBroker, EconomicCategory, EconomicDataSource, EconomicEventImpact,
@@ -13,16 +12,20 @@ use crate::{
         event::{EconomicCalendarId, OhlcvId, TpoId, TradesId, VolumeProfileId},
     },
     error::ChapatyResult,
+    indicator::batch::{
+        WithBatchIndicators, ohlcv::BatchOhlcvIndicator, trades::BatchTradesIndicator,
+    },
 };
 
 // ================================================================================================
 // OHLCV Configurations
 // ================================================================================================
 
-/// Configuration for retrieving OHLCV (Open, High, Low, Close, Volume) data from spot markets.
+/// Configuration for retrieving OHLCV (Open, High, Low, Close, Volume) data
+/// from spot markets.
 ///
-/// OHLCV data represents aggregated price and volume information over specified time periods,
-/// commonly used for candlestick charts and technical analysis.
+/// OHLCV data represents aggregated price and volume information over specified
+/// time periods, commonly used for candlestick charts and technical analysis.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OhlcvSpotQuery {
     /// The data broker to query from.
@@ -31,7 +34,8 @@ pub struct OhlcvSpotQuery {
     /// The trading pair symbol (e.g., "btc-usdt", "eth-usdt").
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// The timeframe for each OHLCV candle (e.g., "1m", "5m", "1h", "1d").
@@ -42,14 +46,15 @@ pub struct OhlcvSpotQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     pub batch_size: i32,
 
-    // Data configurations that support derived technical analysis.
+    /// Data configurations that support derived technical analysis.
     pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
-/// Configuration for retrieving OHLCV (Open, High, Low, Close, Volume) data from futures markets.
+/// Configuration for retrieving OHLCV (Open, High, Low, Close, Volume) data
+/// from futures markets.
 ///
-/// Similar to spot OHLCV data, but specifically for futures contracts which include
-/// additional fields like open interest and funding rates.
+/// Similar to spot OHLCV data, but specifically for futures contracts which
+/// include additional fields like open interest and funding rates.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OhlcvFutureQuery {
     /// The data broker to query from.
@@ -58,7 +63,8 @@ pub struct OhlcvFutureQuery {
     /// The futures contract symbol. Must be a valid futures symbol format.
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// The timeframe for each OHLCV candle (e.g., "1m", "5m", "1h", "1d").
@@ -69,7 +75,7 @@ pub struct OhlcvFutureQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     pub batch_size: i32,
 
-    // Data configurations that support derived technical analysis.
+    /// Data configurations that support derived technical analysis.
     pub indicators: Vec<BatchOhlcvIndicator>,
 }
 
@@ -79,17 +85,18 @@ pub struct OhlcvFutureQuery {
 
 /// Configuration for retrieving trade-level spot market data.
 ///
-/// Trade data represents individual trades or price updates at the finest granularity,
-/// capturing every market transaction with microsecond precision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TradeSpotQuery {
+/// Trade data represents individual trades or price updates at the finest
+/// granularity, capturing every market transaction with microsecond precision.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TradesSpotQuery {
     /// The data broker to query from.
     pub broker: DataBroker,
 
     /// The trading pair symbol (e.g., "btc-usdt", "eth-usdt").
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// Number of records to stream per batch.
@@ -97,17 +104,21 @@ pub struct TradeSpotQuery {
     /// Valid range: 100-10000. Defaults to 1000 if not specified.
     /// Consider larger batch sizes for trade data to optimize throughput.
     pub batch_size: i32,
+
+    /// Data configurations that support derived technical analysis.
+    pub indicators: Vec<BatchTradesIndicator>,
 }
 
 // ================================================================================================
 // TPO Configurations
 // ================================================================================================
 
-/// Configuration for retrieving Time Price Opportunity (TPO) data from spot markets.
+/// Configuration for retrieving Time Price Opportunity (TPO) data from spot
+/// markets.
 ///
-/// TPO, also known as Market Profile, displays market activity organized by price level
-/// and time, showing where trading activity has occurred and helping identify
-/// key support/resistance levels.
+/// TPO, also known as Market Profile, displays market activity organized by
+/// price level and time, showing where trading activity has occurred and
+/// helping identify key support/resistance levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TpoSpotQuery {
     /// The data broker to query from.
@@ -116,12 +127,14 @@ pub struct TpoSpotQuery {
     /// The trading pair symbol (e.g., "btc-usdt", "eth-usdt").
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// Optional aggregation parameters for profile construction.
     ///
-    /// If `None`, uses default aggregation (1m timeframe, finest price granularity).
+    /// If `None`, uses default aggregation (1m timeframe, finest price
+    /// granularity).
     pub aggregation: Option<ProfileAggregation>,
 
     /// Number of records to stream per batch.
@@ -130,9 +143,11 @@ pub struct TpoSpotQuery {
     pub batch_size: i32,
 }
 
-/// Configuration for retrieving Time Price Opportunity (TPO) data from futures markets.
+/// Configuration for retrieving Time Price Opportunity (TPO) data from futures
+/// markets.
 ///
-/// TPO data for futures markets, providing Market Profile insights for futures contracts.
+/// TPO data for futures markets, providing Market Profile insights for futures
+/// contracts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TpoFutureQuery {
     /// The data broker to query from.
@@ -141,12 +156,14 @@ pub struct TpoFutureQuery {
     /// The futures contract symbol.
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// Optional aggregation parameters for profile construction.
     ///
-    /// If `None`, uses default aggregation (1m timeframe, finest price granularity).
+    /// If `None`, uses default aggregation (1m timeframe, finest price
+    /// granularity).
     pub aggregation: Option<ProfileAggregation>,
 
     /// Number of records to stream per batch.
@@ -161,9 +178,9 @@ pub struct TpoFutureQuery {
 
 /// Configuration for retrieving Volume Profile data from spot markets.
 ///
-/// Volume Profile shows the distribution of trading volume across different price levels,
-/// helping identify high-volume nodes (HVN) and low-volume nodes (LVN) that often act
-/// as support or resistance.
+/// Volume Profile shows the distribution of trading volume across different
+/// price levels, helping identify high-volume nodes (HVN) and low-volume nodes
+/// (LVN) that often act as support or resistance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct VolumeProfileSpotQuery {
     /// The data broker to query from.
@@ -172,12 +189,14 @@ pub struct VolumeProfileSpotQuery {
     /// The trading pair symbol (e.g., "btc-usdt", "eth-usdt").
     pub symbol: Symbol,
 
-    /// Optional exchange name. If `None`, defaults to the broker's primary exchange.
+    /// Optional exchange name. If `None`, defaults to the broker's primary
+    /// exchange.
     pub exchange: Option<Exchange>,
 
     /// Optional aggregation parameters for profile construction.
     ///
-    /// If `None`, uses default aggregation (1m timeframe, finest price granularity).
+    /// If `None`, uses default aggregation (1m timeframe, finest price
+    /// granularity).
     pub aggregation: Option<ProfileAggregation>,
 
     /// Number of records to stream per batch.
@@ -204,10 +223,11 @@ pub struct EconomicCalendarQuery {
     /// If `None`, retrieves data from all available sources for the broker.
     pub data_source: Option<EconomicDataSource>,
 
-    /// Optional filter by country using ISO 3166-1 alpha-2 code (e.g., "US", "GB", "JP").
+    /// Optional filter by country using ISO 3166-1 alpha-2 code (e.g., "US",
+    /// "GB", "JP").
     ///
-    /// Special code "EZ" represents the Euro Zone. Country codes must be uppercase.
-    /// If `None`, retrieves data for all countries.
+    /// Special code "EZ" represents the Euro Zone. Country codes must be
+    /// uppercase. If `None`, retrieves data for all countries.
     pub country_code: Option<CountryCode>,
 
     /// Optional filter by economic category.
@@ -248,10 +268,19 @@ impl WithBatchIndicators for OhlcvFutureQuery {
     }
 }
 
+impl WithBatchIndicators for TradesSpotQuery {
+    type BatchIndicator = BatchTradesIndicator;
+
+    fn with_indicator(mut self, kind: Self::BatchIndicator) -> Self {
+        self.indicators.push(kind);
+        self
+    }
+}
+
 /// Maps a configuration type to its corresponding stream identifier.
 ///
 /// This trait enables type-safe conversion from user-facing configuration
-/// (which includes wire protocol details like batch_size) to internal
+/// (which includes wire protocol details like `batch_size`) to internal
 /// domain identifiers used for stream management.
 pub trait QueryId {
     /// The unique identifier type for this configuration's data stream.
@@ -259,8 +288,9 @@ pub trait QueryId {
 
     /// Converts this configuration into its corresponding stream identifier.
     ///
-    /// This method extracts only the fields that uniquely identify a data stream,
-    /// omitting operational parameters like batch_size or indicators.
+    /// This method extracts only the fields that uniquely identify a data
+    /// stream, omitting operational parameters like `batch_size` or
+    /// indicators.
     ///
     /// # Errors
     ///
@@ -304,7 +334,7 @@ impl QueryId for OhlcvFutureQuery {
     }
 }
 
-impl QueryId for TradeSpotQuery {
+impl QueryId for TradesSpotQuery {
     type Id = TradesId;
 
     fn to_id(&self) -> ChapatyResult<Self::Id> {

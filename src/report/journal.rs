@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use polars::{
-    frame::DataFrame,
     prelude::{
-        DataType, Field, PlSmallStr, Schema, SchemaRef, SortMultipleOptions, TimeUnit, TimeZone,
+        DataFrame, DataType, Expr, Field, PlSmallStr, Schema, SchemaRef, SortMultipleOptions,
+        TimeUnit, TimeZone, lit,
     },
     series::IsSorted,
 };
@@ -13,6 +13,7 @@ use strum::{Display, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 use crate::{
     data::common::RiskMetricsConfig,
     error::{ChapatyError, ChapatyResult, DataError},
+    gym::trading::StateKind,
     report::{
         cumulative_returns::CumulativeReturns,
         grouped::{GroupCol, GroupedJournal},
@@ -24,9 +25,10 @@ use crate::{
 
 /// Represents the detailed journal recording every individual trade.
 ///
-/// This journal serves as a comprehensive log of all trades executed during backtesting.
-/// It is analogous to a trade journal or transaction log in traditional finance,
-/// capturing raw trade details used for analysis and performance evaluation.
+/// This journal serves as a comprehensive log of all trades executed during
+/// backtesting. It is analogous to a trade journal or transaction log in
+/// traditional finance, capturing raw trade details used for analysis and
+/// performance evaluation.
 #[derive(
     Debug,
     Clone,
@@ -60,7 +62,8 @@ pub enum JournalCol {
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
     DataBroker,
-    /// The exchange of the data broker (e.g., `cme` from data broker `ninjatrader`).
+    /// The exchange of the data broker (e.g., `cme` from data broker
+    /// `ninjatrader`).
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
@@ -80,7 +83,8 @@ pub enum JournalCol {
     Quantity,
 
     // === Expected outcomes ===
-    /// The expected loss in native market price increments (e.g., ticks for futures, pips for FX).
+    /// The expected loss in native market price increments (e.g., ticks for
+    /// futures, pips for FX).
     ExpectedLossInTicks,
     /// The expected profit in native market price increments.
     ExpectedProfitInTicks,
@@ -114,16 +118,16 @@ impl TryFrom<JournalCol> for GroupCol {
     fn try_from(value: JournalCol) -> Result<Self, Self::Error> {
         match value {
             // === Identifiers ===
-            JournalCol::EpisodeId => Ok(GroupCol::EpisodeId),
-            JournalCol::TradeState => Ok(GroupCol::TradeState),
-            JournalCol::AgentId => Ok(GroupCol::AgentId),
+            JournalCol::EpisodeId => Ok(Self::EpisodeId),
+            JournalCol::TradeState => Ok(Self::TradeState),
+            JournalCol::AgentId => Ok(Self::AgentId),
             // === Market spec ===
-            JournalCol::DataBroker => Ok(GroupCol::DataBroker),
-            JournalCol::Exchange => Ok(GroupCol::Exchange),
-            JournalCol::Symbol => Ok(GroupCol::Symbol),
-            JournalCol::MarketType => Ok(GroupCol::MarketType),
+            JournalCol::DataBroker => Ok(Self::DataBroker),
+            JournalCol::Exchange => Ok(Self::Exchange),
+            JournalCol::Symbol => Ok(Self::Symbol),
+            JournalCol::MarketType => Ok(Self::MarketType),
             // === Trade configuration ===
-            JournalCol::TradeType => Ok(GroupCol::TradeType),
+            JournalCol::TradeType => Ok(Self::TradeType),
             // === Timestamps ===
             JournalCol::EntryTimestamp => {
                 Err(DataError::UnexpectedEnumVariant(
@@ -136,7 +140,7 @@ impl TryFrom<JournalCol> for GroupCol {
                 ).into())
             }
             // === Realized outcomes ===
-            JournalCol::ExitReason => Ok(GroupCol::ExitReason),
+            JournalCol::ExitReason => Ok(Self::ExitReason),
             // === Any other JournalCol variants that don't have GroupCol equivalents ===
             JournalCol::RowId
             | JournalCol::TradeId
@@ -166,10 +170,12 @@ impl From<JournalCol> for PlSmallStr {
 }
 
 impl JournalCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -199,19 +205,31 @@ impl Report for Journal {
 }
 
 impl Journal {
+    /// Computes cumulative-return metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`CumulativeReturns`] fails.
     pub fn cumulative_returns(&self) -> ChapatyResult<CumulativeReturns> {
         self.try_into()
     }
 
+    /// Computes portfolio-performance metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`PortfolioPerformance`] fails.
     pub fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
         self.try_into()
     }
 
+    /// Computes trade-statistics metrics from this journal.
+    ///
+    /// # Errors
+    /// Returns an error if conversion to [`TradeStatistics`] fails.
     pub fn trade_stats(&self) -> ChapatyResult<TradeStatistics> {
         self.try_into()
     }
 
-    pub fn risk_metrics_config(&self) -> RiskMetricsConfig {
+    pub const fn risk_metrics_config(&self) -> RiskMetricsConfig {
         self.risk_metrics_config
     }
 
@@ -224,7 +242,7 @@ impl Journal {
 }
 
 impl Journal {
-    pub(crate) fn new(df: DataFrame, config: RiskMetricsConfig) -> ChapatyResult<Self> {
+    pub(crate) fn new(df: &DataFrame, config: RiskMetricsConfig) -> ChapatyResult<Self> {
         let sorted_df = df
             .sort(
                 [JournalCol::EntryTimestamp.as_str()],
@@ -267,8 +285,6 @@ impl ToSchema for Journal {
                 let dtype = match col {
                     JournalCol::RowId | JournalCol::EpisodeId => DataType::UInt32,
 
-                    JournalCol::TradeId => DataType::Int64,
-
                     JournalCol::TradeState
                     | JournalCol::AgentId
                     | JournalCol::DataBroker
@@ -288,7 +304,8 @@ impl ToSchema for Journal {
                     | JournalCol::ExitPrice
                     | JournalCol::RealizedReturnDollars => DataType::Float64,
 
-                    JournalCol::ExpectedLossInTicks
+                    JournalCol::TradeId
+                    | JournalCol::ExpectedLossInTicks
                     | JournalCol::ExpectedProfitInTicks
                     | JournalCol::RealizedReturnInTicks => DataType::Int64,
 
@@ -304,36 +321,87 @@ impl ToSchema for Journal {
     }
 }
 
+// ================================================================================================
+// Helper
+// ================================================================================================
+
+pub trait ExprDefineExt {
+    /// Casts the expression to the specified data type and aliases it using the
+    /// provided column name.
+    fn define_as<C: Into<PlSmallStr>>(self, col: C, dtype: DataType) -> Expr;
+}
+
+impl ExprDefineExt for Expr {
+    fn define_as<C: Into<PlSmallStr>>(self, col: C, dtype: DataType) -> Expr {
+        self.cast(dtype).alias(col)
+    }
+}
+
+pub trait JournalExprExt {
+    /// Evaluates to true if the expression resolves to an Active or Closed
+    /// state.
+    fn trade_executed(self) -> Expr;
+
+    /// Converts a boolean mask into a sum of occurrences.
+    fn count_true(self) -> Expr;
+}
+
+impl JournalExprExt for Expr {
+    fn trade_executed(self) -> Expr {
+        self.clone()
+            .eq(lit(StateKind::Active.as_str()))
+            .or(self.eq(lit(StateKind::Closed.as_str())))
+    }
+
+    fn count_true(self) -> Expr {
+        self.cast(DataType::UInt32).sum()
+    }
+}
+
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath};
+    use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, col};
 
     use super::*;
 
-    #[test]
-    fn test_journal_creation_and_schema_validation() {
+    fn load_journal_fixture() -> Journal {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlPath::new(
-            pb.as_os_str()
-                .to_str()
-                .expect("Failed to convert input file path to string"),
+        let fixture_path =
+            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
+
+        assert!(
+            fixture_path.exists(),
+            "Test fixture missing: {}",
+            fixture_path.display()
         );
 
         let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(path)
-            .with_has_header(true)
-            .with_schema(Some(schema.clone()))
-            .with_try_parse_dates(true)
-            .finish()
-            .expect("Failed to create LazyFrame from CSV")
-            .collect()
-            .expect("Failed to collect DataFrame from LazyFrame");
+        let df = LazyCsvReader::new(PlRefPath::new(
+            fixture_path
+                .to_str()
+                .expect("Invalid UTF-8 in fixture path"),
+        ))
+        .with_has_header(true)
+        .with_schema(Some(schema))
+        .with_try_parse_dates(true)
+        .finish()
+        .expect("Failed to create LazyFrame")
+        .collect()
+        .expect("Failed to collect DataFrame");
 
-        let journal = Journal::new(df, RiskMetricsConfig::default())
-            .expect("Failed to create Journal from DataFrame");
+        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
+    }
+
+    #[test]
+    fn test_journal_creation_and_schema_validation() {
+        let journal = load_journal_fixture();
         let df = &journal.as_df();
 
         let current_schema = df.schema();
@@ -343,8 +411,7 @@ mod test {
             let actual_dtype = current_schema.get(name);
             assert!(
                 actual_dtype.is_some(),
-                "Missing column in Journal DataFrame: {}",
-                name
+                "Missing column in Journal DataFrame: {name}"
             );
             assert_eq!(
                 actual_dtype.unwrap(),
@@ -353,6 +420,43 @@ mod test {
                 name,
                 expected_dtype,
                 actual_dtype.unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_executed_expr_filters_correctly() {
+        let journal = load_journal_fixture();
+
+        // Apply the filter logic
+        let filtered_df = journal
+            .as_df()
+            .clone()
+            .lazy()
+            .filter(col(JournalCol::TradeState).trade_executed())
+            .collect()
+            .expect("Failed to apply is_executed_expr filter");
+
+        // The fixture has 8 rows: 5 closed, 1 active, 1 pending, 1 canceled.
+        // Exactly 6 rows should remain.
+        assert_eq!(
+            filtered_df.height(),
+            6,
+            "is_executed_expr should retain exactly 6 rows (Active/Closed) from the fixture, dropping Pending/Canceled."
+        );
+
+        // Explicitly verify the values left in the TradeState column
+        let states = filtered_df
+            .column(JournalCol::TradeState.as_str())
+            .expect("Missing TradeState column")
+            .str()
+            .expect("TradeState column is not of type String");
+
+        for state_opt in states.iter() {
+            let state = state_opt.expect("Encountered null state");
+            assert!(
+                state == StateKind::Active.as_str() || state == StateKind::Closed.as_str(),
+                "Found unexecuted state in filtered results: {state}"
             );
         }
     }

@@ -1,26 +1,26 @@
 use std::{collections::HashMap, time::Duration};
 
+use polars::prelude::{LazyFrame, SchemaRef};
+use tokio::{sync::mpsc, task::JoinSet};
+use tokio_util::sync::CancellationToken;
+use tracing::error;
+
 use crate::{
     error::{ChapatyError, ChapatyResult, IoError, TransportError},
     transport::{fetcher::Fetchable, source::ChapatyClient},
 };
-use polars::prelude::{LazyFrame, SchemaRef};
-use tokio::sync::mpsc;
-use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
-use tracing::error;
 
 #[derive(Debug, Clone, Copy)]
 struct Year(pub u16);
 impl From<Year> for i32 {
     fn from(value: Year) -> Self {
-        value.0 as i32
+        Self::from(value.0)
     }
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn load_batch<T: Fetchable>(
-    client: &mut ChapatyClient,
+    client: &ChapatyClient,
     specs: Vec<T>,
     years: Vec<u16>,
 ) -> ChapatyResult<HashMap<T::Id, (SchemaRef, LazyFrame)>> {
@@ -99,12 +99,14 @@ pub async fn load_batch<T: Fetchable>(
 // ================================================================================================
 
 mod generator {
+    use std::collections::BTreeMap;
+
+    use tokio_util::sync::CancellationToken;
+
     use crate::{
         error::ChapatyResult,
         transport::loader::{Fetchable, Year},
     };
-    use std::collections::HashMap;
-    use tokio_util::sync::CancellationToken;
 
     pub struct Args<T: Fetchable> {
         pub cx: CancellationToken,
@@ -122,7 +124,7 @@ mod generator {
             tx,
         } = args;
 
-        let mut unique_jobs = HashMap::new();
+        let mut unique_jobs = BTreeMap::new();
         for spec in specs {
             let id = match spec.to_id() {
                 Ok(id) => id,
@@ -138,7 +140,7 @@ mod generator {
         for (id, job) in unique_jobs {
             for year in &years {
                 tokio::select! {
-                _ = cx.cancelled() => {
+                () = cx.cancelled() => {
                     tracing::info!("Generator cancelled; exiting early.");
                     return Ok(());
                 },
@@ -161,6 +163,8 @@ mod generator {
 // ================================================================================================
 
 mod fetcher {
+    use tokio_util::sync::CancellationToken;
+
     use crate::{
         error::{ChapatyResult, TransportError},
         transport::{
@@ -168,7 +172,6 @@ mod fetcher {
             source::ChapatyClient,
         },
     };
-    use tokio_util::sync::CancellationToken;
 
     pub struct Args<T: Fetchable> {
         pub cx: CancellationToken,
@@ -187,26 +190,23 @@ mod fetcher {
         loop {
             tokio::select! {
             // A. External Cancellation
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::info!("Fetcher received cancellation signal.");
                 break;
             }
 
             // B. Incoming Work
             work = rx.recv() => {
-                match work {
-                    Ok((id, job, year)) => {
-                        let cx = cx.clone();
-                        let tx = tx.clone();
-                        let client = client.clone();
-                        tasks.spawn(async move {
-                            stream(cx, tx, id, job, year, client).await
-                        });
-                    }
-                    Err(_) => {
-                        tracing::info!("Job queue closed (End of Input).");
-                        break;
-                    }
+                if let Ok((id, job, year)) = work {
+                    let cx = cx.clone();
+                    let tx = tx.clone();
+                    let client = client.clone();
+                    tasks.spawn(async move {
+                        stream(cx, tx, id, job, year, client).await
+                    });
+                } else {
+                    tracing::info!("Job queue closed (End of Input).");
+                    break;
                 }
             }
 
@@ -274,7 +274,7 @@ mod fetcher {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::debug!("Stream task cancelled cleanly.");
                 return Ok(());
             }
@@ -327,34 +327,28 @@ mod processor {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 info!("Processor worker cancelled");
                 break Ok(());
             }
             res = rx.recv() => {
-                let (fetcher, batch) = match res {
-                    Ok((f, b)) => (f, b),
-                    Err(_) => {
-                        // This happens if the sender side is dropped/closed, meaning
-                        // the generator has shut down. The processor should also stop.
-                        tracing::info!("No more jobs; processor exiting.");
-                        break Ok(());
-                    }
+                let Ok((fetcher, batch)) = res else {
+                    // This happens if the sender side is dropped/closed, meaning
+                    // the generator has shut down. The processor should also stop.
+                    tracing::info!("No more jobs; processor exiting.");
+                    break Ok(());
                 };
 
                 // Transform the collected events into a LazyFrame
                 let (send, recv) = tokio::sync::oneshot::channel();
                 rayon::spawn(move || {
                     let result = batch.into_lazyframe();
-                    let _ = send.send(result);
+                    drop(send.send(result));
                 });
 
-                let lf_res = match recv.await {
-                    Ok(result) => result,
-                    Err(_) => {
-                        error!(?fetcher, "Rayon thread panicked while converting batch to LazyFrame");
-                        return Err(IoError::ReadFailed("Rayon worker panicked during batch conversion".to_string()).into());
-                    }
+                let Ok(lf_res) = recv.await else {
+                    error!(?fetcher, "Rayon thread panicked while converting batch to LazyFrame");
+                    return Err(IoError::ReadFailed("Rayon worker panicked during batch conversion".to_string()).into());
                 };
 
                 match lf_res {
@@ -408,33 +402,30 @@ mod collector {
 
         loop {
             tokio::select! {
-            _ = cx.cancelled() => {
+            () = cx.cancelled() => {
                 tracing::info!("Collector worker cancelled; exiting early");
                 return Err(IoError::ReadFailed("Collector worker cancelled".to_string()).into());
             }
             maybe_res = rx.recv() => {
-                match maybe_res {
-                    Some((id, lf)) => staging.entry(id).or_default().push(lf),
-                    None => {
-                        info!("All results received. Processing final LazyFrames");
-                        let mut results = HashMap::with_capacity(staging.len());
+                if let Some((id, lf)) = maybe_res { staging.entry(id).or_default().push(lf) } else {
+                    info!("All results received. Processing final LazyFrames");
+                    let mut results = HashMap::with_capacity(staging.len());
 
-                        for (id, frames) in staging {
-                            if frames.is_empty() { continue; }
+                    for (id, frames) in staging {
+                        if frames.is_empty() { continue; }
 
-                            let concatenated_lf = polars::prelude::concat(
-                                frames,
-                                UnionArgs {
-                                    parallel: true,
-                                    rechunk: true,
-                                    ..Default::default()
-                                }
-                            ).map_err(|e| DataError::DataFrame(e.to_string()))?;
+                        let concatenated_lf = polars::prelude::concat(
+                            frames,
+                            UnionArgs {
+                                parallel: true,
+                                rechunk: true,
+                                ..Default::default()
+                            }
+                        ).map_err(|e| DataError::DataFrame(e.to_string()))?;
 
-                            results.insert(id, (T::schema_ref(), concatenated_lf));
-                        }
-                        return Ok(results);
+                        results.insert(id, (T::schema_ref(), concatenated_lf));
                     }
+                    return Ok(results);
                 }
             }
             }
@@ -463,10 +454,10 @@ trait DrainSafely {
 impl<T: 'static> DrainSafely for JoinSet<T> {
     async fn drain_safely(&mut self, secs: u64) {
         tokio::select! {
-        _ = self.drain() => {
+        () = self.drain() => {
             tracing::debug!("All workers drained successfully.");
         },
-        _ = tokio::time::sleep(Duration::from_secs(secs)) => {
+        () = tokio::time::sleep(Duration::from_secs(secs)) => {
             tracing::warn!("Workers stuck during shutdown (timeout). Dropping handle.");
         }
         }
@@ -482,7 +473,7 @@ impl TryDrain for JoinSet<ChapatyResult<()>> {
         while let Some(result) = self.join_next().await {
             match result {
                 // Happy Path: Task succeeded
-                Ok(Ok(())) => continue,
+                Ok(Ok(())) => {}
 
                 // Case A: Application Error (Logic failed)
                 Ok(Err(e)) => {

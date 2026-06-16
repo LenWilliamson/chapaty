@@ -16,8 +16,9 @@ macro_rules! impl_from_primitive {
     };
 }
 
-/// Macro to implement `Add`, `Sub`, `Mul`, `Div`, and `Sum` traits for newtype wrappers around numeric types,
-/// including support for adding a primitive type directly.
+/// Macro to implement `Add`, `Sub`, `Mul`, `Div`, and `Sum` traits for newtype
+/// wrappers around numeric types, including support for adding a primitive type
+/// directly.
 #[macro_export]
 macro_rules! impl_add_sub_mul_div_primitive {
     ($wrapper:ident, $primitive:ty) => {
@@ -75,20 +76,23 @@ macro_rules! impl_add_sub_mul_div_primitive {
     };
 }
 
-/// Macro to implement an `abs` method for newtype wrappers around numeric types.
+/// Macro to implement an `abs` method for newtype wrappers around numeric
+/// types.
 #[macro_export]
 macro_rules! impl_abs_primitive {
     ($wrapper:ident, $primitive:ty) => {
         impl $wrapper {
             /// Returns the absolute value of the wrapped primitive.
-            pub fn abs(self) -> Self {
+            #[must_use]
+            pub const fn abs(self) -> Self {
                 Self(self.0.abs())
             }
         }
     };
 }
 
-/// Macro to implement the `Neg` trait for newtype wrappers around numeric types.
+/// Macro to implement the `Neg` trait for newtype wrappers around numeric
+/// types.
 #[macro_export]
 macro_rules! impl_neg_primitive {
     ($wrapper:ident, $primitive:ty) => {
@@ -99,5 +103,45 @@ macro_rules! impl_neg_primitive {
                 Self(-self.0)
             }
         }
+    };
+}
+
+/// Macro to implement `min` and `max` methods for newtype wrappers around
+/// numeric types.
+#[macro_export]
+macro_rules! impl_min_max_primitive {
+    ($wrapper:ident, $primitive:ty) => {
+        impl $wrapper {
+            /// Returns the minimum of `self` and `other`.
+            #[must_use]
+            pub const fn min(self, other: Self) -> Self {
+                Self(self.0.min(other.0))
+            }
+
+            /// Returns the maximum of `self` and `other`.
+            #[must_use]
+            pub const fn max(self, other: Self) -> Self {
+                Self(self.0.max(other.0))
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! assert_f64_eq {
+    ($left:expr, $right:expr $(,)?) => {
+        let left_val = $left;
+        let right_val = $right;
+        assert!(
+            (left_val - right_val).abs() < f64::EPSILON,
+            "assertion failed: `(left == right)`\n  left: `{:?}`,\n right: `{:?}`",
+            left_val,
+            right_val
+        );
+    };
+    ($left:expr, $right:expr, $($arg:tt)+) => {
+        let left_val = $left;
+        let right_val = $right;
+        assert!((left_val - right_val).abs() < f64::EPSILON, $($arg)+);
     };
 }

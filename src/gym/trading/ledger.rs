@@ -20,7 +20,7 @@ use crate::{
             action::{Action, Command},
             context::{ActionCtx, ActionSummary, UpdateCtx},
             state::{State, States},
-            types::{RiskRewardRatio, StateKind, TerminationReason, TradeType},
+            types::{RiskRewardRatio, StateKind, TerminationReason, TradeKind},
         },
     },
     report::{equity_curve::EquityCurveCol, journal::JournalCol},
@@ -39,7 +39,7 @@ pub(super) struct Ledger {
 
 impl Ledger {
     pub fn clear(&mut self) {
-        self.states.iter_mut().for_each(|states| states.clear());
+        self.states.iter_mut().for_each(super::state::States::clear);
     }
 
     pub fn states(&self, episode: &Episode) -> ChapatyResult<&States> {
@@ -56,6 +56,10 @@ impl Ledger {
             .all_closed())
     }
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "constructor consumes the capacity hint to pre-size the ledger's internal vectors"
+    )]
     pub fn with_capacity(capacity: LedgerCapacityHint) -> Self {
         let mut states = Vec::with_capacity(capacity.expected_episodes);
         let mut equity_curves = Vec::with_capacity(capacity.expected_episodes);
@@ -102,14 +106,14 @@ impl Ledger {
             // C. Application
             let result = match action {
                 Action::Open(cmd) => states.open(market_id, cmd, &market_view),
-                Action::Modify(cmd) => states.modify(cmd),
-                Action::MarketClose(cmd) => states.market_close(cmd, &market_view),
-                Action::Cancel(cmd) => states.cancel(cmd, &market_view),
+                Action::Modify(cmd) => states.modify(&cmd),
+                Action::MarketClose(cmd) => states.market_close(&cmd, &market_view),
+                Action::Cancel(cmd) => states.cancel(&cmd, &market_view),
             };
 
             // D. Trace the Outcome
             match result {
-                Ok(_) => {
+                Ok(()) => {
                     // For Command Sourcing, an "Applied" log confirms the state
                     // machine accepted the transition.
                     tracing::debug!(outcome = "applied", "State Transition Successful");
@@ -132,9 +136,9 @@ impl Ledger {
 
     /// Performs Mark-to-Market updates on all active and pending positions.
     #[tracing::instrument(skip(self, ctx), fields(ep_id = %ep.id().0, ts = %ctx.market.current_timestamp()))]
-    pub fn apply_updates(&mut self, ep: &Episode, ctx: UpdateCtx) -> ChapatyResult<()> {
+    pub fn apply_updates(&mut self, ep: &Episode, ctx: &UpdateCtx) -> ChapatyResult<()> {
         self.states_mut(ep)?
-            .update_all_live_trades(&ctx, |m_id, result| {
+            .update_all_live_trades(ctx, |m_id, result| {
                 match result {
                     Ok(exit_event) => {
                         // Log Lifecycle Events
@@ -189,17 +193,22 @@ impl Ledger {
             .map(|ec| ec.timestamps.len())
             .sum();
 
-        let mut episode_ids = Vec::<u32>::with_capacity(total_rows);
+        let mut episode_ids = Vec::<u64>::with_capacity(total_rows);
         let mut timestamps = Vec::<i64>::with_capacity(total_rows);
         let mut pnls = Vec::<f64>::with_capacity(total_rows);
 
         for (ep_idx, curve) in self.equity_curves.iter().enumerate() {
-            let ep_id = ep_idx as u32;
+            let ep_id = ep_idx as u64;
             let len = curve.timestamps.len();
             let offset = pnls.last().copied().unwrap_or(0.0);
 
             episode_ids.extend(std::iter::repeat_n(ep_id, len));
-            timestamps.extend(curve.timestamps.iter().map(|ts| ts.timestamp_micros()));
+            timestamps.extend(
+                curve
+                    .timestamps
+                    .iter()
+                    .map(chrono::DateTime::timestamp_micros),
+            );
             pnls.extend(curve.cumulative_pnl.iter().map(|&ep_pnl| offset + ep_pnl));
         }
 
@@ -270,7 +279,8 @@ impl Ledger {
 // Helper Structs Ledger Configuration
 // ================================================================================================
 
-/// Memory allocation hints for the Ledger to prevent reallocation during the hot loop.
+/// Memory allocation hints for the Ledger to prevent reallocation during the
+/// hot loop.
 #[derive(Debug, Clone)]
 pub struct LedgerCapacityHint {
     /// The maximum number of episodes expected in the epoch.
@@ -284,8 +294,9 @@ pub struct LedgerCapacityHint {
     /// correct internal memory reserved for active and pending trades.
     pub prototype_states: States,
 
-    /// The maximum expected length of the time-series (e.g., longest data stream).
-    /// Determines the internal capacity reserved for each episode's `EquityCurve`.
+    /// The maximum expected length of the time-series (e.g., longest data
+    /// stream). Determines the internal capacity reserved for each
+    /// episode's `EquityCurve`.
     pub equity_curve_length: usize,
 }
 
@@ -327,7 +338,7 @@ struct JournalEntry {
     exchange: Exchange,
     symbol: Symbol,
     market_type: MarketType,
-    trade_type: TradeType,
+    trade_type: TradeKind,
     entry_price: Price,
     stop_loss: Option<Price>,
     take_profit: Option<Price>,
@@ -347,8 +358,9 @@ struct JournalEntry {
 
 /// Column-oriented, tabular representation of a ledger entry set.
 ///
-/// This is the transposed struct of array (SoA) equivalent of `Vec<LedgerEntry>`,
-/// optimized for columnar processing, serialization, and analysis.
+/// This is the transposed struct of array (`SoA`) equivalent of
+/// `Vec<LedgerEntry>`, optimized for columnar processing, serialization, and
+/// analysis.
 #[derive(Default, Debug)]
 struct JournalSoA {
     episode_id: Vec<EpisodeId>,
@@ -359,7 +371,7 @@ struct JournalSoA {
     exchange: Vec<Exchange>,
     symbol: Vec<Symbol>,
     market_type: Vec<MarketType>,
-    trade_type: Vec<TradeType>,
+    trade_type: Vec<TradeKind>,
     entry_price: Vec<Price>,
     stop_loss: Vec<Option<Price>>,
     take_profit: Vec<Option<Price>>,
@@ -629,10 +641,10 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
 
     fn try_from(log_entry: LedgerEntry<'a>) -> ChapatyResult<Self> {
         let market_id = log_entry.market_id;
-        let symbol = &market_id.symbol;
+        let symbol = market_id.symbol;
         let state = log_entry.state;
 
-        Ok(JournalEntry {
+        Ok(Self {
             // === Identifiers ===
             episode_id: log_entry.episode,
             trade_id: state.trade_id(),
@@ -747,24 +759,33 @@ impl TryFrom<JournalSoA> for DataFrame {
     }
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "error-mapping helper consumes the owned error to convert it into a ChapatyError"
+)]
 fn polars_to_chapaty_error(e: PolarsError) -> ChapatyError {
     DataError::DataFrame(e.to_string()).into()
 }
 
 fn ep_not_found_err(episode: &Episode) -> ChapatyError {
     ChapatyError::System(SystemError::IndexOutOfBounds(format!(
-        "Episode {:?} not present in EpisodeLog",
-        episode
+        "Episode {episode:?} not present in EpisodeLog"
     )))
 }
 
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::collections::HashSet;
 
     use polars::prelude::SchemaExt;
     use strum::IntoEnumIterator;
 
+    use super::*;
     use crate::{
         data::{
             domain::{Period, SpotPair},
@@ -780,8 +801,6 @@ mod test {
         sorted_vec_map::SortedVecMap,
     };
 
-    use super::*;
-
     // ============================================================================
     // Test Helpers
     // ============================================================================
@@ -791,8 +810,9 @@ mod test {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    /// A lightweight wrapper around the heavy SimulationData.
-    /// It allows us to create a valid MarketView with a simple (low, high, close) API.
+    /// A lightweight wrapper around the heavy `SimulationData`.
+    /// It allows us to create a valid `MarketView` with a simple (low, high,
+    /// close) API.
     struct MarketFixture {
         sim_data: SimulationData,
         cursor: CursorGroup,
@@ -813,7 +833,7 @@ mod test {
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
-                open: Price((low + high) / 2.0),
+                open: Price(f64::midpoint(low, high)),
                 high: Price(high),
                 low: Price(low),
                 close: Price(close),
@@ -829,11 +849,11 @@ mod test {
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
-                .build(EnvConfig::default())
+                .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+            let cursor = CursorGroup::new(&sim_data);
 
             Self { sim_data, cursor }
         }
@@ -843,8 +863,12 @@ mod test {
         }
     }
 
-    /// Creates a minimal JournalEntry for testing transformations.
-    /// This is the core helper for white-box testing of JournalSoA.
+    /// Creates a minimal `JournalEntry` for testing transformations.
+    /// This is the core helper for white-box testing of `JournalSoA`.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "test helper converts a small f64 pnl into integer ticks; fixture values are tiny and exact"
+    )]
     fn sample_journal_entry(
         episode: usize,
         trade_id: i64,
@@ -860,7 +884,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(50000.0),
             stop_loss: Some(Price(49000.0)),
             take_profit: Some(Price(52000.0)),
@@ -891,7 +915,8 @@ mod test {
         }
     }
 
-    /// Populates a JournalSoA with a single entry (helper to reduce boilerplate).
+    /// Populates a `JournalSoA` with a single entry (helper to reduce
+    /// boilerplate).
     fn populate_soa_single(soa: &mut JournalSoA, entry: JournalEntry) {
         soa.episode_id.push(entry.episode_id);
         soa.trade_id.push(entry.trade_id);
@@ -1016,7 +1041,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::EthUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Short,
+            trade_type: TradeKind::Short,
             entry_price: Price(3000.0),
             stop_loss: None,
             take_profit: None,
@@ -1092,7 +1117,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(48000.0), // Limit price
             stop_loss: None,
             take_profit: None,
@@ -1155,7 +1180,7 @@ mod test {
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
             market_type: MarketType::Spot,
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             entry_price: Price(47000.0),
             stop_loss: None,
             take_profit: None,
@@ -1224,14 +1249,14 @@ mod test {
         assert_eq!(df.height(), 3, "Should have 3 rows");
 
         // Verify episode distribution
-        let episodes: Vec<u32> = df
+        let episodes = df
             .column(JournalCol::EpisodeId.as_str())
             .unwrap()
             .u32()
             .unwrap()
-            .into_iter()
+            .iter()
             .flatten()
-            .collect();
+            .collect::<Vec<_>>();
         assert_eq!(episodes.iter().filter(|&&e| e == 0).count(), 2);
         assert_eq!(episodes.iter().filter(|&&e| e == 1).count(), 1);
     }
@@ -1267,12 +1292,11 @@ mod test {
             let expected_dtype = field.dtype();
             let actual_dtype = actual_schema
                 .get(col_name)
-                .unwrap_or_else(|| panic!("Column '{}' missing", col_name));
+                .unwrap_or_else(|| panic!("Column '{col_name}' missing"));
 
             assert_eq!(
                 actual_dtype, expected_dtype,
-                "Type mismatch for '{}': expected {:?}, got {:?}",
-                col_name, expected_dtype, actual_dtype
+                "Type mismatch for '{col_name}': expected {expected_dtype:?}, got {actual_dtype:?}"
             );
         }
     }
@@ -1294,7 +1318,12 @@ mod test {
         let row_id_col = df
             .column(JournalCol::RowId.as_str())
             .expect("RowId column missing");
-        let row_ids: Vec<u32> = row_id_col.u32().unwrap().into_iter().flatten().collect();
+        let row_ids = row_id_col
+            .u32()
+            .unwrap()
+            .iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         assert_eq!(
             row_ids,
@@ -1345,8 +1374,8 @@ mod test {
         let pnl0 = ledger.episode_pnl(&ep0).expect("Episode 0 should exist");
         let pnl1 = ledger.episode_pnl(&ep1).expect("Episode 1 should exist");
 
-        assert_eq!(pnl0, 0.0, "Initial PnL should be 0");
-        assert_eq!(pnl1, 0.0, "Initial PnL should be 0");
+        assert_f64_eq!(pnl0, 0.0, "Initial PnL should be 0");
+        assert_f64_eq!(pnl1, 0.0, "Initial PnL should be 0");
     }
 
     #[test]
@@ -1580,16 +1609,15 @@ mod test {
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
         };
 
-        // 3. Create two actions:
-        //    Action A (Invalid): OpenCmd with Quantity(0.0) - fails validate()
-        //    Action B (Valid):   OpenCmd with valid Quantity - passes validate()
-        //                        but will fail in handle_open because no price data
-        //                        (still exercises the rejection path at state level)
+        // 3. Create two actions: Action A (Invalid): OpenCmd with Quantity(0.0) - fails
+        //    validate() Action B (Valid):   OpenCmd with valid Quantity - passes
+        //    validate() but will fail in handle_open because no price data (still
+        //    exercises the rejection path at state level)
 
         let invalid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(0.0), // <-- Invalid: will fail validate()
             entry_price: None,
             stop_loss: None,
@@ -1599,7 +1627,7 @@ mod test {
         let valid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(2),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(1.0),           // <-- Valid quantity
             entry_price: Some(Price(50000.0)), // Limit order to avoid price lookup
             stop_loss: Some(Price(49000.0)),
@@ -1750,7 +1778,7 @@ mod test {
 
         let result = soa.episode_ids().expect("Conversion should succeed");
 
-        assert_eq!(result, vec![0u32, 1, 100]);
+        assert_eq!(result, vec![0_u32, 1, 100]);
     }
 
     #[test]
@@ -1848,7 +1876,7 @@ mod test {
         let ticks = soa.realized_return_ticks();
         let dollars = soa.realized_return_usd();
 
-        assert_eq!(ticks, vec![100i64, -50, 0]);
+        assert_eq!(ticks, vec![100_i64, -50, 0]);
         assert_eq!(dollars, vec![1000.0, -500.0, 0.0]);
     }
 
@@ -1884,8 +1912,8 @@ mod test {
         let loss_usd = soa.expected_loss_usd();
         let profit_usd = soa.expected_profit_usd();
 
-        assert_eq!(loss_ticks, vec![Some(100i64), None]);
-        assert_eq!(profit_ticks, vec![Some(200i64), None]);
+        assert_eq!(loss_ticks, vec![Some(100_i64), None]);
+        assert_eq!(profit_ticks, vec![Some(200_i64), None]);
         assert_eq!(loss_usd, vec![Some(1000.0), None]);
         assert_eq!(profit_usd, vec![Some(2000.0), None]);
     }
@@ -1916,8 +1944,8 @@ mod test {
     #[test]
     fn test_journal_soa_trade_types() {
         let mut soa = JournalSoA::default();
-        soa.trade_type.push(TradeType::Long);
-        soa.trade_type.push(TradeType::Short);
+        soa.trade_type.push(TradeKind::Long);
+        soa.trade_type.push(TradeKind::Short);
 
         let result = soa.trade_types();
 
@@ -1997,14 +2025,14 @@ mod test {
 
         assert_eq!(df.height(), 4, "Should have 4 trades");
 
-        let states: HashSet<_> = df
+        let states = df
             .column(JournalCol::TradeState.as_str())
             .unwrap()
             .str()
             .unwrap()
-            .into_iter()
+            .iter()
             .flatten()
-            .collect();
+            .collect::<HashSet<_>>();
 
         assert!(states.contains("closed"));
         assert!(states.contains("active"));
@@ -2145,8 +2173,8 @@ mod test {
         // terminal value (100.0), bridging over the empty Partition 1 entirely.
         // =========================================================================
         let expected_df = df![
-            EquityCurveCol::RowId.as_str() => [0u32, 1, 2, 3],
-            EquityCurveCol::EpisodeId.as_str() => [0u32, 0, 2, 2],
+            EquityCurveCol::RowId.as_str() => [0_u32, 1, 2, 3],
+            EquityCurveCol::EpisodeId.as_str() => [0_u32, 0, 2, 2],
             EquityCurveCol::Timestamp.as_str() => [
                 ts("2026-01-01T10:00:00Z").timestamp_micros(),
                 ts("2026-01-01T11:00:00Z").timestamp_micros(),
@@ -2170,9 +2198,7 @@ mod test {
 
         assert!(
             df.equals(&expected_df),
-            "Global PnL stitching failed to correctly bridge empty partitions.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
-            df,
-            expected_df
+            "Global PnL stitching failed to correctly bridge empty partitions.\n\nActual:\n{df:?}\n\nExpected:\n{expected_df:?}"
         );
     }
 
@@ -2198,8 +2224,8 @@ mod test {
         let df = ledger.equity_curve_df().expect("Failed to generate DF");
 
         let expected_df = df![
-            EquityCurveCol::RowId.as_str()         => [0u32, 1], // RowIds must be assigned AFTER sorting
-            EquityCurveCol::EpisodeId.as_str()     => [0u32, 0],
+            EquityCurveCol::RowId.as_str()         => [0_u32, 1], // RowIds must be assigned AFTER sorting
+            EquityCurveCol::EpisodeId.as_str()     => [0_u32, 0],
             EquityCurveCol::Timestamp.as_str()     => [
                 ts("2026-01-01T10:00:00Z").timestamp_micros(), // Earlier time should be index 0
                 ts("2026-01-01T12:00:00Z").timestamp_micros(),
@@ -2221,9 +2247,7 @@ mod test {
         // 3. Assert full DataFrame equality (Values, Types, and Order)
         assert!(
             df.equals(&expected_df),
-            "DataFrame failed sorting, schema validation, or RowId assignment.\n\nActual:\n{:?}\n\nExpected:\n{:?}",
-            df,
-            expected_df
+            "DataFrame failed sorting, schema validation, or RowId assignment.\n\nActual:\n{df:?}\n\nExpected:\n{expected_df:?}"
         );
     }
 }

@@ -1,5 +1,3 @@
-use std::num::ParseIntError;
-
 use indicatif::style::TemplateError;
 use thiserror::Error;
 
@@ -88,7 +86,10 @@ pub enum DataError {
     TimestampConversion(String),
 
     #[error("Failed to parse integer: {0}")]
-    ParseInt(#[from] ParseIntError),
+    ParseInt(#[from] std::num::ParseIntError),
+
+    #[error("Integer conversion failed: {0}")]
+    IntConversion(#[from] std::num::TryFromIntError),
 
     #[error("Failed to parse float: {0}")]
     ParseFloat(#[from] std::num::ParseFloatError),

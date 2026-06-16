@@ -1,6 +1,22 @@
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
+//! A sorted map optimized for small collections.
+//!
+//! This module provides [`SortedVecMap`], a map backed by a sorted `SmallVec`.
+//! It keeps keys in deterministic sorted order, making iteration predictable
+//! and stable while remaining efficient for small datasets.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use chapaty::sorted_vec_map::SortedVecMap;
+//!
+//! let mut map = SortedVecMap::new();
+//! map.insert("zebra", 3);
+//! map.insert("apple", 1);
+//!
+//! let keys = map.keys().copied().collect::<Vec<_>>();
+//! assert_eq!(keys, vec!["apple", "zebra"]);
+//! ```
+
 use std::{
     cmp::Ordering,
     collections::HashMap,
@@ -9,15 +25,21 @@ use std::{
     ops::{Index, IndexMut, Range},
 };
 
-/// A map that maintains entries in sorted order, optimized for small collections.
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
+
+/// A map that maintains entries in sorted order, optimized for small
+/// collections.
 ///
-/// `SortedVecMap` uses a sorted `SmallVec` internally, providing performance for
-/// small datasets (typically < 100 elements).
+/// `SortedVecMap` uses a sorted `SmallVec` internally, providing performance
+/// for small datasets (typically < 100 elements).
 /// For larger collections, consider using `BTreeMap` or `HashMap`.
 ///
 /// # Type Parameters
 ///
-/// - `N`: Inline capacity (default: 8). Number of entries stored on the stack before heap allocation.
+/// - `N`: Inline capacity (default: 8). Number of entries stored on the stack
+///   before heap allocation.
 ///
 /// # Performance Characteristics
 ///
@@ -67,6 +89,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let map: SortedVecMap<i32, String> = SortedVecMap::new();
     /// assert!(map.is_empty());
     /// ```
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             inner: SmallVec::new_const(),
@@ -85,6 +108,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let map: SortedVecMap<i32, String> = SortedVecMap::with_capacity(10);
     /// assert!(map.capacity() >= 10);
     /// ```
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: SmallVec::with_capacity(capacity),
@@ -238,7 +262,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
                 Ordering::Equal => {
                     return Some(std::mem::replace(v, value));
                 }
-                Ordering::Greater => continue,
+                Ordering::Greater => {}
             }
         }
         // Key is greater than all existing keys
@@ -264,7 +288,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
             .map(|pos| self.inner.remove(pos).1)
     }
 
-    /// Removes a key from the map, returning the stored key and value if present.
+    /// Removes a key from the map, returning the stored key and value if
+    /// present.
     ///
     /// # Examples
     ///
@@ -302,7 +327,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
         self.inner.retain_mut(|(k, v)| f(k, v));
     }
 
-    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    /// Gets the given key's corresponding entry in the map for in-place
+    /// manipulation.
     ///
     /// # Examples
     ///
@@ -330,7 +356,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
         }
     }
 
-    /// Merges another map into this one, consuming both maps and maintaining sorted order.
+    /// Merges another map into this one, consuming both maps and maintaining
+    /// sorted order.
     ///
     /// All key-value pairs from `other` are moved into `self`. Duplicate keys
     /// are deduplicated (the value from `other` takes precedence).
@@ -348,6 +375,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// let merged = map1.merge(map2);
     /// assert_eq!(merged.len(), 2);
     /// ```
+    #[must_use]
     pub fn merge(mut self, mut other: Self) -> Self
     where
         K: Eq,
@@ -359,7 +387,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 
     /// Appends all elements from another map into this one.
     ///
-    /// After appending, the map is re-sorted and deduplicated to maintain invariants.
+    /// After appending, the map is re-sorted and deduplicated to maintain
+    /// invariants.
     ///
     /// # Examples
     ///
@@ -474,8 +503,8 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 
     /// Sorts the internal storage and removes duplicate keys.
     ///
-    /// This is called automatically by methods that could break the sort invariant.
-    /// You typically don't need to call this manually.
+    /// This is called automatically by methods that could break the sort
+    /// invariant. You typically don't need to call this manually.
     fn sort_and_dedup(&mut self)
     where
         K: Eq,
@@ -532,7 +561,8 @@ impl<'a, K: Ord, V> Entry<'a, K, V> {
         }
     }
 
-    /// Ensures a value is in the entry by inserting the result of the function if empty.
+    /// Ensures a value is in the entry by inserting the result of the function
+    /// if empty.
     ///
     /// # Examples
     ///
@@ -581,6 +611,7 @@ impl<'a, K: Ord, V> Entry<'a, K, V> {
     ///    .or_insert(42);
     /// assert_eq!(map[&"poneyland"], 42);
     /// ```
+    #[must_use]
     pub fn and_modify<F: FnOnce(&mut V)>(mut self, f: F) -> Self {
         match &mut self {
             Entry::Occupied(e) => f(e.get_mut()),
@@ -633,7 +664,7 @@ impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
     /// let mut map: SortedVecMap<&str, u32> = SortedVecMap::new();
     /// assert_eq!(map.entry("poneyland").key(), &"poneyland");
     /// ```
-    pub fn key(&self) -> &K {
+    pub const fn key(&self) -> &K {
         &self.key
     }
 
@@ -653,7 +684,7 @@ impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
         self.key
     }
 
-    /// Sets the value of the entry with the VacantEntry's key,
+    /// Sets the value of the entry with the `VacantEntry`'s key,
     /// and returns a mutable reference to it.
     ///
     /// # Examples
@@ -695,6 +726,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// map.entry("poneyland").or_insert(12);
     /// assert_eq!(map.entry("poneyland").key(), &"poneyland");
     /// ```
+    #[must_use]
     pub fn key(&self) -> &K {
         &self.map.inner[self.position].0
     }
@@ -712,6 +744,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     ///     assert_eq!(o.get(), &12);
     /// }
     /// ```
+    #[must_use]
     pub fn get(&self) -> &V {
         &self.map.inner[self.position].1
     }
@@ -740,8 +773,8 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
         &mut self.map.inner[self.position].1
     }
 
-    /// Converts the `OccupiedEntry` into a mutable reference to the value in the entry
-    /// with a lifetime bound to the map itself.
+    /// Converts the `OccupiedEntry` into a mutable reference to the value in
+    /// the entry with a lifetime bound to the map itself.
     ///
     /// # Examples
     ///
@@ -755,6 +788,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert_eq!(map[&"poneyland"], 22);
     /// ```
+    #[must_use]
     pub fn into_mut(self) -> &'a mut V {
         &mut self.map.inner[self.position].1
     }
@@ -791,6 +825,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert!(!map.contains_key(&"poneyland"));
     /// ```
+    #[must_use]
     pub fn remove(self) -> V {
         self.map.inner.remove(self.position).1
     }
@@ -809,6 +844,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
     /// }
     /// assert!(!map.contains_key(&"poneyland"));
     /// ```
+    #[must_use]
     pub fn remove_entry(self) -> (K, V) {
         self.map.inner.remove(self.position)
     }
@@ -817,10 +853,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
 // ================================================================================================
 // Standard trait implementations
 // ================================================================================================
-impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V> {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.inner.extend(iter);
         self.sort_and_dedup();
@@ -855,10 +888,7 @@ impl<'a, K, V> IntoIterator for &'a mut SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
         let mut map = Self {
             inner: iter.into_iter().collect(),
@@ -868,10 +898,7 @@ where
     }
 }
 
-impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V> {
     fn from(hash_map: HashMap<K, V>) -> Self {
         let mut map = Self {
             inner: hash_map.into_iter().collect(),
@@ -915,10 +942,7 @@ impl<K: Hash, V: Hash> Hash for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V> {
     fn from(arr: [(K, V); N]) -> Self {
         let mut map = Self {
             inner: SmallVec::from_iter(arr),
@@ -928,10 +952,7 @@ where
     }
 }
 
-impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V>
-where
-    K: Eq,
-{
+impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V> {
     fn from(vec: Vec<(K, V)>) -> Self {
         let mut map = Self {
             inner: SmallVec::from_vec(vec),
@@ -944,12 +965,20 @@ where
 impl<K: Ord, V> Index<&K> for SortedVecMap<K, V> {
     type Output = V;
 
+    #[expect(
+        clippy::expect_used,
+        reason = "Index panics on a missing key by contract, mirroring the standard library map types"
+    )]
     fn index(&self, key: &K) -> &Self::Output {
         self.get(key).expect("key not found")
     }
 }
 
 impl<K: Ord, V> IndexMut<&K> for SortedVecMap<K, V> {
+    #[expect(
+        clippy::expect_used,
+        reason = "IndexMut panics on a missing key by contract, mirroring the standard library map types"
+    )]
     fn index_mut(&mut self, key: &K) -> &mut Self::Output {
         self.get_mut(key).expect("key not found")
     }

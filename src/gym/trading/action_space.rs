@@ -11,7 +11,7 @@ use crate::{
         trading::{
             action::{Action, Actions, MarketCloseCmd, ModifyCmd, OpenCmd},
             state::{State, States},
-            types::TradeType,
+            types::TradeKind,
         },
     },
 };
@@ -23,6 +23,7 @@ pub struct ActionSpace<'env> {
 }
 
 impl<'env> ActionSpace<'env> {
+    #[must_use]
     pub fn new(states: &'env States, view: MarketView<'env>) -> Self {
         Self {
             states,
@@ -31,6 +32,10 @@ impl<'env> ActionSpace<'env> {
         }
     }
 
+    /// Samples one action per market according to the configured policy.
+    ///
+    /// # Errors
+    /// Returns an error when a sampled command fails intrinsic validation.
     pub fn sample(&mut self) -> ChapatyResult<Actions> {
         let mut action_list = Vec::new();
 
@@ -74,13 +79,13 @@ impl<'env> ActionSpace<'env> {
                         // 3. Stochastic SL/TP based on Trade Direction
                         // We sample a percentage distance, not a fixed scalar.
                         let (sl_price, tp_price) = match state.trade_type() {
-                            TradeType::Long => {
+                            TradeKind::Long => {
                                 // Long: SL is BELOW (-5% to -15%), TP is ABOVE (+5% to +25%)
                                 let sl_pct = self.rng.random_range(0.85..0.95);
                                 let tp_pct = self.rng.random_range(1.05..1.25);
                                 (base_price * sl_pct, base_price * tp_pct)
                             }
-                            TradeType::Short => {
+                            TradeKind::Short => {
                                 // Short: SL is ABOVE (+5% to +15%), TP is BELOW (-5% to -25%)
                                 let sl_pct = self.rng.random_range(1.05..1.15);
                                 let tp_pct = self.rng.random_range(0.75..0.95);
@@ -111,7 +116,7 @@ impl<'env> ActionSpace<'env> {
                 if self.rng.random_bool(0.20) {
                     // A. Get Current Price
                     if let Ok(current_price_struct) =
-                        self.view.try_resolved_close_price(&market_id.symbol)
+                        self.view.try_resolved_close_price(market_id.symbol)
                     {
                         let current_price = current_price_struct.0;
 
@@ -138,9 +143,9 @@ impl<'env> ActionSpace<'env> {
 
                         let new_uid = TradeId(self.rng.random());
                         let side = if self.rng.random_bool(0.5) {
-                            TradeType::Long
+                            TradeKind::Long
                         } else {
-                            TradeType::Short
+                            TradeKind::Short
                         };
 
                         action_list.push((
@@ -166,6 +171,13 @@ impl<'env> ActionSpace<'env> {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use chrono::{DateTime, Utc};
+
     use super::*;
     use crate::{
         data::{
@@ -183,7 +195,6 @@ mod tests {
         },
         sorted_vec_map::SortedVecMap,
     };
-    use chrono::{DateTime, Utc};
 
     // ========================================================================
     // 1. Fixtures & Helpers
@@ -228,7 +239,7 @@ mod tests {
         let cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(uid),
-            trade_type: TradeType::Long,
+            trade_type: TradeKind::Long,
             quantity: Quantity(qty),
             // Market Order (None) -> handle_open will resolve price from 'view'
             entry_price: None,
@@ -268,11 +279,11 @@ mod tests {
 
         let streams = Streams::default().with_ohlcv(map);
         let sim_data = SimulationDataBuilder::new(streams)
-            .build(EnvConfig::default())
+            .build(&EnvConfig::default())
             .expect("Failed to build sim data");
 
         // Cursor initializes at the start of data
-        let cursor = CursorGroup::new(&sim_data).expect("Failed to create cursor");
+        let cursor = CursorGroup::new(&sim_data);
 
         (sim_data, cursor)
     }
@@ -320,7 +331,7 @@ mod tests {
                     Action::MarketClose(_) | Action::Modify(_) => {
                         panic!("Generated Close/Modify command for empty state!");
                     }
-                    _ => {}
+                    Action::Cancel(_) => {}
                 }
             }
         }
@@ -369,7 +380,7 @@ mod tests {
                     Action::Open(_) => {
                         panic!("Generated Open command when position already exists!");
                     }
-                    _ => {}
+                    Action::Cancel(_) => {}
                 }
             }
         }
@@ -402,8 +413,9 @@ mod tests {
                 .expect("sampling action space should succeed");
 
             if let Some((_, Action::Open(cmd))) = actions.into_sorted_iter().next() {
-                assert_eq!(
-                    cmd.quantity.0, 1.0,
+                assert_f64_eq!(
+                    cmd.quantity.0,
+                    1.0,
                     "Futures should clamp to min 1.0 contract"
                 );
                 found = true;

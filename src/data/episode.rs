@@ -2,10 +2,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::{
-    error::{ChapatyError, ChapatyResult, SystemError},
-    impl_add_sub_mul_div_primitive, impl_from_primitive,
-};
+use crate::error::{ChapatyError, ChapatyResult, SystemError};
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
@@ -34,6 +31,7 @@ impl Default for Episode {
 }
 
 impl Episode {
+    #[must_use]
     pub fn is_episode_end(&self, current_ts: DateTime<Utc>) -> bool {
         if self.length.is_infinite() {
             return false;
@@ -41,25 +39,29 @@ impl Episode {
         current_ts >= self.end
     }
 
-    pub fn id(&self) -> EpisodeId {
+    #[must_use]
+    pub const fn id(&self) -> EpisodeId {
         self.id
     }
 
-    pub fn length(&self) -> EpisodeLength {
+    #[must_use]
+    pub const fn length(&self) -> EpisodeLength {
         self.length
     }
 
-    pub fn start(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn start(&self) -> DateTime<Utc> {
         self.start
     }
 
-    pub fn end(&self) -> DateTime<Utc> {
+    #[must_use]
+    pub const fn end(&self) -> DateTime<Utc> {
         self.end
     }
 }
 
 impl Episode {
-    pub(crate) fn next(self, start: DateTime<Utc>) -> Episode {
+    pub(crate) fn next(self, start: DateTime<Utc>) -> Self {
         let length = self.length();
         Self {
             id: EpisodeId(self.id().0 + 1),
@@ -77,7 +79,7 @@ pub(crate) struct EpisodeBuilder {
 }
 
 impl EpisodeBuilder {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             id: EpisodeId(0),
             length: None,
@@ -85,14 +87,14 @@ impl EpisodeBuilder {
         }
     }
 
-    pub(crate) fn with_length(self, length: EpisodeLength) -> Self {
+    pub(crate) const fn with_length(self, length: EpisodeLength) -> Self {
         Self {
             length: Some(length),
             ..self
         }
     }
 
-    pub(crate) fn with_start(self, start: DateTime<Utc>) -> Self {
+    pub(crate) const fn with_start(self, start: DateTime<Utc>) -> Self {
         Self {
             start: Some(start),
             ..self
@@ -160,36 +162,44 @@ pub enum EpisodeLength {
 }
 
 impl EpisodeLength {
-    pub fn is_infinite(&self) -> bool {
-        matches!(self, EpisodeLength::Infinite)
+    #[must_use]
+    pub const fn is_infinite(&self) -> bool {
+        matches!(self, Self::Infinite)
     }
 
-    pub fn is_day(&self) -> bool {
-        matches!(self, EpisodeLength::Day)
+    #[must_use]
+    pub const fn is_day(&self) -> bool {
+        matches!(self, Self::Day)
     }
 
-    pub fn is_week(&self) -> bool {
-        matches!(self, EpisodeLength::Week)
+    #[must_use]
+    pub const fn is_week(&self) -> bool {
+        matches!(self, Self::Week)
     }
 
-    pub fn is_month(&self) -> bool {
-        matches!(self, EpisodeLength::Month)
+    #[must_use]
+    pub const fn is_month(&self) -> bool {
+        matches!(self, Self::Month)
     }
 
-    pub fn is_quarter(&self) -> bool {
-        matches!(self, EpisodeLength::Quarter)
+    #[must_use]
+    pub const fn is_quarter(&self) -> bool {
+        matches!(self, Self::Quarter)
     }
 
-    pub fn is_semi_annual(&self) -> bool {
-        matches!(self, EpisodeLength::SemiAnnual)
+    #[must_use]
+    pub const fn is_semi_annual(&self) -> bool {
+        matches!(self, Self::SemiAnnual)
     }
 
-    pub fn is_annual(&self) -> bool {
-        matches!(self, EpisodeLength::Annual)
+    #[must_use]
+    pub const fn is_annual(&self) -> bool {
+        matches!(self, Self::Annual)
     }
 
-    pub fn max_episodes(&self) -> usize {
-        use EpisodeLength::*;
+    #[must_use]
+    pub const fn max_episodes(&self) -> usize {
+        use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
 
         match self {
             Day => 366,
@@ -214,25 +224,35 @@ impl EpisodeLength {
     ///
     /// # Returns
     ///
-    /// The `DateTime<Utc>` marking the beginning of the next period, which is the
-    /// exclusive end of the current episode. For `Infinite` length, it returns `DateTime::MAX_UTC`.
-    fn calculate_end(&self, start: DateTime<Utc>) -> DateTime<Utc> {
-        use EpisodeLength::*;
+    /// The `DateTime<Utc>` marking the beginning of the next period, which is
+    /// the exclusive end of the current episode. For `Infinite` length, it
+    /// returns `DateTime::MAX_UTC`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if internal calendar arithmetic produces an invalid date or time,
+    /// which should not occur given the hardcoded valid calendar values used
+    /// (months 1–12, day 1, midnight 00:00:00).
+    #[expect(
+        clippy::expect_used,
+        reason = "episode boundaries are built from hardcoded valid month-day values at midnight, which can never be out of Chronos range"
+    )]
+    fn calculate_end(self, start: DateTime<Utc>) -> DateTime<Utc> {
+        use EpisodeLength::{Annual, Day, Infinite, Month, Quarter, SemiAnnual, Week};
         match self {
             Infinite => DateTime::<Utc>::MAX_UTC,
             Day => {
                 let start_of_next_day = (start.date_naive() + Duration::days(1))
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_day, Utc)
             }
             Week => {
-                // Calculates the start of the next week (Monday).
                 let days_to_next_monday = 7 - start.weekday().num_days_from_monday();
                 let start_of_next_week = (start.date_naive()
-                    + Duration::days(days_to_next_monday as i64))
+                    + Duration::days(i64::from(days_to_next_monday)))
                 .and_hms_opt(0, 0, 0)
-                .unwrap();
+                .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_week, Utc)
             }
             Month => {
@@ -243,9 +263,9 @@ impl EpisodeLength {
                     (year, month + 1)
                 };
                 let start_of_next_month = NaiveDate::from_ymd_opt(next_month_year, next_month, 1)
-                    .unwrap()
+                    .expect("month is always 1-12 and day is 1")
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_month, Utc)
             }
             Quarter => {
@@ -256,13 +276,13 @@ impl EpisodeLength {
                     4..=6 => (year, 7),
                     7..=9 => (year, 10),
                     10..=12 => (year + 1, 1),
-                    _ => unreachable!(),
+                    _ => unreachable!("month is always 1-12"),
                 };
                 let start_of_next_quarter =
                     NaiveDate::from_ymd_opt(next_quarter_start_year, next_quarter_start_month, 1)
-                        .unwrap()
+                        .expect("quarter start month is always valid")
                         .and_hms_opt(0, 0, 0)
-                        .unwrap();
+                        .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_quarter, Utc)
             }
             SemiAnnual => {
@@ -272,25 +292,31 @@ impl EpisodeLength {
                     if month <= 6 { (year, 7) } else { (year + 1, 1) };
                 let start_of_next_period =
                     NaiveDate::from_ymd_opt(next_period_start_year, next_period_start_month, 1)
-                        .unwrap()
+                        .expect("semi-annual start month is always valid")
                         .and_hms_opt(0, 0, 0)
-                        .unwrap();
+                        .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_period, Utc)
             }
             Annual => {
                 let start_of_next_year = NaiveDate::from_ymd_opt(start.year() + 1, 1, 1)
-                    .unwrap()
+                    .expect("year + 1 with month 1 day 1 is always valid")
                     .and_hms_opt(0, 0, 0)
-                    .unwrap();
+                    .expect("midnight is always valid");
                 DateTime::from_naive_utc_and_offset(start_of_next_year, Utc)
             }
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
+    )]
     use chrono::TimeZone;
+
+    use super::*;
 
     // ============================================================================================
     // Helper Functions

@@ -18,7 +18,7 @@ use crate::{
 
 /// A trait for Protobuf messages that represent a batch of data
 pub trait ProtoBatch {
-    /// Converts this batch into a standardized Polars LazyFrame
+    /// Converts this batch into a standardized Polars `LazyFrame`
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame>;
 }
 
@@ -26,7 +26,7 @@ impl ProtoBatch for EconomicCalendarResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&economic_calendar_schema()),
+            None => return Ok(empty_lf(&economic_calendar_schema())),
         };
 
         let len = events.len();
@@ -49,7 +49,7 @@ impl ProtoBatch for EconomicCalendarResponse {
             data_sources.push(event.data_source);
             categories.push(event.category);
             event_timestamps.push(extract_timestamp(
-                &event.event_timestamp,
+                event.event_timestamp.as_ref(),
                 "event_timestamp",
             )?);
             news_types.push(event.news_type);
@@ -59,7 +59,7 @@ impl ProtoBatch for EconomicCalendarResponse {
             news_names.push(event.news_name);
             country_codes.push(event.country_code);
             currency_codes.push(event.currency_code);
-            importances.push(event.importance as i64);
+            importances.push(i64::from(event.importance));
             actuals.push(event.actual);
             forecasts.push(event.forecast);
             previouses.push(event.previous);
@@ -68,7 +68,7 @@ impl ProtoBatch for EconomicCalendarResponse {
         let df = df![
             CanonicalCol::DataSource.to_string() => data_sources,
             CanonicalCol::Category.to_string() => categories,
-            CanonicalCol::Timestamp.to_string() => event_timestamps,
+            CanonicalCol::PointInTime.to_string() => event_timestamps,
             CanonicalCol::NewsType.to_string() => news_types,
             CanonicalCol::NewsTypeConfidence.to_string() => news_type_confidences,
             CanonicalCol::NewsTypeSource.to_string() => news_type_sources,
@@ -85,7 +85,7 @@ impl ProtoBatch for EconomicCalendarResponse {
 
         let lf = df
             .lazy()
-            .with_column(col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )));
@@ -98,7 +98,7 @@ impl ProtoBatch for OhlcvFutureResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&ohlcv_future_schema()),
+            None => return Ok(empty_lf(&ohlcv_future_schema())),
         };
 
         let len = events.len();
@@ -111,14 +111,17 @@ impl ProtoBatch for OhlcvFutureResponse {
         let mut close_timestamps = Vec::with_capacity(len);
 
         for event in events {
-            open_timestamps.push(extract_timestamp(&event.open_timestamp, "open_timestamp")?);
+            open_timestamps.push(extract_timestamp(
+                event.open_timestamp.as_ref(),
+                "open_timestamp",
+            )?);
             opens.push(event.open);
             highs.push(event.high);
             lows.push(event.low);
             closes.push(event.close);
             volumes.push(event.volume);
             close_timestamps.push(extract_timestamp(
-                &event.close_timestamp,
+                event.close_timestamp.as_ref(),
                 "close_timestamp",
             )?);
         }
@@ -130,7 +133,7 @@ impl ProtoBatch for OhlcvFutureResponse {
             CanonicalCol::Low.to_string() => lows,
             CanonicalCol::Close.to_string() => closes,
             CanonicalCol::Volume.to_string() => volumes,
-            CanonicalCol::Timestamp.to_string() => close_timestamps,
+            CanonicalCol::PointInTime.to_string() => close_timestamps,
         ]
         .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
 
@@ -139,7 +142,7 @@ impl ProtoBatch for OhlcvFutureResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -153,7 +156,7 @@ impl ProtoBatch for OhlcvSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&ohlcv_spot_schema()),
+            None => return Ok(empty_lf(&ohlcv_spot_schema())),
         };
 
         let len = events.len();
@@ -170,14 +173,17 @@ impl ProtoBatch for OhlcvSpotResponse {
         let mut taker_buy_quote_asset_volumes = Vec::with_capacity(len);
 
         for event in events {
-            open_timestamps.push(extract_timestamp(&event.open_timestamp, "open_timestamp")?);
+            open_timestamps.push(extract_timestamp(
+                event.open_timestamp.as_ref(),
+                "open_timestamp",
+            )?);
             opens.push(event.open);
             highs.push(event.high);
             lows.push(event.low);
             closes.push(event.close);
             volumes.push(event.volume);
             close_timestamps.push(extract_timestamp(
-                &event.close_timestamp,
+                event.close_timestamp.as_ref(),
                 "close_timestamp",
             )?);
             quote_asset_volumes.push(event.quote_asset_volume);
@@ -193,7 +199,7 @@ impl ProtoBatch for OhlcvSpotResponse {
             CanonicalCol::Low.to_string() => lows,
             CanonicalCol::Close.to_string() => closes,
             CanonicalCol::Volume.to_string() => volumes,
-            CanonicalCol::Timestamp.to_string() => close_timestamps,
+            CanonicalCol::PointInTime.to_string() => close_timestamps,
             CanonicalCol::QuoteAssetVolume.to_string() => quote_asset_volumes,
             CanonicalCol::NumberOfTrades.to_string() => number_of_trades,
             CanonicalCol::TakerBuyBaseAssetVolume.to_string() => taker_buy_base_asset_volumes,
@@ -206,7 +212,7 @@ impl ProtoBatch for OhlcvSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -220,7 +226,7 @@ impl ProtoBatch for TradesSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&trades_spot_schema()),
+            None => return Ok(empty_lf(&trades_spot_schema())),
         };
 
         let len = events.len();
@@ -238,7 +244,7 @@ impl ProtoBatch for TradesSpotResponse {
             quantities.push(event.quantity);
             quote_quantities.push(event.quote_quantity);
             trade_timestamps.push(extract_timestamp(
-                &event.trade_timestamp,
+                event.trade_timestamp.as_ref(),
                 "trade_timestamp",
             )?);
             is_buyer_makers.push(event.is_buyer_maker);
@@ -250,7 +256,7 @@ impl ProtoBatch for TradesSpotResponse {
             CanonicalCol::Price.to_string() => prices,
             CanonicalCol::Volume.to_string() => quantities,
             CanonicalCol::QuoteAssetVolume.to_string() => quote_quantities,
-            CanonicalCol::Timestamp.to_string() => trade_timestamps,
+            CanonicalCol::PointInTime.to_string() => trade_timestamps,
             CanonicalCol::IsBuyerMaker.to_string() => is_buyer_makers,
             CanonicalCol::IsBestMatch.to_string() => is_best_matches,
         ]
@@ -258,7 +264,7 @@ impl ProtoBatch for TradesSpotResponse {
 
         let lf = df
             .lazy()
-            .with_column(col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            .with_column(col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )));
@@ -271,7 +277,7 @@ impl ProtoBatch for TpoFutureResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&tpo_future_schema()),
+            None => return Ok(empty_lf(&tpo_future_schema())),
         };
 
         let len = events.len();
@@ -282,8 +288,11 @@ impl ProtoBatch for TpoFutureResponse {
         let mut time_slot_counts = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             time_slot_counts.push(event.time_slot_count);
@@ -291,7 +300,7 @@ impl ProtoBatch for TpoFutureResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::TimeSlotCount.to_string() => time_slot_counts,
@@ -303,7 +312,7 @@ impl ProtoBatch for TpoFutureResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -317,7 +326,7 @@ impl ProtoBatch for TpoSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&tpo_spot_schema()),
+            None => return Ok(empty_lf(&tpo_spot_schema())),
         };
 
         let len = events.len();
@@ -328,8 +337,11 @@ impl ProtoBatch for TpoSpotResponse {
         let mut time_slot_counts = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             time_slot_counts.push(event.time_slot_count);
@@ -337,7 +349,7 @@ impl ProtoBatch for TpoSpotResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::TimeSlotCount.to_string() => time_slot_counts,
@@ -349,7 +361,7 @@ impl ProtoBatch for TpoSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -363,7 +375,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
     fn into_lazyframe(self) -> ChapatyResult<LazyFrame> {
         let events = match self.batch {
             Some(b) => b.events,
-            None => return empty_lf(&volume_profile_spot_schema()),
+            None => return Ok(empty_lf(&volume_profile_spot_schema())),
         };
 
         let len = events.len();
@@ -382,8 +394,11 @@ impl ProtoBatch for VolumeProfileSpotResponse {
         let mut number_of_sell_trades = Vec::with_capacity(len);
 
         for event in events {
-            window_starts.push(extract_timestamp(&event.window_start, "window_start")?);
-            window_ends.push(extract_timestamp(&event.window_end, "window_end")?);
+            window_starts.push(extract_timestamp(
+                event.window_start.as_ref(),
+                "window_start",
+            )?);
+            window_ends.push(extract_timestamp(event.window_end.as_ref(), "window_end")?);
             price_bin_starts.push(event.price_bin_start);
             price_bin_ends.push(event.price_bin_end);
             base_volumes.push(event.base_volume);
@@ -399,7 +414,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
 
         let df = df![
             CanonicalCol::OpenTimestamp.to_string() => window_starts,
-            CanonicalCol::Timestamp.to_string() => window_ends,
+            CanonicalCol::PointInTime.to_string() => window_ends,
             CanonicalCol::PriceBinStart.to_string() => price_bin_starts,
             CanonicalCol::PriceBinEnd.to_string() => price_bin_ends,
             CanonicalCol::Volume.to_string() => base_volumes,
@@ -419,7 +434,7 @@ impl ProtoBatch for VolumeProfileSpotResponse {
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
-            col(CanonicalCol::Timestamp).cast(DataType::Datetime(
+            col(CanonicalCol::PointInTime).cast(DataType::Datetime(
                 TimeUnit::Microseconds,
                 Some(polars::prelude::TimeZone::UTC),
             )),
@@ -432,25 +447,21 @@ impl ProtoBatch for VolumeProfileSpotResponse {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
-fn empty_lf(schema: &Schema) -> ChapatyResult<LazyFrame> {
-    Ok(DataFrame::empty_with_schema(schema).lazy())
+fn empty_lf(schema: &Schema) -> LazyFrame {
+    DataFrame::empty_with_schema(schema).lazy()
 }
 
-fn extract_timestamp(ts: &Option<Timestamp>, field: &str) -> ChapatyResult<i64> {
-    ts.as_ref()
-        .map(timestamp_to_micro)
-        .transpose()?
-        .ok_or_else(|| {
-            ChapatyError::Data(DataError::TimestampConversion(format!(
-                "Missing {} in microseconds",
-                field
-            )))
-        })
+fn extract_timestamp(ts: Option<&Timestamp>, field: &str) -> ChapatyResult<i64> {
+    ts.map(timestamp_to_micro).transpose()?.ok_or_else(|| {
+        ChapatyError::Data(DataError::TimestampConversion(format!(
+            "Missing {field} in microseconds"
+        )))
+    })
 }
 
 fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
     let secs = ts.seconds;
-    let nanos = ts.nanos as i64;
+    let nanos = i64::from(ts.nanos);
     secs.checked_mul(1_000_000)
         .and_then(|s| s.checked_add(nanos / 1_000))
         .ok_or_else(|| {
@@ -461,14 +472,20 @@ fn timestamp_to_micro(ts: &Timestamp) -> ChapatyResult<i64> {
 }
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
+    use polars::prelude::AnyValue;
+    use prost_types::Timestamp;
+
     use super::*;
     use crate::generated::chapaty::data::v1::{
         EconomicCalendarBatch, EconomicCalendarEvent, OhlcvFutureBatch, OhlcvFutureEvent,
         OhlcvSpotBatch, OhlcvSpotEvent, TpoFutureBatch, TpoFutureEvent, TpoSpotBatch, TpoSpotEvent,
         TradesSpotBatch, TradesSpotEvent, VolumeProfileSpotBatch, VolumeProfileSpotEvent,
     };
-    use polars::prelude::AnyValue;
-    use prost_types::Timestamp;
 
     // ========================================================================
     // Test Helpers
@@ -495,15 +512,16 @@ mod tests {
 
     /// Converts a protobuf Timestamp to microseconds for comparison.
     fn to_micros(ts: &Timestamp) -> i64 {
-        ts.seconds * 1_000_000 + (ts.nanos as i64 / 1_000)
+        ts.seconds * 1_000_000 + (i64::from(ts.nanos) / 1_000)
     }
 
-    /// Extracts a scalar value from a DataFrame cell.
+    /// Extracts a scalar value from a `DataFrame` cell.
     fn get_i64(df: &DataFrame, col: CanonicalCol, row: usize) -> i64 {
         let series = df.column(col.as_str()).expect("Column not found");
         match series.get(row).expect("Row not found").into_static() {
-            AnyValue::Int64(v) => v,
-            AnyValue::Datetime(v, _, _) | AnyValue::DatetimeOwned(v, _, _) => v,
+            AnyValue::Int64(v) | AnyValue::Datetime(v, _, _) | AnyValue::DatetimeOwned(v, _, _) => {
+                v
+            }
             other => panic!("Expected i64-compatible value, got {other:?}"),
         }
     }
@@ -595,7 +613,7 @@ mod tests {
         assert_eq!(get_string(&df, CanonicalCol::DataSource, 0), "investingcom");
         assert_eq!(get_string(&df, CanonicalCol::Category, 0), "employment");
         assert_eq!(get_string(&df, CanonicalCol::NewsType, 0), "nfp");
-        assert_eq!(get_f64(&df, CanonicalCol::NewsTypeConfidence, 0), 0.95);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::NewsTypeConfidence, 0), 0.95);
         assert_eq!(get_string(&df, CanonicalCol::NewsTypeSource, 0), "ml");
         assert_eq!(get_string(&df, CanonicalCol::Period, 0), "mom");
         assert_eq!(
@@ -608,7 +626,7 @@ mod tests {
         assert_eq!(get_opt_f64(&df, CanonicalCol::Actual, 0), Some(3.5));
         assert_eq!(get_opt_f64(&df, CanonicalCol::Forecast, 0), Some(3.6));
         assert_eq!(get_opt_f64(&df, CanonicalCol::Previous, 0), Some(3.4));
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &ts);
     }
 
     #[test]
@@ -680,13 +698,13 @@ mod tests {
         assert_eq!(*df.schema(), ohlcv_future_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::Open, 0), 50000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::High, 0), 51000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Low, 0), 49500.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Close, 0), 50500.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 100.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Open, 0), 50000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::High, 0), 51000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Low, 0), 49500.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Close, 0), 50500.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 100.0);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &open_ts);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &close_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &close_ts);
     }
 
     #[test]
@@ -719,7 +737,7 @@ mod tests {
             low: 90.0,
             close: 105.0,
             volume: 1000.0,
-            quote_asset_volume: 105000.0,
+            quote_asset_volume: 105_000.0,
             number_of_trades: 50,
             taker_buy_base_asset_volume: 600.0,
             taker_buy_quote_asset_volume: 63000.0,
@@ -737,23 +755,23 @@ mod tests {
         assert_eq!(*df.schema(), ohlcv_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::Open, 0), 100.0);
-        assert_eq!(get_f64(&df, CanonicalCol::High, 0), 110.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Low, 0), 90.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Close, 0), 105.0);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 1000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Open, 0), 100.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::High, 0), 110.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Low, 0), 90.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Close, 0), 105.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 1000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 105_000.0);
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfTrades, 0), 50);
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyBaseAssetVolume, 0),
             600.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyQuoteAssetVolume, 0),
             63000.0
         );
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &open_ts);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &close_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &close_ts);
     }
 
     #[test]
@@ -778,7 +796,7 @@ mod tests {
         let trade_ts = make_timestamp(4, 12);
 
         let event = TradesSpotEvent {
-            trade_id: 999888,
+            trade_id: 999_888,
             price: 200.50,
             quantity: 2.0,
             quote_quantity: 401.0,
@@ -799,13 +817,13 @@ mod tests {
         assert_eq!(*df.schema(), trades_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 999888);
-        assert_eq!(get_f64(&df, CanonicalCol::Price, 0), 200.50);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 2.0);
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
+        assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 999_888);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Price, 0), 200.50);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 2.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 401.0);
         assert!(get_bool(&df, CanonicalCol::IsBuyerMaker, 0));
         assert!(get_bool(&df, CanonicalCol::IsBestMatch, 0));
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &trade_ts);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &trade_ts);
     }
 
     #[test]
@@ -874,11 +892,11 @@ mod tests {
         assert_eq!(*df.schema(), tpo_future_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 40000.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 40010.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 40000.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 40010.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 15);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -923,11 +941,11 @@ mod tests {
         assert_eq!(*df.schema(), tpo_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 150.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 151.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 150.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 151.0);
         assert_eq!(get_i64(&df, CanonicalCol::TimeSlotCount, 0), 5);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -960,7 +978,7 @@ mod tests {
             base_volume: 5000.0,
             taker_buy_base_volume: 2500.0,
             taker_sell_base_volume: 2500.0,
-            quote_volume: 125000.0,
+            quote_volume: 125_000.0,
             taker_buy_quote_volume: 62500.0,
             taker_sell_quote_volume: 62500.0,
             number_of_trades: 100,
@@ -980,23 +998,23 @@ mod tests {
         assert_eq!(*df.schema(), volume_profile_spot_schema());
         assert_eq!(df.height(), 1);
 
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 25.0);
-        assert_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 25.5);
-        assert_eq!(get_f64(&df, CanonicalCol::Volume, 0), 5000.0);
-        assert_eq!(
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinStart, 0), 25.0);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::PriceBinEnd, 0), 25.5);
+        assert_f64_eq!(get_f64(&df, CanonicalCol::Volume, 0), 5000.0);
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyBaseAssetVolume, 0),
             2500.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerSellBaseAssetVolume, 0),
             2500.0
         );
-        assert_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125000.0);
-        assert_eq!(
+        assert_f64_eq!(get_f64(&df, CanonicalCol::QuoteAssetVolume, 0), 125_000.0);
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerBuyQuoteAssetVolume, 0),
             62500.0
         );
-        assert_eq!(
+        assert_f64_eq!(
             get_f64(&df, CanonicalCol::TakerSellQuoteAssetVolume, 0),
             62500.0
         );
@@ -1004,7 +1022,7 @@ mod tests {
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfBuyTrades, 0), 60);
         assert_eq!(get_i64(&df, CanonicalCol::NumberOfSellTrades, 0), 40);
         assert_timestamp_eq(&df, CanonicalCol::OpenTimestamp, 0, &win_start);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &win_end);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &win_end);
     }
 
     #[test]
@@ -1059,9 +1077,9 @@ mod tests {
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 0), 100);
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 1), 200);
         assert_eq!(get_i64(&df, CanonicalCol::TradeId, 2), 300);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 0, &t1);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 1, &t2);
-        assert_timestamp_eq(&df, CanonicalCol::Timestamp, 2, &t3);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 0, &t1);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 1, &t2);
+        assert_timestamp_eq(&df, CanonicalCol::PointInTime, 2, &t3);
     }
 
     #[test]
@@ -1070,11 +1088,11 @@ mod tests {
             .map(|i| OhlcvFutureEvent {
                 open_timestamp: Some(make_timestamp(i, 0)),
                 close_timestamp: Some(make_timestamp(i, 1)),
-                open: i as f64 * 100.0,
-                high: i as f64 * 110.0,
-                low: i as f64 * 90.0,
-                close: i as f64 * 105.0,
-                volume: i as f64 * 10.0,
+                open: f64::from(i) * 100.0,
+                high: f64::from(i) * 110.0,
+                low: f64::from(i) * 90.0,
+                close: f64::from(i) * 105.0,
+                volume: f64::from(i) * 10.0,
             })
             .collect();
 
@@ -1088,8 +1106,9 @@ mod tests {
         assert_eq!(df.height(), 5);
 
         for i in 0..5 {
-            let expected_open = (i + 1) as f64 * 100.0;
-            assert_eq!(get_f64(&df, CanonicalCol::Open, i), expected_open);
+            let expected_open =
+                f64::from(u32::try_from(i + 1).expect("row index exceeds u32 range")) * 100.0;
+            assert_f64_eq!(get_f64(&df, CanonicalCol::Open, i), expected_open);
         }
     }
 
@@ -1148,8 +1167,8 @@ mod tests {
     #[test]
     fn timestamp_to_micro_converts_correctly() {
         let ts = Timestamp {
-            seconds: 1735689600, // 2025-01-01 00:00:00 UTC
-            nanos: 500_000_000,  // 0.5 seconds
+            seconds: 1_735_689_600, // 2025-01-01 00:00:00 UTC
+            nanos: 500_000_000,     // 0.5 seconds
         };
 
         let micros = timestamp_to_micro(&ts).unwrap();
@@ -1182,7 +1201,7 @@ mod tests {
 
     #[test]
     fn extract_timestamp_missing_returns_error() {
-        let result = extract_timestamp(&None, "test_field");
+        let result = extract_timestamp(None, "test_field");
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1199,7 +1218,7 @@ mod tests {
             nanos: 1_000_000, // 1ms = 1000 micros
         };
 
-        let result = extract_timestamp(&Some(ts), "test_field");
+        let result = extract_timestamp(Some(&ts), "test_field");
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1_000_001_000);

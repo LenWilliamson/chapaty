@@ -49,11 +49,19 @@ impl From<EquityCurveCol> for PlSmallStr {
     }
 }
 
+impl AsRef<str> for EquityCurveCol {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl EquityCurveCol {
+    #[must_use]
     pub fn name(&self) -> PlSmallStr {
         (*self).into()
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
@@ -68,16 +76,23 @@ impl EquityCurveReport {
     /// Downsamples the equity curve to End-Of-Day (EOD) resolution.
     ///
     /// This reduces memory and file size by retaining only the final
-    /// Mark-to-Market portfolio value for each calendar day across the entire simulation.
+    /// Mark-to-Market portfolio value for each calendar day across the entire
+    /// simulation.
     ///
     /// # Time-Series Boundary Edge Cases
     ///
-    /// OHLCV market data is defined as a left-inclusive, right-exclusive interval: `[open_ts, close_ts)`.
+    /// OHLCV market data is defined as a left-inclusive, right-exclusive
+    /// interval: `[open_ts, close_ts)`.
     ///
     /// To prevent the `T+1 00:00:00` flush into the next calendar day's bucket,
-    /// we use Polars' `DynamicGroupOptions` with `ClosedWindow::Right`. This `(start, end]`
-    /// inclusivity ensures the midnight tick is strictly evaluated as the terminal state of `T`
-    /// without duplicating the row into `T+1`.
+    /// we use Polars' `DynamicGroupOptions` with `ClosedWindow::Right`. This
+    /// `(start, end]` inclusivity ensures the midnight tick is strictly
+    /// evaluated as the terminal state of `T` without duplicating the row
+    /// into `T+1`.
+    ///
+    /// # Errors
+    /// Returns an error if Polars cannot group, aggregate, or collect the
+    /// transformed frame.
     pub fn into_eod(self) -> ChapatyResult<Self> {
         const BUCKET_ALIAS: &str = "_bucket_ts";
         let eod_df = self
@@ -112,7 +127,7 @@ impl EquityCurveReport {
             .with_row_index(EquityCurveCol::RowId.into(), None)
             .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
 
-        Self::new(eod_df)
+        Self::new(&eod_df)
     }
 }
 
@@ -133,7 +148,7 @@ impl Report for EquityCurveReport {
 }
 
 impl EquityCurveReport {
-    pub(crate) fn new(df: DataFrame) -> ChapatyResult<Self> {
+    pub(crate) fn new(df: &DataFrame) -> ChapatyResult<Self> {
         let sorted_df = df
             .sort([EquityCurveCol::Timestamp], SortMultipleOptions::default())
             .map_err(|e| ChapatyError::Data(DataError::DataFrame(e.to_string())))?;
@@ -179,14 +194,19 @@ impl ToSchema for EquityCurveReport {
 
 #[cfg(test)]
 mod test {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+    )]
     use std::path::PathBuf;
 
     use chrono::{DateTime, Utc};
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlPath, df};
+    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, df};
 
     use super::*;
 
-    /// Parse RFC3339 timestamp string to DateTime<Utc>.
+    /// Parse RFC3339 timestamp string to `DateTime`<Utc>.
     fn ts_micros(s: &str) -> i64 {
         DateTime::parse_from_rfc3339(s)
             .unwrap()
@@ -209,7 +229,7 @@ mod test {
     fn test_journal_creation_and_schema_validation() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/equity_curve.csv");
-        let path = PlPath::new(
+        let path = PlRefPath::new(
             pb.as_os_str()
                 .to_str()
                 .expect("Failed to convert input file path to string"),
@@ -218,7 +238,7 @@ mod test {
         let schema = EquityCurveReport::to_schema();
         let df = LazyCsvReader::new(path)
             .with_has_header(true)
-            .with_schema(Some(schema.clone()))
+            .with_schema(Some(schema))
             .with_try_parse_dates(true)
             .finish()
             .expect("Failed to create LazyFrame from CSV")
@@ -226,7 +246,7 @@ mod test {
             .expect("Failed to collect DataFrame from LazyFrame");
 
         let equity_curve =
-            EquityCurveReport::new(df).expect("Failed to create EquityCurveReport from DataFrame");
+            EquityCurveReport::new(&df).expect("Failed to create EquityCurveReport from DataFrame");
         let df = &equity_curve.as_df();
 
         let current_schema = df.schema();
@@ -236,8 +256,7 @@ mod test {
             let actual_dtype = current_schema.get(name);
             assert!(
                 actual_dtype.is_some(),
-                "Missing column in Journal DataFrame: {}",
-                name
+                "Missing column in Journal DataFrame: {name}"
             );
             assert_eq!(
                 actual_dtype.unwrap(),
@@ -254,18 +273,19 @@ mod test {
     fn test_equity_curve_into_eod_empty_dataframe() {
         // 1. Create a perfectly valid but empty report using the Default trait
         let report = EquityCurveReport::default();
-        let initial_schema = report.as_df().schema().clone();
+        let initial_schema = Arc::clone(report.as_df().schema());
 
         // 2. Apply EOD downsampling
         let eod_report = report.into_eod().expect("Failed to downsample empty DF");
         let eod_df = eod_report.as_df();
 
         // 3. Verify Results
-        // It should gracefully process the empty data and return 0 rows without panicking.
+        // It should gracefully process the empty data and return 0 rows without
+        // panicking.
         assert_eq!(eod_df.height(), 0, "Empty input should yield empty output");
 
         // The schema should remain perfectly perfectly intact
-        let final_schema = eod_df.schema().clone();
+        let final_schema = Arc::clone(eod_df.schema());
         assert_eq!(
             initial_schema, final_schema,
             "Schema mutated during empty EOD aggregation"
@@ -276,8 +296,8 @@ mod test {
     fn test_equity_curve_into_eod() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3, 4],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3, 4],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T00:00:00Z"), // Day 0 Boundary
                     ts_micros("2026-04-19T12:00:00Z"),
@@ -292,8 +312,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1],
                 EquityCurveCol::Timestamp => [
                     // The Day 0 Boundary (Technically April 18 EOD)
                     ts_micros("2026-04-19T00:00:00Z"),
@@ -307,7 +327,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -321,9 +341,9 @@ mod test {
     fn test_equity_curve_into_eod_episode_boundary() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3, 4, 5],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3, 4, 5],
                 EquityCurveCol::EpisodeId => [
-                    1u32, // Ep 1
+                    1_u32, // Ep 1
                     1,    // Ep 1
                     2,    // Ep 2 (New Episode starts mid-day!)
                     2,    // Ep 2
@@ -352,8 +372,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2],
-                EquityCurveCol::EpisodeId => [1u32, 2, 2],
+                EquityCurveCol::RowId => [0_u32, 1, 2],
+                EquityCurveCol::EpisodeId => [1_u32, 2, 2],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T00:00:00Z"), // Day 0 Boundary
                     ts_micros("2026-04-20T00:00:00Z"), // Day 1 EOD
@@ -364,7 +384,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -377,12 +397,12 @@ mod test {
     #[test]
     fn test_equity_curve_into_eod_microsecond_determinism() {
         // This test proves the `ClosedWindow::Both` DDIA interval logic.
-        // It proves that exactly 00:00:00.000000 belongs to the previous day's terminal state,
-        // but 00:00:00.000001 strictly belongs to the current day.
+        // It proves that exactly 00:00:00.000000 belongs to the previous day's terminal
+        // state, but 00:00:00.000001 strictly belongs to the current day.
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-19T23:59:59.999999Z"), // 1µs BEFORE midnight
                     ts_micros("2026-04-20T00:00:00.000000Z"), // EXACTLY midnight (Day 1 Terminal Flush)
@@ -396,8 +416,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1],
-                EquityCurveCol::EpisodeId => [1u32, 1],
+                EquityCurveCol::RowId => [0_u32, 1],
+                EquityCurveCol::EpisodeId => [1_u32, 1],
                 EquityCurveCol::Timestamp => [
                     // Correctly picks the exact 00:00:00.000000 boundary for Day 1
                     ts_micros("2026-04-20T00:00:00.000000Z"),
@@ -409,7 +429,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
@@ -426,8 +446,8 @@ mod test {
     fn test_equity_curve_into_eod_sparse_data() {
         let input_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1, 2, 3],
-                EquityCurveCol::EpisodeId => [1u32, 1, 1, 1],
+                EquityCurveCol::RowId => [0_u32, 1, 2, 3],
+                EquityCurveCol::EpisodeId => [1_u32, 1, 1, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-24T10:00:00Z"), // Friday
                     ts_micros("2026-04-24T15:00:00Z"), // Friday EOD
@@ -443,8 +463,8 @@ mod test {
 
         let expected_df = format_mock_df(
             df![
-                EquityCurveCol::RowId => [0u32, 1],
-                EquityCurveCol::EpisodeId => [1u32, 1],
+                EquityCurveCol::RowId => [0_u32, 1],
+                EquityCurveCol::EpisodeId => [1_u32, 1],
                 EquityCurveCol::Timestamp => [
                     ts_micros("2026-04-24T15:00:00Z"),
                     ts_micros("2026-04-27T16:00:00Z"),
@@ -454,7 +474,7 @@ mod test {
             .unwrap(),
         );
 
-        let report = EquityCurveReport::new(input_df).expect("Failed to create report");
+        let report = EquityCurveReport::new(&input_df).expect("Failed to create report");
         let eod_df = report
             .into_eod()
             .expect("Failed to downsample to EOD")
