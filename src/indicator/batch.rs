@@ -232,6 +232,8 @@ mod tests {
         value.to_string()
     }
 
+    /// Assumption: We feed OHLCV-1m close timestamps as `PointInTime` Data
+    ///
     /// Intraday window (`start_mins < end_mins`): US core session 09:30–16:00
     /// ET. `PointInTime` is the bar's close, so the window is `(start, end]`:
     /// the bar closing at 09:30 opened at 09:29 (before the session) and is
@@ -242,7 +244,8 @@ mod tests {
         let window = SessionWindow::us_core_session();
         let timestamps = [
             utc_micros(2026, 6, 13, 13, 29), // 09:29 ET — bar [09:28,09:29), before open
-            utc_micros(2026, 6, 13, 13, 30), // 09:30 ET — bar [09:29,09:30), still before open (exclusive)
+            utc_micros(2026, 6, 13, 13, 30), /* 09:30 ET — bar [09:29,09:30), still before open
+                                              * (exclusive) */
             utc_micros(2026, 6, 13, 13, 31), // 09:31 ET — bar [09:30,09:31), first in-session bar
             utc_micros(2026, 6, 13, 16, 0),  // 12:00 ET — mid-session
             utc_micros(2026, 6, 13, 19, 59), // 15:59 ET — still inside
@@ -266,6 +269,8 @@ mod tests {
         );
     }
 
+    /// Assumption: We feed OHLCV-1m close timestamps as `PointInTime` Data
+    ///
     /// Overnight window (`start_mins >= end_mins`): US extended overnight
     /// 18:00–09:30 ET. `PointInTime` is the bar's close, so the window is
     /// `(start, end]`: the bar closing at 18:00 opened at 17:59 (before the
@@ -276,12 +281,15 @@ mod tests {
         let window = SessionWindow::us_extended_overnight();
         let timestamps = [
             utc_micros(2026, 6, 13, 21, 59), // 17:59 ET Jun 13 — bar [17:58,17:59), before open
-            utc_micros(2026, 6, 13, 22, 0),  // 18:00 ET Jun 13 — bar [17:59,18:00), still before open (exclusive)
-            utc_micros(2026, 6, 13, 22, 1),  // 18:01 ET Jun 13 — bar [18:00,18:01), first in-session bar
-            utc_micros(2026, 6, 14, 3, 0),   // 23:00 ET Jun 13 — late evening
-            utc_micros(2026, 6, 14, 6, 0),   // 02:00 ET Jun 14 — morning leg → Jun 13
+            utc_micros(2026, 6, 13, 22, 0),  /* 18:00 ET Jun 13 — bar [17:59,18:00), still
+                                              * before open (exclusive) */
+            utc_micros(2026, 6, 13, 22, 1), /* 18:01 ET Jun 13 — bar [18:00,18:01), first
+                                             * in-session bar */
+            utc_micros(2026, 6, 14, 3, 0), // 23:00 ET Jun 13 — late evening
+            utc_micros(2026, 6, 14, 6, 0), // 02:00 ET Jun 14 — morning leg → Jun 13
             utc_micros(2026, 6, 14, 13, 29), // 09:29 ET Jun 14 — morning leg → Jun 13
-            utc_micros(2026, 6, 14, 13, 30), // 09:30 ET Jun 14 — bar [09:29,09:30), last bar (inclusive)
+            utc_micros(2026, 6, 14, 13, 30), /* 09:30 ET Jun 14 — bar [09:29,09:30), last bar
+                                            * (inclusive) */
             utc_micros(2026, 6, 14, 13, 31), // 09:31 ET Jun 14 — after end
             utc_micros(2026, 6, 14, 16, 0),  // 12:00 ET Jun 14 — daytime gap
         ];
