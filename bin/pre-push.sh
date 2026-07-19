@@ -119,7 +119,7 @@ fi
 
 echo -e "\n${YELLOW}[12/12] Building & Dry-Running Quickstart Example...${NC}"
 # Compile first so a build error is distinct from a runtime error.
-cargo build --example quickstart
+cargo build --release --example quickstart
 # Then run it to verify the full logic path (environment load, eval, export) works.
 cargo run --release --example quickstart > /dev/null
 echo -e "${GREEN}[OK] Quickstart example ran successfully.${NC}"
