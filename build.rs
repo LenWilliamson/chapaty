@@ -39,9 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir("src/proto_gen")
         .compile_protos(&proto_files, &[proto_root])?;
 
-    // Formatting the generated protobuf code is a best-effort cosmetic step:
-    // surface failures as build warnings rather than silently discarding the
-    // command's status.
     match std::process::Command::new("cargo")
         .args(["fmt", "--", "src/proto_gen/*.rs"])
         .status()

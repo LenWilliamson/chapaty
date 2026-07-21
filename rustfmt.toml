@@ -1,10 +1,6 @@
 # ---------------------------------------------------------------------------
-# rustfmt.toml — nightly channel
 # Requires: rustup component add rustfmt --toolchain nightly
 #           cargo +nightly fmt
-# Pin this in CI and document it in CONTRIBUTING.md — every contributor and
-# every CI job must use the same nightly rustfmt, or formatting will drift
-# and `cargo fmt --check` will disagree between machines.
 # ---------------------------------------------------------------------------
 
 edition = "2024"

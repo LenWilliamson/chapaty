@@ -51,6 +51,8 @@ pub use crate::indicator::batch::trades::*;
 
 // 6.c Streaming Indicators (Tick-by-Tick)
 #[rustfmt::skip]
+pub use crate::indicator::streaming::StreamingIndicator;
+#[rustfmt::skip]
 pub use crate::indicator::streaming::fair_value_gap::*;
 #[rustfmt::skip]
 pub use crate::indicator::streaming::momentum::*;

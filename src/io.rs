@@ -291,23 +291,25 @@ impl StorageLocation<'_> {
                     std::string::ToString::to_string,
                 );
 
-                let api = hf_hub::api::tokio::Api::new().map_err(|e| {
+                let hf_client = hf_hub::HFClient::new().map_err(|e| {
                     ChapatyError::Io(IoError::ReaderCreation(format!(
                         "Hugging Face API initialization failed: {e}"
                     )))
                 })?;
 
-                let repo = api.repo(hf_hub::Repo::with_revision(
-                    "chapaty/environments".to_string(),
-                    hf_hub::RepoType::Dataset,
-                    revision,
-                ));
+                let cached_path = hf_client
+                    .dataset("chapaty", "environments")
+                    .download_file()
+                    .filename(filename)
+                    .revision(revision)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        ChapatyError::Io(IoError::ReadFailed(format!(
+                            "Failed to fetch environment from Hugging Face: {e}"
+                        )))
+                    })?;
 
-                let cached_path = repo.get(filename).await.map_err(|e| {
-                    ChapatyError::Io(IoError::ReadFailed(format!(
-                        "Failed to fetch environment from Hugging Face: {e}"
-                    )))
-                })?;
                 open_local_file(&cached_path, buffer_size)
             }
         }

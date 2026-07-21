@@ -47,7 +47,6 @@ impl Agent for NoOpAgent {
     // `act` is called millions of times.
     // Keep logging here at `debug` so it stays silent under the default `info`
     // filter.
-    #[tracing::instrument(skip_all)]
     fn act(&mut self, _obs: Observation) -> ChapatyResult<Actions> {
         debug!("Returning no actions, guaranteeing 0 trades");
         Ok(Actions::no_op())

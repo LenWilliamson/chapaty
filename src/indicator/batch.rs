@@ -103,14 +103,14 @@ impl IndicatorExprExt for Expr {
             WindowKind::Intraday => when(
                 local_time
                     .clone()
-                    .gt_eq(start_time)
-                    .and(local_time.lt(end_time)),
+                    .gt(start_time)
+                    .and(local_time.lt_eq(end_time)),
             )
             .then(local_date)
             .otherwise(lit(NULL)),
-            WindowKind::Overnight => when(local_time.clone().gt_eq(start_time))
+            WindowKind::Overnight => when(local_time.clone().gt(start_time))
                 .then(local_date.clone())
-                .when(local_time.lt(end_time))
+                .when(local_time.lt_eq(end_time))
                 .then(local_date - lit(chrono::Duration::days(1)))
                 .otherwise(lit(NULL)),
         }
@@ -232,18 +232,25 @@ mod tests {
         value.to_string()
     }
 
+    /// Assumption: We feed OHLCV-1m close timestamps as `PointInTime` Data
+    ///
     /// Intraday window (`start_mins < end_mins`): US core session 09:30–16:00
-    /// ET. The start is inclusive and the end exclusive; everything outside
-    /// is null. June keeps ET at a fixed UTC−4 offset (no DST ambiguity).
+    /// ET. `PointInTime` is the bar's close, so the window is `(start, end]`:
+    /// the bar closing at 09:30 opened at 09:29 (before the session) and is
+    /// excluded; the bar closing at 09:31 is the first valid bar. June keeps
+    /// ET at a fixed UTC−4 offset (no DST ambiguity).
     #[test]
     fn session_date_intraday_us_core_session() {
         let window = SessionWindow::us_core_session();
         let timestamps = [
-            utc_micros(2026, 6, 13, 13, 29), // 09:29 ET — before open
-            utc_micros(2026, 6, 13, 13, 30), // 09:30 ET — open (inclusive)
+            utc_micros(2026, 6, 13, 13, 29), // 09:29 ET — bar [09:28,09:29), before open
+            utc_micros(2026, 6, 13, 13, 30), /* 09:30 ET — bar [09:29,09:30), still before open
+                                              * (exclusive) */
+            utc_micros(2026, 6, 13, 13, 31), // 09:31 ET — bar [09:30,09:31), first in-session bar
             utc_micros(2026, 6, 13, 16, 0),  // 12:00 ET — mid-session
             utc_micros(2026, 6, 13, 19, 59), // 15:59 ET — still inside
-            utc_micros(2026, 6, 13, 20, 0),  // 16:00 ET — close (exclusive)
+            utc_micros(2026, 6, 13, 20, 0),  // 16:00 ET — bar [15:59,16:00), last bar (inclusive)
+            utc_micros(2026, 6, 13, 20, 1),  // 16:01 ET — after close
             utc_micros(2026, 6, 13, 22, 0),  // 18:00 ET — after close
         ];
 
@@ -251,6 +258,8 @@ mod tests {
             session_dates(window, &timestamps),
             vec![
                 None,
+                None,
+                Some(date("2026-06-13")),
                 Some(date("2026-06-13")),
                 Some(date("2026-06-13")),
                 Some(date("2026-06-13")),
@@ -260,19 +269,28 @@ mod tests {
         );
     }
 
+    /// Assumption: We feed OHLCV-1m close timestamps as `PointInTime` Data
+    ///
     /// Overnight window (`start_mins >= end_mins`): US extended overnight
-    /// 18:00–09:30 ET. The evening leg keeps its calendar date, while the
-    /// post-midnight morning leg is pulled back to the previous day's session.
+    /// 18:00–09:30 ET. `PointInTime` is the bar's close, so the window is
+    /// `(start, end]`: the bar closing at 18:00 opened at 17:59 (before the
+    /// session) and is excluded; the bar closing at 18:01 is the first valid
+    /// bar. The post-midnight morning leg is pulled back to the previous day.
     #[test]
     fn session_date_overnight_pulls_morning_leg_to_previous_day() {
         let window = SessionWindow::us_extended_overnight();
         let timestamps = [
-            utc_micros(2026, 6, 13, 21, 59), // 17:59 ET Jun 13 — before evening open
-            utc_micros(2026, 6, 13, 22, 0),  // 18:00 ET Jun 13 — evening open
-            utc_micros(2026, 6, 14, 3, 0),   // 23:00 ET Jun 13 — late evening
-            utc_micros(2026, 6, 14, 6, 0),   // 02:00 ET Jun 14 — morning leg → Jun 13
+            utc_micros(2026, 6, 13, 21, 59), // 17:59 ET Jun 13 — bar [17:58,17:59), before open
+            utc_micros(2026, 6, 13, 22, 0),  /* 18:00 ET Jun 13 — bar [17:59,18:00), still
+                                              * before open (exclusive) */
+            utc_micros(2026, 6, 13, 22, 1), /* 18:01 ET Jun 13 — bar [18:00,18:01), first
+                                             * in-session bar */
+            utc_micros(2026, 6, 14, 3, 0), // 23:00 ET Jun 13 — late evening
+            utc_micros(2026, 6, 14, 6, 0), // 02:00 ET Jun 14 — morning leg → Jun 13
             utc_micros(2026, 6, 14, 13, 29), // 09:29 ET Jun 14 — morning leg → Jun 13
-            utc_micros(2026, 6, 14, 13, 30), // 09:30 ET Jun 14 — end (exclusive)
+            utc_micros(2026, 6, 14, 13, 30), /* 09:30 ET Jun 14 — bar [09:29,09:30), last bar
+                                            * (inclusive) */
+            utc_micros(2026, 6, 14, 13, 31), // 09:31 ET Jun 14 — after end
             utc_micros(2026, 6, 14, 16, 0),  // 12:00 ET Jun 14 — daytime gap
         ];
 
@@ -280,6 +298,8 @@ mod tests {
             session_dates(window, &timestamps),
             vec![
                 None,
+                None,
+                Some(date("2026-06-13")),
                 Some(date("2026-06-13")),
                 Some(date("2026-06-13")),
                 Some(date("2026-06-13")),

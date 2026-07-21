@@ -859,7 +859,7 @@ fn apply_overlay<T>(
     sim_timeframe: EpisodeLength,
     policy: EconomicCalendarPolicy,
 ) {
-    for (_id, (_schema, lf)) in map.iter_mut() {
+    for (_schema, lf) in map.values_mut() {
         *lf =
             lf.clone()
                 .join_with_economic_calendar_overlay(news_lf.clone(), sim_timeframe, policy);
@@ -908,13 +908,13 @@ fn apply_filter<T>(
     };
 
     // Apply filter to all LazyFrames
-    for (_id, (_schema, lf)) in map.iter_mut() {
+    for (_schema, lf) in map.values_mut() {
         *lf = lf.clone().filter(predicate.clone());
     }
 }
 
 fn apply_sort<T>(map: &mut HashMap<T, (SchemaRef, LazyFrame)>) {
-    for (_id, (_schema, lf)) in map.iter_mut() {
+    for (_schema, lf) in map.values_mut() {
         *lf = lf.clone().sort(
             [CanonicalCol::PointInTime],
             SortMultipleOptions::default().with_maintain_order(false),

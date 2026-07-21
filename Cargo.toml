@@ -1,12 +1,12 @@
 [package]
 name = "chapaty"
-version = "1.3.0"
+version = "1.3.1"
 edition = "2024"
 authors = ["Len Williamson <lencewa13@gmail.com>"]
 description = "An event-driven Rust engine for building and evaluating quantitative trading agents. Features a Gym-style API for algorithmic backtesting and reinforcement learning."
 license = "Apache-2.0"
 readme = "README.md"
-# homepage = "https://www.chapaty.com"
+homepage = "https://www.chapaty.com"
 repository = "https://github.com/LenWilliamson/chapaty"
 keywords = ["rl", "finance", "gym", "backtesting"]
 categories = ["algorithms", "finance", "mathematics", "science", "simulation"]
@@ -15,15 +15,15 @@ exclude = ["tests/*", ".cargo", ".github", ".vscode", ".gitignore", "Cargo.lock"
 [dependencies]
 async-channel = "2.5"
 blake3 = "1.8"
-bytes = "1.11"
+bytes = "1.12"
 chrono = "0.4"
 chrono-tz = { version = "0.10", features = ["serde"] }
 crossbeam = "0.8"
 futures = "0.3"
-hf-hub = "0.5.0"
-humantime = "2.3.0"
+hf-hub = "1.0.0"
+humantime = "2.4.0"
 indicatif = { version = "0.18", features = ["rayon"] }
-itertools = "0.14"
+itertools = "0.15"
 ndarray = "0.17"
 object_store = "0.13.2"
 ordered-float = { version = "5.3", features = ["serde"] }
@@ -53,7 +53,7 @@ prost = "0.14"
 prost-types = "0.14"
 rand = "0.10"
 rayon = "1.12"
-regex = "1.12"
+regex = "1.13"
 rust_decimal = "1.42"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -61,7 +61,7 @@ smallvec = { version = "1.15", features = ["serde"] }
 strum = { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"
 thiserror = "2.0"
-tokio = { version = "1.52", features = ["full"] }
+tokio = "1.53"
 tokio-util = "0.7"
 tonic = "0.14"
 tonic-prost = "0.14"
@@ -79,6 +79,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"
 
 [lints.rust]
 unsafe_code = "forbid"
+linker_messages = "allow"
 # missing_docs = "warn"
 
 [lints.clippy]

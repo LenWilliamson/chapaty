@@ -166,6 +166,94 @@ pub enum EnvPreset {
     /// ```
     BinanceBtcUsdt1d,
 
+    /// **BTC/USDT Daily Spot (Binance)**
+    ///
+    /// A classic daily timeframe environment ideal for trend-following or swing
+    /// trading strategies on Bitcoin spot markets.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::BtcUsdt),
+    ///     period: Period::Hour(1),
+    /// };
+    /// ```
+    BinanceBtcUsdt1h,
+
+    /// **ETH/USDT Daily Spot (Binance)**
+    ///
+    /// A classic daily timeframe environment ideal for trend-following or swing
+    /// trading strategies on Ethereum spot markets.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::EthUsdt),
+    ///     period: Period::Hour(1),
+    /// };
+    /// ```
+    BinanceEthUsdt1h,
+
+    /// **SOL/USDT Daily Spot (Binance)**
+    ///
+    /// A classic daily timeframe environment ideal for trend-following or swing
+    /// trading strategies on Solana spot markets.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::SolUsdt),
+    ///     period: Period::Hour(1),
+    /// };
+    /// ```
+    BinanceSolUsdt1h,
+
+    /// **XRP/USDT Daily Spot (Binance)**
+    ///
+    /// A classic daily timeframe environment ideal for trend-following or swing
+    /// trading strategies on Ripple spot markets.
+    ///
+    /// # Episode Length
+    ///
+    /// [`EpisodeLength::Infinite`]
+    ///
+    /// # Available IDs
+    ///
+    /// ```rust
+    /// # use chapaty::prelude::*;
+    /// let ohlcv_id = OhlcvId {
+    ///     broker: DataBroker::Binance,
+    ///     exchange: Exchange::Binance,
+    ///     symbol: Symbol::Spot(SpotPair::XrpUsdt),
+    ///     period: Period::Hour(1),
+    /// };
+    /// ```
+    BinanceXrpUsdt1h,
+
     /// **BTC/USDT 1-Minute Spot (Binance)**
     ///
     /// A high-frequency intraday environment for scalping or short-term
@@ -557,6 +645,82 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::Binance,
                     symbol: Symbol::Spot(SpotPair::BtcUsdt),
                     period: Period::Day(1),
+                    batch_size: 1000,
+                    exchange: Some(Exchange::Binance),
+                    indicators: Vec::new(),
+                };
+                let allowed_years = (2017..=2026).collect::<BTreeSet<_>>();
+                let filter = FilterConfig {
+                    allowed_years: Some(allowed_years),
+                    ..FilterConfig::default()
+                };
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
+            EnvPreset::BinanceBtcUsdt1h => {
+                let market_config = OhlcvSpotQuery {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::BtcUsdt),
+                    period: Period::Hour(1),
+                    batch_size: 1000,
+                    exchange: Some(Exchange::Binance),
+                    indicators: Vec::new(),
+                };
+                let allowed_years = (2017..=2026).collect::<BTreeSet<_>>();
+                let filter = FilterConfig {
+                    allowed_years: Some(allowed_years),
+                    ..FilterConfig::default()
+                };
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
+            EnvPreset::BinanceEthUsdt1h => {
+                let market_config = OhlcvSpotQuery {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::EthUsdt),
+                    period: Period::Hour(1),
+                    batch_size: 1000,
+                    exchange: Some(Exchange::Binance),
+                    indicators: Vec::new(),
+                };
+                let allowed_years = (2017..=2026).collect::<BTreeSet<_>>();
+                let filter = FilterConfig {
+                    allowed_years: Some(allowed_years),
+                    ..FilterConfig::default()
+                };
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
+            EnvPreset::BinanceSolUsdt1h => {
+                let market_config = OhlcvSpotQuery {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::SolUsdt),
+                    period: Period::Hour(1),
+                    batch_size: 1000,
+                    exchange: Some(Exchange::Binance),
+                    indicators: Vec::new(),
+                };
+                let allowed_years = (2017..=2026).collect::<BTreeSet<_>>();
+                let filter = FilterConfig {
+                    allowed_years: Some(allowed_years),
+                    ..FilterConfig::default()
+                };
+                Self::default()
+                    .add_ohlcv_spot(source, market_config)
+                    .with_episode_length(EpisodeLength::Infinite)
+                    .with_filter_config(filter)
+            }
+            EnvPreset::BinanceXrpUsdt1h => {
+                let market_config = OhlcvSpotQuery {
+                    broker: DataBroker::Binance,
+                    symbol: Symbol::Spot(SpotPair::XrpUsdt),
+                    period: Period::Hour(1),
                     batch_size: 1000,
                     exchange: Some(Exchange::Binance),
                     indicators: Vec::new(),

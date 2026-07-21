@@ -30,7 +30,4 @@ pub use crate::transport::source::{
 pub mod prelude;
 pub mod ring_buffer;
 pub mod sorted_vec_map;
-pub use crate::{
-    gym::trading::factory::{load, make},
-    indicator::streaming::StreamingIndicator,
-};
+pub use crate::gym::trading::factory::{load, make};
