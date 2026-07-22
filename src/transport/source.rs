@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tonic::{
-    Request, Status,
-    metadata::MetadataValue,
+    Request, Status, async_trait,
+    metadata::{MetadataKey, MetadataValue},
     service::{Interceptor, interceptor::InterceptedService},
     transport::Channel,
 };
@@ -39,23 +39,23 @@ impl From<&str> for EndpointUrl {
     }
 }
 
-/// Represents an API key for authentication.
+/// Represents a credential for authentication.
 ///
-/// This struct ensures that API keys are treated explicitly,
+/// This struct ensures that credentials are treated explicitly,
 /// making function signatures more self-documenting.
 ///
 /// # Examples
 ///
 /// ```rust
 /// # use chapaty::prelude::*;
-/// let key = ApiKey::from("my-secret-key".to_string());
+/// let key = Credential::from("my-secret-key".to_string());
 /// assert_eq!(key.0, "my-secret-key");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ApiKey(pub String);
-impl_from_primitive!(ApiKey, String);
+pub struct Credential(pub String);
+impl_from_primitive!(Credential, String);
 
-impl From<&str> for ApiKey {
+impl From<&str> for Credential {
     fn from(value: &str) -> Self {
         Self(value.to_string())
     }
@@ -73,8 +73,9 @@ impl From<&str> for ApiKey {
 /// All implementors must return a [`ChapatyClient`], which wraps the gRPC
 /// channel through an [`ApiKeyInterceptor`]. Implementations that don't use
 /// API keys can pass `None` to the interceptor.
+#[async_trait]
 pub trait Connect {
-    fn connect(&self) -> impl Future<Output = ChapatyResult<ChapatyClient>> + Send;
+    async fn connect(&self) -> ChapatyResult<ChapatyClient>;
 }
 
 // ================================================================================================
@@ -83,33 +84,62 @@ pub trait Connect {
 
 /// Use Chapaty's hosted API.
 ///
-/// Reads `CHAPATY_API_KEY` from environment variables.
+/// Reads `CHAPATY_BQEXPORTER_URL`, `CHAPATY_METADATA_KEY`, and
+/// `CHAPATY_CREDENTIAL` from environment variables.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostedApi;
 
+#[async_trait]
 impl Connect for HostedApi {
     #[tracing::instrument(skip(self), err)]
     async fn connect(&self) -> ChapatyResult<ChapatyClient> {
-        let endpoint = "https://grpc.chapaty.com".to_string();
-        let api_key = std::env::var("CHAPATY_API_KEY").ok().map(ApiKey);
-        create_default_client(endpoint, api_key).await
+        let endpoint = std::env::var("CHAPATY_BQEXPORTER_URL")
+            .unwrap_or_else(|_| "https://bqexporter.chapaty.com".to_string());
+        let metadata_key = std::env::var("CHAPATY_METADATA_KEY").ok();
+        let credential = std::env::var("CHAPATY_CREDENTIAL").ok().map(Credential);
+        create_default_client(endpoint, metadata_key, credential).await
     }
 }
 
-/// Use a custom RPC endpoint with default connection parameters.
+/// Configuration for connecting to a self-hosted gRPC endpoint using default
+/// settings.
 ///
-/// For full control over channel configuration (TLS, timeouts, etc.),
-/// implement the `Connect` trait directly on your own struct.
+/// Uses the SDK's opinionated gRPC channel configuration (30s HTTP/2 keepalive,
+/// 10m RPC timeouts, 1MB window sizes).
+///
+/// # Custom Channel Logic
+/// If you need full control over channel parameters (custom TLS certificates,
+/// dynamic proxies, custom interceptors), do **not** use this struct. Instead,
+/// implement the [`Connect`] trait directly on your own custom struct.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SelfHostedApi {
+pub struct DefaultGrpcEndpoint {
+    /// The gRPC endpoint URL (e.g., `"https://grpc.my-company.internal:50051"`).
     pub endpoint: EndpointUrl,
-    pub api_key: Option<ApiKey>,
+
+    /// Optional credential (API key or auth token) sent with each gRPC request.
+    pub credential: Option<Credential>,
+
+    /// Custom metadata header key used to transmit the credential.
+    ///
+    /// Must be a valid gRPC metadata key:
+    /// - **ASCII characters only**
+    /// - **Lowercase only** (e.g., `"x-api-key"`, not `"X-API-Key"`)
+    /// - Alphanumeric characters, hyphens (`-`), or underscores (`_`)
+    ///
+    /// Defaults to `"api-key"` if omitted or if an invalid string is provided.
+    pub metadata_key: Option<String>,
 }
 
-impl Connect for SelfHostedApi {
+#[async_trait]
+impl Connect for DefaultGrpcEndpoint {
     #[tracing::instrument(skip(self), fields(endpoint = %self.endpoint.0), err)]
     async fn connect(&self) -> ChapatyResult<ChapatyClient> {
-        create_default_client(self.endpoint.0.clone(), self.api_key.clone()).await
+        create_default_client(
+            self.endpoint.0.clone(),
+            self.metadata_key.clone(),
+            self.credential.clone(),
+        )
+        .await
     }
 }
 
@@ -118,17 +148,17 @@ impl Connect for SelfHostedApi {
 // ================================================================================================
 
 /// Configuration for connecting to a data source.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub enum DataSource {
     /// Use Chapaty's hosted API.
     ///
     /// Reads `CHAPATY_API_KEY` from environment variables.
     #[default]
     Hosted,
-
-    SelfHosted(SelfHostedApi),
+    SelfHosted(DefaultGrpcEndpoint),
 }
 
+#[async_trait]
 impl Connect for DataSource {
     async fn connect(&self) -> ChapatyResult<ChapatyClient> {
         match self {
@@ -170,9 +200,10 @@ impl<T, S: Connect> SourceGroup<T, S> {
 /// Custom implementations of [`Connect`] can ignore this and build their own.
 async fn create_default_client(
     endpoint: String,
-    api_key: Option<ApiKey>,
+    metadata_key: Option<String>,
+    credential: Option<Credential>,
 ) -> ChapatyResult<ChapatyClient> {
-    info!(%endpoint, has_api_key = api_key.is_some(), "Establishing gRPC connection");
+    info!(%endpoint, has_api_key = credential.is_some(), "Establishing gRPC connection");
 
     let channel = Channel::from_shared(endpoint.clone())
         .map_err(|_| TransportError::Connection("Invalid URI".into()))?
@@ -197,7 +228,7 @@ async fn create_default_client(
         .map_err(|e| TransportError::Connection(e.to_string()))?;
 
     // Always create the interceptor (it might contain None)
-    let interceptor = ApiKeyInterceptor::new(api_key);
+    let interceptor = ApiKeyInterceptor::new(metadata_key, credential);
 
     // Always use with_interceptor
     let client = ExporterServiceClient::with_interceptor(channel, interceptor);
@@ -213,37 +244,52 @@ async fn create_default_client(
 /// Interceptor that adds API key to gRPC request metadata.
 #[derive(Clone)]
 pub struct ApiKeyInterceptor {
-    api_key: Option<MetadataValue<tonic::metadata::Ascii>>,
+    metadata_key: MetadataKey<tonic::metadata::Ascii>,
+    metadata_value: Option<MetadataValue<tonic::metadata::Ascii>>,
 }
 
 impl ApiKeyInterceptor {
     /// Creates an interceptor that injects the optional API key into request
     /// metadata.
     ///
+    /// # Metadata Key Rules
+    /// The `metadata_key` must be a valid lowercased ASCII header name (e.g.,
+    /// `"x-api-key"`). If `None` is provided, or if the string fails to
+    /// parse (e.g. contains uppercase characters, non-ASCII, or spaces), it
+    /// defaults to `"api-key"`.
+    ///
     /// # Panics
-    /// Panics if the provided API key cannot be parsed into ASCII metadata.
+    /// Panics if the provided API key contains non-ASCII characters or control
+    /// characters that cannot be parsed into ASCII metadata values.
     #[must_use]
     #[expect(
         clippy::expect_used,
-        reason = "a non-token API key is a configuration error; failing fast here surfaces it immediately at setup"
+        reason = "a non-ascii token API key is a configuration error. Failing fast here surfaces it immediately at setup"
     )]
-    pub fn new(api_key: Option<ApiKey>) -> Self {
-        let metadata_value = api_key.map(|key| {
-            key.0
+    pub fn new(metadata_key: Option<String>, credential: Option<Credential>) -> Self {
+        let metadata_key = metadata_key
+            .and_then(|key| key.parse().ok())
+            .unwrap_or_else(|| MetadataKey::from_static("api-key"));
+
+        let metadata_value = credential.map(|value| {
+            value
+                .0
                 .parse()
                 .expect("API key contains invalid characters for metadata")
         });
 
         Self {
-            api_key: metadata_value,
+            metadata_key,
+            metadata_value,
         }
     }
 }
 
 impl Interceptor for ApiKeyInterceptor {
     fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, Status> {
-        if let Some(key) = &self.api_key {
-            req.metadata_mut().insert("api-key", key.clone());
+        if let Some(key) = &self.metadata_value {
+            req.metadata_mut()
+                .insert(self.metadata_key.clone(), key.clone());
         }
         Ok(req)
     }

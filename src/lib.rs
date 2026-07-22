@@ -23,7 +23,7 @@ mod transport;
 pub use crate::io::{SerdeFormat, StorageLocation};
 // Expose specific Transport items
 pub use crate::transport::source::{
-    ApiKey, DataSource, EndpointUrl, HostedApi, SelfHostedApi, SourceGroup,
+    Credential, DataSource, DefaultGrpcEndpoint, EndpointUrl, HostedApi, SourceGroup,
 };
 
 // === Convenience ===

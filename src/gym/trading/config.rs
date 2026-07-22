@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumCount, EnumIter, EnumString, IntoStaticStr};
 
 use crate::{
-    ApiKey, EndpointUrl, SelfHostedApi,
     data::{
         common::{ProfileAggregation, RiskMetricsConfig},
         domain::{
@@ -620,14 +619,6 @@ pub enum EnvPreset {
     NinjaTraderCme6eh61mTpo1d,
 }
 
-fn self_hosted_source() -> DataSource {
-    let api_key = std::env::var("CHAPATY_API_KEY").ok().map(ApiKey);
-    DataSource::SelfHosted(SelfHostedApi {
-        endpoint: EndpointUrl("http://[::1]:50051".to_string()),
-        api_key,
-    })
-}
-
 impl From<EnvPreset> for EnvConfig {
     #[expect(
         clippy::similar_names,
@@ -638,7 +629,7 @@ impl From<EnvPreset> for EnvConfig {
         reason = "builds the full environment configuration for a preset in one declarative block"
     )]
     fn from(preset: EnvPreset) -> Self {
-        let source = self_hosted_source();
+        let source = DataSource::Hosted;
         match preset {
             EnvPreset::BinanceBtcUsdt1d => {
                 let market_config = OhlcvSpotQuery {
@@ -1071,7 +1062,7 @@ impl From<EnvPreset> for EnvConfig {
 /// - `trade_hint`: Buffer size optimization
 /// - `risk_metrics_cfg`: Sharpe ratio and risk calculations
 /// - `invalid_action_penalty`: Penalty for invalid actions
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize)]
 pub struct EnvConfig {
     // ========================================================================
     // Market Data (RPC) + Computed Indicators

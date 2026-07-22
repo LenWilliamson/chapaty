@@ -549,7 +549,7 @@ mod tests {
     )]
     use super::*;
     use crate::{
-        DataSource, SelfHostedApi, StorageLocation,
+        DataSource, DefaultGrpcEndpoint, StorageLocation,
         data::{
             domain::{
                 CountryCode, DataBroker, EconomicCategory, EconomicEventImpact, Exchange, Period,
@@ -815,9 +815,10 @@ mod tests {
         // Minimal config - just needs to produce a consistent hash
         EnvConfig::default()
             .add_ohlcv_spot(
-                DataSource::SelfHosted(SelfHostedApi {
+                DataSource::SelfHosted(DefaultGrpcEndpoint {
                     endpoint: EndpointUrl::from("http://test:50051"),
-                    api_key: None,
+                    metadata_key: None,
+                    credential: None,
                 }),
                 OhlcvSpotQuery {
                     broker: DataBroker::Binance,
@@ -829,9 +830,10 @@ mod tests {
                 },
             )
             .add_economic_calendar(
-                DataSource::SelfHosted(SelfHostedApi {
+                DataSource::SelfHosted(DefaultGrpcEndpoint {
                     endpoint: EndpointUrl::from("http://test:50051"),
-                    api_key: None,
+                    metadata_key: None,
+                    credential: None,
                 }),
                 EconomicCalendarQuery {
                     broker: DataBroker::InvestingCom,
