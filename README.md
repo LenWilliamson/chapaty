@@ -3,8 +3,8 @@
 [![Discord](https://img.shields.io/discord/1495690333911257108.svg?label=Discord&logo=discord&color=7289da&logoColor=white)][discord]
 [![Crates.io](https://img.shields.io/crates/v/chapaty.svg)](https://crates.io/crates/chapaty)
 [![Docs.rs](https://img.shields.io/docsrs/chapaty)](https://docs.rs/chapaty)
-[![CI (Main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
-[![CI (Develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml)
+[![CI (Main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yaml)
+[![CI (Develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/LenWilliamson/chapaty/actions/workflows/ci.yaml)
 
 **Chapaty** is a Rust engine for **building and evaluating quantitative trading agents**. Designed with a familiar [**Gym-style API**][gymnasiumLink], Chapaty brings the rigor of standardized simulation interfaces to **event-driven financial backtesting**.
 
