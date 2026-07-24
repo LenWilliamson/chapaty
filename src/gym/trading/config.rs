@@ -150,7 +150,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -172,7 +172,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -194,7 +194,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -216,7 +216,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -238,7 +238,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -261,7 +261,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -285,7 +285,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -308,7 +308,7 @@ pub enum EnvPreset {
     BinanceBtcUsdt1m15m,
 
     /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News —
-    /// Unrestricted (`NinjaTrader`, CME 6eh6)**
+    /// Unrestricted (`NinjaTrader`, CME 6eu6)**
     ///
     /// A multi-resolution intraday environment with 1-minute and 5-minute
     /// EUR/USD futures and US high-impact employment calendar data. The
@@ -319,7 +319,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -330,7 +330,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -341,7 +341,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -361,10 +361,10 @@ pub enum EnvPreset {
     /// [`EconomicCalendarPolicy::Unrestricted`] — no day-level filtering. All
     /// days in `2008..=2026` are eligible for simulation. The economic
     /// calendar serves as contextual data only.
-    NinjaTraderCme6eh61m5mUsEmpHigh,
+    NinjaTraderCme6eu61m5mUsEmpHigh,
 
     /// **EUR/USD 1-Minute Futures with US Employment News — Events Only
-    /// (`NinjaTrader`, CME 6eh6)**
+    /// (`NinjaTrader`, CME 6eu6)**
     ///
     /// A high-frequency intraday environment for news-driven strategies on
     /// EUR/USD futures, such as breakout or fade entries around scheduled
@@ -374,7 +374,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -385,7 +385,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -404,10 +404,10 @@ pub enum EnvPreset {
     ///
     /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US
     /// Employment (High impact) event are excluded from simulation.
-    NinjaTraderCme6eh61mUsEmpHighEventsOnly,
+    NinjaTraderCme6eu61mUsEmpHighEventsOnly,
 
     /// **EUR/USD 1-Minute + 5-Minute Futures with US Employment News — Events
-    /// Only (`NinjaTrader`, CME 6eh6)**
+    /// Only (`NinjaTrader`, CME 6eu6)**
     ///
     /// A multi-resolution intraday environment combining 1-minute and 5-minute
     /// futures data for hybrid news strategies that use different
@@ -417,7 +417,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -428,7 +428,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -439,7 +439,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -458,7 +458,7 @@ pub enum EnvPreset {
     ///
     /// [`EconomicCalendarPolicy::OnlyWithEvents`] — days without a matching US
     /// Employment (High impact) event are excluded from simulation.
-    NinjaTraderCme6eh61m5mUsEmpHighEventsOnly,
+    NinjaTraderCme6eu61m5mUsEmpHighEventsOnly,
 
     /// **BTC/USDT Daily Spot with SMA Crossover (Binance)**
     ///
@@ -467,7 +467,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Infinite`]
+    /// [`EpisodeLength::Infinite`] (Default)
     ///
     /// # Available IDs
     ///
@@ -501,7 +501,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -543,7 +543,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -577,7 +577,7 @@ pub enum EnvPreset {
     BinanceBtcUsdt1h1mTpo1d1Usdt,
 
     /// **EUR/USD 1-Minute Futures with Daily TPO Profile (`NinjaTrader`, CME
-    /// 6eh6)**
+    /// 6eu6)**
     ///
     /// An intraday futures environment with 1-minute EUR/USD OHLCV data and a
     /// daily-aggregated TPO (Market Profile) using tick-level bin size
@@ -585,7 +585,7 @@ pub enum EnvPreset {
     ///
     /// # Episode Length
     ///
-    /// [`EpisodeLength::Day`] (Default)
+    /// [`EpisodeLength::Day`]
     ///
     /// # Available IDs
     ///
@@ -596,7 +596,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -607,7 +607,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::June,
+    ///         month: ContractMonth::September,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     aggregation: ProfileAggregation {
@@ -616,7 +616,7 @@ pub enum EnvPreset {
     ///     },
     /// };
     /// ```
-    NinjaTraderCme6eh61mTpo1d,
+    NinjaTraderCme6eu61mTpo1d,
 }
 
 impl From<EnvPreset> for EnvConfig {
@@ -771,12 +771,12 @@ impl From<EnvPreset> for EnvConfig {
                     .with_episode_length(EpisodeLength::Infinite)
                     .with_filter_config(filter)
             }
-            EnvPreset::NinjaTraderCme6eh61m5mUsEmpHigh => {
+            EnvPreset::NinjaTraderCme6eu61m5mUsEmpHigh => {
                 let ohlcv_1m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -788,7 +788,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -816,12 +816,12 @@ impl From<EnvPreset> for EnvConfig {
                     .add_economic_calendar(source, calendar)
                     .with_trade_hint(4)
             }
-            EnvPreset::NinjaTraderCme6eh61mUsEmpHighEventsOnly => {
+            EnvPreset::NinjaTraderCme6eu61mUsEmpHighEventsOnly => {
                 let ohlcv = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -849,12 +849,12 @@ impl From<EnvPreset> for EnvConfig {
                     .add_economic_calendar(source, calendar)
                     .with_trade_hint(2)
             }
-            EnvPreset::NinjaTraderCme6eh61m5mUsEmpHighEventsOnly => {
+            EnvPreset::NinjaTraderCme6eu61m5mUsEmpHighEventsOnly => {
                 let ohlcv_1m = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -866,7 +866,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -994,12 +994,12 @@ impl From<EnvPreset> for EnvConfig {
                     .with_episode_length(EpisodeLength::Day)
                     .with_filter_config(filter)
             }
-            EnvPreset::NinjaTraderCme6eh61mTpo1d => {
+            EnvPreset::NinjaTraderCme6eu61mTpo1d => {
                 let ohlcv = OhlcvFutureQuery {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -1011,7 +1011,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::June,
+                        month: ContractMonth::September,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
