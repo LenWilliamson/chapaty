@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     info!(build_time = ?build_start.elapsed(), "Environment ready");
 
     let reports_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(REPORTS_SUBDIR);
-    let file_cfg = FileConfig::default().with_dir(&reports_dir);
+    let file_cfg = FileConfig::default().with_dir(reports_dir);
 
     // === 1. Single-agent baseline: full journal + reports ===
     let mut baseline = NoOpAgent::default();

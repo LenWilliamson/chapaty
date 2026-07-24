@@ -1,4 +1,8 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use polars::{
     frame::DataFrame,
@@ -33,17 +37,17 @@ impl Default for ExportFormat {
 
 /// Configuration for exporting reports to the local file system.
 #[derive(Debug, Clone)]
-pub struct FileConfig<'a> {
-    pub dir: &'a Path,
+pub struct FileConfig {
+    pub dir: PathBuf,
     pub file_stem: Option<String>,
     pub format: ExportFormat,
     pub sink_opts: UnifiedSinkArgs,
 }
 
-impl Default for FileConfig<'_> {
+impl Default for FileConfig {
     fn default() -> Self {
         Self {
-            dir: Path::new("./chapaty/reports"),
+            dir: Path::new("./chapaty/reports").into(),
             file_stem: None,
             format: ExportFormat::default(),
             sink_opts: default_unified_sink_args(),
@@ -51,9 +55,9 @@ impl Default for FileConfig<'_> {
     }
 }
 
-impl<'a> FileConfig<'a> {
+impl FileConfig {
     #[must_use]
-    pub fn with_dir(self, dir: &'a Path) -> Self {
+    pub fn with_dir(self, dir: PathBuf) -> Self {
         Self { dir, ..self }
     }
 
@@ -83,17 +87,17 @@ impl<'a> FileConfig<'a> {
 /// including the file name and extension (e.g.,
 /// `gs://bucket/path/to/my_report.csv`). Do not pass a directory URI.
 #[derive(Debug, Clone)]
-pub struct CloudConfig<'a> {
-    pub uri: &'a str,
+pub struct CloudConfig {
+    pub uri: String,
     pub format: ExportFormat,
     pub cloud_opts: CloudOptions,
     pub sink_opts: UnifiedSinkArgs,
 }
 
-impl<'a> CloudConfig<'a> {
+impl CloudConfig {
     /// Creates a new `CloudConfig` targeting a specific, complete Cloud URI.
     #[must_use]
-    pub fn new(uri: &'a str) -> Self {
+    pub fn new(uri: String) -> Self {
         Self {
             uri,
             format: ExportFormat::default(),
@@ -164,13 +168,13 @@ pub trait ExportSync {
     /// # Errors
     /// Returns an error if path resolution, serialization, or file writing
     /// fails.
-    fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()>;
+    fn to_file_sync(&self, config: &FileConfig) -> ChapatyResult<()>;
 }
 
 #[async_trait]
 pub trait Export {
     /// Streams the report to a cloud bucket using Polars' streaming engine.
-    async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()>;
+    async fn to_cloud(&self, config: &CloudConfig) -> ChapatyResult<()>;
 }
 
 // ================================================================================================
@@ -207,7 +211,7 @@ impl<T> ExportSync for T
 where
     T: Report + ReportName + ToSchema + Sync + Send,
 {
-    fn to_file_sync(&self, config: &FileConfig<'_>) -> ChapatyResult<()> {
+    fn to_file_sync(&self, config: &FileConfig) -> ChapatyResult<()> {
         let ext: FileExtension = (&config.format).into();
         let filename = config.file_stem.as_ref().map_or_else(
             || format!("{}.{ext}", self.base_name()),
@@ -216,7 +220,7 @@ where
         let file_path = config.dir.join(&filename);
 
         if !config.dir.exists() {
-            fs::create_dir_all(config.dir).map_err(|e| {
+            fs::create_dir_all(&config.dir).map_err(|e| {
                 IoError::FileSystem(format!(
                     "Failed to create directory {}: {}",
                     config.dir.display(),
@@ -271,13 +275,11 @@ impl<T> Export for T
 where
     T: Report + ReportName + ToSchema + Sync + Send,
 {
-    async fn to_cloud(&self, config: CloudConfig<'_>) -> ChapatyResult<()> {
+    async fn to_cloud(&self, config: &CloudConfig) -> ChapatyResult<()> {
         let lf = self.as_formatted_lf();
-        let target = SinkTarget::Path(PlRefPath::new(config.uri));
-        let format = config.format;
-
-        // Clone URI to move into the blocking task safely
-        let uri_string = config.uri.to_string();
+        let target = SinkTarget::Path(PlRefPath::new(&config.uri));
+        let format = config.format.clone();
+        let uri_string = config.uri.clone();
 
         let mut unified_args = config.sink_opts.clone();
         unified_args.cloud_options = Some(Arc::new(config.cloud_opts.clone()));
