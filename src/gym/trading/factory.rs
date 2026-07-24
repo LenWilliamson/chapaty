@@ -187,10 +187,6 @@ impl BuildCtx {
 
 impl BuildCtx {
     #[tracing::instrument]
-    #[expect(
-        clippy::large_futures,
-        reason = "environment-construction future holds the full builder state; it is awaited once during setup, not in a hot loop"
-    )]
     fn start<'a>() -> NextState<'a, Self> {
         info!("Start building trade environent");
         Ok(next_async_fn(|ctx| {
