@@ -656,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn default_is_day() {
-        assert_eq!(EpisodeLength::default(), EpisodeLength::Day);
+    fn default_is_infinite() {
+        assert_eq!(EpisodeLength::default(), EpisodeLength::Infinite);
     }
 }

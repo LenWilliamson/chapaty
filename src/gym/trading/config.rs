@@ -114,7 +114,8 @@ pub enum ExecutionBias {
 /// metric), you can convert it into an [`EnvConfig`] using `.into()` and tweak
 /// it to your liking:
 ///
-/// ```rust,ignore
+/// ```rust
+/// # use chapaty::prelude::*;
 /// let mut config: EnvConfig = EnvPreset::BinanceBtcUsdt1d.into();
 /// // Modify the config as needed
 /// ```
