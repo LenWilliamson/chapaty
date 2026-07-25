@@ -1291,8 +1291,12 @@ mod tests {
     use super::*;
     use crate::{
         data::{
-            domain::{DataBroker, Exchange, Period, SpotPair}, episode::Episode, event::{Ohlcv, OhlcvId},
-        }, gym::trading::{ExecutionBias, config::EnvConfig}, sim::{
+            domain::{DataBroker, Exchange, Period, SpotPair},
+            episode::Episode,
+            event::{Ohlcv, OhlcvId},
+        },
+        gym::trading::{ExecutionBias, config::EnvConfig},
+        sim::{
             cursor_group::CursorGroup,
             data::{SimulationData, SimulationDataBuilder, Streams},
         },
