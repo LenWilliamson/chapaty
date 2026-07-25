@@ -126,12 +126,12 @@ pub enum GroupCol {
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
-    /// The type of instrument (e.g., `spot`, `futures`).
-    MarketType,
+    /// The kind of instrument (e.g., `spot`, `futures`).
+    MarketKind,
 
     // === Trade configuration ===
-    /// The type of trade (e.g., `long`, `short`).
-    TradeType,
+    /// The kind of trade (e.g., `long`, `short`).
+    TradeKind,
 
     // === Timestamps ===
     /// The year when the trade was entered.
@@ -164,10 +164,10 @@ impl From<GroupCol> for JournalCol {
             GroupCol::DataBroker => Self::DataBroker,
             GroupCol::Exchange => Self::Exchange,
             GroupCol::Symbol => Self::Symbol,
-            GroupCol::MarketType => Self::MarketType,
+            GroupCol::MarketKind => Self::MarketKind,
 
             // === Trade configuration ===
-            GroupCol::TradeType => Self::TradeType,
+            GroupCol::TradeKind => Self::TradeKind,
 
             // === Timestamps (Mapped to parent TS columns) ===
             GroupCol::EntryYear | GroupCol::EntryQuarter | GroupCol::EntryMonth => {
@@ -216,8 +216,8 @@ impl GroupCol {
             | Self::DataBroker
             | Self::Exchange
             | Self::Symbol
-            | Self::MarketType
-            | Self::TradeType
+            | Self::MarketKind
+            | Self::TradeKind
             | Self::ExitReason => col(source_col),
 
             // === Virtual Time Columns ===

@@ -43,14 +43,14 @@ impl Trade<Active> {
 
         // 2. Validate Logic (The Guard)
         // We check if the Initial State is valid.
-        cmd.trade_type
+        cmd.trade_kind
             .price_ordering_validation(clean_sl, Some(clean_entry), clean_tp)?;
 
         // 3. Construct
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            kind: cmd.trade_type,
+            kind: cmd.trade_kind,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -434,7 +434,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(1),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -454,7 +454,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(2),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Short,
+                trade_kind: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -768,7 +768,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(10),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.095_567)),   // Off-grid
                 take_profit: Some(Price(1.105_123)), // Off-grid
@@ -967,7 +967,7 @@ mod tests {
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,

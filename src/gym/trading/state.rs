@@ -187,7 +187,7 @@ impl<S: TradeState> Trade<S> {
         &self.agent_id
     }
 
-    pub const fn trade_type(&self) -> &TradeKind {
+    pub const fn trade_kind(&self) -> &TradeKind {
         &self.kind
     }
 
@@ -330,12 +330,12 @@ impl State {
     }
 
     #[must_use]
-    pub const fn trade_kind(&self) -> &TradeKind {
+    pub const fn trade_kind(&self) -> TradeKind {
         match self {
-            Self::Pending(t) => &t.kind,
-            Self::Active(t) => &t.kind,
-            Self::Closed(t) => &t.kind,
-            Self::Canceled(t) => &t.kind,
+            Self::Pending(t) => t.kind,
+            Self::Active(t) => t.kind,
+            Self::Closed(t) => t.kind,
+            Self::Canceled(t) => t.kind,
         }
     }
 
@@ -1912,7 +1912,7 @@ mod tests {
         let cmd1 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(100.0)), // Limit order
             stop_loss: None,
@@ -1935,7 +1935,7 @@ mod tests {
         let cmd2 = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(42), // Duplicate!
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(2.0),
             entry_price: Some(Price(110.0)),
             stop_loss: None,
@@ -1966,7 +1966,7 @@ mod tests {
         let limit_cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: Some(Price(50000.0)), // Limit price
             stop_loss: Some(Price(49000.0)),
@@ -2115,7 +2115,7 @@ mod tests {
         let cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(1.0),
             entry_price: None, // MARKET ORDER
             stop_loss: None,

@@ -153,7 +153,7 @@ impl<'env> ActionSpace<'env> {
                             Action::Open(OpenCmd {
                                 agent_id: AgentIdentifier::Random,
                                 trade_id: new_uid,
-                                trade_type: side,
+                                trade_kind: side,
                                 quantity,
                                 entry_price: None,
                                 stop_loss: None,
@@ -239,7 +239,7 @@ mod tests {
         let cmd = OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(uid),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(qty),
             // Market Order (None) -> handle_open will resolve price from 'view'
             entry_price: None,

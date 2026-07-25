@@ -67,12 +67,12 @@ pub enum JournalCol {
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
-    /// The type of instrument (e.g., `spot`, `futures`).
-    MarketType,
+    /// The kind of instrument (e.g., `spot`, `futures`).
+    MarketKind,
 
     // === Trade configuration ===
-    /// The type of trade (e.g., `long`, `short`).
-    TradeType,
+    /// The kind of trade (e.g., `long`, `short`).
+    TradeKind,
     /// The price at which the trade was entered.
     EntryPrice,
     /// The price at which the trade will be stopped to limit loss.
@@ -125,9 +125,9 @@ impl TryFrom<JournalCol> for GroupCol {
             JournalCol::DataBroker => Ok(Self::DataBroker),
             JournalCol::Exchange => Ok(Self::Exchange),
             JournalCol::Symbol => Ok(Self::Symbol),
-            JournalCol::MarketType => Ok(Self::MarketType),
+            JournalCol::MarketKind => Ok(Self::MarketKind),
             // === Trade configuration ===
-            JournalCol::TradeType => Ok(Self::TradeType),
+            JournalCol::TradeKind => Ok(Self::TradeKind),
             // === Timestamps ===
             JournalCol::EntryTimestamp => {
                 Err(DataError::UnexpectedEnumVariant(
@@ -290,8 +290,8 @@ impl ToSchema for Journal {
                     | JournalCol::DataBroker
                     | JournalCol::Exchange
                     | JournalCol::Symbol
-                    | JournalCol::MarketType
-                    | JournalCol::TradeType
+                    | JournalCol::MarketKind
+                    | JournalCol::TradeKind
                     | JournalCol::ExitReason => DataType::String,
 
                     JournalCol::Quantity

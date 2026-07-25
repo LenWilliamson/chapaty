@@ -539,12 +539,12 @@ pub enum Period {
     IntoStaticStr,
 )]
 #[strum(serialize_all = "lowercase")]
-pub enum MarketType {
+pub enum MarketKind {
     Spot,
     Future,
 }
 
-impl From<Symbol> for MarketType {
+impl From<Symbol> for MarketKind {
     fn from(value: Symbol) -> Self {
         match value {
             Symbol::Future(_) => Self::Future,
@@ -590,7 +590,7 @@ impl FromStr for Symbol {
 
 impl Symbol {
     #[must_use]
-    pub fn market_type(&self) -> MarketType {
+    pub fn market_kind(&self) -> MarketKind {
         (*self).into()
     }
 }

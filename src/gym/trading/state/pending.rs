@@ -33,14 +33,14 @@ impl Trade<Pending> {
             .map(|p| Price(sanitize_price(symbol, p.0, "tp")));
 
         // 2. Validate Logic
-        cmd.trade_type
+        cmd.trade_kind
             .price_ordering_validation(clean_sl, Some(clean_limit), clean_tp)?;
 
         // 3. Construct
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            kind: cmd.trade_type,
+            kind: cmd.trade_kind,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -268,7 +268,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(100),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -287,7 +287,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(101),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Short,
+                trade_kind: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -713,7 +713,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(200),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.085_567)),
                 take_profit: Some(Price(1.095_123)),
@@ -894,7 +894,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,

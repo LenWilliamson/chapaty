@@ -9,7 +9,7 @@ use polars::{
 
 use crate::{
     data::{
-        domain::{DataBroker, Exchange, MarketType, Price, Quantity, Symbol, Tick, TradeId},
+        domain::{DataBroker, Exchange, MarketKind, Price, Quantity, Symbol, Tick, TradeId},
         episode::{Episode, EpisodeId},
         event::MarketId,
     },
@@ -337,8 +337,8 @@ struct JournalEntry {
     data_broker: DataBroker,
     exchange: Exchange,
     symbol: Symbol,
-    market_type: MarketType,
-    trade_type: TradeKind,
+    market_kind: MarketKind,
+    trade_kind: TradeKind,
     entry_price: Price,
     stop_loss: Option<Price>,
     take_profit: Option<Price>,
@@ -370,8 +370,8 @@ struct JournalSoA {
     data_broker: Vec<DataBroker>,
     exchange: Vec<Exchange>,
     symbol: Vec<Symbol>,
-    market_type: Vec<MarketType>,
-    trade_type: Vec<TradeKind>,
+    market_kind: Vec<MarketKind>,
+    trade_kind: Vec<TradeKind>,
     entry_price: Vec<Price>,
     stop_loss: Vec<Option<Price>>,
     take_profit: Vec<Option<Price>>,
@@ -443,15 +443,15 @@ impl JournalSoA {
             .collect()
     }
 
-    pub fn market_types(&mut self) -> Vec<String> {
-        mem::take(&mut self.market_type)
+    pub fn market_kinds(&mut self) -> Vec<String> {
+        mem::take(&mut self.market_kind)
             .into_iter()
             .map(|m| m.to_string())
             .collect()
     }
 
-    pub fn trade_types(&mut self) -> Vec<String> {
-        mem::take(&mut self.trade_type)
+    pub fn trade_kinds(&mut self) -> Vec<String> {
+        mem::take(&mut self.trade_kind)
             .into_iter()
             .map(|t| t.to_string())
             .collect()
@@ -581,8 +581,8 @@ trait TryCollectJournalSoA: Iterator<Item = ChapatyResult<JournalEntry>> + Sized
                 data_broker,
                 exchange,
                 symbol,
-                market_type,
-                trade_type,
+                market_kind,
+                trade_kind,
                 entry_price,
                 stop_loss,
                 take_profit,
@@ -607,8 +607,8 @@ trait TryCollectJournalSoA: Iterator<Item = ChapatyResult<JournalEntry>> + Sized
             soa.data_broker.push(data_broker);
             soa.exchange.push(exchange);
             soa.symbol.push(symbol);
-            soa.market_type.push(market_type);
-            soa.trade_type.push(trade_type);
+            soa.market_kind.push(market_kind);
+            soa.trade_kind.push(trade_kind);
             soa.entry_price.push(entry_price);
             soa.stop_loss.push(stop_loss);
             soa.take_profit.push(take_profit);
@@ -655,10 +655,10 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
             data_broker: market_id.broker,
             exchange: market_id.exchange,
             symbol: market_id.symbol,
-            market_type: market_id.symbol.into(),
+            market_kind: market_id.symbol.into(),
 
             // === Trade Data ===
-            trade_type: *state.trade_kind(),
+            trade_kind: state.trade_kind(),
             quantity: state.quantity(),
 
             // For Pending/Canceled, we use limit_price as the intended entry
@@ -709,8 +709,8 @@ impl TryFrom<JournalSoA> for DataFrame {
             JournalCol::DataBroker.to_string()              => soa.data_brokers(),
             JournalCol::Exchange.to_string()                => soa.exchanges(),
             JournalCol::Symbol.to_string()                  => soa.symbols(),
-            JournalCol::MarketType.to_string()              => soa.market_types(),
-            JournalCol::TradeType.to_string()               => soa.trade_types(),
+            JournalCol::MarketKind.to_string()              => soa.market_kinds(),
+            JournalCol::TradeKind.to_string()               => soa.trade_kinds(),
 
             // === Trade configuration ===
             JournalCol::EntryPrice.to_string()              => soa.entry_prices(),
@@ -883,8 +883,8 @@ mod test {
             data_broker: DataBroker::Binance,
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
-            market_type: MarketType::Spot,
-            trade_type: TradeKind::Long,
+            market_kind: MarketKind::Spot,
+            trade_kind: TradeKind::Long,
             entry_price: Price(50000.0),
             stop_loss: Some(Price(49000.0)),
             take_profit: Some(Price(52000.0)),
@@ -925,8 +925,8 @@ mod test {
         soa.data_broker.push(entry.data_broker);
         soa.exchange.push(entry.exchange);
         soa.symbol.push(entry.symbol);
-        soa.market_type.push(entry.market_type);
-        soa.trade_type.push(entry.trade_type);
+        soa.market_kind.push(entry.market_kind);
+        soa.trade_kind.push(entry.trade_kind);
         soa.entry_price.push(entry.entry_price);
         soa.stop_loss.push(entry.stop_loss);
         soa.take_profit.push(entry.take_profit);
@@ -1040,8 +1040,8 @@ mod test {
             data_broker: DataBroker::Binance,
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::EthUsdt),
-            market_type: MarketType::Spot,
-            trade_type: TradeKind::Short,
+            market_kind: MarketKind::Spot,
+            trade_kind: TradeKind::Short,
             entry_price: Price(3000.0),
             stop_loss: None,
             take_profit: None,
@@ -1070,13 +1070,13 @@ mod test {
             .get(0);
         assert_eq!(trade_state, Some("active"));
 
-        let trade_type = df
-            .column(JournalCol::TradeType.as_str())
+        let trade_kind = df
+            .column(JournalCol::TradeKind.as_str())
             .unwrap()
             .str()
             .unwrap()
             .get(0);
-        assert_eq!(trade_type, Some("short"));
+        assert_eq!(trade_kind, Some("short"));
 
         let qty = df
             .column(JournalCol::Quantity.as_str())
@@ -1116,8 +1116,8 @@ mod test {
             data_broker: DataBroker::Binance,
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
-            market_type: MarketType::Spot,
-            trade_type: TradeKind::Long,
+            market_kind: MarketKind::Spot,
+            trade_kind: TradeKind::Long,
             entry_price: Price(48000.0), // Limit price
             stop_loss: None,
             take_profit: None,
@@ -1179,8 +1179,8 @@ mod test {
             data_broker: DataBroker::Binance,
             exchange: Exchange::Binance,
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
-            market_type: MarketType::Spot,
-            trade_type: TradeKind::Long,
+            market_kind: MarketKind::Spot,
+            trade_kind: TradeKind::Long,
             entry_price: Price(47000.0),
             stop_loss: None,
             take_profit: None,
@@ -1617,7 +1617,7 @@ mod test {
         let invalid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(1),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(0.0), // <-- Invalid: will fail validate()
             entry_price: None,
             stop_loss: None,
@@ -1627,7 +1627,7 @@ mod test {
         let valid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
             trade_id: TradeId(2),
-            trade_type: TradeKind::Long,
+            trade_kind: TradeKind::Long,
             quantity: Quantity(1.0),           // <-- Valid quantity
             entry_price: Some(Price(50000.0)), // Limit order to avoid price lookup
             stop_loss: Some(Price(49000.0)),
@@ -1928,26 +1928,26 @@ mod test {
         soa.data_broker.push(DataBroker::Binance);
         soa.exchange.push(Exchange::Binance);
         soa.symbol.push(Symbol::Spot(SpotPair::EthUsdt));
-        soa.market_type.push(MarketType::Spot);
+        soa.market_kind.push(MarketKind::Spot);
 
         let brokers = soa.data_brokers();
         let exchanges = soa.exchanges();
         let symbols = soa.symbols();
-        let market_types = soa.market_types();
+        let market_kinds = soa.market_kinds();
 
         assert_eq!(brokers, vec!["binance".to_string()]);
         assert_eq!(exchanges, vec!["binance".to_string()]);
         assert_eq!(symbols, vec!["eth-usdt".to_string()]);
-        assert_eq!(market_types, vec!["spot".to_string()]);
+        assert_eq!(market_kinds, vec!["spot".to_string()]);
     }
 
     #[test]
-    fn test_journal_soa_trade_types() {
+    fn test_journal_soa_trade_kinds() {
         let mut soa = JournalSoA::default();
-        soa.trade_type.push(TradeKind::Long);
-        soa.trade_type.push(TradeKind::Short);
+        soa.trade_kind.push(TradeKind::Long);
+        soa.trade_kind.push(TradeKind::Short);
 
-        let result = soa.trade_types();
+        let result = soa.trade_kinds();
 
         assert_eq!(result, vec!["long".to_string(), "short".to_string()]);
     }

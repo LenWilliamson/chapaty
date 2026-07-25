@@ -155,7 +155,7 @@ pub struct OpenCmd {
     pub agent_id: AgentIdentifier,
     /// The unique ID assigned by the agent for this trade.
     pub trade_id: TradeId,
-    pub trade_type: TradeKind,
+    pub trade_kind: TradeKind,
     pub quantity: Quantity,
 
     // Optional Parameters
@@ -175,7 +175,7 @@ impl Command for OpenCmd {
         }
 
         // Validate price ordering (SL < Entry < TP, etc.)
-        self.trade_type.price_ordering_validation(
+        self.trade_kind.price_ordering_validation(
             self.stop_loss,
             self.entry_price,
             self.take_profit,
