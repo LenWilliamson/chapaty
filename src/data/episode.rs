@@ -139,7 +139,6 @@ fn episode_build_err(s: &str) -> ChapatyError {
 )]
 pub enum EpisodeLength {
     /// Trades reset at the end of each day (UTC).
-    #[default]
     Day = 1,
 
     /// Trades reset at the end of each week (UTC Sunday night).
@@ -158,6 +157,7 @@ pub enum EpisodeLength {
     Annual = 6,
 
     /// Trades are not reset at all.
+    #[default]
     Infinite = 7,
 }
 
@@ -656,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn default_is_day() {
-        assert_eq!(EpisodeLength::default(), EpisodeLength::Day);
+    fn default_is_infinite() {
+        assert_eq!(EpisodeLength::default(), EpisodeLength::Infinite);
     }
 }
