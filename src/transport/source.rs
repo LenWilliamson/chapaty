@@ -152,7 +152,7 @@ impl Connect for DefaultGrpcEndpoint {
 pub enum DataSource {
     /// Use Chapaty's hosted API.
     ///
-    /// Reads `CHAPATY_API_KEY` from environment variables.
+    /// Reads `CHAPATY_CREDENTIAL` from environment variables.
     #[default]
     Hosted,
     SelfHosted(DefaultGrpcEndpoint),
