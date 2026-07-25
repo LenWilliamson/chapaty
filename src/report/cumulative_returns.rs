@@ -62,8 +62,8 @@ impl ToSchema for CumulativeReturns {
                     | CumulativeReturnCol::DataBroker
                     | CumulativeReturnCol::Symbol
                     | CumulativeReturnCol::Exchange
-                    | CumulativeReturnCol::MarketType
-                    | CumulativeReturnCol::TradeType
+                    | CumulativeReturnCol::MarketKind
+                    | CumulativeReturnCol::TradeKind
                     | CumulativeReturnCol::ExitReason => DataType::String,
 
                     CumulativeReturnCol::CumulativeTimestamp
@@ -167,9 +167,9 @@ fn exprs(init_val: u32) -> Vec<Expr> {
         col(JournalCol::DataBroker).define_as(CumulativeReturnCol::DataBroker, DataType::String),
         col(JournalCol::Exchange).define_as(CumulativeReturnCol::Exchange, DataType::String),
         col(JournalCol::Symbol).define_as(CumulativeReturnCol::Symbol, DataType::String),
-        col(JournalCol::MarketType).define_as(CumulativeReturnCol::MarketType, DataType::String),
+        col(JournalCol::MarketKind).define_as(CumulativeReturnCol::MarketKind, DataType::String),
         // === Trade configuration ===
-        col(JournalCol::TradeType).define_as(CumulativeReturnCol::TradeType, DataType::String),
+        col(JournalCol::TradeKind).define_as(CumulativeReturnCol::TradeKind, DataType::String),
         col(JournalCol::Quantity).define_as(CumulativeReturnCol::Quantity, DataType::Float64),
         // === Time ===
         col(JournalCol::ExitTimestamp).define_as(
@@ -305,12 +305,12 @@ pub enum CumulativeReturnCol {
     Exchange,
     /// The trading symbol (e.g., `btc-usdt`).
     Symbol,
-    /// The type of instrument (e.g., `spot`, `futures`).
-    MarketType,
+    /// The kind of instrument (e.g., `spot`, `futures`).
+    MarketKind,
 
     // === Trade configuration ===
-    /// The type of trade (e.g., `long`, `short`).
-    TradeType,
+    /// The kind of trade (e.g., `long`, `short`).
+    TradeKind,
     /// Quantity of the asset involved.
     Quantity,
 

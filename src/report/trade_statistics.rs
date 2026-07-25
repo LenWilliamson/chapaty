@@ -163,7 +163,7 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
 fn exprs() -> ChapatyResult<Vec<Expr>> {
     let return_col = JournalCol::RealizedReturnInTicks;
     let trade_state_col = JournalCol::TradeState;
-    let trade_type_col = JournalCol::TradeType;
+    let trade_kind_col = JournalCol::TradeKind;
 
     let exprs = vec![
         // === Trade counts ===
@@ -253,9 +253,9 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
         pending_count_expr(trade_state_col).define_as(TradeStatCol::PendingCount, DataType::UInt32),
         longest_pending_streak_expr(trade_state_col)?
             .define_as(TradeStatCol::LongestPendingStreak, DataType::UInt32),
-        long_trade_count_expr(trade_type_col, trade_state_col)
+        long_trade_count_expr(trade_kind_col, trade_state_col)
             .define_as(TradeStatCol::LongTradeCount, DataType::UInt32),
-        short_trade_count_expr(trade_type_col, trade_state_col)
+        short_trade_count_expr(trade_kind_col, trade_state_col)
             .define_as(TradeStatCol::ShortTradeCount, DataType::UInt32),
     ];
     Ok(exprs)
@@ -461,17 +461,17 @@ fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Exp
     max_consecutive_streak_expr(predicate)
 }
 
-fn long_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+fn long_trade_count_expr(trade_kind_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .trade_executed()
-        .and(col(trade_type_col).eq(lit(TradeKind::Long.as_str())))
+        .and(col(trade_kind_col).eq(lit(TradeKind::Long.as_str())))
         .count_true()
 }
 
-fn short_trade_count_expr(trade_type_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+fn short_trade_count_expr(trade_kind_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .trade_executed()
-        .and(col(trade_type_col).eq(lit(TradeKind::Short.as_str())))
+        .and(col(trade_kind_col).eq(lit(TradeKind::Short.as_str())))
         .count_true()
 }
 
@@ -1180,7 +1180,7 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_trade_type_counts() {
+    fn test_trade_kind_counts() {
         let journal = load_journal_fixture();
         let stats = TradeStatistics::try_from(&journal).expect("Conversion failed");
         let df = stats.as_df();

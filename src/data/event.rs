@@ -15,7 +15,7 @@ use crate::{
         domain::{
             CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
             EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth, LiquiditySide,
-            MarketType, Period, Price, Quantity, Symbol, TradeId, Volume,
+            MarketKind, Period, Price, Quantity, Symbol, TradeId, Volume,
         },
     },
     error::{ChapatyError, ChapatyResult, DataError},
@@ -817,7 +817,7 @@ impl SymbolProvider for MarketId {
 
 impl MarketId {
     #[must_use]
-    pub fn market_type(&self) -> MarketType {
+    pub fn market_kind(&self) -> MarketKind {
         self.symbol.into()
     }
 }

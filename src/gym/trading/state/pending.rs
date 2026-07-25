@@ -33,14 +33,14 @@ impl Trade<Pending> {
             .map(|p| Price(sanitize_price(symbol, p.0, "tp")));
 
         // 2. Validate Logic
-        cmd.trade_type
+        cmd.trade_kind
             .price_ordering_validation(clean_sl, Some(clean_limit), clean_tp)?;
 
         // 3. Construct
         Ok(Self {
             uid: cmd.trade_id,
             agent_id: cmd.agent_id,
-            kind: cmd.trade_type,
+            kind: cmd.trade_kind,
             quantity: cmd.quantity,
             stop_loss: clean_sl,
             take_profit: clean_tp,
@@ -176,6 +176,7 @@ mod test {
                 ContractMonth, ContractYear, DataBroker, Exchange, FutureContract, FutureRoot,
                 Period, Price, Quantity, Symbol, TradeId,
             },
+            episode::Episode,
             event::{MarketId, Ohlcv, OhlcvId},
             view::MarketView,
         },
@@ -226,6 +227,22 @@ mod test {
         fn new(timestamp: DateTime<Utc>, low: f64, high: f64, close: f64) -> Self {
             let id = ohlcv_id();
 
+            // 0. Create first data point, so we can step once and have a valid previous
+            //    timestamp
+            let t0 = Ohlcv {
+                open_timestamp: timestamp - chrono::Duration::minutes(1),
+                close_timestamp: timestamp,
+                open: Price(f64::midpoint(low, high)),
+                high: Price(high),
+                low: Price(low),
+                close: Price(close),
+                volume: Quantity(1000.0),
+                quote_asset_volume: None,
+                number_of_trades: None,
+                taker_buy_base_asset_volume: None,
+                taker_buy_quote_asset_volume: None,
+            };
+
             // 1. Create Data
             let candle = Ohlcv {
                 open_timestamp: timestamp,
@@ -242,7 +259,7 @@ mod test {
             };
 
             let mut map = SortedVecMap::new();
-            map.insert(id, vec![candle].into_boxed_slice());
+            map.insert(id, vec![t0, candle].into_boxed_slice());
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
@@ -250,7 +267,8 @@ mod test {
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data);
+            let mut cursor = CursorGroup::new(&sim_data);
+            cursor.step(&sim_data, Episode::default());
 
             Self { sim_data, cursor }
         }
@@ -268,7 +286,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(100),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -287,7 +305,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(101),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Short,
+                trade_kind: TradeKind::Short,
                 quantity: Quantity(1.0),
                 stop_loss: sl.map(Price),
                 take_profit: tp.map(Price),
@@ -713,7 +731,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(200),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.085_567)),
                 take_profit: Some(Price(1.095_123)),
@@ -894,7 +912,7 @@ mod test {
             OpenCmd {
                 trade_id: TradeId(0),
                 agent_id: AgentIdentifier::Random,
-                trade_type: TradeKind::Long,
+                trade_kind: TradeKind::Long,
                 quantity: Quantity(1.0),
                 stop_loss: Some(Price(1.09000)),
                 take_profit: None,
