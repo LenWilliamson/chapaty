@@ -257,10 +257,12 @@ impl<'env> MarketView<'env> {
     /// Returns the timestamp of the previous step, or `None` on the first step
     /// of an episode where no previous step exists.
     ///
-    /// Handle the `None` case before you ask a stream for events since the last
-    /// step. The visible history is not cleared between episodes, so treating a
-    /// missing timestamp as an open lower bound would replay the whole history
-    /// as if it had just arrived.
+    /// Pass the result straight into calls that take a lookback timestamp, such
+    /// as [`StreamView::new_events_since`]. They treat `None` as an empty
+    /// window, so nothing counts as new on that first step. This matters
+    /// because the visible history is not cleared between episodes, and
+    /// treating a missing timestamp as an open lower bound would replay the
+    /// whole history as if it had just arrived.
     #[must_use]
     pub const fn previous_timestamp(&self) -> Option<DateTime<Utc>> {
         self.previous_ts
@@ -283,8 +285,8 @@ impl<'env> MarketView<'env> {
     /// Returns `true` if `price` was reached by any *new* event since the last
     /// step.
     ///
-    /// On the first step of an episode there is no previous step, so the whole
-    /// visible history counts as the lookback window.
+    /// On the first step of an episode there is no previous step, so the window
+    /// is empty and this returns `false`.
     #[must_use]
     pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
         self.all_price_checkable_views()
