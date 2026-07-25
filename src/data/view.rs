@@ -53,17 +53,20 @@ pub trait StreamView<'env> {
         self.get_slice(id).map(|s| s.iter().rev())
     }
 
-    /// Returns all *new* events with point in time after `since_ts`.
-    /// Useful for agents to react to the latest news or ticks.
+    /// Returns all events that arrived after `since_ts`, newest first.
+    ///
+    /// Pass `None` when there is no earlier step to compare against, for
+    /// example on the first step of an episode. Returns `None` when the
+    /// stream has no data, or when `since_ts` is `None`. In both cases
+    /// there is nothing new to process.
     fn new_events_since(
         &self,
         id: &Self::Id,
-        since_ts: DateTime<Utc>,
+        since_ts: Option<DateTime<Utc>>,
     ) -> Option<impl Iterator<Item = &'env Self::Event>> {
-        // We take_while on the reverse iterator.
-        // This is efficient because we stop as soon as we hit old data.
+        let since = since_ts?;
         self.rev_iter(id)
-            .map(|iter| iter.take_while(move |e| e.point_in_time() > since_ts))
+            .map(|iter| iter.take_while(move |e| e.point_in_time() > since))
     }
 }
 
@@ -76,7 +79,7 @@ pub trait PriceCheckableView {
         target_symbol: Symbol,
         price: Price,
         direction: TradeKind,
-        since_ts: DateTime<Utc>,
+        since_ts: Option<DateTime<Utc>>,
     ) -> bool;
 }
 
@@ -127,8 +130,11 @@ where
         target_symbol: Symbol,
         price: Price,
         direction: TradeKind,
-        since_ts: DateTime<Utc>,
+        since_ts: Option<DateTime<Utc>>,
     ) -> bool {
+        let Some(since) = since_ts else {
+            return false;
+        };
         // Linear scan of all streams in this view is cheap (M < 100).
         self.data
             .iter()
@@ -141,7 +147,7 @@ where
                 events
                     .iter()
                     .rev()
-                    .take_while(|e| e.point_in_time() > since_ts)
+                    .take_while(|e| e.point_in_time() > since)
                     .any(|e| e.price_reached(price, direction))
             })
     }
@@ -248,9 +254,16 @@ impl<'env> MarketView<'env> {
     pub const fn current_timestamp(&self) -> DateTime<Utc> {
         self.current_ts
     }
+    /// Returns the timestamp of the previous step, or `None` on the first step
+    /// of an episode where no previous step exists.
+    ///
+    /// Handle the `None` case before you ask a stream for events since the last
+    /// step. The visible history is not cleared between episodes, so treating a
+    /// missing timestamp as an open lower bound would replay the whole history
+    /// as if it had just arrived.
     #[must_use]
-    pub fn previous_timestamp(&self) -> DateTime<Utc> {
-        self.previous_ts.unwrap_or(DateTime::<Utc>::MIN_UTC)
+    pub const fn previous_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.previous_ts
     }
     #[must_use]
     pub fn market_ids(&self) -> Arc<[MarketId]> {
@@ -269,12 +282,14 @@ impl<'env> MarketView<'env> {
 
     /// Returns `true` if `price` was reached by any *new* event since the last
     /// step.
+    ///
+    /// On the first step of an episode there is no previous step, so the whole
+    /// visible history counts as the lookback window.
     #[must_use]
     pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
-        let prev = self.previous_timestamp();
         self.all_price_checkable_views()
             .into_iter()
-            .any(|view| view.reached_price_since(target_symbol, price, direction, prev))
+            .any(|view| view.reached_price_since(target_symbol, price, direction, self.previous_ts))
     }
 
     /// Resolves the most recent, non-leaky close price.
@@ -1093,7 +1108,7 @@ mod test {
         // Query events since 00:03:00 (should exclude the first candle)
         let new_events: Vec<f64> = market_view
             .ohlcv
-            .new_events_since(&id, ts("2026-01-01T00:03:00Z"))
+            .new_events_since(&id, Some(ts("2026-01-01T00:03:00Z")))
             .unwrap()
             .map(|e| e.close.0)
             .collect();
@@ -1102,6 +1117,77 @@ mod test {
             new_events,
             vec![333.0, 222.0],
             "new_events_since should return only events with point_in_time > since_ts, in reverse"
+        );
+    }
+
+    #[test]
+    fn test_previous_timestamp_is_none_at_episode_start() {
+        // Edge Case: `advance_to_next_episode` sets `previous_ts` to None, but the
+        // visible history is kept, because slices always start at index 0. If
+        // `previous_timestamp` handed out an open lower bound instead of None, the
+        // first step of every episode would replay the entire history as new events.
+        let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
+
+        let events = vec![
+            ohlcv(
+                ts("2026-02-01T00:00:00Z"),
+                ts("2026-02-01T00:03:00Z"),
+                100.0,
+                110.0,
+                90.0,
+                111.0,
+            ),
+            ohlcv(
+                ts("2026-02-01T00:03:00Z"),
+                ts("2026-02-01T00:06:00Z"),
+                100.0,
+                110.0,
+                90.0,
+                222.0,
+            ),
+        ];
+
+        let mut view_data = SortedVecMap::new();
+        view_data.insert(id, events.as_slice());
+
+        // previous_ts = None is exactly what the cursor leaves behind on a new episode.
+        let market_view = market_view_with_ohlcv(view_data, None, ts("2026-02-01T00:06:00Z"));
+
+        assert_eq!(
+            market_view.previous_timestamp(),
+            None,
+            "Without a previous step, previous_timestamp must report None instead of a sentinel"
+        );
+
+        // An agent that guards on None correctly treats nothing as new, rather than
+        // receiving the full history back.
+        let new_events = market_view
+            .previous_timestamp()
+            .and_then(|prev| market_view.ohlcv.new_events_since(&id, Some(prev)))
+            .map_or(0, Iterator::count);
+
+        assert_eq!(
+            new_events, 0,
+            "On the first step of an episode no event is new, so the history must not be replayed"
+        );
+
+        // Once a previous step exists, only the genuinely newer event is returned.
+        let mut stepped_data = SortedVecMap::new();
+        stepped_data.insert(id, events.as_slice());
+        let stepped = market_view_with_ohlcv(
+            stepped_data,
+            Some(ts("2026-02-01T00:03:00Z")),
+            ts("2026-02-01T00:06:00Z"),
+        );
+
+        let stepped_events = stepped
+            .previous_timestamp()
+            .and_then(|prev| stepped.ohlcv.new_events_since(&id, Some(prev)))
+            .map_or(0, Iterator::count);
+
+        assert_eq!(
+            stepped_events, 1,
+            "With a previous step only the events after it are new"
         );
     }
 }

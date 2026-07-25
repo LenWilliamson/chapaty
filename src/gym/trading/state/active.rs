@@ -341,6 +341,7 @@ mod tests {
                 ContractMonth, ContractYear, DataBroker, Exchange, FutureContract, FutureRoot,
                 Period, Price, Quantity, Symbol, TradeId,
             },
+            episode::Episode,
             event::{MarketId, Ohlcv, OhlcvId},
             view::MarketView,
         },
@@ -391,6 +392,22 @@ mod tests {
         fn new(timestamp: DateTime<Utc>, low: f64, high: f64, close: f64) -> Self {
             let id = ohlcv_id();
 
+            // 0. Create first data point, so we can step once and have a valid previous
+            //    timestamp
+            let t0 = Ohlcv {
+                open_timestamp: timestamp - chrono::Duration::minutes(1),
+                close_timestamp: timestamp,
+                open: Price(f64::midpoint(low, high)),
+                high: Price(high),
+                low: Price(low),
+                close: Price(close),
+                volume: Quantity(1000.0),
+                quote_asset_volume: None,
+                number_of_trades: None,
+                taker_buy_base_asset_volume: None,
+                taker_buy_quote_asset_volume: None,
+            };
+
             // 1. Create Data
             let candle = Ohlcv {
                 open_timestamp: timestamp,
@@ -407,7 +424,7 @@ mod tests {
             };
 
             let mut map = SortedVecMap::new();
-            map.insert(id, vec![candle].into_boxed_slice());
+            map.insert(id, vec![t0, candle].into_boxed_slice());
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
@@ -415,7 +432,8 @@ mod tests {
                 .expect("Failed to build sim data");
 
             // 2. Create Cursor (Auto-initialized to start)
-            let cursor = CursorGroup::new(&sim_data);
+            let mut cursor = CursorGroup::new(&sim_data);
+            cursor.step(&sim_data, Episode::default());
 
             Self { sim_data, cursor }
         }

@@ -700,19 +700,50 @@ impl States {
         self.live.get(m_id)?.get(*idx)
     }
 
-    /// Checks if a specific agent has any **Active** (not just pending)
-    /// positions. Filters the Hot Path (fast).
-    #[must_use]
-    pub fn any_active_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
-        self.iter_live()
-            .any(|s| s.is_active() && s.agent_id() == id)
+    /// Iterates over every pending and active trade that belongs to the given
+    /// agent.
+    ///
+    /// Use this when a single check is not enough, for example when a strategy
+    /// places a pair of entry orders and has to cancel the one that did not
+    /// fill.
+    pub fn live_trades_for_agent<'s>(
+        &'s self,
+        id: &AgentIdentifier,
+    ) -> impl Iterator<Item = (MarketId, &'s State)> {
+        self.iter_live_with_market()
+            .filter(move |(_, s)| s.agent_id() == id)
     }
 
-    /// Finds the first active trade for a specific agent.
+    /// Returns `true` when the agent holds at least one open position.
+    ///
+    /// An order that is still waiting to fill does not count. Use
+    /// [`Self::any_pending_trade_for_agent`] for that case.
+    #[must_use]
+    pub fn any_active_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
+        self.live_trades_for_agent(id).any(|(_, s)| s.is_active())
+    }
+
+    /// Finds the first open position of the agent, together with its market.
     #[must_use]
     pub fn find_active_trade_for_agent(&self, id: &AgentIdentifier) -> Option<(MarketId, &State)> {
-        self.iter_live_with_market()
-            .find(|(_, s)| s.is_active() && s.agent_id() == id)
+        self.live_trades_for_agent(id).find(|(_, s)| s.is_active())
+    }
+
+    /// Returns `true` when the agent has at least one order that is still
+    /// waiting to fill.
+    ///
+    /// A pending order has not entered the market yet, so
+    /// [`Self::any_active_trade_for_agent`] ignores it.
+    #[must_use]
+    pub fn any_pending_trade_for_agent(&self, id: &AgentIdentifier) -> bool {
+        self.live_trades_for_agent(id).any(|(_, s)| s.is_pending())
+    }
+
+    /// Finds the first order of the agent that is still waiting to fill,
+    /// together with its market.
+    #[must_use]
+    pub fn find_pending_trade_for_agent(&self, id: &AgentIdentifier) -> Option<(MarketId, &State)> {
+        self.live_trades_for_agent(id).find(|(_, s)| s.is_pending())
     }
 }
 
@@ -1260,11 +1291,8 @@ mod tests {
     use super::*;
     use crate::{
         data::{
-            domain::{DataBroker, Exchange, Period, SpotPair},
-            event::{Ohlcv, OhlcvId},
-        },
-        gym::trading::config::EnvConfig,
-        sim::{
+            domain::{DataBroker, Exchange, Period, SpotPair}, episode::Episode, event::{Ohlcv, OhlcvId},
+        }, gym::trading::{ExecutionBias, config::EnvConfig}, sim::{
             cursor_group::CursorGroup,
             data::{SimulationData, SimulationDataBuilder, Streams},
         },
@@ -1418,6 +1446,22 @@ mod tests {
                 period: Period::Minute(1),
             };
 
+            // 0. Create first data point, so we can step once and have a valid previous
+            //    timestamp
+            let t0 = Ohlcv {
+                open_timestamp: timestamp - chrono::Duration::minutes(1),
+                close_timestamp: timestamp,
+                open: Price(f64::midpoint(low, high)),
+                high: Price(high),
+                low: Price(low),
+                close: Price(close),
+                volume: Quantity(1000.0),
+                quote_asset_volume: None,
+                number_of_trades: None,
+                taker_buy_base_asset_volume: None,
+                taker_buy_quote_asset_volume: None,
+            };
+
             let candle = Ohlcv {
                 open_timestamp: timestamp,
                 close_timestamp: timestamp + chrono::Duration::minutes(1),
@@ -1433,14 +1477,15 @@ mod tests {
             };
 
             let mut map = SortedVecMap::new();
-            map.insert(id, vec![candle].into_boxed_slice());
+            map.insert(id, vec![t0, candle].into_boxed_slice());
 
             let streams = Streams::default().with_ohlcv(map);
             let sim_data = SimulationDataBuilder::new(streams)
                 .build(&EnvConfig::default())
                 .expect("Failed to build sim data");
 
-            let cursor = CursorGroup::new(&sim_data);
+            let mut cursor = CursorGroup::new(&sim_data);
+            cursor.step(&sim_data, Episode::default());
 
             Self { sim_data, cursor }
         }
@@ -2330,8 +2375,6 @@ mod tests {
 
     #[test]
     fn test_iterating_live_trades_handles_swap_remove_topology() {
-        use crate::gym::trading::config::ExecutionBias;
-
         let m_id = mock_market();
         let mut states = States::with_capacity(&[m_id], 10);
 

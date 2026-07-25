@@ -415,7 +415,7 @@ impl Environment {
     }
 
     fn advance_market(&mut self) {
-        self.cursor.step(&self.sim_data, &self.ep);
+        self.cursor.step(&self.sim_data, self.ep);
     }
 
     fn evaluate_outcome(&self, ep: &Episode) -> ChapatyResult<StepOutcome> {
