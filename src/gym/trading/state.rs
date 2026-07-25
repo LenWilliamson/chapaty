@@ -330,7 +330,7 @@ impl State {
     }
 
     #[must_use]
-    pub const fn trade_type(&self) -> &TradeKind {
+    pub const fn trade_kind(&self) -> &TradeKind {
         match self {
             Self::Pending(t) => &t.kind,
             Self::Active(t) => &t.kind,
@@ -383,7 +383,7 @@ impl State {
     #[must_use]
     pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
-        let diff = self.trade_type().price_diff(ref_price, sl);
+        let diff = self.trade_kind().price_diff(ref_price, sl);
         // Result is usually negative for a Stop Loss; we want magnitude (absolute
         // ticks).
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
@@ -393,7 +393,7 @@ impl State {
     #[must_use]
     pub fn expected_profit_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, tp) = self.get_reward_params()?;
-        let diff = self.trade_type().price_diff(ref_price, tp);
+        let diff = self.trade_kind().price_diff(ref_price, tp);
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
@@ -404,7 +404,7 @@ impl State {
         let qty = self.quantity(); // Uses the helper we defined earlier
 
         // Use clean PnL math
-        let pnl = self.trade_type().calculate_pnl(ref_price, sl, qty, symbol);
+        let pnl = self.trade_kind().calculate_pnl(ref_price, sl, qty, symbol);
         Some(pnl.abs())
     }
 
@@ -415,7 +415,7 @@ impl State {
         let (ref_price, tp) = self.get_reward_params()?;
         let qty = self.quantity();
 
-        let pnl = self.trade_type().calculate_pnl(ref_price, tp, qty, symbol);
+        let pnl = self.trade_kind().calculate_pnl(ref_price, tp, qty, symbol);
         Some(pnl.abs())
     }
 

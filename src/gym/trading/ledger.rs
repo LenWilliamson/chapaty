@@ -658,7 +658,7 @@ impl<'a> TryFrom<LedgerEntry<'a>> for JournalEntry {
             market_type: market_id.symbol.into(),
 
             // === Trade Data ===
-            trade_type: *state.trade_type(),
+            trade_type: *state.trade_kind(),
             quantity: state.quantity(),
 
             // For Pending/Canceled, we use limit_price as the intended entry
