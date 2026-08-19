@@ -27,7 +27,7 @@ itertools = "0.15"
 ndarray = "0.17"
 object_store = "0.13.2"
 ordered-float = { version = "5.3", features = ["serde"] }
-polars = { version = "0.54.4", features = [
+polars = { version = "0.55.2", features = [
     "abs",
     "aws",
     "azure",

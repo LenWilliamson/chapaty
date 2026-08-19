@@ -1,5 +1,6 @@
 use std::{
     io::{BufReader, BufWriter, Cursor, Read, Write},
+    num::NonZero,
     path::Path,
     sync::Arc,
 };
@@ -153,7 +154,7 @@ pub struct CloudWriteConfig {
     /// The size of each chunk uploaded to the cloud, in bytes.
     ///
     /// **Default:** 8 MiB.
-    pub upload_chunk_size: usize,
+    pub upload_chunk_size: Option<NonZero<usize>>,
 
     /// The maximum number of concurrent chunk uploads.
     ///
@@ -177,7 +178,7 @@ impl Default for CloudWriteConfig {
     )]
     fn default() -> Self {
         Self {
-            upload_chunk_size: 8 * 1024 * 1024,
+            upload_chunk_size: NonZero::new(8 * 1024 * 1024),
             max_concurrency: std::num::NonZeroUsize::new(8).expect("8 is non-zero"),
             io_metrics: None,
         }
