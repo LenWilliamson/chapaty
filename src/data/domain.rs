@@ -776,7 +776,8 @@ impl FromStr for FutureContract {
             );
         }
 
-        // Find where the root ends by trying to parse progressively longer prefixes
+        // Find where the root ends by trying to parse progressively longer
+        // prefixes
         let (root, remainder) = if s.len() >= 3 && FutureRoot::from_str(&s[..2]).is_ok() {
             // 2-character root (e.g., "6e")
             (&s[..2], &s[2..])
@@ -1457,8 +1458,8 @@ mod tests {
         let eve_mid = local_to_utc(New_York, 2026, 6, 10, 23, 0, 0);
         assert_eq!(session.classify(eve_mid), expected_session);
 
-        // 4. Cross midnight / Morning leg begins (00:00:00 on June 11) -> Within(June
-        //    10)
+        // 4. Cross midnight / Morning leg begins (00:00:00 on June 11) ->
+        //    Within(June 10)
         let morn_start = local_to_utc(New_York, 2026, 6, 11, 0, 0, 0);
         assert_eq!(session.classify(morn_start), expected_session);
 
@@ -1466,7 +1467,8 @@ mod tests {
         let morn_mid = local_to_utc(New_York, 2026, 6, 11, 8, 0, 0);
         assert_eq!(session.classify(morn_mid), expected_session);
 
-        // 6. Morning leg ends (09:30:00 on June 11) -> [exclusive boundary] -> Outside
+        // 6. Morning leg ends (09:30:00 on June 11) -> [exclusive boundary] ->
+        //    Outside
         let morn_end = local_to_utc(New_York, 2026, 6, 11, 9, 30, 0);
         assert_eq!(session.classify(morn_end), WindowPosition::Outside);
 
@@ -1477,7 +1479,8 @@ mod tests {
 
     #[test]
     fn test_24_hour_classify() {
-        // A 24-hour window wrapping at 17:00 (start == end implies Overnight logic)
+        // A 24-hour window wrapping at 17:00 (start == end implies Overnight
+        // logic)
         let session = SessionWindow::new(New_York, hm(17, 0), hm(17, 0));
 
         let anchor = date(2026, 6, 10);
@@ -1499,7 +1502,8 @@ mod tests {
         let before_wrap = local_to_utc(New_York, 2026, 6, 11, 16, 59, 59);
         assert_eq!(session.classify(before_wrap), expected_session);
 
-        // 5. Window wraps/restarts (17:00:00 on June 11) -> Now anchored on June 11
+        // 5. Window wraps/restarts (17:00:00 on June 11) -> Now anchored on
+        //    June 11
         let next_anchor = date(2026, 6, 11);
         let next_expected_session = WindowPosition::Within(SessionDate(next_anchor));
         let restart = local_to_utc(New_York, 2026, 6, 11, 17, 0, 0);

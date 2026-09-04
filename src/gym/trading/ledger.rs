@@ -142,11 +142,15 @@ impl Ledger {
                 match result {
                     Ok(exit_event) => {
                         // Log Lifecycle Events
-                        // For recovery validation, it helps to log the financial result here.
+                        // For recovery validation, it helps to log the
+                        // financial result here.
                         if let Some(reason) = exit_event {
-                            // Access the trade state safely to log PnL (Optional but helpful)
-                            // Note: In a real replay, you rely on deterministic market data
-                            // to produce the same exit, but this log verifies it.
+                            // Access the trade state safely to log PnL
+                            // (Optional but helpful)
+                            // Note: In a real replay, you rely on deterministic
+                            // market data
+                            // to produce the same exit, but this log verifies
+                            // it.
                             tracing::info!(
                                 market = ?m_id,
                                 reason = ?reason,
@@ -1236,7 +1240,8 @@ mod test {
         active_entry.exit_reason = None;
         populate_soa_single(&mut soa, active_entry);
 
-        // Row 3: Pending trade (episode 1, no entry timestamp - tests null sorting)
+        // Row 3: Pending trade (episode 1, no entry timestamp - tests null
+        // sorting)
         let mut pending_entry = sample_journal_entry(1, 3, StateKind::Pending, 0.0);
         pending_entry.entry_timestamp = None;
         pending_entry.exit_timestamp = None;
@@ -1609,10 +1614,10 @@ mod test {
             symbol: Symbol::Spot(SpotPair::BtcUsdt),
         };
 
-        // 3. Create two actions: Action A (Invalid): OpenCmd with Quantity(0.0) - fails
-        //    validate() Action B (Valid):   OpenCmd with valid Quantity - passes
-        //    validate() but will fail in handle_open because no price data (still
-        //    exercises the rejection path at state level)
+        // 3. Create two actions: Action A (Invalid): OpenCmd with Quantity(0.0)
+        //    - fails validate() Action B (Valid):   OpenCmd with valid Quantity
+        //    - passes validate() but will fail in handle_open because no price
+        //    data (still exercises the rejection path at state level)
 
         let invalid_open = Action::Open(OpenCmd {
             agent_id: AgentIdentifier::Random,
@@ -1697,7 +1702,8 @@ mod test {
 
     #[test]
     fn test_as_df_pipeline_smoke_test() {
-        // Minimal smoke test: construct empty ledger, call as_df, verify no panic
+        // Minimal smoke test: construct empty ledger, call as_df, verify no
+        // panic
         let ledger = Ledger::with_capacity(LedgerCapacityHint {
             expected_episodes: 1,
             prototype_states: States::default(),
@@ -2143,7 +2149,8 @@ mod test {
         ledger.equity_curves[0].cumulative_pnl.push(100.0); // Ends day at +100.0
 
         // === Partition 1 (Episode 1): EMPTY ===
-        // (Weekend, system downtime, or simply no ticks. Arrays remain length 0)
+        // (Weekend, system downtime, or simply no ticks. Arrays remain length
+        // 0)
 
         // === Partition 2 (Episode 2): More Trading ===
         // Natively, this episode's PnL starts fresh from 0.0 internally.
@@ -2169,8 +2176,9 @@ mod test {
 
         // =========================================================================
         // CRITICAL CHECK: Global Stitching
-        // Partition 2's native values (15.0, -20.0) MUST be offset by Partition 0's
-        // terminal value (100.0), bridging over the empty Partition 1 entirely.
+        // Partition 2's native values (15.0, -20.0) MUST be offset by Partition
+        // 0's terminal value (100.0), bridging over the empty Partition
+        // 1 entirely.
         // =========================================================================
         let expected_df = df![
             EquityCurveCol::RowId.as_str() => [0_u32, 1, 2, 3],
@@ -2210,7 +2218,8 @@ mod test {
             equity_curve_length: 5,
         });
 
-        // Insert timestamps deliberately OUT OF ORDER to test the Polars sort fallback
+        // Insert timestamps deliberately OUT OF ORDER to test the Polars sort
+        // fallback
         ledger.equity_curves[0]
             .timestamps
             .push(ts("2026-01-01T12:00:00Z"));

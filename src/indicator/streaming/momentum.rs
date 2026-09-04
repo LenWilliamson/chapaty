@@ -37,8 +37,8 @@ impl HistoricalBuffer {
     /// Returns an error if the time window duration is too large to fit in a
     /// `usize` capacity.
     fn new(window: LookbackWindow) -> ChapatyResult<Self> {
-        // Adding +2 prevents reallocation because we push BEFORE we pop in the update
-        // loop.
+        // Adding +2 prevents reallocation because we push BEFORE we pop in the
+        // update loop.
         let capacity = match window {
             LookbackWindow::Bars(n) => n + 2,
             // Convert time window to capacity in minutes, rounded up to nearest minute.
@@ -205,10 +205,11 @@ mod tests {
 
     #[test]
     fn historical_buffer_time_strict_boundary_retention() {
-        // Lookback = 60s. A point exactly 60s old is a valid reference and is both
-        // retained and returned. A point only 1s old is NOT a 60s lookback, so once
-        // the 60s-old point falls out of range the result is None rather than a
-        // too-recent (and wrongly labelled) reference.
+        // Lookback = 60s. A point exactly 60s old is a valid reference and is
+        // both retained and returned. A point only 1s old is NOT a 60s
+        // lookback, so once the 60s-old point falls out of range the
+        // result is None rather than a too-recent (and wrongly
+        // labelled) reference.
         let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(60)).unwrap();
 
         // Start
@@ -218,8 +219,9 @@ mod tests {
         assert_eq!(buffer.update(input(60, 110.0)), Some(input(0, 100.0)));
         assert_eq!(buffer.buffer.len(), 2);
 
-        // 61s later: the 0s tick is now 61s old and is evicted. The remaining 60s
-        // tick is only 1s back — not a 60s lookback — so the result is None.
+        // 61s later: the 0s tick is now 61s old and is evicted. The remaining
+        // 60s tick is only 1s back — not a 60s lookback — so the result
+        // is None.
         assert_eq!(buffer.update(input(61, 120.0)), None);
     }
 
@@ -261,8 +263,9 @@ mod tests {
 
     #[test]
     fn bars_and_time_match_for_multi_bar_lookback() {
-        // 60s bars, lookback of 3 bars == 180s window. Exercises warmup: both must
-        // return None until a point exactly 180s back exists, then agree thereafter.
+        // 60s bars, lookback of 3 bars == 180s window. Exercises warmup: both
+        // must return None until a point exactly 180s back exists, then
+        // agree thereafter.
         assert_bars_matches_time(
             3,
             60,
@@ -279,10 +282,11 @@ mod tests {
 
     #[test]
     fn time_window_does_not_emit_during_warmup() {
-        // A 120s window on 60s bars must NOT return a reference until a point is
-        // actually 120s old. The 60s-old point at t=60 is too recent to be a 120s
-        // lookback, so the result is None — matching Bars(2) warmup. This is the
-        // exact case the old `len >= 2` guard got wrong (it returned the t=0 point).
+        // A 120s window on 60s bars must NOT return a reference until a point
+        // is actually 120s old. The 60s-old point at t=60 is too recent
+        // to be a 120s lookback, so the result is None — matching
+        // Bars(2) warmup. This is the exact case the old `len >= 2`
+        // guard got wrong (it returned the t=0 point).
         let mut buffer = HistoricalBuffer::new(LookbackWindow::seconds(120)).unwrap();
         assert_eq!(buffer.update(input(0, 100.0)), None);
         assert_eq!(buffer.update(input(60, 110.0)), None);
@@ -327,8 +331,9 @@ mod tests {
         // Simulate an asset or synthetic spread priced at exactly 0.0
         assert_eq!(momentum.update(input(0, 0.0)), None);
 
-        // Next input arrives. Math would normally divide by 0.0, but guard catches it.
-        // Should return None gracefully instead of panicking or outputting NaN.
+        // Next input arrives. Math would normally divide by 0.0, but guard
+        // catches it. Should return None gracefully instead of
+        // panicking or outputting NaN.
         assert_eq!(momentum.update(input(1, 10.0)), None);
 
         // Next input arrives. Reference point is now 10.0.

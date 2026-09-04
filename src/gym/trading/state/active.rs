@@ -85,8 +85,8 @@ impl Trade<Active> {
         }
 
         // 1. Calculate Candidates (Transactional Preparation)
-        // If the command has a new value, sanitize it. Otherwise, keep the current
-        // value.
+        // If the command has a new value, sanitize it. Otherwise, keep the
+        // current value.
         let candidate_sl = if let Some(raw_sl) = cmd.new_stop_loss {
             Some(Price(sanitize_price(symbol, raw_sl.0, "modify_sl")))
         } else {
@@ -162,8 +162,9 @@ impl Trade<Active> {
         let current_price = Price(sanitize_price(symbol, raw_price, "mark_price"));
         let ts = ctx.market.current_timestamp();
 
-        // Clean (tick-multiple) unrealized PnL at the current price. Used only on
-        // the survival branch; on an exit the trade fills at the SL/TP price instead.
+        // Clean (tick-multiple) unrealized PnL at the current price. Used only
+        // on the survival branch; on an exit the trade fills at the
+        // SL/TP price instead.
         let current_unrealized_pnl =
             self.kind
                 .calculate_pnl(self.state.entry_price, current_price, self.quantity, symbol);
@@ -192,8 +193,9 @@ impl Trade<Active> {
             let exit_price = Price(sanitize_price(symbol, raw_exit_price, "exit_price"));
             let qty = self.quantity;
 
-            // `self.state.unrealized_pnl` is still `prev` (we never re-marked), so
-            // `execute_close` reads the correct baseline off the trade itself.
+            // `self.state.unrealized_pnl` is still `prev` (we never re-marked),
+            // so `execute_close` reads the correct baseline off the
+            // trade itself.
             let (outcome, step_delta) = self.execute_close(&CloseParams {
                 qty,
                 exit_price,
@@ -264,13 +266,14 @@ impl Trade<Active> {
             });
             (CloseOutcome::FullyClosed(closed), step_delta)
         } else {
-            // Split the booked unrealized between the closed slice and the survivor,
-            // proportional to quantity.
+            // Split the booked unrealized between the closed slice and the
+            // survivor, proportional to quantity.
             let closed_fraction = qty.0 / self.quantity.0;
             let closed_booked_unrealized = last_marked_unrealized_pnl * closed_fraction;
             let remaining_booked_unrealized = last_marked_unrealized_pnl - closed_booked_unrealized;
 
-            // The closed slice only adds, what it gained beyond its already-booked share.
+            // The closed slice only adds, what it gained beyond its
+            // already-booked share.
             let step_delta = realized_pnl - closed_booked_unrealized;
 
             let remaining = Self {
@@ -392,8 +395,8 @@ mod tests {
         fn new(timestamp: DateTime<Utc>, low: f64, high: f64, close: f64) -> Self {
             let id = ohlcv_id();
 
-            // 0. Create first data point, so we can step once and have a valid previous
-            //    timestamp
+            // 0. Create first data point, so we can step once and have a valid
+            //    previous timestamp
             let t0 = Ohlcv {
                 open_timestamp: timestamp - chrono::Duration::minutes(1),
                 close_timestamp: timestamp,
@@ -1068,7 +1071,8 @@ mod tests {
         assert_f64_eq!(closed.state.realized_pnl, 625.0);
         // Reward channel reports only the increment beyond the last mark.
         assert_f64_eq!(close_delta, 625.0 - 375.0);
-        // Telescoping invariant: marks + close == realized, booked exactly once.
+        // Telescoping invariant: marks + close == realized, booked exactly
+        // once.
         assert_f64_eq!(mark_delta + close_delta, 625.0);
     }
 
@@ -1107,14 +1111,17 @@ mod tests {
         };
         assert_eq!(closed.quantity, Quantity(0.5));
         assert_f64_eq!(closed.state.realized_pnl, 312.5);
-        // Closed slice's prior share was 250 * 0.5 = 125; increment = 312.5 - 125.
+        // Closed slice's prior share was 250 * 0.5 = 125; increment = 312.5 -
+        // 125.
         assert_f64_eq!(close_delta, 187.5);
-        // FIX: survivor carries only its 0.5 share of the unrealized, not the full 250.
+        // FIX: survivor carries only its 0.5 share of the unrealized, not the
+        // full 250.
         assert_eq!(remaining.quantity, Quantity(0.5));
         assert_f64_eq!(remaining.state.unrealized_pnl, 125.0);
 
-        // Survivor must mark correctly off its own baseline, not a stale full-position
-        // one. Mark to 1.103: +60 ticks * $6.25 * 0.5 = $187.5.
+        // Survivor must mark correctly off its own baseline, not a stale
+        // full-position one. Mark to 1.103: +60 ticks * $6.25 * 0.5 =
+        // $187.5.
         let fx2 = MarketFixture::new(ts("2026-01-19T10:03:00Z"), 1.102, 1.103, 1.103);
         let v2 = fx2.view();
         let c2 = UpdateCtx {

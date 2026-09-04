@@ -140,13 +140,15 @@ impl Trade<Pending> {
         let original_sl = active_trade.stop_loss;
         let transient_active = match ctx.bias {
             ExecutionBias::Pessimistic => {
-                // Pessimistic: We assume we missed the TP (happened before Entry).
-                // Blind the TP so active::update checks SL only.
+                // Pessimistic: We assume we missed the TP (happened before
+                // Entry). Blind the TP so active::update checks
+                // SL only.
                 active_trade.with_take_profit(None)
             }
             ExecutionBias::Optimistic => {
-                // Optimistic: We assume we avoided the SL (happened before Entry).
-                // Blind the SL so active::update checks TP only.
+                // Optimistic: We assume we avoided the SL (happened before
+                // Entry). Blind the SL so active::update checks
+                // TP only.
                 active_trade.with_stop_loss(None)
             }
         };
@@ -227,8 +229,8 @@ mod test {
         fn new(timestamp: DateTime<Utc>, low: f64, high: f64, close: f64) -> Self {
             let id = ohlcv_id();
 
-            // 0. Create first data point, so we can step once and have a valid previous
-            //    timestamp
+            // 0. Create first data point, so we can step once and have a valid
+            //    previous timestamp
             let t0 = Ohlcv {
                 open_timestamp: timestamp - chrono::Duration::minutes(1),
                 close_timestamp: timestamp,
@@ -367,7 +369,8 @@ mod test {
         match new_state {
             State::Active(t) => {
                 assert_eq!(t.state.entry_price, Price(1.09500));
-                // Reward should be based on closing at 1.09800 vs entry at 1.09500
+                // Reward should be based on closing at 1.09800 vs entry at
+                // 1.09500
                 assert!(
                     (reward - 0.0).abs() > f64::EPSILON,
                     "Should have some PnL from price movement"
@@ -561,9 +564,9 @@ mod test {
 
         let (new_state, _) = trade.update(m_id, &ctx).unwrap();
 
-        // The bug: TP was left as None because it fell through to the `other` match
-        // arm. Expectation: Trade is Closed on SL, but TP is successfully
-        // restored.
+        // The bug: TP was left as None because it fell through to the `other`
+        // match arm. Expectation: Trade is Closed on SL, but TP is
+        // successfully restored.
         match new_state {
             State::Closed(c) => {
                 assert_eq!(c.state.termination_reason, TerminationReason::StopLoss);

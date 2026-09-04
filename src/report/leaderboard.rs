@@ -1005,7 +1005,8 @@ mod tests {
         let heap_b = board.top_per_metric.get(&metric_b).unwrap();
         assert_eq!(heap_b.peek().unwrap().0.agent_uid, 1);
 
-        // 3. CRITICAL: Agent 1's data must NOT be deleted because it holds title in B
+        // 3. CRITICAL: Agent 1's data must NOT be deleted because it holds
+        //    title in B
         assert!(
             board.agent_data.contains_key(&1),
             "Agent 1 should survive because it leads in metric B"

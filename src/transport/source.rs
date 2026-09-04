@@ -5,7 +5,7 @@ use tonic::{
     Request, Status, async_trait,
     metadata::{MetadataKey, MetadataValue},
     service::{Interceptor, interceptor::InterceptedService},
-    transport::Channel,
+    transport::{Channel, ClientTlsConfig},
 };
 use tracing::info;
 
@@ -205,8 +205,16 @@ async fn create_default_client(
 ) -> ChapatyResult<ChapatyClient> {
     info!(%endpoint, has_api_key = credential.is_some(), "Establishing gRPC connection");
 
-    let channel = Channel::from_shared(endpoint.clone())
-        .map_err(|_| TransportError::Connection("Invalid URI".into()))?
+    let mut builder = Channel::from_shared(endpoint.clone())
+        .map_err(|_| TransportError::Connection("Invalid URI".into()))?;
+
+    if endpoint.starts_with("https://") {
+        builder = builder
+            .tls_config(ClientTlsConfig::new().with_native_roots())
+            .map_err(|e| TransportError::Connection(format!("{e:?}")))?;
+    }
+
+    let channel = builder
         // HTTP/2 keepalive: ping every 30s to keep connection alive
         .http2_keep_alive_interval(Duration::from_secs(30))
         // Timeout if no keepalive response within 10s
@@ -225,7 +233,7 @@ async fn create_default_client(
         .initial_stream_window_size(Some(1024 * 1024)) // 1MB
         .connect()
         .await
-        .map_err(|e| TransportError::Connection(e.to_string()))?;
+        .map_err(|e| TransportError::Connection(format!("{e:?}")))?;
 
     // Always create the interceptor (it might contain None)
     let interceptor = ApiKeyInterceptor::new(metadata_key, credential);

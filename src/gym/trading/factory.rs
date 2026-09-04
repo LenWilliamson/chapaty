@@ -419,9 +419,9 @@ impl BuildCtx {
         };
 
         // Handle Edge Case: No Calendar Data
-        // If the policy excludes events (ExcludeEvents) and we have none, we keep all
-        // data. If the policy requires events (OnlyWithEvents) but we have
-        // none, we must clear all data.
+        // If the policy excludes events (ExcludeEvents) and we have none, we
+        // keep all data. If the policy requires events (OnlyWithEvents)
+        // but we have none, we must clear all data.
         let is_empty = self
             .economic_calendar_map
             .as_ref()
@@ -443,8 +443,8 @@ impl BuildCtx {
 
         tracing::info!("Applying economic calendar policy: {:?}", policy);
 
-        // Create Master Calendar: Union of all events, projected to minimum schema
-        // (Timestamp, Category)
+        // Create Master Calendar: Union of all events, projected to minimum
+        // schema (Timestamp, Category)
         let master_calendar_lf = {
             let map = self.economic_calendar_map.as_ref().ok_or_else(|| {
                 ChapatyError::from(EnvError::InvalidState(
@@ -895,8 +895,8 @@ fn apply_filter<T>(
         }
 
         // Combine with OR: (Win1) OR (Win2)...
-        // If 'conditions' is empty (empty map), this results in 'lit(false)', filtering
-        // all rows.
+        // If 'conditions' is empty (empty map), this results in 'lit(false)',
+        // filtering all rows.
         conditions
             .into_iter()
             .reduce(polars::prelude::Expr::or)
@@ -1851,7 +1851,8 @@ impl LazyFrameCalendarExt for LazyFrame {
         sim_timeframe: EpisodeLength,
         policy: EconomicCalendarPolicy,
     ) -> LazyFrame {
-        // Defines the common key we will join on (e.g., the specific Day or Week)
+        // Defines the common key we will join on (e.g., the specific Day or
+        // Week)
         let join_key = "__sim_window_key";
         let is_on_calendar_event = "__is_on_calendar_event";
 
@@ -2438,16 +2439,17 @@ mod test {
         // Secondary Sort: REMOVED.
         //
         // NOTE: We previously sorted by Open Time as a secondary index.
-        // However, not all data sources (e.g. tick data, economic calendar, etc.)
-        // provide an OpenTimestamp. To support generic inputs, we strictly sort
-        // by the Canonical Timestamp (Close Time, the time when an event is
-        // truly available).
+        // However, not all data sources (e.g. tick data, economic calendar,
+        // etc.) provide an OpenTimestamp. To support generic inputs, we
+        // strictly sort by the Canonical Timestamp (Close Time, the
+        // time when an event is truly available).
         //
-        // IMPLICATION: If two rows have the exact same Canonical Timestamp, their
-        // relative order is nondeterministic (unstable sort). In production, this
-        // theoretically represents "corrupted" or "duplicate" data, as unique
-        // streams should have unique IDs or times. This test ensures the primary
-        // sort still functions despite this ambiguity.
+        // IMPLICATION: If two rows have the exact same Canonical Timestamp,
+        // their relative order is nondeterministic (unstable sort). In
+        // production, this theoretically represents "corrupted" or
+        // "duplicate" data, as unique streams should have unique IDs or
+        // times. This test ensures the primary sort still functions
+        // despite this ambiguity.
 
         let t_0800 = ts_micros("2026-01-01T08:00:00Z");
         let t_0900 = ts_micros("2026-01-01T09:00:00Z");
@@ -2509,7 +2511,8 @@ mod test {
         assert_eq!(ids[0], 1, "ID 1 must be first (09:00)");
 
         // 3. Verify Middle (Nondeterministically ID 2 or 3)
-        // We assert set membership because the unstable sort allows [2,3] or [3,2]
+        // We assert set membership because the unstable sort allows [2,3] or
+        // [3,2]
         let middle_ids = &ids[1..3];
         assert!(middle_ids.contains(&2));
         assert!(middle_ids.contains(&3));
@@ -2667,8 +2670,8 @@ mod test {
     fn test_extract_atr_maps_range_and_skips_warmup_nones() {
         let schema = BatchOhlcvIndicator::Atr(AtrConfig::new(1)).output_schema();
 
-        // ATR maps the `Price` column onto a `PriceDelta` range. The first row is a
-        // warm-up null and must be skipped defensively.
+        // ATR maps the `Price` column onto a `PriceDelta` range. The first row
+        // is a warm-up null and must be skipped defensively.
         let df = df!(
             CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"),
@@ -2696,8 +2699,8 @@ mod test {
     fn test_extract_vwap_ohlcv_and_trades() {
         let schema = BatchOhlcvIndicator::Vwap(AggregatedPrice::Hlc3).output_schema();
 
-        // Both VWAP extractors share the price-timeseries path: map `Price` -> `Price`
-        // and skip null rows.
+        // Both VWAP extractors share the price-timeseries path: map `Price` ->
+        // `Price` and skip null rows.
         let df = df!(
             CanonicalCol::PointInTime.as_str() => &[
                 ts_micros("2026-01-01T10:00:00Z"),
@@ -2722,8 +2725,8 @@ mod test {
     fn test_extract_roc_full_mapping_and_skips_nulls() {
         let schema = BatchOhlcvIndicator::RateOfChange(LookbackWindow::Bars(1)).output_schema();
 
-        // Row 0 is a warm-up row (null absolute/percentage) and must be skipped, while
-        // row 1 maps every field.
+        // Row 0 is a warm-up row (null absolute/percentage) and must be
+        // skipped, while row 1 maps every field.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str() => &[
                 ts_micros("2026-01-01T09:00:00Z"),
@@ -2818,7 +2821,8 @@ mod test {
         })
         .output_schema();
 
-        // Row 1 carries a null aggregate (`SessionLowestClose`) and must be skipped.
+        // Row 1 carries a null aggregate (`SessionLowestClose`) and must be
+        // skipped.
         let df = df!(
             CanonicalCol::Date.as_str() => &[
                 naive_date("2026-01-02"),
@@ -3081,7 +3085,8 @@ mod test {
         // Bin 100.0: 10 TPOs
         // Bin 101.0: 50 TPOs
         // Total: 60. Target VA (70%): 42.
-        // POC (101.0) has 50 > 42, so VA is contained entirely within the POC bin.
+        // POC (101.0) has 50 > 42, so VA is contained entirely within the POC
+        // bin.
 
         let df = build_tpo_df(
             ts_micros("2026-01-01T08:00:00Z"),
@@ -3161,7 +3166,8 @@ mod test {
 
     #[test]
     fn test_tpo_missing_columns() {
-        // SCENARIO: TPO requires 'time_slot_count'. If missing, it should fail nicely.
+        // SCENARIO: TPO requires 'time_slot_count'. If missing, it should fail
+        // nicely.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T08:00:00Z")],
             CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T08:30:00Z")],
@@ -3267,8 +3273,9 @@ mod test {
 
     #[test]
     fn test_vp_partial_data_handling() {
-        // SCENARIO: Some optional columns are completely missing (Null/None) in the DF.
-        // The extractor should handle iterators yielding None gracefully.
+        // SCENARIO: Some optional columns are completely missing (Null/None) in
+        // the DF. The extractor should handle iterators yielding None
+        // gracefully.
         let df = df!(
             CanonicalCol::OpenTimestamp.as_str()  => &[ts_micros("2026-01-01T09:00:00Z")],
             CanonicalCol::PointInTime.as_str()       => &[ts_micros("2026-01-01T10:00:00Z")],

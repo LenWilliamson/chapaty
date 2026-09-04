@@ -292,8 +292,8 @@ mod test {
 
     #[test]
     fn test_poc_floating_point_precision() {
-        // Ensure strictly that 0.30000000000000004 isn't treated differently than 0.3
-        // `if (v - max_vol).abs() < f64::EPSILON`
+        // Ensure strictly that 0.30000000000000004 isn't treated differently
+        // than 0.3 `if (v - max_vol).abs() < f64::EPSILON`
 
         let v1 = 0.1 + 0.2; // 0.30000000000000004
         let v2 = 0.3;
@@ -310,8 +310,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice rule takes
-        // the last one (101.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". HighestPrice
+        // rule takes the last one (101.0).
         assert_eq!(
             res.poc,
             Price(101.0),
@@ -327,8 +327,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice rule takes
-        // the first one (100.0).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". LowestPrice
+        // rule takes the first one (100.0).
         assert_eq!(
             res.poc,
             Price(100.0),
@@ -344,8 +344,8 @@ mod test {
         )
         .expect("failed to compute stats");
 
-        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter rule
-        // takes the middle one (100.5).
+        // With Epsilon check, v1 and v2 and v3 are "Equal Max". ClosestToCenter
+        // rule takes the middle one (100.5).
         assert_eq!(
             res.poc,
             Price(100.5),

@@ -317,33 +317,35 @@ mod tests {
     // ============================================================================================
     #[test]
     fn atr_calculates_true_range_correctly_across_edge_cases() {
-        // By using an SMA of length 1, the smoother just outputs the exact True Range
-        // of the current candle. This isolates the TR math from the smoothing
-        // math.
+        // By using an SMA of length 1, the smoother just outputs the exact True
+        // Range of the current candle. This isolates the TR math from
+        // the smoothing math.
         let mut atr = StreamingAtr::new(AtrConfig {
             window: 1,
             smoothing: AtrSmoothingType::Sma,
         });
 
-        // 1. First Candle: No previous close. TR should be High - Low (15.0 - 5.0 =
-        //    10.0)
+        // 1. First Candle: No previous close. TR should be High - Low (15.0 -
+        //    5.0 = 10.0)
         let candle1 = mock_candle(10., 15., 5., 12., 100.);
         assert_eq!(atr.update(candle1), Some(10.0));
 
-        // 2. Normal Inside/Regular Candle: High/Low range is completely contained or
-        //    slightly overlaps.
+        // 2. Normal Inside/Regular Candle: High/Low range is completely
+        //    contained or slightly overlaps.
         // Prev Close = 12.0. High = 14.0, Low = 10.0.
         // TR = max(14 - 10, |14 - 12|, |10 - 12|) = max(4, 2, 2) = 4.0
         let candle2 = mock_candle(12., 14., 10., 13., 100.);
         assert_eq!(atr.update(candle2), Some(4.0));
 
-        // 3. Massive Gap Up: Prev Close is significantly lower than current Low.
+        // 3. Massive Gap Up: Prev Close is significantly lower than current
+        //    Low.
         // Prev Close = 13.0. High = 25.0, Low = 20.0.
         // TR = max(25 - 20, |25 - 13|, |20 - 13|) = max(5, 12, 7) = 12.0
         let candle3 = mock_candle(20., 25., 20., 24., 100.);
         assert_eq!(atr.update(candle3), Some(12.0));
 
-        // 4. Massive Gap Down: Prev Close is significantly higher than current High.
+        // 4. Massive Gap Down: Prev Close is significantly higher than current
+        //    High.
         // Prev Close = 24.0. High = 10.0, Low = 5.0.
         // TR = max(10 - 5, |10 - 24|, |5 - 24|) = max(5, 14, 19) = 19.0
         let candle4 = mock_candle(10., 10., 5., 8., 100.);
@@ -523,8 +525,8 @@ mod tests {
     fn kahan_sum_recovers_precision_lost_by_naive_summation() {
         use crate::math::accumulators::KahanSum;
 
-        // A leading 1.0 followed by many terms below its ULP: naive addition drops
-        // each one, Kahan accumulates them.
+        // A leading 1.0 followed by many terms below its ULP: naive addition
+        // drops each one, Kahan accumulates them.
         let mut values = vec![1.0];
         values.extend(std::iter::repeat_n(1e-16, 100));
         let truth = 100.0_f64.mul_add(1e-16, 1.0);

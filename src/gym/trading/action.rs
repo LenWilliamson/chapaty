@@ -203,7 +203,8 @@ pub struct ModifyCmd {
 
 impl Command for ModifyCmd {
     fn validate(&self) -> ChapatyResult<()> {
-        // Guard against crossing SL/TP if both are provided in the same modification
+        // Guard against crossing SL/TP if both are provided in the same
+        // modification
         if let (Some(sl), Some(tp)) = (self.new_stop_loss, self.new_take_profit)
             && (sl.0 - tp.0).abs() < f64::EPSILON
         {

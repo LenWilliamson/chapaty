@@ -397,8 +397,9 @@ mod test {
     #[test]
     fn test_equity_curve_into_eod_microsecond_determinism() {
         // This test proves the `ClosedWindow::Both` DDIA interval logic.
-        // It proves that exactly 00:00:00.000000 belongs to the previous day's terminal
-        // state, but 00:00:00.000001 strictly belongs to the current day.
+        // It proves that exactly 00:00:00.000000 belongs to the previous day's
+        // terminal state, but 00:00:00.000001 strictly belongs to the
+        // current day.
         let input_df = format_mock_df(
             df![
                 EquityCurveCol::RowId => [0_u32, 1, 2, 3],

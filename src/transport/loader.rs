@@ -239,7 +239,8 @@ mod fetcher {
         match (fatal_error, drain_result) {
             // Priority 1: The error that broke the loop (The Root Cause)
             (Some(root), other) => {
-                // We log the secondary error if it occurred, but don't return it.
+                // We log the secondary error if it occurred, but don't return
+                // it.
                 if let Err(secondary) = other {
                     tracing::warn!(?secondary, "Secondary failure during shutdown (ignored).");
                 }

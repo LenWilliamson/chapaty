@@ -180,13 +180,15 @@ impl<T> RingBuffer<T> {
                 self.buffer.push(value);
 
                 if self.buffer.len() == self.capacity {
-                    // Transition to the full state, starting eviction at index 0.
+                    // Transition to the full state, starting eviction at index
+                    // 0.
                     self.state = RingState::Full { cursor: 0 };
                 }
                 None
             }
             RingState::Full { cursor } => {
-                // Buffer is full: swap the incoming value in for the oldest one.
+                // Buffer is full: swap the incoming value in for the oldest
+                // one.
                 let evicted_value = std::mem::replace(&mut self.buffer[cursor], value);
 
                 // Advance the cursor, wrapping back to the start at capacity.

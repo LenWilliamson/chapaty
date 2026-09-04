@@ -80,13 +80,15 @@ impl<'env> ActionSpace<'env> {
                         // We sample a percentage distance, not a fixed scalar.
                         let (sl_price, tp_price) = match state.trade_kind() {
                             TradeKind::Long => {
-                                // Long: SL is BELOW (-5% to -15%), TP is ABOVE (+5% to +25%)
+                                // Long: SL is BELOW (-5% to -15%), TP is ABOVE
+                                // (+5% to +25%)
                                 let sl_pct = self.rng.random_range(0.85..0.95);
                                 let tp_pct = self.rng.random_range(1.05..1.25);
                                 (base_price * sl_pct, base_price * tp_pct)
                             }
                             TradeKind::Short => {
-                                // Short: SL is ABOVE (+5% to +15%), TP is BELOW (-5% to -25%)
+                                // Short: SL is ABOVE (+5% to +15%), TP is BELOW
+                                // (-5% to -25%)
                                 let sl_pct = self.rng.random_range(1.05..1.15);
                                 let tp_pct = self.rng.random_range(0.75..0.95);
                                 (base_price * sl_pct, base_price * tp_pct)

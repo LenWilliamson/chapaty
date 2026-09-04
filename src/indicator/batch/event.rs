@@ -440,8 +440,8 @@ mod test {
         // 2. Exact Touch: SMA hits exactly 50000.0.
         assert!(mock_sma(50000.0).price_reached(target, TradeKind::Long));
 
-        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely skipping
-        //    50000.0.
+        // 3. Overshoot (Gap down): SMA gaps down to 49000.0, completely
+        //    skipping 50000.0.
         assert!(mock_sma(49000.0).price_reached(target, TradeKind::Long));
     }
 
@@ -456,7 +456,8 @@ mod test {
         // 2. Exact Touch: SMA hits exactly 50000.0.
         assert!(mock_sma(50000.0).price_reached(target, TradeKind::Short));
 
-        // 3. Overshoot (Gap up): SMA gaps up to 51000.0, completely skipping 50000.0.
+        // 3. Overshoot (Gap up): SMA gaps up to 51000.0, completely skipping
+        //    50000.0.
         assert!(mock_sma(51000.0).price_reached(target, TradeKind::Short));
     }
 

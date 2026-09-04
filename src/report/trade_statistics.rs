@@ -1185,8 +1185,8 @@ mod tests {
         let stats = TradeStatistics::try_from(&journal).expect("Conversion failed");
         let df = stats.as_df();
 
-        // Fixture: rows 1,2 are short, row 3 is long, rows 4,5 are short, row 6 is long
-        // Total: 4 short, 2 long
+        // Fixture: rows 1,2 are short, row 3 is long, rows 4,5 are short, row 6
+        // is long Total: 4 short, 2 long
         let long_count = df
             .column(TradeStatCol::LongTradeCount.as_str())
             .expect("Missing long_trade_count column")

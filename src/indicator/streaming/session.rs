@@ -592,7 +592,8 @@ mod tests {
             mut indicator: Self::Indicator,
             event: Self::Event,
         ) -> (Self::Indicator, Self) {
-            // The machine should have reset the indicator before handing it over.
+            // The machine should have reset the indicator before handing it
+            // over.
             let opened = IndicatorFreshness::from_update_count(indicator.updates);
             indicator.update(event);
             let range = Self {
@@ -671,9 +672,10 @@ mod tests {
 
     #[test]
     fn open_reports_carried_when_indicator_was_not_reset() {
-        // Check that open() reports Carried when given an indicator that still has
-        // state. This confirms is_fresh()/is_carried() actually distinguish the two
-        // cases, so the Fresh checks in the other tests aren't passing for free.
+        // Check that open() reports Carried when given an indicator that still
+        // has state. This confirms is_fresh()/is_carried() actually
+        // distinguish the two cases, so the Fresh checks in the other
+        // tests aren't passing for free.
         let mut dirty = CountingIndicator::default();
         dirty.update(ev(6, 10, 9, 0, 1)); // give it some state, don't reset it
 
@@ -693,7 +695,8 @@ mod tests {
     fn awaiting_ignores_events_before_any_session_opens() {
         let mut m = fsm(SessionWindow::us_core_session()); // 09:30–16:00 ET
 
-        // 08:00 and 09:00 are before the window: stay Awaiting, complete nothing.
+        // 08:00 and 09:00 are before the window: stay Awaiting, complete
+        // nothing.
         assert_eq!(m.update(ev(6, 10, 8, 0, 1)), None);
         assert_eq!(status_name(&m), "awaiting");
         assert_eq!(m.update(ev(6, 10, 9, 0, 1)), None);
@@ -750,8 +753,9 @@ mod tests {
         );
         assert_eq!(status_name(&m), "closed");
 
-        // Still outside: the cached range is returned verbatim — nothing re-opened,
-        // re-folded, or mutated. Assert the whole value, not just one field.
+        // Still outside: the cached range is returned verbatim — nothing
+        // re-opened, re-folded, or mutated. Assert the whole value, not
+        // just one field.
         let again = m
             .update(ev(6, 10, 18, 0, 99))
             .expect("cache should persist");
@@ -775,9 +779,10 @@ mod tests {
         m.update(ev(6, 10, 17, 0, 99)); // complete 6/10, now Closed, cache = sum 5
         assert_eq!(status_name(&m), "closed");
 
-        // Next day, in-window: opening a new session is Progress, not Completed,
-        // so the returned cache is still the previous completed session (6/10),
-        // returned verbatim — assert the whole frozen value, not just its date.
+        // Next day, in-window: opening a new session is Progress, not
+        // Completed, so the returned cache is still the previous
+        // completed session (6/10), returned verbatim — assert the
+        // whole frozen value, not just its date.
         let out = m
             .update(ev(6, 11, 10, 0, 7))
             .expect("cache survives reopen");
@@ -811,7 +816,8 @@ mod tests {
 
     #[test]
     fn rolls_straight_into_next_session_on_a_24h_window() {
-        // No `Outside` ever fires here, so a session change is the only completer.
+        // No `Outside` ever fires here, so a session change is the only
+        // completer.
         let mut m = fsm_24h();
 
         m.update(ev(6, 10, 18, 0, 5)); // opens anchor 6/10 (18:00 >= 17:00)
@@ -819,7 +825,8 @@ mod tests {
         assert_eq!(m.update(ev(6, 11, 16, 0, 3)), None);
         assert_eq!(status_name(&m), "building");
 
-        // 17:00 the next day rolls the anchor to 6/11: completes 6/10, opens 6/11.
+        // 17:00 the next day rolls the anchor to 6/11: completes 6/10, opens
+        // 6/11.
         let completed = m
             .update(ev(6, 11, 17, 0, 9))
             .expect("rollover completes prior session");
@@ -833,8 +840,9 @@ mod tests {
             }
         );
 
-        // The next session is already building (no Awaiting gap), and the rollover
-        // event (9) opened it fresh. It must NOT carry the completed session's state.
+        // The next session is already building (no Awaiting gap), and the
+        // rollover event (9) opened it fresh. It must NOT carry the
+        // completed session's state.
         assert_eq!(status_name(&m), "building");
         let next = building_range(&m);
         assert_eq!(
@@ -854,7 +862,8 @@ mod tests {
 
     #[test]
     fn indicator_is_reset_between_sessions() {
-        // Build up several updates in session A, then confirm session B opens fresh.
+        // Build up several updates in session A, then confirm session B opens
+        // fresh.
         let mut m = fsm_24h();
 
         m.update(ev(6, 10, 18, 0, 5)); // open A
@@ -874,8 +883,8 @@ mod tests {
             }
         );
 
-        // If the machine had failed to reset the indicator, B would have inherited
-        // A's 3 updates and would be Carried, not Fresh.
+        // If the machine had failed to reset the indicator, B would have
+        // inherited A's 3 updates and would be Carried, not Fresh.
         let b = building_range(&m);
         assert_eq!(
             b,
@@ -902,7 +911,8 @@ mod tests {
         m.reset();
         assert_eq!(status_name(&m), "awaiting");
 
-        // Cache is gone: an out-of-window event returns None, not the stale range.
+        // Cache is gone: an out-of-window event returns None, not the stale
+        // range.
         assert_eq!(m.update(ev(6, 10, 8, 0, 1)), None);
     }
 }

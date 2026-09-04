@@ -257,7 +257,8 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
                 col(CanonicalCol::Close).alias(TMP_HISTORY_CLOSE),
             ]);
 
-            // 3. Join the history onto the current frame and compute rate of change
+            // 3. Join the history onto the current frame and compute rate of
+            //    change
             Ok(lf
                 .with_column(lookback_target)
                 .join(
