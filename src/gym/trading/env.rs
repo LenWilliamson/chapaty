@@ -239,8 +239,9 @@ impl Env for Environment {
                     .cursor
                     .advance_to_next_episode(&self.sim_data, self.ep)?
                 {
-                    // If an episode WAS found, the cursor is now correctly positioned,
-                    // and we simply fall through to the common logic below.
+                    // If an episode WAS found, the cursor is now correctly
+                    // positioned, and we simply fall
+                    // through to the common logic below.
                     self.ep = next_ep;
                     tracing::info!(
                         episode_id = %self.ep.id().0,

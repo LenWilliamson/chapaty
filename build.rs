@@ -1,8 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // MAINTAINER NOTE:
-    // This build script is disabled by default to allow users to build the crate
-    // without needing `protoc` installed or the external `chapaty-bq-export-proto`
-    // repo.
+    // This build script is disabled by default to allow users to build the
+    // crate without needing `protoc` installed or the external
+    // `chapaty-bq-export-proto` repo.
     //
     // The generated Rust code is committed to `src/proto_gen`.
     //

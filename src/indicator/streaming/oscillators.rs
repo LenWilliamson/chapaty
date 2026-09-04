@@ -57,7 +57,8 @@ impl StreamingIndicator for StreamingRsi {
 
         match (g_val, l_val) {
             (Some(avg_gain), Some(avg_loss)) => {
-                // Prevent division by zero if avg_loss is 0 (Monotonic Up-trend)
+                // Prevent division by zero if avg_loss is 0 (Monotonic
+                // Up-trend)
                 if avg_loss == 0.0 {
                     if avg_gain == 0.0 {
                         // Flat line
@@ -95,9 +96,10 @@ mod tests {
 
     #[test]
     fn warmup_takes_window_plus_one_prices() {
-        // Price 1 seeds prev_price. Prices 2..=N+1 each produce one delta, and the
-        // inner EWMs need `window_size` deltas before they emit. So with window 3:
-        // 1 seed + 3 deltas = 4 prices before the first RSI value.
+        // Price 1 seeds prev_price. Prices 2..=N+1 each produce one delta, and
+        // the inner EWMs need `window_size` deltas before they emit. So
+        // with window 3: 1 seed + 3 deltas = 4 prices before the first
+        // RSI value.
         let mut rsi = StreamingRsi::new(RsiWindow(3));
         assert_eq!(rsi.update(10.0), None); // seed
         assert_eq!(rsi.update(11.0), None); // delta 1
@@ -107,7 +109,8 @@ mod tests {
 
     #[test]
     fn pure_uptrend_gives_100() {
-        // Every delta is a gain, avg_loss stays 0 -> the "pure gain" branch -> 100.
+        // Every delta is a gain, avg_loss stays 0 -> the "pure gain" branch ->
+        // 100.
         let mut rsi = StreamingRsi::new(RsiWindow(3));
         let mut last = None;
         for p in [1.0, 2.0, 3.0, 4.0, 5.0] {
@@ -158,7 +161,8 @@ mod tests {
             rsi.update(p);
         }
         rsi.reset();
-        // After reset the next price only re-seeds: no leftover prev_price or averages.
+        // After reset the next price only re-seeds: no leftover prev_price or
+        // averages.
         assert_eq!(rsi.update(50.0), None); // seed again
         assert_eq!(rsi.update(49.0), None); // delta 1, EWM not yet full (window 2)
         assert!(rsi.update(48.0).is_some()); // delta 2 -> emits, uninfluenced by old data

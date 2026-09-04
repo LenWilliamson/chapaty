@@ -371,8 +371,9 @@ where
     S: StreamEntity<Storage = EventMap<S>>,
 {
     // OPTIMIZATION: Lockstep Iteration (Zip)
-    // We avoid looking up keys in `data` by relying on the construction invariant
-    // that `Cursor` and `Data` have identical keys in identical order.
+    // We avoid looking up keys in `data` by relying on the construction
+    // invariant that `Cursor` and `Data` have identical keys in identical
+    // order.
     let sliced_data = cursor.0.iter().zip(data.iter()).try_fold(
         SortedVecMap::with_capacity(cursor.0.len()),
         |mut acc, pair| {
@@ -391,7 +392,8 @@ where
             }
 
             // Insert slice.
-            // Since we insert in sorted order, this is effectively an O(1) push.
+            // Since we insert in sorted order, this is effectively an O(1)
+            // push.
             acc.insert(*cursor_id, &events[0..range.end]);
             Ok(acc)
         },
@@ -576,9 +578,9 @@ mod test {
 
     #[test]
     fn test_reached_price_ignores_old_data() {
-        // Edge Case: Old data (events <= last_close_ts) hitting the price must be
-        // ignored. This tests the "reverse iteration" logic with `since_ts`
-        // filtering.
+        // Edge Case: Old data (events <= last_close_ts) hitting the price must
+        // be ignored. This tests the "reverse iteration" logic with
+        // `since_ts` filtering.
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
@@ -648,10 +650,10 @@ mod test {
         let id_5m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(5));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
-        // 3m candle: [09:00:00, 09:03:00) - half-open interval, 3 minute duration
-        // point_in_time = close_timestamp = 09:03:00
-        // Since previous_ts = 08:59 and point_in_time = 09:03:00 > 08:59, it IS new
-        // Contains price 500
+        // 3m candle: [09:00:00, 09:03:00) - half-open interval, 3 minute
+        // duration point_in_time = close_timestamp = 09:03:00
+        // Since previous_ts = 08:59 and point_in_time = 09:03:00 > 08:59, it IS
+        // new Contains price 500
         let events_3m = vec![ohlcv(
             ts("2025-03-01T09:00:00Z"),
             ts("2025-03-01T09:03:00Z"),
@@ -661,10 +663,10 @@ mod test {
             105.0,
         )];
 
-        // 5m candle: [09:55:00, 10:00:00) - half-open interval, 5 minute duration
-        // point_in_time = close_timestamp = 10:00:00
-        // Since previous_ts = 08:59 and point_in_time = 10:00:00 > 08:59, it IS new
-        // Contains price 200
+        // 5m candle: [09:55:00, 10:00:00) - half-open interval, 5 minute
+        // duration point_in_time = close_timestamp = 10:00:00
+        // Since previous_ts = 08:59 and point_in_time = 10:00:00 > 08:59, it IS
+        // new Contains price 200
         let events_5m = vec![ohlcv(
             ts("2025-03-01T09:55:00Z"),
             ts("2025-03-01T10:00:00Z"),
@@ -684,8 +686,8 @@ mod test {
             ts("2025-03-01T10:00:00Z"), // current_ts at 10:00:00 to include 5m candle
         );
 
-        // Both candles are "new" (point_in_time > previous_ts), so both should be
-        // checked
+        // Both candles are "new" (point_in_time > previous_ts), so both should
+        // be checked
         assert!(
             market_view.reached_price(Price(500.0), symbol, TradeKind::Long),
             "3m candle (new) contains 500, should be reached"
@@ -730,8 +732,9 @@ mod test {
         view_data.insert(id, events.as_slice());
 
         // previous_ts = 00:03:00
-        // Candle 1: point_in_time (00:03:00) > previous_ts (00:03:00)? NO -> excluded
-        // Candle 2: point_in_time (00:03:01) > previous_ts (00:03:00)? YES -> included
+        // Candle 1: point_in_time (00:03:00) > previous_ts (00:03:00)? NO ->
+        // excluded Candle 2: point_in_time (00:03:01) > previous_ts
+        // (00:03:00)? YES -> included
         let market_view = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-04-01T00:03:00Z")),
@@ -755,9 +758,9 @@ mod test {
 
     #[test]
     fn test_try_resolved_close_price_most_recent_wins() {
-        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59. Current TS is
-        // 09:59. The function must return the 5m close price (09:59), ignoring
-        // the 3m candle (08:59).
+        // Scenario: 3m candle closes at 08:59. 5m candle closes at 09:59.
+        // Current TS is 09:59. The function must return the 5m close
+        // price (09:59), ignoring the 3m candle (08:59).
         let id_3m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let id_5m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(5));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
@@ -947,7 +950,8 @@ mod test {
             "Should find second candle just before close"
         );
 
-        // Timestamp exactly at close should find NEXT candle (close is exclusive)
+        // Timestamp exactly at close should find NEXT candle (close is
+        // exclusive)
         let candle = market_view
             .find_candle(&id, ts("2025-09-01T00:06:00Z"))
             .unwrap();
@@ -1124,10 +1128,11 @@ mod test {
 
     #[test]
     fn test_previous_timestamp_is_none_at_episode_start() {
-        // Edge Case: `advance_to_next_episode` sets `previous_ts` to None, but the
-        // visible history is kept, because slices always start at index 0. If
-        // `previous_timestamp` handed out an open lower bound instead of None, the
-        // first step of every episode would replay the entire history as new events.
+        // Edge Case: `advance_to_next_episode` sets `previous_ts` to None, but
+        // the visible history is kept, because slices always start at
+        // index 0. If `previous_timestamp` handed out an open lower
+        // bound instead of None, the first step of every episode would
+        // replay the entire history as new events.
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
 
         let events = vec![
@@ -1152,7 +1157,8 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        // previous_ts = None is exactly what the cursor leaves behind on a new episode.
+        // previous_ts = None is exactly what the cursor leaves behind on a new
+        // episode.
         let market_view = market_view_with_ohlcv(view_data, None, ts("2026-02-01T00:06:00Z"));
 
         assert_eq!(
@@ -1161,8 +1167,8 @@ mod test {
             "Without a previous step, previous_timestamp must report None instead of a sentinel"
         );
 
-        // An agent that guards on None correctly treats nothing as new, rather than
-        // receiving the full history back.
+        // An agent that guards on None correctly treats nothing as new, rather
+        // than receiving the full history back.
         let new_events = market_view
             .previous_timestamp()
             .and_then(|prev| market_view.ohlcv.new_events_since(&id, Some(prev)))
@@ -1173,7 +1179,8 @@ mod test {
             "On the first step of an episode no event is new, so the history must not be replayed"
         );
 
-        // Once a previous step exists, only the genuinely newer event is returned.
+        // Once a previous step exists, only the genuinely newer event is
+        // returned.
         let mut stepped_data = SortedVecMap::new();
         stepped_data.insert(id, events.as_slice());
         let stepped = market_view_with_ohlcv(

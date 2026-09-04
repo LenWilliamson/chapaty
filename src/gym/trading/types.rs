@@ -434,8 +434,8 @@ mod tests {
 
         // === LONG CASES (Target: SL < Entry < TP) ===
 
-        // Case 1: Entry < TP is Valid (100 < 110), but SL > Entry (105 > 100) ->
-        // INVALID This was the specific bug case.
+        // Case 1: Entry < TP is Valid (100 < 110), but SL > Entry (105 > 100)
+        // -> INVALID This was the specific bug case.
         assert!(
             TradeKind::Long
                 .price_ordering_validation(Some(sl(105.0)), Some(en(100.0)), Some(tp(110.0)))
@@ -443,7 +443,8 @@ mod tests {
             "Long: Valid Entry/TP should not mask invalid SL/Entry"
         );
 
-        // Case 2: SL < Entry is Valid (90 < 100), but Entry > TP (100 > 95) -> INVALID
+        // Case 2: SL < Entry is Valid (90 < 100), but Entry > TP (100 > 95) ->
+        // INVALID
         assert!(
             TradeKind::Long
                 .price_ordering_validation(Some(sl(90.0)), Some(en(100.0)), Some(tp(95.0)))
@@ -453,8 +454,8 @@ mod tests {
 
         // === SHORT CASES (Target: TP < Entry < SL) ===
 
-        // Case 3: TP < Entry is Valid (90 < 100), but Entry > SL (100 > 95) -> INVALID
-        // (Remember Short SL must be > Entry)
+        // Case 3: TP < Entry is Valid (90 < 100), but Entry > SL (100 > 95) ->
+        // INVALID (Remember Short SL must be > Entry)
         assert!(
             TradeKind::Short
                 .price_ordering_validation(Some(sl(95.0)), Some(en(100.0)), Some(tp(90.0)))
@@ -462,8 +463,8 @@ mod tests {
             "Short: Valid TP/Entry should not mask invalid Entry/SL"
         );
 
-        // Case 4: Entry < SL is Valid (100 < 110), but TP > Entry (105 > 100) ->
-        // INVALID
+        // Case 4: Entry < SL is Valid (100 < 110), but TP > Entry (105 > 100)
+        // -> INVALID
         assert!(
             TradeKind::Short
                 .price_ordering_validation(Some(sl(110.0)), Some(en(100.0)), Some(tp(105.0)))
@@ -515,7 +516,8 @@ mod tests {
         // Target: 10 ticks of profit (10 * 0.00005 = 0.0005)
         // Expected PnL: 10 ticks * $6.25 = $62.50
 
-        // CASE 1: Dirty Long Exit (Price is slightly too high: 1.10050 + 0.00000001)
+        // CASE 1: Dirty Long Exit (Price is slightly too high: 1.10050 +
+        // 0.00000001)
         let dirty_exit = Price(1.100_500_01);
 
         let pnl = TradeKind::Long.calculate_pnl(entry, dirty_exit, Quantity(1.0), eur);
@@ -524,8 +526,9 @@ mod tests {
         // With snapping, it must be exactly 62.5
         assert_f64_eq!(pnl, 62.5, "Long PnL failed to snap dirty input to grid");
 
-        // CASE 2: Dirty Short Entry (Price is slightly too low: 1.10050 - 0.00000001)
-        // Shorting from here down to 1.10000 should still yield 10 ticks
+        // CASE 2: Dirty Short Entry (Price is slightly too low: 1.10050 -
+        // 0.00000001) Shorting from here down to 1.10000 should still
+        // yield 10 ticks
         let dirty_entry = Price(1.099_499_99); // Target 10 ticks below is ~1.09900
         let clean_exit = Price(1.09900);
 

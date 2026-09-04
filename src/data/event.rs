@@ -624,7 +624,8 @@ impl MarketProfile for VolumeProfile {
     fn as_dataframe(&self) -> ChapatyResult<DataFrame> {
         let len = self.bins.len();
 
-        // 1. Metadata columns (Repeated for every row, Polars compresses this well)
+        // 1. Metadata columns (Repeated for every row, Polars compresses this
+        //    well)
         let window_starts = vec![self.open_timestamp.timestamp_micros(); len];
         let window_ends = vec![self.close_timestamp.timestamp_micros(); len];
 

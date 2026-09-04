@@ -230,7 +230,8 @@ impl CursorGroup {
             .min();
 
         let Some(next_start) = next_start else {
-            // If no future episode exists, explicitly mark all streams as exhausted.
+            // If no future episode exists, explicitly mark all streams as
+            // exhausted.
             self.advance_all_to_end(sim_data);
             return Ok(None);
         };
@@ -247,9 +248,9 @@ impl CursorGroup {
         .min();
 
         // LOGICAL ASSERTION:
-        // If an event opened at `next_start`, it MUST be available at >= `next_start`.
-        // If this unwrap fails, the SimulationData is corrupt or the Cursor logic is
-        // broken.
+        // If an event opened at `next_start`, it MUST be available at >=
+        // `next_start`. If this unwrap fails, the SimulationData is
+        // corrupt or the Cursor logic is broken.
         let start_availability =
             start_availability_candidate.ok_or_else(|| DataError::CausalityViolation {
                 open: next_start.to_string(),
@@ -261,7 +262,8 @@ impl CursorGroup {
         self.previous_ts = None;
         self.current_ts = start_availability;
 
-        // 4. Advances all cursors to the new start time (Preserving history 0..start)
+        // 4. Advances all cursors to the new start time (Preserving history
+        //    0..start)
         self.advance_all(sim_data, self.current_ts);
 
         Ok(Some(next_ep))
@@ -456,14 +458,16 @@ mod test {
     // ============================================================================
     // Part 3: CursorGroup Tests (The Container)
     // Focus: Synchronization between multiple cursors
-    // Note: Individual cursor mechanics (simultaneous events, forward-only, etc.)
-    //       are tested in cursor.rs. Here we only test GROUP coordination.
+    // Note: Individual cursor mechanics (simultaneous events, forward-only,
+    // etc.)       are tested in cursor.rs. Here we only test GROUP
+    // coordination.
     // ============================================================================
 
     #[test]
     fn test_cursor_group_synchronization_ohlcv_and_trade() {
-        // THE CRITICAL TEST: Verify that when the group advances, BOTH cursors update
-        // correctly. This tests the synchronization guarantee of CursorGroup.
+        // THE CRITICAL TEST: Verify that when the group advances, BOTH cursors
+        // update correctly. This tests the synchronization guarantee of
+        // CursorGroup.
         //
         // Scenario:
         // - OHLCV 5m candles: available at 00:05, 00:10
@@ -498,7 +502,8 @@ mod test {
             ts("2025-03-01T00:02:00Z"),
             "Initial: Should start at earliest available event (trade at 00:02)"
         );
-        // Trade cursor consumed first event, OHLCV cursor still empty (00:05 > 00:02)
+        // Trade cursor consumed first event, OHLCV cursor still empty (00:05 >
+        // 00:02)
         assert_eq!(cursor_group.trade.0.get(&tid).unwrap(), &(0..1));
         assert_eq!(cursor_group.ohlcv.0.get(&oid).unwrap(), &(0..0));
 
@@ -629,7 +634,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_is_end_of_data_requires_all_exhausted() {
-        // is_end_of_data should return true only when ALL streams are exhausted.
+        // is_end_of_data should return true only when ALL streams are
+        // exhausted.
         let oid = ohlcv_id(Period::Minute(3));
         let tid = trade_id();
 
@@ -680,8 +686,8 @@ mod test {
         let sim_data = sim_data_with_ohlcv(oid, events);
         // Episode from 00:00 to 00:05 (5 minutes)
         let ep = episode(ts("2025-07-01T00:00:00Z"), EpisodeLength::Day);
-        // Note: EpisodeLength::Day is the closest we have to a short test episode
-        // Let's use a real Day and just step to the boundary
+        // Note: EpisodeLength::Day is the closest we have to a short test
+        // episode Let's use a real Day and just step to the boundary
 
         let mut cursor_group = CursorGroup::new(&sim_data);
 
@@ -784,7 +790,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_handles_sparse_data_across_episodes() {
-        // Test that advance_to_next_episode correctly handles large gaps in data.
+        // Test that advance_to_next_episode correctly handles large gaps in
+        // data.
         let oid = ohlcv_id(Period::Minute(3));
 
         let events = vec![
@@ -822,7 +829,8 @@ mod test {
 
     #[test]
     fn test_cursor_group_step_tracks_time_correctly() {
-        // Verify that previous_ts and current_ts are tracked correctly through steps.
+        // Verify that previous_ts and current_ts are tracked correctly through
+        // steps.
         let oid = ohlcv_id(Period::Minute(3));
 
         let events = vec![
@@ -855,8 +863,8 @@ mod test {
     fn test_cursor_group_simultaneous_events_across_different_streams() {
         // When OHLCV and Trade have events at the EXACT same timestamp,
         // both should be consumed in a single advance.
-        // NOTE: We don't re-test the internal index math (that's cursor.rs's job).
-        // We only verify both cursor types update correctly.
+        // NOTE: We don't re-test the internal index math (that's cursor.rs's
+        // job). We only verify both cursor types update correctly.
 
         let oid = ohlcv_id(Period::Minute(5));
         let tid = trade_id();

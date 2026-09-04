@@ -350,9 +350,9 @@ impl Countdown {
             });
         }
 
-        // Final bar check: DeMark requires the final bar's extreme to exceed the
-        // 8th bar's close. If the target is smaller than 8 (no qualifier recorded),
-        // this rule is safely bypassed.
+        // Final bar check: DeMark requires the final bar's extreme to exceed
+        // the 8th bar's close. If the target is smaller than 8 (no
+        // qualifier recorded), this rule is safely bypassed.
         let is_final_ok = match (self.direction, self.qualifier_close) {
             (TdDirection::BullishReversal, Some(c8)) => low <= c8,
             (TdDirection::BearishReversal, Some(c8)) => high >= c8,
@@ -467,7 +467,8 @@ impl StreamingTdSequential {
                 self.countdown = Some(Countdown::new(direction));
                 Some(TdSignal::Setup(direction))
             } else {
-                // Recycle: Setup direction matches running countdown. Ignore it.
+                // Recycle: Setup direction matches running countdown. Ignore
+                // it.
                 None
             }
         })
@@ -499,7 +500,8 @@ impl StreamingTdSequential {
                         Some(TdSignal::Countdown(direction))
                     }
                     CountdownResult::Pending(updated_countdown) => {
-                        // Still counting. Put the updated state back into the struct.
+                        // Still counting. Put the updated state back into the
+                        // struct.
                         self.countdown = Some(updated_countdown);
                         None
                     }
@@ -533,7 +535,8 @@ impl StreamingIndicator for StreamingTdSequential {
 
         // 5. Tie-breaker and Signal resolution
         // If a new setup occurred, emit it.
-        // Otherwise, emit the countdown signal (which will be None if still pending).
+        // Otherwise, emit the countdown signal (which will be None if still
+        // pending).
         new_setup_signal.or(countdown_signal)
     }
 
@@ -700,7 +703,8 @@ mod tests {
             }
         );
 
-        // 25.0 > 18.0 (higher) right after a lower close = bullish flip -> sell setup.
+        // 25.0 > 18.0 (higher) right after a lower close = bullish flip -> sell
+        // setup.
         assert_eq!(td.update(candle(25.0)), None);
         assert_eq!(
             td.state,
@@ -776,7 +780,8 @@ mod tests {
     /// completes.
     #[test]
     fn two_phase_completes_setup_then_countdown_bullish() {
-        // setup: lookback 1, target 3; countdown target 4 (below the 8th-bar rule).
+        // setup: lookback 1, target 3; countdown target 4 (below the 8th-bar
+        // rule).
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 4)
             .with_countdown_start(CountdownStart::NextBar);
         let out = feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0]);
@@ -854,8 +859,9 @@ mod tests {
     fn opposite_setup_cancels_active_countdown() {
         let mut td = StreamingTdSequential::new(StreamingTdXSequential::new(1, 3), 13)
             .with_countdown_start(CountdownStart::NextBar);
-        // Buy setup completes at idx 4; then three rising closes complete a sell
-        // setup at idx 7 while the buy countdown is still far from 13.
+        // Buy setup completes at idx 4; then three rising closes complete a
+        // sell setup at idx 7 while the buy countdown is still far from
+        // 13.
         let out = feed_td(&mut td, &[10.0, 12.0, 11.0, 10.0, 9.0, 20.0, 21.0, 22.0]);
 
         assert_eq!(out[4], Some(TdSignal::Setup(TdDirection::BullishReversal)));
@@ -900,7 +906,8 @@ mod tests {
     fn countdown_records_qualifier_close_exactly_at_bar_eight() {
         let mut cd = Countdown::new(TdDirection::BullishReversal);
 
-        // Counts 1..=7 carry distinct closes, but the qualifier must stay unset.
+        // Counts 1..=7 carry distinct closes, but the qualifier must stay
+        // unset.
         for count in 1..=7_u64 {
             let count_f64 =
                 f64::from(u32::try_from(count).expect("countdown count exceeds u32 range"));
@@ -928,7 +935,8 @@ mod tests {
         cd = step(cd, buy_ctx(13, 42.0, 0.0, 1000.0)); // bar 8 records qualifier = 42
         assert_eq!(cd.qualifier_close, Some(42.0));
 
-        // Advancing bars 9..=12 (closes deliberately != 42) must carry it unchanged.
+        // Advancing bars 9..=12 (closes deliberately != 42) must carry it
+        // unchanged.
         for expected in 9..=12 {
             cd = step(cd, buy_ctx(13, 7.0, 0.0, 1000.0));
             assert_eq!(cd.count, expected);
@@ -952,7 +960,8 @@ mod tests {
     fn countdown_defers_thirteenth_until_qualifier_met() {
         let mut cd = Countdown::new(TdDirection::BullishReversal);
 
-        // Counts 1..=7 (low_n_back high enough that the close always qualifies).
+        // Counts 1..=7 (low_n_back high enough that the close always
+        // qualifies).
         for _ in 0..7 {
             cd = step(cd, buy_ctx(13, 0.0, 0.0, 1000.0));
         }
@@ -991,7 +1000,8 @@ mod tests {
     fn countdown_completes_sell_side() {
         let mut cd = Countdown::new(TdDirection::BearishReversal);
 
-        // target 4: counts 1..=3 pending, then the 4th qualifying bar completes.
+        // target 4: counts 1..=3 pending, then the 4th qualifying bar
+        // completes.
         for _ in 0..3 {
             cd = step(cd, sell_ctx(4, 100.0, 100.0, 10.0));
         }

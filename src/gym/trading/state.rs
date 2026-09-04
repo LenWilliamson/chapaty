@@ -384,8 +384,8 @@ impl State {
     pub fn expected_loss_in_ticks(&self, symbol: Symbol) -> Option<Tick> {
         let (ref_price, sl) = self.get_risk_params()?;
         let diff = self.trade_kind().price_diff(ref_price, sl);
-        // Result is usually negative for a Stop Loss; we want magnitude (absolute
-        // ticks).
+        // Result is usually negative for a Stop Loss; we want magnitude
+        // (absolute ticks).
         Some(Tick(symbol.price_to_ticks(diff).0.abs()))
     }
 
@@ -969,7 +969,8 @@ impl States {
             let canceled = t.cancel(cmd, ts)?;
 
             // State changes to Canceled.
-            // Guard::commit() will automatically move it from Active -> Archive.
+            // Guard::commit() will automatically move it from Active ->
+            // Archive.
             Ok(Transition {
                 new_state: State::Canceled(canceled),
                 output: (),
@@ -1037,8 +1038,8 @@ impl States {
             };
 
             // 3. Notify the caller (Ledger) so it can log/react
-            // We pass the result *before* we decide index logic, so Ledger knows what
-            // happened.
+            // We pass the result *before* we decide index logic, so Ledger
+            // knows what happened.
             on_update(update_result)?;
 
             // 4. Control Flow (The "Core" Safety Logic)
@@ -1069,7 +1070,8 @@ impl States {
                 State::Active(t) => t.update(m_id, ctx)?,
                 State::Pending(t) => t.update(m_id, ctx)?,
                 other => {
-                    // This branch implies data corruption (Cold trade in Hot vec)
+                    // This branch implies data corruption (Cold trade in Hot
+                    // vec)
                     warn!(
                         ?m_id,
                         state = ?other,
@@ -1450,8 +1452,8 @@ mod tests {
                 period: Period::Minute(1),
             };
 
-            // 0. Create first data point, so we can step once and have a valid previous
-            //    timestamp
+            // 0. Create first data point, so we can step once and have a valid
+            //    previous timestamp
             let t0 = Ohlcv {
                 open_timestamp: timestamp - chrono::Duration::minutes(1),
                 close_timestamp: timestamp,
@@ -1589,7 +1591,8 @@ mod tests {
         let (mut states, m_id) = setup_ledger(vec![10, 20, 30]);
 
         // PRE-CHECK: Archive must be empty initially
-        // This proves that the trade we find later definitely came from OUR action.
+        // This proves that the trade we find later definitely came from OUR
+        // action.
         assert!(
             states.archive.get(&m_id).unwrap_or(&vec![]).is_empty(),
             "Archive should start empty"
@@ -1801,8 +1804,8 @@ mod tests {
 
         // CHECK 2: Stability (The Critical Check)
         // Verify that NEITHER 10 nor 20 moved.
-        // This proves the operation acted as a stable 'pop', avoiding the reordering of
-        // a typical swap_remove.
+        // This proves the operation acted as a stable 'pop', avoiding the
+        // reordering of a typical swap_remove.
         assert_eq!(
             live_vec[0].trade_id().0,
             10,
@@ -2127,7 +2130,8 @@ mod tests {
         assert_eq!(states.live.get(&m_id).unwrap().len(), 2);
         assert_eq!(states.archive.get(&m_id).unwrap().len(), 1);
 
-        // Verify the canceled trade is in Archive (check directly, not via index)
+        // Verify the canceled trade is in Archive (check directly, not via
+        // index)
         let archive_vec = states.archive.get(&m_id).unwrap();
         assert!(
             archive_vec[0].is_canceled(),
@@ -2423,8 +2427,8 @@ mod tests {
         let live = states.live.get(&m_id).unwrap();
 
         // 1. Only T20 should remain.
-        // If the loop was buggy (incrementing index after swap), it would have skipped
-        // T30.
+        // If the loop was buggy (incrementing index after swap), it would have
+        // skipped T30.
         assert_eq!(live.len(), 1, "Only T20 should remain active");
         assert_eq!(live[0].trade_id().0, 20, "T20 should be at index 0");
 

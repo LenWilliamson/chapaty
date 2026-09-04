@@ -681,7 +681,8 @@ mod tests {
         let ohlcv2 = make_ohlcv("2024-01-01T09:00:00Z", "2024-01-01T09:01:00Z");
 
         let mut ohlcv_map = OhlcvEventMap::new();
-        // Note: events are stored as-is, min_availability finds the min close_timestamp
+        // Note: events are stored as-is, min_availability finds the min
+        // close_timestamp
         ohlcv_map.insert(ohlcv_id, Box::new([ohlcv2, ohlcv1]));
 
         let streams = Streams::default().with_ohlcv(ohlcv_map);
@@ -709,7 +710,8 @@ mod tests {
         let ohlcv_id = make_ohlcv_id(symbol);
         let trade_id = make_trade_id(symbol);
 
-        // OHLCV opens at 09:00, Trade at 09:30 (trade opened_at == point_in_time)
+        // OHLCV opens at 09:00, Trade at 09:30 (trade opened_at ==
+        // point_in_time)
         let ohlcv = make_ohlcv("2024-01-01T09:00:00Z", "2024-01-01T09:01:00Z");
         let trade = make_trade("2024-01-01T09:30:00Z");
 
@@ -896,9 +898,9 @@ mod tests {
         let cache_path = temp_dir.join(format!("{hash}.postcard"));
 
         assert!(cache_path.exists(), "Cache file was not created");
-        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get file
-        // metadata").len(); println!("Cache file written: {} ({} bytes)",
-        // cache_path.display(), file_size);
+        // let file_size = std::fs::metadata(&cache_path).expect("Failed to get
+        // file metadata").len(); println!("Cache file written: {} ({}
+        // bytes)", cache_path.display(), file_size);
 
         // 4. Read back using SimulationData::read()
         let loaded = SimulationData::read(&env_cfg, &io_cfg)
@@ -914,7 +916,8 @@ mod tests {
             sim_data.global_availability_start(),
             loaded.global_availability_start()
         );
-        // println!("File-based roundtrip succeeded (OHLCV + EconomicCalendar)");
+        // println!("File-based roundtrip succeeded (OHLCV +
+        // EconomicCalendar)");
 
         // 6. Cleanup
         std::fs::remove_file(&cache_path).expect("Failed to remove cache file");

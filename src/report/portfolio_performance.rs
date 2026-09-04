@@ -34,8 +34,9 @@ pub struct PortfolioPerformance {
 impl PortfolioPerformance {
     /// Efficiently extracts a metric value from a specific row.
     pub fn get(&self, metric: PortfolioPerformanceCol, row: usize) -> Option<f64> {
-        // GUARD: Polars ChunkedArray::get() will panic if called on an empty series.
-        // We must explicitly verify the row exists within the dataframe bounds first.
+        // GUARD: Polars ChunkedArray::get() will panic if called on an empty
+        // series. We must explicitly verify the row exists within the
+        // dataframe bounds first.
         if row >= self.df.height() {
             return None;
         }
@@ -1396,7 +1397,8 @@ mod tests {
             .expect("Column is not f64")
             .get(0);
 
-        // Should be Some value or None (if volatility = 0), but not missing column
+        // Should be Some value or None (if volatility = 0), but not missing
+        // column
         assert!(
             sharpe.is_some() || sharpe.is_none(),
             "Sharpe ratio should be computed"
@@ -1676,7 +1678,8 @@ mod tests {
             "get(0) on an empty dataframe must return None"
         );
 
-        // Act & Assert 3: .get() out of bounds on empty dataframe must return None
+        // Act & Assert 3: .get() out of bounds on empty dataframe must return
+        // None
         let get_out_of_bounds = perf.get(metric, 99);
         assert_eq!(
             get_out_of_bounds, None,
