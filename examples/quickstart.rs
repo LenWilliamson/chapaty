@@ -19,8 +19,8 @@ const REPORTS_SUBDIR: &str = "examples/reports/quickstart";
 // evaluation API (single-agent journals + parallel leaderboards) and the
 // logging setup, without bundling any real strategy logic into the core crate.
 //
-// For real, ready-to-run strategies, see chapaty-zoo:
-// https://github.com/LenWilliamson/chapaty-zoo
+// For real, ready-to-run strategies, see chapaty-garden:
+// https://github.com/LenWilliamson/chapaty-garden
 // ================================================================================================
 
 #[derive(Clone, Serialize)]

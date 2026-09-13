@@ -10,7 +10,7 @@
 
 ## Getting Started
 
-> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice and built-in dashboard setups with [QuantStats][quantstatsLink]. For a library of ready-to-run strategies, including the top TradingView setups backtested across million-agent grids, see [**chapaty-zoo**][chapatyZooLink].
+> **Fast Track:** Use the [**Chapaty Starter Template**][chapatyTemplateLink] to instantly bootstrap a new project. It includes pre-configured AI prompts for backtesting with a LLM of your choice and built-in dashboard setups with [QuantStats][quantstatsLink]. For a library of ready-to-run strategies, including the top TradingView setups backtested across million-agent grids, see [**chapaty-garden**][chapatyGardenLink].
 
 Chapaty supports two primary workflows: **Parallel Backtesting** for evaluating agent grids, and the **Canonical Gym Loop** for step-by-step control over the environment.
 
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
 
     // 2. Create the Agent Grid
     // Creates a vector of 1M distinct parameter combinations. `NoOpAgent` is a
-    // placeholder. Swap in your own strategy (see chapaty-zoo for examples).
+    // placeholder. Swap in your own strategy (see chapaty-garden for examples).
     let num_agents = 1_000_000;
     let agents = (0..num_agents)
         .map(|uid| (uid, NoOpAgent::default()))
@@ -102,7 +102,7 @@ async fn main() -> ChapatyResult<()> {
 
 > **Note:** Environments are **async** because they stream large financial datasets directly from cloud storage (e.g. GCS, BigQuery, HuggingFace).
 
-The [`examples/quickstart.rs`](examples/quickstart.rs) file demonstrates both workflows end to end for a single-agent baseline, a parallel grid, report export, and logging setup. For real, ready-to-run strategies, see [**chapaty-zoo**][chapatyZooLink].
+The [`examples/quickstart.rs`](examples/quickstart.rs) file demonstrates both workflows end to end for a single-agent baseline, a parallel grid, report export, and logging setup. For real, ready-to-run strategies, see [**chapaty-garden**][chapatyGardenLink].
 
 ## Related Projects
 
@@ -141,4 +141,4 @@ By using Chapaty, you acknowledge that **you are solely responsible for any trad
 [deepmindLink]: https://github.com/deepmind/dm_control
 [quantstatsLink]: https://github.com/ranaroussi/quantstats
 [chapatyTemplateLink]: https://github.com/LenWilliamson/chapaty-template
-[chapatyZooLink]: https://github.com/LenWilliamson/chapaty-zoo
+[chapatyGardenLink]: https://github.com/LenWilliamson/chapaty-garden
