@@ -708,7 +708,8 @@ impl StreamingHhll {
                             MarketStructureEvent::BreakOfStructure
                         }
 
-                        // Explicitly trap invalid states that the old `_` was swallowing
+                        // Explicitly trap invalid states that the old `_` was
+                        // swallowing
                         Some(
                             invalid_trend @ (HigherLow | LowerLow | EqualLow | UnclassifiedLow),
                         ) => {

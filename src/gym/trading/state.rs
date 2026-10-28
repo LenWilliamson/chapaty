@@ -505,7 +505,8 @@ impl State {
     pub const fn exit_reason(&self) -> Option<TerminationReason> {
         match self {
             Self::Closed(t) => Some(t.state.termination_reason()),
-            // Canceled usually implies "Cancel" reason, handled by the struct helper
+            // Canceled usually implies "Cancel" reason, handled by the struct
+            // helper
             Self::Canceled(t) => Some(t.state.termination_reason()),
             _ => None,
         }
@@ -932,17 +933,19 @@ impl States {
             match outcome {
                 // Case A: Full Close
                 // The state changes to Closed.
-                // The Guard::commit() will automatically move it from Active -> Archive.
+                // The Guard::commit() will automatically move it from Active ->
+                // Archive.
                 CloseOutcome::FullyClosed(closed) => Ok(Transition {
                     new_state: State::Closed(closed),
                     output: (reward, None),
                 }),
 
                 // Case B: Partial Close
-                // 1. The remaining portion stays Active (Active -> Active). Guard::commit() will
-                //    update it in-place in the Active vector.
-                // 2. The 'Closed' portion is returned as 'output'. We must manually archive this
-                //    split child.
+                // 1. The remaining portion stays Active (Active -> Active).
+                //    Guard::commit() will update it in-place in the Active
+                //    vector.
+                // 2. The 'Closed' portion is returned as 'output'. We must
+                //    manually archive this split child.
                 CloseOutcome::PartiallyClosed { closed, remaining } => Ok(Transition {
                     new_state: State::Active(remaining),
                     output: (reward, Some(State::Closed(closed))),

@@ -183,6 +183,12 @@ impl Ledger {
         self.states(episode).map(States::pnl)
     }
 
+    pub fn journal_soa(&self) -> ChapatyResult<JournalSoA> {
+        self.flattened_states()
+            .try_map_ledger_entry_to_journal_entry()
+            .try_collect_soa()
+    }
+
     pub fn journal_df(&self) -> ChapatyResult<DataFrame> {
         self.flattened_states()
             .try_map_ledger_entry_to_journal_entry()
@@ -366,7 +372,7 @@ struct JournalEntry {
 /// `Vec<LedgerEntry>`, optimized for columnar processing, serialization, and
 /// analysis.
 #[derive(Default, Debug)]
-struct JournalSoA {
+pub(super) struct JournalSoA {
     episode_id: Vec<EpisodeId>,
     trade_id: Vec<TradeId>,
     trade_state: Vec<StateKind>,
@@ -394,7 +400,7 @@ struct JournalSoA {
 }
 
 impl JournalSoA {
-    pub fn episode_ids(&mut self) -> ChapatyResult<Vec<u32>> {
+    fn episode_ids(&mut self) -> ChapatyResult<Vec<u32>> {
         mem::take(&mut self.episode_id)
             .into_iter()
             .map(|ep| {
@@ -405,155 +411,155 @@ impl JournalSoA {
             .collect()
     }
 
-    pub fn trade_ids(&mut self) -> Vec<i64> {
+    fn trade_ids(&mut self) -> Vec<i64> {
         mem::take(&mut self.trade_id)
             .into_iter()
             .map(|t| t.0)
             .collect()
     }
 
-    pub fn trade_states(&mut self) -> Vec<String> {
+    fn trade_states(&mut self) -> Vec<String> {
         mem::take(&mut self.trade_state)
             .into_iter()
             .map(|s| s.to_string())
             .collect()
     }
 
-    pub fn agent_ids(&mut self) -> Vec<String> {
+    fn agent_ids(&mut self) -> Vec<String> {
         mem::take(&mut self.agent_id)
             .into_iter()
             .map(|a| a.to_string())
             .collect()
     }
 
-    pub fn data_brokers(&mut self) -> Vec<String> {
+    fn data_brokers(&mut self) -> Vec<String> {
         mem::take(&mut self.data_broker)
             .into_iter()
             .map(|d| d.to_string())
             .collect()
     }
 
-    pub fn exchanges(&mut self) -> Vec<String> {
+    fn exchanges(&mut self) -> Vec<String> {
         mem::take(&mut self.exchange)
             .into_iter()
             .map(|e| e.to_string())
             .collect()
     }
 
-    pub fn symbols(&mut self) -> Vec<String> {
+    fn symbols(&mut self) -> Vec<String> {
         mem::take(&mut self.symbol)
             .into_iter()
             .map(|s| s.to_string())
             .collect()
     }
 
-    pub fn market_kinds(&mut self) -> Vec<String> {
+    fn market_kinds(&mut self) -> Vec<String> {
         mem::take(&mut self.market_kind)
             .into_iter()
             .map(|m| m.to_string())
             .collect()
     }
 
-    pub fn trade_kinds(&mut self) -> Vec<String> {
+    fn trade_kinds(&mut self) -> Vec<String> {
         mem::take(&mut self.trade_kind)
             .into_iter()
             .map(|t| t.to_string())
             .collect()
     }
 
-    pub fn entry_prices(&mut self) -> Vec<f64> {
+    fn entry_prices(&mut self) -> Vec<f64> {
         mem::take(&mut self.entry_price)
             .into_iter()
             .map(|p| p.0)
             .collect()
     }
 
-    pub fn stop_losses(&mut self) -> Vec<Option<f64>> {
+    fn stop_losses(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.stop_loss)
             .into_iter()
             .map(|opt| opt.map(|p| p.0))
             .collect()
     }
 
-    pub fn take_profits(&mut self) -> Vec<Option<f64>> {
+    fn take_profits(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.take_profit)
             .into_iter()
             .map(|opt| opt.map(|p| p.0))
             .collect()
     }
 
-    pub fn quantities(&mut self) -> Vec<f64> {
+    fn quantities(&mut self) -> Vec<f64> {
         mem::take(&mut self.quantity)
             .into_iter()
             .map(|q| q.0)
             .collect()
     }
 
-    pub fn expected_loss_ticks(&mut self) -> Vec<Option<i64>> {
+    fn expected_loss_ticks(&mut self) -> Vec<Option<i64>> {
         mem::take(&mut self.expected_loss_in_ticks)
             .into_iter()
             .map(|opt| opt.map(|t| t.0))
             .collect()
     }
 
-    pub fn expected_profit_ticks(&mut self) -> Vec<Option<i64>> {
+    fn expected_profit_ticks(&mut self) -> Vec<Option<i64>> {
         mem::take(&mut self.expected_profit_in_ticks)
             .into_iter()
             .map(|opt| opt.map(|t| t.0))
             .collect()
     }
 
-    pub fn expected_loss_usd(&mut self) -> Vec<Option<f64>> {
+    fn expected_loss_usd(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.expected_loss_usd)
     }
 
-    pub fn expected_profit_usd(&mut self) -> Vec<Option<f64>> {
+    fn expected_profit_usd(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.expected_profit_usd)
     }
 
-    pub fn risk_reward_ratios(&mut self) -> Vec<Option<f64>> {
+    fn risk_reward_ratios(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.risk_reward_ratio)
             .into_iter()
             .map(|opt| opt.map(|r| r.ratio()))
             .collect()
     }
 
-    pub fn entry_timestamps_micros(&mut self) -> Vec<Option<i64>> {
+    fn entry_timestamps_micros(&mut self) -> Vec<Option<i64>> {
         mem::take(&mut self.entry_timestamp)
             .into_iter()
             .map(|opt| opt.map(|dt| dt.timestamp_micros()))
             .collect()
     }
 
-    pub fn exit_timestamps_micros(&mut self) -> Vec<Option<i64>> {
+    fn exit_timestamps_micros(&mut self) -> Vec<Option<i64>> {
         mem::take(&mut self.exit_timestamp)
             .into_iter()
             .map(|opt| opt.map(|dt| dt.timestamp_micros()))
             .collect()
     }
 
-    pub fn exit_prices(&mut self) -> Vec<Option<f64>> {
+    fn exit_prices(&mut self) -> Vec<Option<f64>> {
         mem::take(&mut self.exit_price)
             .into_iter()
             .map(|opt| opt.map(|p| p.0))
             .collect()
     }
 
-    pub fn exit_reasons(&mut self) -> Vec<Option<String>> {
+    fn exit_reasons(&mut self) -> Vec<Option<String>> {
         mem::take(&mut self.exit_reason)
             .into_iter()
             .map(|opt| opt.map(|r| r.to_string()))
             .collect()
     }
 
-    pub fn realized_return_ticks(&mut self) -> Vec<i64> {
+    fn realized_return_ticks(&mut self) -> Vec<i64> {
         mem::take(&mut self.realized_return_in_ticks)
             .into_iter()
             .map(|t| t.0)
             .collect()
     }
 
-    pub fn realized_return_usd(&mut self) -> Vec<f64> {
+    fn realized_return_usd(&mut self) -> Vec<f64> {
         mem::take(&mut self.realized_return_dollars)
     }
 }

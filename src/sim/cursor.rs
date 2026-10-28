@@ -461,9 +461,11 @@ mod test {
             ohlcv(ts("2025-03-01T00:02:00Z"), ts("2025-03-01T00:03:00Z")),
             // 3-minute candle: [00:00, 00:03) - shares same close_timestamp
             ohlcv(ts("2025-03-01T00:00:00Z"), ts("2025-03-01T00:03:00Z")),
-            // Another 1-minute candle at same close (e.g., duplicate or different source)
+            // Another 1-minute candle at same close (e.g., duplicate or
+            // different source)
             ohlcv(ts("2025-03-01T00:02:00Z"), ts("2025-03-01T00:03:00Z")),
-            // This one closes at 00:04:00 - should NOT be consumed when advancing to 00:03
+            // This one closes at 00:04:00 - should NOT be consumed when
+            // advancing to 00:03
             ohlcv(ts("2025-03-01T00:03:00Z"), ts("2025-03-01T00:04:00Z")),
         ];
 

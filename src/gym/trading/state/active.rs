@@ -279,7 +279,8 @@ impl Trade<Active> {
             let remaining = Self {
                 quantity: self.quantity - *qty,
                 state: Active {
-                    // The survivor must carry only its share of the unrealized PnL.
+                    // The survivor must carry only its share of the unrealized
+                    // PnL.
                     unrealized_pnl: remaining_booked_unrealized,
                     ..self.state.clone()
                 },

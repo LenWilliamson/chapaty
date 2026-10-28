@@ -706,8 +706,8 @@ mod test {
         let symbol = Symbol::Spot(SpotPair::EthUsdt);
 
         let events = vec![
-            // Candle 1: available at EXACTLY previous_ts - should be IGNORED (not strictly
-            // greater) Range: [90, 111] - contains price 111
+            // Candle 1: available at EXACTLY previous_ts - should be IGNORED
+            // (not strictly greater) Range: [90, 111] - contains price 111
             ohlcv(
                 ts("2025-04-01T00:02:00Z"),
                 ts("2025-04-01T00:03:00Z"), // point_in_time = 00:03:00
@@ -716,8 +716,9 @@ mod test {
                 90.0,
                 105.0,
             ),
-            // Candle 2: available at 1 second AFTER previous_ts - should be included
-            // Range: [200, 250] - does NOT contain price 111, but contains 222
+            // Candle 2: available at 1 second AFTER previous_ts - should be
+            // included Range: [200, 250] - does NOT contain price 111, but
+            // contains 222
             ohlcv(
                 ts("2025-04-01T00:03:00Z"),
                 ts("2025-04-01T00:03:01Z"), // point_in_time = 00:03:01

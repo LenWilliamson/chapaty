@@ -2109,7 +2109,8 @@ mod test {
                         Some(polars::prelude::TimeZone::UTC),
                     ))
                     .alias(CanonicalCol::PointInTime.as_str()),
-                // Rename the metrics (Implicitly drops 'exchange', 'symbol', etc.)
+                // Rename the metrics (Implicitly drops 'exchange', 'symbol',
+                // etc.)
                 col("open").alias(CanonicalCol::Open.as_str()),
                 col("high").alias(CanonicalCol::High.as_str()),
                 col("low").alias(CanonicalCol::Low.as_str()),
