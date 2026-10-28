@@ -329,3 +329,23 @@ impl FromIterator<(MarketId, Action)> for Actions {
             })
     }
 }
+
+impl Extend<(MarketId, Action)> for Actions {
+    /// Appends each action to the list of its market. Actions for a market
+    /// that already has some are added after the existing ones.
+    fn extend<I: IntoIterator<Item = (MarketId, Action)>>(&mut self, iter: I) {
+        for (market_id, action) in iter {
+            self.add(market_id, action);
+        }
+    }
+}
+
+impl Extend<Actions> for Actions {
+    /// Appends all actions of each batch, in the execution-priority order
+    /// of [`Actions::into_sorted_iter`].
+    fn extend<I: IntoIterator<Item = Actions>>(&mut self, iter: I) {
+        for batch in iter {
+            self.extend(batch.into_sorted_iter());
+        }
+    }
+}
