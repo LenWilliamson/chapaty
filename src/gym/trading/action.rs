@@ -340,10 +340,10 @@ impl Extend<(MarketId, Action)> for Actions {
     }
 }
 
-impl Extend<Actions> for Actions {
+impl Extend<Self> for Actions {
     /// Appends all actions of each batch, in the execution-priority order
     /// of [`Actions::into_sorted_iter`].
-    fn extend<I: IntoIterator<Item = Actions>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item = Self>>(&mut self, iter: I) {
         for batch in iter {
             self.extend(batch.into_sorted_iter());
         }

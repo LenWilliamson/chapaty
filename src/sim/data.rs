@@ -804,7 +804,7 @@ mod tests {
 
         let result = builder.collect_sorted_market_ids();
 
-        assert!(result.is_empty());
+        assert_eq!(result, [] as [MarketId; 0]);
     }
 
     // ============================================================================================

@@ -246,7 +246,7 @@ impl PivotPoint {
         move |x: usize| -> Price {
             let x = f64::from(u32::try_from(x).expect("target index exceeds u32 range"));
             let current_dx = x - x0;
-            Price(p0 + m * current_dx)
+            Price(f64::mul_add(m, current_dx, p0))
         }
     }
 
@@ -283,7 +283,7 @@ impl PivotPoint {
 
         move |t: DateTime<Utc>| -> Price {
             let current_dx = millis_to_f64((t - t0).num_milliseconds());
-            Price(p0 + m * current_dx)
+            Price(f64::mul_add(m, current_dx, p0))
         }
     }
 }

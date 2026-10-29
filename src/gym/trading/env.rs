@@ -178,29 +178,30 @@ impl Environment {
         agents
             .into_par_iter()
             .progress_with(pb.clone())
-            .try_for_each(|(uid, mut agent)| {
+            .try_for_each(|(uid, mut agent)| -> ChapatyResult<()> {
                 let journal_soa = self.worker(&mut agent)?;
                 tx.send((uid as u64, agent, journal_soa)).map_err(|e| {
-                    ChapatyError::System(SystemError::InvariantViolation(format!(
+                    SystemError::InvariantViolation(format!(
                         "Evaluation consumers stopped before all agents were scored: {e}"
-                    )))
+                    ))
+                    .into()
                 })
             })?;
         drop(tx);
 
         pb.finish_with_message("Evaluation complete. Finalizing leaderboard...");
-        let final_leaderboard =
-            join_handles
-                .into_iter()
-                .try_fold(AgentLeaderboard::new(top_k), |acc, task| {
-                    let board = task.join().map_err(|_| {
-                        SystemError::Generic(format!(
-                            "Worker thread paniced while processing grid search results."
-                        ))
-                    })??;
-                    Ok::<_, ChapatyError>(acc.merge(board))
-                });
-        final_leaderboard?.try_into()
+
+        join_handles
+            .into_iter()
+            .try_fold(AgentLeaderboard::new(top_k), |acc, handle| {
+                let board = handle.join().map_err(|_| {
+                    SystemError::Generic(
+                        "Worker thread paniced while processing grid search results.".to_string(),
+                    )
+                })??;
+                Ok::<_, ChapatyError>(acc.merge(board))
+            })?
+            .try_into()
     }
 
     #[must_use]
@@ -351,7 +352,7 @@ impl Environment {
     }
 
     fn eval<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<()> {
-        while self.env_status != EnvStatus::Done {
+        while !self.env_status.is_done() {
             self.run_episode(agent)?;
         }
         Ok(())
@@ -472,18 +473,28 @@ fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
     Ok(bar)
 }
 
+/// Result produced by a single scorer thread.
+type ScorerResult<T> = Result<AgentLeaderboard<T>, ChapatyError>;
+
+/// Handle to a running scorer thread.
+type ScorerHandle<T> = JoinHandle<ScorerResult<T>>;
+
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "rx is taken by value on purpose: the original receiver is dropped when this function returns. Only the worker clones keep the channel alive. If all workers finish or die, `tx.send` fails instead of blocking forever on the bounded channel."
+)]
 #[tracing::instrument(skip_all)]
 fn spawn_scorers<T>(
     top_k: usize,
     risk_cfg: RiskMetricsConfig,
     rx: Receiver<(u64, T, JournalSoA)>,
-) -> ChapatyResult<Vec<JoinHandle<Result<AgentLeaderboard<T>, ChapatyError>>>>
+) -> ChapatyResult<Vec<ScorerHandle<T>>>
 where
     T: Send + 'static,
 {
     let num_workers = std::thread::available_parallelism()
         .map_err(|e| {
-            SystemError::Generic(format!("Failed to fetch cpu cores to build pipeline: {e}"))
+            SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
         })?
         .get();
 

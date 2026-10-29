@@ -1741,8 +1741,8 @@ mod test {
             .try_collect_soa()
             .expect("Empty iterator should work");
 
-        assert!(soa.episode_id.is_empty());
-        assert!(soa.trade_id.is_empty());
+        assert_eq!(soa.episode_id, [] as [EpisodeId; 0]);
+        assert_eq!(soa.trade_id, [] as [TradeId; 0]);
     }
 
     #[test]
@@ -1994,7 +1994,7 @@ mod test {
 
         assert_eq!(result.len(), 1);
         // AgentIdentifier::Random should have some string representation
-        assert!(!result[0].is_empty());
+        assert_ne!(result[0], "");
     }
 
     // ============================================================================
