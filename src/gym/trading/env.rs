@@ -110,6 +110,7 @@ impl Environment {
     /// steps.
     ///
     /// # Errors
+    ///
     /// Returns an error if serialization or storage I/O fails.
     pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
         Arc::clone(&self.sim_data).write(cfg).await
@@ -118,6 +119,7 @@ impl Environment {
     /// Runs one full episode for `agent` and returns its trading journal.
     ///
     /// # Errors
+    ///
     /// Returns an error if reset, stepping, or report materialization fails.
     pub fn evaluate_agent<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<Journal> {
         self.reset()?;
@@ -157,6 +159,7 @@ impl Environment {
     /// 2 weeks instead of 2 hours.
     ///
     /// # Errors
+    ///
     /// Returns an error when any worker fails to evaluate, aggregate, or
     /// convert intermediate results into the final leaderboard.
     pub fn evaluate_agents<T>(
@@ -212,6 +215,7 @@ impl Environment {
     /// Returns cumulative `PnL` for the given episode.
     ///
     /// # Errors
+    ///
     /// Returns an error if the episode does not exist in the ledger.
     pub fn episode_pnl(&self, ep: &Episode) -> ChapatyResult<f64> {
         self.ledger.episode_pnl(ep)
@@ -225,6 +229,7 @@ impl Environment {
     /// Materializes the journal report for all completed and active trades.
     ///
     /// # Errors
+    ///
     /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
         let df = self.ledger.journal_df()?;
@@ -234,6 +239,7 @@ impl Environment {
     /// Materializes the equity-curve report from the ledger.
     ///
     /// # Errors
+    ///
     /// Returns an error if ledger extraction or report construction fails.
     pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
         let df = self.ledger.equity_curve_df()?;
@@ -439,6 +445,7 @@ impl Environment {
 // ================================================================================================
 // Building
 // ================================================================================================
+
 impl Environment {
     pub(super) fn new(
         cursor: CursorGroup,
@@ -463,6 +470,7 @@ impl Environment {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
+
 fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
     let bar = ProgressBar::new(capacity);
     bar.set_style(
