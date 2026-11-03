@@ -367,4 +367,81 @@ mod tests {
         assert_eq!(ewm.update(2.0), None);
         assert!(ewm.update(3.0).is_some());
     }
+
+    #[test]
+    fn ewm_first_value_seed_starts_from_first_input() {
+        // alpha 0.5, window 3, inputs 2, 4, 6: 2 -> 3 -> 4.5
+        let mut ewm = StreamingEwm::new(0.5, 3, EwmSeed::FirstValue);
+        assert_eq!(ewm.update(2.0), None);
+        assert_eq!(ewm.update(4.0), None);
+        approx(ewm.update(6.0).unwrap(), 4.5);
+    }
+
+    #[test]
+    fn ewm_sma_seed_starts_from_mean_of_first_window() {
+        // First output is mean(2, 4, 6) = 4.0, then 0.5 * 4 + 0.5 * 10 = 7.0
+        let mut ewm = StreamingEwm::new(0.5, 3, EwmSeed::Sma);
+        assert_eq!(ewm.update(2.0), None);
+        assert_eq!(ewm.update(4.0), None);
+        approx(ewm.update(6.0).unwrap(), 4.0);
+        approx(ewm.update(10.0).unwrap(), 7.0);
+    }
+
+    #[test]
+    fn ewm_sma_seed_ignores_alpha_during_warmup() {
+        // alpha 0 would freeze a FirstValue mean at 2.0, but the SMA seed is
+        // 4.0.
+        let mut ewm = StreamingEwm::new(0.0, 3, EwmSeed::Sma);
+        ewm.update(2.0);
+        ewm.update(4.0);
+        approx(ewm.update(6.0).unwrap(), 4.0);
+        approx(ewm.update(100.0).unwrap(), 4.0); // alpha 0 holds the seed
+    }
+
+    #[test]
+    fn ewm_sma_seed_reset_forgets_old_inputs() {
+        let mut ewm = StreamingEwm::new(0.5, 3, EwmSeed::Sma);
+        for v in [10.0, 20.0, 30.0] {
+            ewm.update(v);
+        }
+        ewm.reset();
+        assert_eq!(ewm.update(1.0), None);
+        assert_eq!(ewm.update(2.0), None);
+        approx(ewm.update(3.0).unwrap(), 2.0); // not influenced by 10/20/30
+    }
+
+    #[test]
+    fn rma_sma_seed_matches_wilder() {
+        // window 3, inputs 3, 6, 9, 12: seed = 6, then 6 + (12 - 6) / 3 = 8
+        let mut rma = StreamingRma::new(RmaWindow(3), EwmSeed::Sma);
+        assert_eq!(rma.update(3.0), None);
+        assert_eq!(rma.update(6.0), None);
+        approx(rma.update(9.0).unwrap(), 6.0);
+        approx(rma.update(12.0).unwrap(), 8.0);
+    }
+
+    #[test]
+    fn rma_first_value_seed_differs_from_sma_seed() {
+        // 3 -> 4 -> 5.666... -> 7.777...
+        let mut rma = StreamingRma::new(RmaWindow(3), EwmSeed::FirstValue);
+        rma.update(3.0);
+        rma.update(6.0);
+        approx(rma.update(9.0).unwrap(), 17.0 / 3.0);
+        approx(rma.update(12.0).unwrap(), 70.0 / 9.0);
+    }
+
+    #[test]
+    fn rma_window_of_one_returns_each_value() {
+        for seed in [EwmSeed::Sma, EwmSeed::FirstValue] {
+            let mut rma = StreamingRma::new(RmaWindow(1), seed);
+            assert_eq!(rma.update(5.0), Some(5.0));
+            assert_eq!(rma.update(9.0), Some(9.0));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "greater than zero")]
+    fn rma_zero_window_panics() {
+        let _ = StreamingRma::new(RmaWindow(0), EwmSeed::Sma);
+    }
 }

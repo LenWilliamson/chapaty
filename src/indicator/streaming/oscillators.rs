@@ -22,9 +22,9 @@ pub enum RsiFlat {
     /// Report the neutral value `50.0`.
     #[default]
     Neutral,
-    /// Report `0.0` (TA-Lib convention).
+    /// Report `0.0`.
     Zero,
-    /// Report `100.0` (`TradingView`'s `ta.rsi` convention).
+    /// Report `100.0`.
     Max,
     /// Report no value (`None`) while the window is flat.
     Undefined,
@@ -57,10 +57,11 @@ impl StreamingRsi {
     /// Panics if `window_size` is zero.
     #[must_use]
     pub fn new(window_size: RsiWindow, seed: EwmSeed, flat: RsiFlat) -> Self {
+        let w = RmaWindow(window_size.0);
         Self {
             prev_price: None,
-            avg_gain: StreamingRma::new(RmaWindow(window_size.0), seed),
-            avg_loss: StreamingRma::new(RmaWindow(window_size.0), seed),
+            avg_gain: StreamingRma::new(w, seed),
+            avg_loss: StreamingRma::new(w, seed),
             flat,
         }
     }
@@ -104,7 +105,7 @@ impl StreamingIndicator for StreamingRsi {
 ///
 /// Every candle either adds its volume (close up), subtracts its volume
 /// (close down), or does nothing (close unchanged) to a running total.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingObvRsi {
     prev_price: Option<Price>,
     /// `up` is the RMA of the volume on up-candles
@@ -122,10 +123,11 @@ impl StreamingObvRsi {
     /// Panics if `window_size` is zero.
     #[must_use]
     pub fn new(window_size: RsiWindow, seed: EwmSeed, flat: RsiFlat) -> Self {
+        let w = RmaWindow(window_size.0);
         Self {
             prev_price: None,
-            up: StreamingRma::new(RmaWindow(window_size.0), seed),
-            down: StreamingRma::new(RmaWindow(window_size.0), seed),
+            up: StreamingRma::new(w, seed),
+            down: StreamingRma::new(w, seed),
             flat,
         }
     }
@@ -193,6 +195,10 @@ fn rsi_from_averages(avg_gain: f64, avg_loss: f64, flat: RsiFlat) -> Option<f64>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn approx(a: f64, b: f64) {
+        assert!((a - b).abs() < 1e-9, "expected {b}, got {a}");
+    }
 
     #[test]
     fn first_value_only_seeds_and_returns_none() {
@@ -273,5 +279,46 @@ mod tests {
         assert_eq!(rsi.update(50.0), None); // seed again
         assert_eq!(rsi.update(49.0), None); // delta 1, EWM not yet full (window 2)
         assert!(rsi.update(48.0).is_some()); // delta 2 -> emits, uninfluenced by old data
+    }
+
+    #[test]
+    fn rsi_from_averages_handles_edges() {
+        approx(rsi_from_averages(3.0, 1.0, RsiFlat::Neutral).unwrap(), 75.0);
+        assert_eq!(rsi_from_averages(2.0, 0.0, RsiFlat::Neutral), Some(100.0));
+        assert_eq!(rsi_from_averages(0.0, 2.0, RsiFlat::Neutral), Some(0.0));
+    }
+
+    #[test]
+    fn rsi_flat_setting_controls_the_zero_zero_case() {
+        assert_eq!(rsi_from_averages(0.0, 0.0, RsiFlat::Neutral), Some(50.0));
+        assert_eq!(rsi_from_averages(0.0, 0.0, RsiFlat::Zero), Some(0.0));
+        assert_eq!(rsi_from_averages(0.0, 0.0, RsiFlat::Max), Some(100.0));
+        assert_eq!(rsi_from_averages(0.0, 0.0, RsiFlat::Undefined), None);
+    }
+
+    #[test]
+    fn rsi_flat_line_follows_the_flat_setting() {
+        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Undefined);
+        let mut last = Some(0.0);
+        for _ in 0..6 {
+            last = rsi.update(100.0);
+        }
+        assert_eq!(last, None);
+    }
+
+    #[test]
+    fn rsi_seed_changes_early_values() {
+        // prices 10, 12, 11, 14 -> deltas +2, -1, +3 (window 3)
+        let prices = [10.0, 12.0, 11.0, 14.0];
+
+        let mut sma = StreamingRsi::new(RsiWindow(3), EwmSeed::Sma, RsiFlat::Neutral);
+        let mut first = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let (mut a, mut b) = (None, None);
+        for p in prices {
+            a = sma.update(p);
+            b = first.update(p);
+        }
+        approx(a.unwrap(), 100.0 * 5.0 / 6.0); // avg gain 5/3, avg loss 1/3
+        approx(b.unwrap(), 100.0 * 17.0 / 19.0); // avg gain 17/9, avg loss 2/9
     }
 }
