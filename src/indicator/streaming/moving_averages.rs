@@ -442,6 +442,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "greater than zero")]
     fn rma_zero_window_panics() {
-        let _ = StreamingRma::new(RmaWindow(0), EwmSeed::Sma);
+        let _rma = StreamingRma::new(RmaWindow(0), EwmSeed::Sma);
     }
 }

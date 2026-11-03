@@ -196,8 +196,12 @@ fn rsi_from_averages(avg_gain: f64, avg_loss: f64, flat: RsiFlat) -> Option<f64>
 mod tests {
     use super::*;
 
-    fn approx(a: f64, b: f64) {
-        assert!((a - b).abs() < 1e-9, "expected {b}, got {a}");
+    /// Asserts `actual` is `Some` and close to `expected`.
+    fn approx_some(actual: Option<f64>, expected: f64) {
+        assert!(
+            actual.is_some_and(|a| (a - expected).abs() < 1e-9),
+            "expected Some({expected}), got {actual:?}"
+        );
     }
 
     #[test]
@@ -283,7 +287,7 @@ mod tests {
 
     #[test]
     fn rsi_from_averages_handles_edges() {
-        approx(rsi_from_averages(3.0, 1.0, RsiFlat::Neutral).unwrap(), 75.0);
+        approx_some(rsi_from_averages(3.0, 1.0, RsiFlat::Neutral), 75.0);
         assert_eq!(rsi_from_averages(2.0, 0.0, RsiFlat::Neutral), Some(100.0));
         assert_eq!(rsi_from_averages(0.0, 2.0, RsiFlat::Neutral), Some(0.0));
     }
@@ -318,7 +322,9 @@ mod tests {
             a = sma.update(p);
             b = first.update(p);
         }
-        approx(a.unwrap(), 100.0 * 5.0 / 6.0); // avg gain 5/3, avg loss 1/3
-        approx(b.unwrap(), 100.0 * 17.0 / 19.0); // avg gain 17/9, avg loss 2/9
+        // avg gain 5/3, avg loss 1/3
+        approx_some(a, 100.0 * 5.0 / 6.0);
+        // avg gain 17/9, avg loss 2/9
+        approx_some(b, 100.0 * 17.0 / 19.0);
     }
 }
