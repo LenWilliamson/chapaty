@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::indicator::{
-    config::{EmaWindow, SmaWindow},
+    config::{EmaWindow, RmaWindow, SmaWindow},
     streaming::StreamingIndicator,
 };
 
@@ -11,23 +11,41 @@ use crate::indicator::{
 // SHARED: Exponential Weighted Mean (Base Logic)
 // ================================================================================================
 
-/// Internal helper for EMA-like calculations (Standard EMA and Wilder's
-/// Smoothing).
+/// How an exponentially weighted mean computes its first value.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+pub enum EwmSeed {
+    /// The first output is the plain average of the first `window` inputs
+    /// (Wilder's original definition).
+    Sma,
+    /// Start from the first input. The first output appears after `window`
+    /// inputs.
+    #[default]
+    FirstValue,
+}
+
+/// Helper for EMA-like calculations (Standard EMA and Wilder's Smoothing).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct StreamingEwm {
+pub struct StreamingEwm {
     alpha: f64,
-    current_mean: Option<f64>,
     window_size: usize,
+    seed: EwmSeed,
+    seed_sum: f64,
     count: usize,
+    current_mean: Option<f64>,
 }
 
 impl StreamingEwm {
-    pub(crate) const fn new(alpha: f64, window_size: usize) -> Self {
+    #[must_use]
+    pub const fn new(alpha: f64, window_size: usize, seed: EwmSeed) -> Self {
         Self {
             alpha,
-            current_mean: None,
             window_size,
+            seed,
+            seed_sum: 0.0,
             count: 0,
+            current_mean: None,
         }
     }
 }
@@ -36,17 +54,25 @@ impl StreamingIndicator for StreamingEwm {
     type Input = f64;
     type Output<'a> = Option<f64>;
 
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "window size is always small, well under f64's exact integer range"
+    )]
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
-        self.count += 1;
+        self.count = self.count.saturating_add(1);
 
-        match self.current_mean {
-            None => {
-                // First trade: initialize the mean
+        match (self.current_mean, self.seed) {
+            (Some(prev), _) => {
+                self.current_mean = Some((1.0 - self.alpha).mul_add(prev, self.alpha * value));
+            }
+            (None, EwmSeed::FirstValue) => {
                 self.current_mean = Some(value);
             }
-            Some(prev) => {
-                // Recursive update
-                self.current_mean = Some((1.0 - self.alpha).mul_add(prev, self.alpha * value));
+            (None, EwmSeed::Sma) => {
+                self.seed_sum += value;
+                if self.count >= self.window_size {
+                    self.current_mean = Some(self.seed_sum / self.window_size as f64);
+                }
             }
         }
 
@@ -58,8 +84,9 @@ impl StreamingIndicator for StreamingEwm {
     }
 
     fn reset(&mut self) {
-        self.current_mean = None;
+        self.seed_sum = 0.0;
         self.count = 0;
+        self.current_mean = None;
     }
 }
 
@@ -132,20 +159,65 @@ impl StreamingEma {
     /// Creates a streaming EMA with the given window size.
     ///
     /// # Panics
-    /// Panics if `window_size` cannot be represented as `u32`.
+    ///
+    /// Panics if `window_size` is zero.
     #[must_use]
-    pub fn new(window_size: EmaWindow) -> Self {
-        let size = window_size.0 as usize;
-        // Standard EMA Alpha = 2 / (Span + 1)
-        let size_u32 = u32::from(window_size.0);
-        let alpha = 2.0 / (f64::from(size_u32) + 1.0);
+    pub fn new(window_size: EmaWindow, seed: EwmSeed) -> Self {
+        assert!(
+            window_size.0 > 0,
+            "EMA window size must be greater than zero"
+        );
+
+        let alpha = 2.0 / (f64::from(window_size.0) + 1.0);
         Self {
-            inner: StreamingEwm::new(alpha, size),
+            inner: StreamingEwm::new(alpha, usize::from(window_size.0), seed),
         }
     }
 }
 
 impl StreamingIndicator for StreamingEma {
+    type Input = f64;
+    type Output<'a> = Option<f64>;
+
+    fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
+        self.inner.update(value)
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+}
+
+// ================================================================================================
+// RMA: Relative Moving Average
+// ================================================================================================
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct StreamingRma {
+    inner: StreamingEwm,
+}
+
+impl StreamingRma {
+    /// Creates a streaming RMA with the given window size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `window_size` is zero.
+    #[must_use]
+    pub fn new(window_size: RmaWindow, seed: EwmSeed) -> Self {
+        assert!(
+            window_size.0 > 0,
+            "RMA window size must be greater than zero"
+        );
+
+        let alpha = 1.0 / f64::from(window_size.0);
+        Self {
+            inner: StreamingEwm::new(alpha, usize::from(window_size.0), seed),
+        }
+    }
+}
+
+impl StreamingIndicator for StreamingRma {
     type Input = f64;
     type Output<'a> = Option<f64>;
 
@@ -217,7 +289,7 @@ mod tests {
 
     #[test]
     fn ema_returns_none_until_window_is_reached() {
-        let mut ema = StreamingEma::new(EmaWindow(3));
+        let mut ema = StreamingEma::new(EmaWindow(3), EwmSeed::FirstValue);
         assert_eq!(ema.update(1.0), None);
         assert_eq!(ema.update(2.0), None);
         assert!(ema.update(3.0).is_some()); // count >= window_size
@@ -226,7 +298,7 @@ mod tests {
     #[test]
     fn ema_seeds_with_first_value() {
         // window 1 emits immediately; the first output is just the first input.
-        let mut ema = StreamingEma::new(EmaWindow(1));
+        let mut ema = StreamingEma::new(EmaWindow(1), EwmSeed::FirstValue);
         assert_eq!(ema.update(5.0), Some(5.0));
     }
 
@@ -235,7 +307,7 @@ mod tests {
         // alpha = 2 / (2 + 1) = 0.666...
         // v1=10 seeds mean=10 (no output yet, count 1 < 2)
         // v2=20 -> 0.6667*20 + 0.3333*10 = 16.6667 (count 2 >= 2 -> emitted)
-        let mut ema = StreamingEma::new(EmaWindow(2));
+        let mut ema = StreamingEma::new(EmaWindow(2), EwmSeed::FirstValue);
         let alpha = 2.0 / 3.0;
         assert_eq!(ema.update(10.0), None);
         let expected = (1.0_f64 - alpha).mul_add(10.0, alpha * 20.0);
@@ -245,7 +317,7 @@ mod tests {
     #[test]
     fn ema_constant_input_converges_to_that_constant() {
         // Feeding the same value forever keeps the mean at that value.
-        let mut ema = StreamingEma::new(EmaWindow(5));
+        let mut ema = StreamingEma::new(EmaWindow(5), EwmSeed::FirstValue);
         let mut last = None;
         for _ in 0..20 {
             last = ema.update(42.0);
@@ -255,7 +327,7 @@ mod tests {
 
     #[test]
     fn ema_reset_clears_state() {
-        let mut ema = StreamingEma::new(EmaWindow(2));
+        let mut ema = StreamingEma::new(EmaWindow(2), EwmSeed::FirstValue);
         ema.update(100.0);
         ema.update(200.0); // emits something
         ema.reset();
@@ -274,7 +346,7 @@ mod tests {
     #[test]
     fn ewm_with_alpha_one_tracks_latest_value() {
         // alpha = 1 means "no memory": output is always the newest input.
-        let mut ewm = StreamingEwm::new(1.0, 1);
+        let mut ewm = StreamingEwm::new(1.0, 1, EwmSeed::FirstValue);
         assert_eq!(ewm.update(5.0), Some(5.0));
         assert_eq!(ewm.update(9.0), Some(9.0));
         assert_eq!(ewm.update(2.0), Some(2.0));
@@ -283,14 +355,14 @@ mod tests {
     #[test]
     fn ewm_with_alpha_zero_holds_first_value() {
         // alpha = 0 means "all memory": mean stays at the seed forever.
-        let mut ewm = StreamingEwm::new(0.0, 1);
+        let mut ewm = StreamingEwm::new(0.0, 1, EwmSeed::FirstValue);
         assert_eq!(ewm.update(7.0), Some(7.0));
         assert_eq!(ewm.update(100.0), Some(7.0));
     }
 
     #[test]
     fn ewm_respects_window_warmup() {
-        let mut ewm = StreamingEwm::new(0.5, 3);
+        let mut ewm = StreamingEwm::new(0.5, 3, EwmSeed::FirstValue);
         assert_eq!(ewm.update(1.0), None);
         assert_eq!(ewm.update(2.0), None);
         assert!(ewm.update(3.0).is_some());

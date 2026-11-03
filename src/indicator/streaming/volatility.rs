@@ -11,7 +11,7 @@ use crate::{
         config::{AtrConfig, AtrSmoothingType, EmaWindow, SmaWindow},
         streaming::{
             StreamingIndicator,
-            moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+            moving_averages::{EwmSeed, StreamingEma, StreamingEwm, StreamingSma},
         },
     },
     math::accumulators::KahanSum,
@@ -61,7 +61,11 @@ impl Default for StreamingAtr {
     fn default() -> Self {
         let window_size = 14;
         let alpha = 1.0 / f64::from(window_size);
-        let smoother = AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize));
+        let smoother = AtrSmoother::Wilders(StreamingEwm::new(
+            alpha,
+            usize::from(window_size),
+            EwmSeed::default(),
+        ));
         Self {
             window_size,
             smoother,
@@ -75,12 +79,14 @@ impl StreamingAtr {
     pub fn new(cfg: AtrConfig) -> Self {
         let AtrConfig { window, smoothing } = cfg;
         let smoother = match smoothing {
-            AtrSmoothingType::Wilders => {
+            AtrSmoothingType::Rma(seed) => {
                 let alpha = 1.0 / f64::from(window);
-                AtrSmoother::Wilders(StreamingEwm::new(alpha, window as usize))
+                AtrSmoother::Wilders(StreamingEwm::new(alpha, usize::from(window), seed))
             }
             AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
-            AtrSmoothingType::Ema => AtrSmoother::Ema(StreamingEma::new(EmaWindow(window))),
+            AtrSmoothingType::Ema(seed) => {
+                AtrSmoother::Ema(StreamingEma::new(EmaWindow(window), seed))
+            }
         };
 
         Self {
@@ -360,9 +366,9 @@ mod tests {
     #[test]
     fn atr_constant_true_range_is_stable_for_all_smoothers() {
         for smoothing in [
-            AtrSmoothingType::Wilders,
+            AtrSmoothingType::Rma(EwmSeed::FirstValue),
             AtrSmoothingType::Sma,
-            AtrSmoothingType::Ema,
+            AtrSmoothingType::Ema(EwmSeed::FirstValue),
         ] {
             let mut atr = StreamingAtr::new(AtrConfig {
                 window: 3,

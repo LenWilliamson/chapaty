@@ -1,24 +1,29 @@
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 
+use crate::indicator::streaming::moving_averages::EwmSeed;
+
 /// Defines the smoothing algorithm used to average the True Range.
 /// Traders often experiment with different smoothing types depending on their
 /// responsiveness requirements.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AtrSmoothingType {
     /// J. Welles Wilder's original smoothing method (Running Moving Average /
     /// RMA). Formula: alpha = 1 / `window_size`
-    #[default]
-    Wilders,
+    Rma(EwmSeed),
     /// Simple Moving Average (SMA).
     Sma,
     /// Exponential Moving Average (EMA).
-    Ema,
+    Ema(EwmSeed),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+impl Default for AtrSmoothingType {
+    fn default() -> Self {
+        Self::Rma(EwmSeed::default())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct AtrConfig {
     pub(super) window: u16,
     pub(super) smoothing: AtrSmoothingType,
@@ -67,6 +72,9 @@ pub struct SmaWindow(pub u16);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RsiWindow(pub u16);
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RmaWindow(pub u16);
 
 /// Defines how far back the indicator should look.
 /// Gives the trader the degree of freedom to mix time-based and bar-based

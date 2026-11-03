@@ -175,8 +175,7 @@ impl Environment {
         pb.set_message("Running evaluation...");
 
         let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(1024);
-        let risk_cfg = self.risk_metrics_cfg;
-        let join_handles = spawn_scorers(top_k, risk_cfg, rx)?;
+        let join_handles = spawn_scorers(top_k, self.risk_metrics_cfg, rx)?;
 
         agents
             .into_par_iter()
@@ -508,13 +507,13 @@ where
 
     let mut join_handles = Vec::with_capacity(num_workers);
     for i in 0..num_workers {
-        let rx = rx.clone();
+        let rx_i = rx.clone();
         let handler = std::thread::Builder::new()
             .name(format!("scorer-{i}"))
             .spawn(move || {
                 let mut board = AgentLeaderboard::new(top_k);
 
-                while let Ok((agent_uid, agent, journal_soa)) = rx.recv() {
+                while let Ok((agent_uid, agent, journal_soa)) = rx_i.recv() {
                     let df = journal_soa.try_into()?;
                     let journal = Journal::new(&df, risk_cfg)?;
                     let pp = journal.portfolio_performance()?;
