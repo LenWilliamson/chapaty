@@ -76,6 +76,9 @@ pub struct RsiWindow(pub u16);
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RmaWindow(pub u16);
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct VwapWindow(pub u16);
+
 /// Defines how far back the indicator should look.
 /// Gives the trader the degree of freedom to mix time-based and bar-based
 /// strategies.

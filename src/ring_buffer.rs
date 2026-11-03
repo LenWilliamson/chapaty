@@ -226,6 +226,54 @@ impl<T> RingBuffer<T> {
         self.buffer.clear();
         self.state = RingState::Filling;
     }
+
+    /// Returns an iterator over the stored elements.
+    ///
+    /// The elements come in storage order, which is **not** necessarily
+    /// oldest first once the buffer has wrapped around. Use it for
+    /// order-independent work such as sums.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use chapaty::ring_buffer::RingBuffer;
+    ///
+    /// let mut buffer = RingBuffer::new(3);
+    /// buffer.push(1);
+    /// buffer.push(2);
+    /// buffer.push(3);
+    /// buffer.push(4); // evicts 1
+    /// assert_eq!(buffer.iter().sum::<i32>(), 9);
+    /// ```
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.buffer.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a RingBuffer<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    /// Iterates over the stored elements by reference, in storage order.
+    ///
+    /// See [`RingBuffer::iter`].
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<T> IntoIterator for RingBuffer<T> {
+    type Item = T;
+    type IntoIter = smallvec::IntoIter<[T; 16]>;
+
+    /// Consumes the buffer and iterates over the stored elements by value, in
+    /// storage order.
+    ///
+    /// The elements come in storage order, which is **not** necessarily
+    /// oldest first once the buffer has wrapped around.
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffer.into_iter()
+    }
 }
 
 #[cfg(test)]

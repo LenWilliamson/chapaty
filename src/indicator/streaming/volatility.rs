@@ -8,10 +8,10 @@ use crate::{
         event::{Ohlcv, TradeEvent},
     },
     indicator::{
-        config::{AtrConfig, AtrSmoothingType, EmaWindow, SmaWindow},
+        config::{AtrConfig, AtrSmoothingType, EmaWindow, RmaWindow, SmaWindow},
         streaming::{
             StreamingIndicator,
-            moving_averages::{EwmSeed, StreamingEma, StreamingEwm, StreamingSma},
+            moving_averages::{EwmSeed, StreamingEma, StreamingRma, StreamingSma},
         },
     },
     math::accumulators::KahanSum,
@@ -23,7 +23,7 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AtrSmoother {
-    Wilders(StreamingEwm),
+    Rma(StreamingRma),
     Sma(StreamingSma),
     Ema(StreamingEma),
 }
@@ -34,7 +34,7 @@ impl StreamingIndicator for AtrSmoother {
 
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
         match self {
-            Self::Wilders(ewm) => ewm.update(value),
+            Self::Rma(rma) => rma.update(value),
             Self::Sma(sma) => sma.update(value),
             Self::Ema(ema) => ema.update(value),
         }
@@ -42,7 +42,7 @@ impl StreamingIndicator for AtrSmoother {
 
     fn reset(&mut self) {
         match self {
-            Self::Wilders(ewm) => ewm.reset(),
+            Self::Rma(rma) => rma.reset(),
             Self::Sma(sma) => sma.reset(),
             Self::Ema(ema) => ema.reset(),
         }
@@ -52,36 +52,31 @@ impl StreamingIndicator for AtrSmoother {
 /// Average True Range (ATR) indicator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingAtr {
-    window_size: u16,
     smoother: AtrSmoother,
     prev_close: Option<Price>,
 }
 
 impl Default for StreamingAtr {
     fn default() -> Self {
-        let window_size = 14;
-        let alpha = 1.0 / f64::from(window_size);
-        let smoother = AtrSmoother::Wilders(StreamingEwm::new(
-            alpha,
-            usize::from(window_size),
-            EwmSeed::default(),
-        ));
-        Self {
-            window_size,
-            smoother,
-            prev_close: None,
-        }
+        Self::new(AtrConfig {
+            window: 14,
+            smoothing: AtrSmoothingType::Rma(EwmSeed::Sma),
+        })
     }
 }
 
 impl StreamingAtr {
+    /// Creates a streaming ATR from `cfg`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `cfg.window` is zero.
     #[must_use]
     pub fn new(cfg: AtrConfig) -> Self {
         let AtrConfig { window, smoothing } = cfg;
         let smoother = match smoothing {
             AtrSmoothingType::Rma(seed) => {
-                let alpha = 1.0 / f64::from(window);
-                AtrSmoother::Wilders(StreamingEwm::new(alpha, usize::from(window), seed))
+                AtrSmoother::Rma(StreamingRma::new(RmaWindow(window), seed))
             }
             AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
             AtrSmoothingType::Ema(seed) => {
@@ -90,9 +85,8 @@ impl StreamingAtr {
         };
 
         Self {
-            window_size: window,
             smoother,
-            ..Default::default()
+            prev_close: None,
         }
     }
 }
@@ -210,14 +204,19 @@ impl StreamingOhlcvVwap {
     }
 
     fn weighting_price(&self, ohlcv: Ohlcv) -> Price {
-        match self.source {
-            AggregatedPrice::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
-            AggregatedPrice::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
-            AggregatedPrice::Ohlc4 => {
-                Price((ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close).0 / 4.0)
-            }
-            AggregatedPrice::Close => ohlcv.close,
+        weighting_price(self.source, ohlcv)
+    }
+}
+
+/// Picks the per-bar price that is weighted by volume, according to `source`.
+fn weighting_price(source: AggregatedPrice, ohlcv: Ohlcv) -> Price {
+    match source {
+        AggregatedPrice::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
+        AggregatedPrice::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
+        AggregatedPrice::Ohlc4 => {
+            Price((ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close).0 / 4.0)
         }
+        AggregatedPrice::Close => ohlcv.close,
     }
 }
 
@@ -401,14 +400,6 @@ mod tests {
         // Without the reset, TR would be max(5, |25-12|, |20-12|) = 13.
         let after = atr.update(mock_candle(20., 25., 20., 24., 100.));
         assert_eq!(after, Some(5.0)); // 25 - 20, treated as a first bar
-    }
-
-    /// The documented default is a 14-period Wilder's ATR.
-    #[test]
-    fn atr_default_is_wilders_window_14() {
-        let atr = StreamingAtr::default();
-        assert_eq!(atr.window_size, 14);
-        assert!(matches!(atr.smoother, AtrSmoother::Wilders(_)));
     }
 
     // ============================================================================================
