@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::indicator::{
-    config::{EmaWindow, EwmSeed, RmaWindow, SmaWindow},
+    config::{EmaConfig, EwmSeed, RmaConfig, SmaWindow},
     streaming::StreamingIndicator,
 };
 
@@ -142,21 +142,19 @@ pub struct StreamingEma {
 }
 
 impl StreamingEma {
-    /// Creates a streaming EMA with the given window size.
+    /// Creates a streaming EMA from `cfg`.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: EmaWindow, seed: EwmSeed) -> Self {
-        assert!(
-            window_size.0 > 0,
-            "EMA window size must be greater than zero"
-        );
+    pub fn new(cfg: EmaConfig) -> Self {
+        let EmaConfig { window, seed } = cfg;
+        assert!(window.0 > 0, "EMA window size must be greater than zero");
 
-        let alpha = 2.0 / (f64::from(window_size.0) + 1.0);
+        let alpha = 2.0 / (f64::from(window.0) + 1.0);
         Self {
-            inner: StreamingEwm::new(alpha, usize::from(window_size.0), seed),
+            inner: StreamingEwm::new(alpha, usize::from(window.0), seed),
         }
     }
 }
@@ -184,21 +182,19 @@ pub struct StreamingRma {
 }
 
 impl StreamingRma {
-    /// Creates a streaming RMA with the given window size.
+    /// Creates a streaming RMA from `cfg`.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: RmaWindow, seed: EwmSeed) -> Self {
-        assert!(
-            window_size.0 > 0,
-            "RMA window size must be greater than zero"
-        );
+    pub fn new(cfg: RmaConfig) -> Self {
+        let RmaConfig { window, seed } = cfg;
+        assert!(window.0 > 0, "RMA window size must be greater than zero");
 
-        let alpha = 1.0 / f64::from(window_size.0);
+        let alpha = 1.0 / f64::from(window.0);
         Self {
-            inner: StreamingEwm::new(alpha, usize::from(window_size.0), seed),
+            inner: StreamingEwm::new(alpha, usize::from(window.0), seed),
         }
     }
 }
@@ -223,6 +219,7 @@ mod tests {
         reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
     )]
     use super::*;
+    use crate::indicator::config::{EmaWindow, RmaWindow};
 
     /// Compare two floats with a small tolerance (EMA math isn't exact).
     fn approx(a: f64, b: f64) {
@@ -275,7 +272,7 @@ mod tests {
 
     #[test]
     fn ema_returns_none_until_window_is_reached() {
-        let mut ema = StreamingEma::new(EmaWindow(3), EwmSeed::FirstValue);
+        let mut ema = StreamingEma::new(EmaConfig::new(EmaWindow(3)));
         assert_eq!(ema.update(1.0), None);
         assert_eq!(ema.update(2.0), None);
         assert!(ema.update(3.0).is_some()); // count >= window_size
@@ -284,7 +281,7 @@ mod tests {
     #[test]
     fn ema_seeds_with_first_value() {
         // window 1 emits immediately; the first output is just the first input.
-        let mut ema = StreamingEma::new(EmaWindow(1), EwmSeed::FirstValue);
+        let mut ema = StreamingEma::new(EmaConfig::new(EmaWindow(1)));
         assert_eq!(ema.update(5.0), Some(5.0));
     }
 
@@ -293,7 +290,7 @@ mod tests {
         // alpha = 2 / (2 + 1) = 0.666...
         // v1=10 seeds mean=10 (no output yet, count 1 < 2)
         // v2=20 -> 0.6667*20 + 0.3333*10 = 16.6667 (count 2 >= 2 -> emitted)
-        let mut ema = StreamingEma::new(EmaWindow(2), EwmSeed::FirstValue);
+        let mut ema = StreamingEma::new(EmaConfig::new(EmaWindow(2)));
         let alpha = 2.0 / 3.0;
         assert_eq!(ema.update(10.0), None);
         let expected = (1.0_f64 - alpha).mul_add(10.0, alpha * 20.0);
@@ -303,7 +300,7 @@ mod tests {
     #[test]
     fn ema_constant_input_converges_to_that_constant() {
         // Feeding the same value forever keeps the mean at that value.
-        let mut ema = StreamingEma::new(EmaWindow(5), EwmSeed::FirstValue);
+        let mut ema = StreamingEma::new(EmaConfig::new(EmaWindow(5)));
         let mut last = None;
         for _ in 0..20 {
             last = ema.update(42.0);
@@ -313,7 +310,7 @@ mod tests {
 
     #[test]
     fn ema_reset_clears_state() {
-        let mut ema = StreamingEma::new(EmaWindow(2), EwmSeed::FirstValue);
+        let mut ema = StreamingEma::new(EmaConfig::new(EmaWindow(2)));
         ema.update(100.0);
         ema.update(200.0); // emits something
         ema.reset();
@@ -399,7 +396,7 @@ mod tests {
     #[test]
     fn rma_sma_seed_matches_wilder() {
         // window 3, inputs 3, 6, 9, 12: seed = 6, then 6 + (12 - 6) / 3 = 8
-        let mut rma = StreamingRma::new(RmaWindow(3), EwmSeed::Sma);
+        let mut rma = StreamingRma::new(RmaConfig::new(RmaWindow(3)).with_seed(EwmSeed::Sma));
         assert_eq!(rma.update(3.0), None);
         assert_eq!(rma.update(6.0), None);
         approx(rma.update(9.0).unwrap(), 6.0);
@@ -409,7 +406,7 @@ mod tests {
     #[test]
     fn rma_first_value_seed_differs_from_sma_seed() {
         // 3 -> 4 -> 5.666... -> 7.777...
-        let mut rma = StreamingRma::new(RmaWindow(3), EwmSeed::FirstValue);
+        let mut rma = StreamingRma::new(RmaConfig::new(RmaWindow(3)));
         rma.update(3.0);
         rma.update(6.0);
         approx(rma.update(9.0).unwrap(), 17.0 / 3.0);
@@ -419,7 +416,7 @@ mod tests {
     #[test]
     fn rma_window_of_one_returns_each_value() {
         for seed in [EwmSeed::Sma, EwmSeed::FirstValue] {
-            let mut rma = StreamingRma::new(RmaWindow(1), seed);
+            let mut rma = StreamingRma::new(RmaConfig::new(RmaWindow(1)).with_seed(seed));
             assert_eq!(rma.update(5.0), Some(5.0));
             assert_eq!(rma.update(9.0), Some(9.0));
         }
@@ -428,6 +425,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "greater than zero")]
     fn rma_zero_window_panics() {
-        let _rma = StreamingRma::new(RmaWindow(0), EwmSeed::Sma);
+        let _rma = StreamingRma::new(RmaConfig::new(RmaWindow(0)).with_seed(EwmSeed::Sma));
     }
 }

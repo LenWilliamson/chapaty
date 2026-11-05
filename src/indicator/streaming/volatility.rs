@@ -9,17 +9,15 @@ use crate::{
     },
     indicator::{
         config::{
-            AtrConfig, AtrSmoothingType, EmaWindow, EwmSeed, RmaWindow, SmaWindow, VwapWindow,
+            AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, EwmSeed, RmaConfig, RmaWindow,
+            RollingVwapConfig, SmaWindow,
         },
         streaming::{
             StreamingIndicator,
             moving_averages::{StreamingEma, StreamingRma, StreamingSma},
         },
     },
-    math::{
-        deviation::DeviationKind,
-        weighted_window::{WeightedMean, WeightedStats, WeightedWindow},
-    },
+    math::weighted_window::{WeightedMean, WeightedStats, WeightedWindow},
 };
 
 // ================================================================================================
@@ -80,13 +78,13 @@ impl StreamingAtr {
     pub fn new(cfg: AtrConfig) -> Self {
         let AtrConfig { window, smoothing } = cfg;
         let smoother = match smoothing {
-            AtrSmoothingType::Rma(seed) => {
-                AtrSmoother::Rma(StreamingRma::new(RmaWindow(window), seed))
-            }
+            AtrSmoothingType::Rma(seed) => AtrSmoother::Rma(StreamingRma::new(
+                RmaConfig::new(RmaWindow(window)).with_seed(seed),
+            )),
             AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
-            AtrSmoothingType::Ema(seed) => {
-                AtrSmoother::Ema(StreamingEma::new(EmaWindow(window), seed))
-            }
+            AtrSmoothingType::Ema(seed) => AtrSmoother::Ema(StreamingEma::new(
+                EmaConfig::new(EmaWindow(window)).with_seed(seed),
+            )),
         };
 
         Self {
@@ -235,7 +233,8 @@ impl StreamingIndicator for StreamingTradesVwap {
 ///
 /// `basis` is the volume weighted average price of the window. `deviation` is
 /// the volume weighted spread of the window's prices around that basis,
-/// measured as configured by [`DeviationKind`].
+/// measured as configured by
+/// [`DeviationKind`](crate::indicator::config::DeviationKind).
 ///
 /// Bands at any distance are built with [`upper`](Self::upper) and
 /// [`lower`](Self::lower), so one indicator can serve several band pairs.
@@ -279,11 +278,12 @@ impl From<WeightedStats> for VwapBands {
 /// be updated incrementally.
 ///
 /// The per-bar price fed into the average is chosen via [`AggregatedPrice`],
-/// the spread measure via [`DeviationKind`]. A bar with non-positive or
-/// non-finite volume, or a non-finite price, occupies a slot in the window
-/// but is ignored in the result. Returns `None` until the window is full, and
-/// while no bar in it carries a valid positive volume (the average would divide
-/// by zero).
+/// the spread measure via
+/// [`DeviationKind`](crate::indicator::config::DeviationKind). A bar with
+/// non-positive or non-finite volume, or a non-finite price, occupies a slot in
+/// the window but is ignored in the result. Returns `None` until the window is
+/// full, and while no bar in it carries a valid positive volume (the average
+/// would divide by zero).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingRollingOhlcvVwap {
     source: AggregatedPrice,
@@ -291,16 +291,16 @@ pub struct StreamingRollingOhlcvVwap {
 }
 
 impl StreamingRollingOhlcvVwap {
-    /// Creates a rolling VWAP over the last `window_size` bars.
+    /// Creates a rolling VWAP over the last `cfg.window` bars.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: VwapWindow, deviation: DeviationKind) -> Self {
+    pub fn new(cfg: RollingVwapConfig) -> Self {
         Self {
             source: AggregatedPrice::default(),
-            window: WeightedWindow::new(usize::from(window_size.0), deviation),
+            window: WeightedWindow::new(usize::from(cfg.window.0), cfg.deviation),
         }
     }
 
@@ -333,7 +333,7 @@ impl StreamingIndicator for StreamingRollingOhlcvVwap {
 /// Same semantics as [`StreamingRollingOhlcvVwap`], but a trade carries a
 /// single execution price, so there is no [`AggregatedPrice`] to configure.
 /// The trade's `quantity` is the volume, and the spread measure is chosen via
-/// [`DeviationKind`].
+/// [`DeviationKind`](crate::indicator::config::DeviationKind).
 ///
 /// The window counts trades, not time: it always spans the last `window`
 /// trades, however long ago they happened.
@@ -343,15 +343,15 @@ pub struct StreamingRollingTradesVwap {
 }
 
 impl StreamingRollingTradesVwap {
-    /// Creates a rolling VWAP over the last `window_size` trades.
+    /// Creates a rolling VWAP over the last `cfg.window` trades.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: VwapWindow, deviation: DeviationKind) -> Self {
+    pub fn new(cfg: RollingVwapConfig) -> Self {
         Self {
-            window: WeightedWindow::new(usize::from(window_size.0), deviation),
+            window: WeightedWindow::new(usize::from(cfg.window.0), cfg.deviation),
         }
     }
 }
@@ -375,7 +375,10 @@ mod tests {
     use chrono::{DateTime, Utc};
 
     use super::*;
-    use crate::data::domain::Quantity;
+    use crate::{
+        data::domain::Quantity,
+        indicator::config::{DeviationKind, VwapWindow},
+    };
 
     fn mock_candle(open: f64, high: f64, low: f64, close: f64, vol: f64) -> Ohlcv {
         Ohlcv {
@@ -604,7 +607,7 @@ mod tests {
 
     #[test]
     fn rolling_trades_vwap_bands_for_both_deviation_kinds() {
-        let mut mad = StreamingRollingTradesVwap::new(VwapWindow(2), DeviationKind::MeanAbsolute);
+        let mut mad = StreamingRollingTradesVwap::new(RollingVwapConfig::new(VwapWindow(2)));
         assert_eq!(mad.update(mock_trade(10.0, 1.0)), None); // warming up
         let bands = mad.update(mock_trade(20.0, 3.0));
         assert_eq!(
@@ -617,7 +620,9 @@ mod tests {
         assert_eq!(bands.map(|b| b.upper(2.0)), Some(Price(25.0)));
         assert_eq!(bands.map(|b| b.lower(2.0)), Some(Price(10.0)));
 
-        let mut std = StreamingRollingTradesVwap::new(VwapWindow(2), DeviationKind::StdDev);
+        let mut std = StreamingRollingTradesVwap::new(
+            RollingVwapConfig::new(VwapWindow(2)).with_deviation(DeviationKind::StdDev),
+        );
         std.update(mock_trade(10.0, 1.0));
         let bands = std.update(mock_trade(20.0, 3.0));
         // A missing value becomes NaN, which fails the comparison.

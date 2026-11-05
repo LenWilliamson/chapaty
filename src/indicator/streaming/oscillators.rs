@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     data::{domain::Price, event::Ohlcv},
     indicator::{
-        config::{EwmSeed, RmaWindow, RsiFlat, RsiWindow},
+        config::{RmaConfig, RmaWindow, RsiConfig, RsiFlat},
         streaming::{StreamingIndicator, moving_averages::StreamingRma},
     },
 };
@@ -21,18 +21,19 @@ pub struct StreamingRsi {
 }
 
 impl StreamingRsi {
-    /// Creates a streaming RSI over `window_size`.
+    /// Creates a streaming RSI from `cfg`.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: RsiWindow, seed: EwmSeed, flat: RsiFlat) -> Self {
-        let w = RmaWindow(window_size.0);
+    pub fn new(cfg: RsiConfig) -> Self {
+        let RsiConfig { window, seed, flat } = cfg;
+        let rma = RmaConfig::new(RmaWindow(window.0)).with_seed(seed);
         Self {
             prev_price: None,
-            avg_gain: StreamingRma::new(w, seed),
-            avg_loss: StreamingRma::new(w, seed),
+            avg_gain: StreamingRma::new(rma),
+            avg_loss: StreamingRma::new(rma),
             flat,
         }
     }
@@ -87,18 +88,19 @@ pub struct StreamingObvRsi {
 }
 
 impl StreamingObvRsi {
-    /// Creates a streaming On Balance Volume RSI over `window_size`.
+    /// Creates a streaming On Balance Volume RSI from `cfg`.
     ///
     /// # Panics
     ///
-    /// Panics if `window_size` is zero.
+    /// Panics if `cfg.window` is zero.
     #[must_use]
-    pub fn new(window_size: RsiWindow, seed: EwmSeed, flat: RsiFlat) -> Self {
-        let w = RmaWindow(window_size.0);
+    pub fn new(cfg: RsiConfig) -> Self {
+        let RsiConfig { window, seed, flat } = cfg;
+        let rma = RmaConfig::new(RmaWindow(window.0)).with_seed(seed);
         Self {
             prev_price: None,
-            up: StreamingRma::new(w, seed),
-            down: StreamingRma::new(w, seed),
+            up: StreamingRma::new(rma),
+            down: StreamingRma::new(rma),
             flat,
         }
     }
@@ -166,6 +168,7 @@ fn rsi_from_averages(avg_gain: f64, avg_loss: f64, flat: RsiFlat) -> Option<f64>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::indicator::config::{EwmSeed, RsiWindow};
 
     /// Asserts `actual` is `Some` and close to `expected`.
     fn approx_some(actual: Option<f64>, expected: f64) {
@@ -178,7 +181,7 @@ mod tests {
     #[test]
     fn first_value_only_seeds_and_returns_none() {
         // The first price has no predecessor, so there's no delta to score yet.
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         assert_eq!(rsi.update(100.0), None);
     }
 
@@ -188,7 +191,7 @@ mod tests {
         // the inner EWMs need `window_size` deltas before they emit. So
         // with window 3: 1 seed + 3 deltas = 4 prices before the first
         // RSI value.
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         assert_eq!(rsi.update(10.0), None); // seed
         assert_eq!(rsi.update(11.0), None); // delta 1
         assert_eq!(rsi.update(12.0), None); // delta 2
@@ -199,7 +202,7 @@ mod tests {
     fn pure_uptrend_gives_100() {
         // Every delta is a gain, avg_loss stays 0 -> the "pure gain" branch ->
         // 100.
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         let mut last = None;
         for p in [1.0, 2.0, 3.0, 4.0, 5.0] {
             last = rsi.update(p);
@@ -210,7 +213,7 @@ mod tests {
     #[test]
     fn pure_downtrend_gives_0() {
         // Every delta is a loss, avg_gain stays 0 -> rs = 0 -> 100 - 100/1 = 0.
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         let mut last = None;
         for p in [5.0, 4.0, 3.0, 2.0, 1.0] {
             last = rsi.update(p);
@@ -221,7 +224,7 @@ mod tests {
     #[test]
     fn flat_line_gives_50() {
         // No movement: both averages 0 -> the explicit flat-line branch -> 50.
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         let mut last = None;
         for _ in 0..5 {
             last = rsi.update(100.0);
@@ -232,7 +235,7 @@ mod tests {
     #[test]
     fn output_stays_within_bounds() {
         // Whatever the input, RSI must land in [0, 100].
-        let mut rsi = StreamingRsi::new(RsiWindow(4), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(4)));
         let prices = [10.0, 12.0, 11.0, 15.0, 9.0, 20.0, 8.0, 13.0, 14.0, 7.0];
         for p in prices {
             if let Some(v) = rsi.update(p) {
@@ -243,7 +246,7 @@ mod tests {
 
     #[test]
     fn reset_clears_state() {
-        let mut rsi = StreamingRsi::new(RsiWindow(2), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(2)));
         // Drive it to a pure-uptrend reading.
         for p in [1.0, 2.0, 3.0, 4.0] {
             rsi.update(p);
@@ -273,7 +276,7 @@ mod tests {
 
     #[test]
     fn rsi_flat_line_follows_the_flat_setting() {
-        let mut rsi = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Undefined);
+        let mut rsi = StreamingRsi::new(RsiConfig::new(RsiWindow(3)).with_flat(RsiFlat::Undefined));
         let mut last = Some(0.0);
         for _ in 0..6 {
             last = rsi.update(100.0);
@@ -286,8 +289,8 @@ mod tests {
         // prices 10, 12, 11, 14 -> deltas +2, -1, +3 (window 3)
         let prices = [10.0, 12.0, 11.0, 14.0];
 
-        let mut sma = StreamingRsi::new(RsiWindow(3), EwmSeed::Sma, RsiFlat::Neutral);
-        let mut first = StreamingRsi::new(RsiWindow(3), EwmSeed::FirstValue, RsiFlat::Neutral);
+        let mut sma = StreamingRsi::new(RsiConfig::new(RsiWindow(3)).with_seed(EwmSeed::Sma));
+        let mut first = StreamingRsi::new(RsiConfig::new(RsiWindow(3)));
         let (mut a, mut b) = (None, None);
         for p in prices {
             a = sma.update(p);

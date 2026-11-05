@@ -9,7 +9,7 @@ use crate::{
     gym::trading::TradeKind,
     indicator::{
         batch::ohlcv::SessionCfg,
-        config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
+        config::{AtrConfig, EmaConfig, LookbackWindow, RsiConfig, SmaWindow},
     },
 };
 
@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EmaId {
     pub parent: OhlcvId,
-    pub length: EmaWindow,
+    pub cfg: EmaConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -63,7 +63,7 @@ impl SymbolProvider for EmaId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RsiId {
     pub parent: OhlcvId,
-    pub length: RsiWindow,
+    pub cfg: RsiConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

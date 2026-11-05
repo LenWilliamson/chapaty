@@ -48,7 +48,7 @@ use crate::{
             ohlcv::BatchOhlcvIndicator,
             trades::BatchTradesIndicator,
         },
-        config::{EmaWindow, RsiWindow, SmaWindow},
+        config::SmaWindow,
     },
     io::IoConfig,
     math::market_profile::compute_profile_stats,
@@ -247,10 +247,10 @@ impl BuildCtx {
                 let schema = ind.output_schema();
 
                 match ind {
-                    BatchOhlcvIndicator::Ema(EmaWindow(w)) => {
+                    BatchOhlcvIndicator::Ema(cfg) => {
                         let id = EmaId {
                             parent: parent_id,
-                            length: EmaWindow(w),
+                            cfg,
                         };
                         ema_map.insert(id, (schema, lf_result));
                     }
@@ -261,10 +261,10 @@ impl BuildCtx {
                         };
                         sma_map.insert(id, (schema, lf_result));
                     }
-                    BatchOhlcvIndicator::Rsi(RsiWindow(w)) => {
+                    BatchOhlcvIndicator::Rsi(cfg) => {
                         let id = RsiId {
                             parent: parent_id,
-                            length: RsiWindow(w),
+                            cfg,
                         };
                         rsi_map.insert(id, (schema, lf_result));
                     }
@@ -2070,7 +2070,7 @@ mod test {
         data::domain::{AggregatedPrice, SessionDate, SessionWindow},
         indicator::{
             batch::ohlcv::SessionCfg,
-            config::{AtrConfig, LookbackWindow},
+            config::{AtrConfig, EmaConfig, EmaWindow, LookbackWindow},
         },
         transport::schema::{
             economic_calendar_schema, tpo_spot_schema, trades_spot_schema,
@@ -2582,7 +2582,7 @@ mod test {
 
     #[test]
     fn test_extract_price_timeseries() {
-        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+        let schema = BatchOhlcvIndicator::Ema(EmaConfig::new(EmaWindow(1))).output_schema();
 
         // 1. Setup Data
         let df = df!(
@@ -2619,7 +2619,7 @@ mod test {
 
     #[test]
     fn test_extract_price_timeseries_skips_warmup_nones() {
-        let schema = BatchOhlcvIndicator::Ema(EmaWindow(1)).output_schema();
+        let schema = BatchOhlcvIndicator::Ema(EmaConfig::new(EmaWindow(1))).output_schema();
 
         // 1. Setup Data
         // Simulate a "Price" column that is actually an Indicator (e.g., SMA)
