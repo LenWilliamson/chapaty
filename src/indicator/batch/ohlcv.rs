@@ -3,8 +3,8 @@ use std::sync::Arc;
 use polars::{
     lazy::dsl::max_horizontal,
     prelude::{
-        DataType, EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
-        Schema, SortMultipleOptions, col, lit, when,
+        EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow, Schema,
+        SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
 };
@@ -14,8 +14,14 @@ use crate::{
     data::domain::{AggregatedPrice, SessionWindow},
     error::{ChapatyResult, DataError},
     indicator::{
-        batch::{BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err},
-        config::{AtrConfig, EmaWindow, LookbackWindow, RsiWindow, SmaWindow},
+        batch::{
+            BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err,
+            point_in_time_micros,
+        },
+        config::{
+            AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, EwmSeed, LookbackWindow, RmaConfig,
+            RmaWindow, RsiConfig, SmaWindow,
+        },
     },
     transport::schema::CanonicalCol,
 };
@@ -28,9 +34,9 @@ pub struct SessionCfg {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BatchOhlcvIndicator {
-    Ema(EmaWindow),
+    Ema(EmaConfig),
     Sma(SmaWindow),
-    Rsi(RsiWindow),
+    Rsi(RsiConfig),
     Atr(AtrConfig),
     RateOfChange(LookbackWindow),
     Vwap(AggregatedPrice),
@@ -40,9 +46,9 @@ pub enum BatchOhlcvIndicator {
 impl BatchCompute for BatchOhlcvIndicator {
     fn pre_compute(&self, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
         match self {
-            Self::Ema(ema) => Ok(pre_compute_ema(*ema, lf)),
+            Self::Ema(cfg) => Ok(pre_compute_ema(*cfg, lf)),
             Self::Sma(sma) => Ok(pre_compute_sma(*sma, lf)),
-            Self::Rsi(rsi) => Ok(pre_compute_rsi(*rsi, lf)),
+            Self::Rsi(cfg) => Ok(pre_compute_rsi(*cfg, lf)),
             Self::Atr(atr) => pre_compute_atr(*atr, lf),
             Self::RateOfChange(lb) => pre_compute_rate_of_change(*lb, lf),
             Self::Vwap(vwap) => Ok(pre_compute_vwap(*vwap, lf)),
@@ -85,7 +91,22 @@ impl BatchCompute for BatchOhlcvIndicator {
 
 trait OhlcvIndicatorExprExt {
     /// Computes the Relative Strength Index (RSI).
-    fn rsi(self, window: RsiWindow) -> Expr;
+    ///
+    /// Gives the same values as `StreamingRsi` for the same settings.
+    fn rsi(self, cfg: RsiConfig) -> Expr;
+
+    /// Computes an exponentially weighted mean with weight `alpha` on each new
+    /// value, started according to `seed`.
+    fn ewm_seeded(self, alpha: f64, window: u16, seed: EwmSeed) -> Expr;
+
+    /// Computes relative moving average.
+    fn rma(self, cfg: RmaConfig) -> Expr;
+
+    /// Computes the exponential moving average.
+    fn ema(self, cfg: EmaConfig) -> Expr;
+
+    /// Computes the simple moving average.
+    fn sma(self, window: SmaWindow) -> Expr;
 
     /// Computes the True Range using High, Low, and self (as Close).
     fn true_range(self, high: Expr, low: Expr) -> ChapatyResult<Expr>;
@@ -101,24 +122,22 @@ trait OhlcvIndicatorExprExt {
 }
 
 impl OhlcvIndicatorExprExt for Expr {
-    fn rsi(self, window: RsiWindow) -> Expr {
-        let window = window.0;
-        let alpha = 1.0 / f64::from(window);
-        let options = EWMOptions {
-            alpha,
-            adjust: false,
-            bias: false,
-            min_periods: window as usize,
-            ignore_nulls: true,
-        };
+    fn rsi(self, cfg: RsiConfig) -> Expr {
+        let RsiConfig { window, seed, flat } = cfg;
+        let rma = RmaConfig::new(RmaWindow(window.0)).with_seed(seed);
 
         let delta = self.diff(lit(1), NullBehavior::Ignore);
         let gain = delta.clone().clip(lit(0.0), lit(f64::MAX));
         let loss = delta.clip(lit(f64::MIN), lit(0.0)).abs();
 
-        let avg_gain = gain.ewm_mean(options);
-        let avg_loss = loss.ewm_mean(options);
+        let avg_gain = gain.rma(rma);
+        let avg_loss = loss.rma(rma);
 
+        // Formula: 100 - 100 / (1 + gain / loss). A zero average loss makes
+        // the ratio infinite and the result 100, a zero average gain gives 0.
+        // Only when both averages are zero is the ratio 0 / 0, and `flat`
+        // decides what is reported. `StreamingRsi` uses the equivalent form
+        // 100 * gain / (gain + loss), which differs in the last digits only.
         let is_flat = avg_gain
             .clone()
             .eq(lit(0.0))
@@ -126,8 +145,61 @@ impl OhlcvIndicatorExprExt for Expr {
         let rs = avg_gain / avg_loss;
 
         when(is_flat)
-            .then(lit(50.0))
+            .then(flat.to_expr())
             .otherwise(lit(100.0) - (lit(100.0) / (lit(1.0) + rs)))
+    }
+
+    fn ewm_seeded(self, alpha: f64, window: u16, seed: EwmSeed) -> Expr {
+        match seed {
+            EwmSeed::FirstValue => self.ewm_mean(EWMOptions {
+                alpha,
+                adjust: false,
+                bias: false,
+                min_periods: usize::from(window),
+                ignore_nulls: true,
+            }),
+            EwmSeed::Sma => {
+                let valid_count = self.clone().is_not_null().cum_sum(false);
+                let seed_value = self.clone().sma(SmaWindow(window));
+                let seeded = when(valid_count.clone().eq(lit(u32::from(window))))
+                    .then(seed_value)
+                    .when(valid_count.gt(lit(u32::from(window))))
+                    .then(self)
+                    .otherwise(lit(NULL));
+
+                seeded.ewm_mean(EWMOptions {
+                    alpha,
+                    adjust: false,
+                    bias: false,
+                    min_periods: 1,
+                    ignore_nulls: true,
+                })
+            }
+        }
+    }
+
+    fn rma(self, cfg: RmaConfig) -> Expr {
+        self.ewm_seeded(1.0 / f64::from(cfg.window.0), cfg.window.0, cfg.seed)
+    }
+
+    fn ema(self, cfg: EmaConfig) -> Expr {
+        self.ewm_seeded(
+            2.0 / (f64::from(cfg.window.0) + 1.0),
+            cfg.window.0,
+            cfg.seed,
+        )
+    }
+
+    fn sma(self, window: SmaWindow) -> Expr {
+        let n = window.0;
+        let options = RollingOptionsFixedWindow {
+            window_size: usize::from(n),
+            min_periods: usize::from(n),
+            weights: None,
+            center: false,
+            fn_params: None,
+        };
+        self.rolling_mean(options)
     }
 
     fn true_range(self, high: Expr, low: Expr) -> ChapatyResult<Expr> {
@@ -152,52 +224,34 @@ impl OhlcvIndicatorExprExt for Expr {
     }
 }
 
-fn pre_compute_ema(ema: EmaWindow, lf: LazyFrame) -> LazyFrame {
-    let window = ema.0;
-    let alpha = 2.0 / (f64::from(window) + 1.0);
-
-    let options = EWMOptions {
-        alpha,
-        adjust: false,
-        bias: false,
-        min_periods: window as usize,
-        ignore_nulls: true,
-    };
-
-    lf.into_price_timeseries(col(CanonicalCol::Close).ewm_mean(options))
+fn pre_compute_ema(cfg: EmaConfig, lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(col(CanonicalCol::Close).ema(cfg))
 }
 
-fn pre_compute_sma(sma: SmaWindow, lf: LazyFrame) -> LazyFrame {
-    let window = sma.0;
-    let options = RollingOptionsFixedWindow {
-        window_size: window as usize,
-        min_periods: window as usize,
-        weights: None,
-        center: false,
-        fn_params: None,
-    };
-
-    lf.into_price_timeseries(col(CanonicalCol::Close).rolling_mean(options))
+fn pre_compute_sma(window: SmaWindow, lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(col(CanonicalCol::Close).sma(window))
 }
 
-fn pre_compute_rsi(rsi: RsiWindow, lf: LazyFrame) -> LazyFrame {
-    lf.into_price_timeseries(col(CanonicalCol::Close).rsi(rsi))
+fn pre_compute_rsi(cfg: RsiConfig, lf: LazyFrame) -> LazyFrame {
+    lf.into_price_timeseries(col(CanonicalCol::Close).rsi(cfg))
 }
 
 fn pre_compute_atr(atr: AtrConfig, lf: LazyFrame) -> ChapatyResult<LazyFrame> {
-    let alpha = 1.0 / f64::from(atr.window);
-    let options = EWMOptions {
-        alpha,
-        adjust: false,
-        bias: false,
-        min_periods: atr.window as usize,
-        ignore_nulls: true,
-    };
-
-    let tr_expr =
+    let window = atr.window();
+    let true_range =
         col(CanonicalCol::Close).true_range(col(CanonicalCol::High), col(CanonicalCol::Low))?;
 
-    Ok(lf.into_price_timeseries(tr_expr.ewm_mean(options)))
+    let smoothed = match atr.smoothing() {
+        AtrSmoothingType::Rma(seed) => {
+            true_range.rma(RmaConfig::new(RmaWindow(window)).with_seed(seed))
+        }
+        AtrSmoothingType::Ema(seed) => {
+            true_range.ema(EmaConfig::new(EmaWindow(window)).with_seed(seed))
+        }
+        AtrSmoothingType::Sma => true_range.sma(SmaWindow(window)),
+    };
+
+    Ok(lf.into_price_timeseries(smoothed))
 }
 
 fn pre_compute_vwap(agg: AggregatedPrice, lf: LazyFrame) -> LazyFrame {
@@ -241,18 +295,12 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
             })?;
 
             // 1. Calculate the target timestamp we want to find in the past
-            let ts_micros = col(CanonicalCol::PointInTime)
-                .ts_as_microseconds()
-                .cast(DataType::Int64);
-
-            let lookback_target = (ts_micros - lit(duration_us)).alias(TMP_LOOKBACK_TARGET_TS);
+            let lookback_target =
+                (point_in_time_micros() - lit(duration_us)).alias(TMP_LOOKBACK_TARGET_TS);
 
             // 2. Build the historical lookup table
             let history_lf = lf.clone().select([
-                col(CanonicalCol::PointInTime)
-                    .ts_as_microseconds()
-                    .cast(DataType::Int64)
-                    .alias(TMP_HISTORY_TS),
+                point_in_time_micros().alias(TMP_HISTORY_TS),
                 col(CanonicalCol::PointInTime).alias(TMP_HISTORY_WINDOW_START),
                 col(CanonicalCol::Close).alias(TMP_HISTORY_CLOSE),
             ]);
@@ -335,7 +383,7 @@ mod tests {
         clippy::expect_used,
         clippy::print_stdout,
         clippy::similar_names,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+        reason = "tests assert against known-valid fixtures. We use `unwrap()` and `expect()` to surface failures as panics to fail the test."
     )]
     use std::path::PathBuf;
 
@@ -344,6 +392,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::indicator::config::RsiWindow;
 
     // ============================================================================
     // Test Fixtures & Helpers
@@ -376,7 +425,8 @@ mod tests {
                         Some(polars::prelude::TimeZone::UTC),
                     ))
                     .alias(CanonicalCol::PointInTime.as_str()),
-                // Rename the metrics (Implicitly drops 'exchange', 'symbol', etc.)
+                // Rename the metrics (Implicitly drops 'exchange', 'symbol',
+                // etc.)
                 col("open").alias(CanonicalCol::Open.as_str()),
                 col("high").alias(CanonicalCol::High.as_str()),
                 col("low").alias(CanonicalCol::Low.as_str()),
@@ -415,7 +465,7 @@ mod tests {
         let test_cases = vec![
             IndicatorTestCase {
                 name: "EMA-20",
-                indicator: BatchOhlcvIndicator::Ema(EmaWindow(20)),
+                indicator: BatchOhlcvIndicator::Ema(EmaConfig::new(EmaWindow(20))),
                 expected_file: "ema_20_daily.csv",
             },
             IndicatorTestCase {
@@ -425,7 +475,7 @@ mod tests {
             },
             IndicatorTestCase {
                 name: "RSI-14",
-                indicator: BatchOhlcvIndicator::Rsi(RsiWindow(14)),
+                indicator: BatchOhlcvIndicator::Rsi(RsiConfig::new(RsiWindow(14))),
                 expected_file: "rsi_14_daily.csv",
             },
             IndicatorTestCase {

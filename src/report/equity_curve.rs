@@ -110,8 +110,9 @@ impl EquityCurveReport {
                     every: Duration::parse("1d"),
                     period: Duration::parse("1d"),
                     offset: Duration::parse("0s"),
-                    // CRITICAL: Right closure (start, end] prevents overlapping buckets
-                    // and eliminates duplicate rows for midnight boundary ticks.
+                    // CRITICAL: Right closure (start, end] prevents overlapping
+                    // buckets and eliminates duplicate rows for midnight
+                    // boundary ticks.
                     closed_window: ClosedWindow::Right,
                     ..Default::default()
                 },

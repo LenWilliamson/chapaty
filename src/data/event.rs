@@ -13,9 +13,9 @@ use crate::{
     data::{
         common::{ProfileAggregation, ProfileBinStats},
         domain::{
-            CandleDirection, Count, CountryCode, DataBroker, EconomicCategory, EconomicDataSource,
-            EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth, LiquiditySide,
-            MarketKind, Period, Price, Quantity, Symbol, TradeId, Volume,
+            AggregatedPrice, CandleDirection, Count, CountryCode, DataBroker, EconomicCategory,
+            EconomicDataSource, EconomicEventImpact, EconomicValue, Exchange, ExecutionDepth,
+            LiquiditySide, MarketKind, Period, Price, Quantity, Symbol, TradeId, Volume,
         },
     },
     error::{ChapatyError, ChapatyResult, DataError},
@@ -158,6 +158,19 @@ impl Ohlcv {
             CandleDirection::Bearish
         } else {
             CandleDirection::Doji
+        }
+    }
+
+    /// Representative price of this bar for the given aggregation.
+    #[must_use]
+    pub fn aggregated_price(&self, source: AggregatedPrice) -> Price {
+        match source {
+            AggregatedPrice::Hlc3 => Price((self.high + self.low + self.close).0 / 3.0),
+            AggregatedPrice::Hl2 => Price((self.high + self.low).0 / 2.0),
+            AggregatedPrice::Ohlc4 => {
+                Price((self.open + self.high + self.low + self.close).0 / 4.0)
+            }
+            AggregatedPrice::Close => self.close_price(),
         }
     }
 }

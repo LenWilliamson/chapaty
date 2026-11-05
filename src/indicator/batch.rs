@@ -147,6 +147,12 @@ fn prepare_vwap_components(price: Expr, volume: Expr) -> (Expr, Expr) {
     (price_x_volume, valid_vol)
 }
 
+fn point_in_time_micros() -> Expr {
+    col(CanonicalCol::PointInTime)
+        .ts_as_microseconds()
+        .cast(DataType::Int64)
+}
+
 trait LazyFrameIndicatorExt {
     /// Projects a single-value indicator into the canonical `[Timestamp,
     /// Price]` shape.

@@ -4,17 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     data::{
-        domain::{AggregatedPrice, Price, Volume},
+        domain::{AggregatedPrice, Price, PriceDelta},
         event::{Ohlcv, TradeEvent},
     },
     indicator::{
-        config::{AtrConfig, AtrSmoothingType, EmaWindow, SmaWindow},
+        config::{
+            AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, RmaConfig, RmaWindow,
+            RollingVwapConfig, SmaWindow,
+        },
         streaming::{
             StreamingIndicator,
-            moving_averages::{StreamingEma, StreamingEwm, StreamingSma},
+            moving_averages::{StreamingEma, StreamingRma, StreamingSma},
         },
     },
-    math::accumulators::KahanSum,
+    math::weighted_window::{WeightedMean, WeightedStats, WeightedWindow},
 };
 
 // ================================================================================================
@@ -23,7 +26,7 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AtrSmoother {
-    Wilders(StreamingEwm),
+    Rma(StreamingRma),
     Sma(StreamingSma),
     Ema(StreamingEma),
 }
@@ -34,7 +37,7 @@ impl StreamingIndicator for AtrSmoother {
 
     fn update(&mut self, value: Self::Input) -> Self::Output<'_> {
         match self {
-            Self::Wilders(ewm) => ewm.update(value),
+            Self::Rma(rma) => rma.update(value),
             Self::Sma(sma) => sma.update(value),
             Self::Ema(ema) => ema.update(value),
         }
@@ -42,7 +45,7 @@ impl StreamingIndicator for AtrSmoother {
 
     fn reset(&mut self) {
         match self {
-            Self::Wilders(ewm) => ewm.reset(),
+            Self::Rma(rma) => rma.reset(),
             Self::Sma(sma) => sma.reset(),
             Self::Ema(ema) => ema.reset(),
         }
@@ -52,41 +55,40 @@ impl StreamingIndicator for AtrSmoother {
 /// Average True Range (ATR) indicator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingAtr {
-    window_size: u16,
     smoother: AtrSmoother,
     prev_close: Option<Price>,
 }
 
 impl Default for StreamingAtr {
+    /// Creates a streaming ATR over 14 bars with the default smoothing of
+    /// [`AtrConfig::new`].
     fn default() -> Self {
-        let window_size = 14;
-        let alpha = 1.0 / f64::from(window_size);
-        let smoother = AtrSmoother::Wilders(StreamingEwm::new(alpha, window_size as usize));
-        Self {
-            window_size,
-            smoother,
-            prev_close: None,
-        }
+        Self::new(AtrConfig::new(14))
     }
 }
 
 impl StreamingAtr {
+    /// Creates a streaming ATR from `cfg`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `cfg.window` is zero.
     #[must_use]
     pub fn new(cfg: AtrConfig) -> Self {
         let AtrConfig { window, smoothing } = cfg;
         let smoother = match smoothing {
-            AtrSmoothingType::Wilders => {
-                let alpha = 1.0 / f64::from(window);
-                AtrSmoother::Wilders(StreamingEwm::new(alpha, window as usize))
-            }
+            AtrSmoothingType::Rma(seed) => AtrSmoother::Rma(StreamingRma::new(
+                RmaConfig::new(RmaWindow(window)).with_seed(seed),
+            )),
             AtrSmoothingType::Sma => AtrSmoother::Sma(StreamingSma::new(SmaWindow(window))),
-            AtrSmoothingType::Ema => AtrSmoother::Ema(StreamingEma::new(EmaWindow(window))),
+            AtrSmoothingType::Ema(seed) => AtrSmoother::Ema(StreamingEma::new(
+                EmaConfig::new(EmaWindow(window)).with_seed(seed),
+            )),
         };
 
         Self {
-            window_size: window,
             smoother,
-            ..Default::default()
+            prev_close: None,
         }
     }
 }
@@ -128,50 +130,6 @@ impl StreamingIndicator for StreamingAtr {
 }
 
 // ================================================================================================
-// VWAP
-// ================================================================================================
-
-/// Shared accumulator for the `sum(price * volume) / sum(volume)` core.
-///
-/// VWAP variants only differ on how they derive the `(price, volume)` pair they
-/// feed in. Now implemented using Kahan summation for precision lossless
-/// high-frequency accumulation.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-struct KahanAccumulator {
-    sum_price_x_volume: KahanSum,
-    sum_volume: KahanSum,
-}
-
-impl KahanAccumulator {
-    /// Folds one observation into the running totals using move semantics.
-    ///
-    /// Non-positive or non-finite volume is skipped: it contributes nothing and
-    /// a zero-volume bar must not pull the average or risk a zero-division
-    /// once it's the only input.
-    fn add(self, price: Price, volume: Volume) -> Self {
-        let v = volume.0;
-        if !v.is_finite() || v <= 0.0 {
-            return self;
-        }
-
-        Self {
-            sum_price_x_volume: self.sum_price_x_volume.add(price.0 * v),
-            sum_volume: self.sum_volume.add(v),
-        }
-    }
-
-    /// Current VWAP, or `None` before any positive-volume input has arrived.
-    fn value(self) -> Option<f64> {
-        let total_v = self.sum_volume.value();
-        (total_v > 0.0).then(|| self.sum_price_x_volume.value() / total_v)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
-// ================================================================================================
 // VWAP: OHLCV
 // ================================================================================================
 
@@ -185,7 +143,7 @@ impl KahanAccumulator {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingOhlcvVwap {
     source: AggregatedPrice,
-    acc: KahanAccumulator,
+    acc: WeightedMean,
 }
 
 impl StreamingOhlcvVwap {
@@ -193,7 +151,7 @@ impl StreamingOhlcvVwap {
     pub fn new(source: AggregatedPrice) -> Self {
         Self {
             source,
-            acc: KahanAccumulator::default(),
+            acc: WeightedMean::default(),
         }
     }
 
@@ -201,17 +159,6 @@ impl StreamingOhlcvVwap {
     #[must_use]
     pub fn value(&self) -> Option<f64> {
         self.acc.value()
-    }
-
-    fn weighting_price(&self, ohlcv: Ohlcv) -> Price {
-        match self.source {
-            AggregatedPrice::Hlc3 => Price((ohlcv.high + ohlcv.low + ohlcv.close).0 / 3.0),
-            AggregatedPrice::Hl2 => Price((ohlcv.high + ohlcv.low).0 / 2.0),
-            AggregatedPrice::Ohlc4 => {
-                Price((ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close).0 / 4.0)
-            }
-            AggregatedPrice::Close => ohlcv.close,
-        }
     }
 }
 
@@ -226,8 +173,8 @@ impl StreamingIndicator for StreamingOhlcvVwap {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        let price = self.weighting_price(current);
-        self.acc = self.acc.add(price, current.volume);
+        let price = current.aggregated_price(self.source);
+        self.acc = self.acc.add(price.0, current.volume.0);
         self.acc.value()
     }
 
@@ -247,7 +194,7 @@ impl StreamingIndicator for StreamingOhlcvVwap {
 /// to configure. The trade's `quantity` is the volume.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct StreamingTradesVwap {
-    acc: KahanAccumulator,
+    acc: WeightedMean,
 }
 
 impl StreamingTradesVwap {
@@ -268,12 +215,157 @@ impl StreamingIndicator for StreamingTradesVwap {
     type Output<'a> = Option<f64>;
 
     fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
-        self.acc = self.acc.add(current.price, current.quantity);
+        self.acc = self.acc.add(current.price.0, current.quantity.0);
         self.acc.value()
     }
 
     fn reset(&mut self) {
-        self.acc = KahanAccumulator::default();
+        self.acc.reset();
+    }
+}
+
+// ================================================================================================
+// Rolling VWAP
+// ================================================================================================
+
+/// The centre line and width of a rolling VWAP for one observation.
+///
+/// `basis` is the volume weighted average price of the window. `deviation` is
+/// the volume weighted spread of the window's prices around that basis,
+/// measured as configured by
+/// [`DeviationKind`](crate::indicator::config::DeviationKind).
+///
+/// Bands at any distance are built with [`upper`](Self::upper) and
+/// [`lower`](Self::lower), so one indicator can serve several band pairs.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VwapBands {
+    /// Volume weighted average price over the window.
+    pub basis: Price,
+    /// Volume weighted deviation around [`basis`](Self::basis).
+    pub deviation: PriceDelta,
+}
+
+impl VwapBands {
+    /// Returns the upper band: `basis + mult * deviation`.
+    #[must_use]
+    pub const fn upper(&self, mult: f64) -> Price {
+        Price(self.deviation.0.mul_add(mult, self.basis.0))
+    }
+
+    /// Returns the lower band: `basis - mult * deviation`.
+    #[must_use]
+    pub const fn lower(&self, mult: f64) -> Price {
+        Price(self.deviation.0.mul_add(-mult, self.basis.0))
+    }
+}
+
+impl From<WeightedStats> for VwapBands {
+    fn from(stats: WeightedStats) -> Self {
+        Self {
+            basis: Price(stats.mean),
+            deviation: PriceDelta(stats.deviation),
+        }
+    }
+}
+
+/// A streaming Volume-Weighted Average Price over the last `window` [`Ohlcv`]
+/// bars, together with the volume weighted deviation around it.
+///
+/// Unlike [`StreamingOhlcvVwap`], old bars leave the window, so the result
+/// follows recent activity and is not anchored. Each update costs
+/// _O_(`window`), because the deviation depends on the current basis and cannot
+/// be updated incrementally.
+///
+/// The per-bar price fed into the average is chosen via [`AggregatedPrice`],
+/// the spread measure via
+/// [`DeviationKind`](crate::indicator::config::DeviationKind). A bar with
+/// non-positive or non-finite volume, or a non-finite price, occupies a slot in
+/// the window but is ignored in the result. Returns `None` until the window is
+/// full, and while no bar in it carries a valid positive volume (the average
+/// would divide by zero).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingRollingOhlcvVwap {
+    source: AggregatedPrice,
+    window: WeightedWindow,
+}
+
+impl StreamingRollingOhlcvVwap {
+    /// Creates a rolling VWAP over the last `cfg.window` bars.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `cfg.window` is zero.
+    #[must_use]
+    pub fn new(cfg: RollingVwapConfig) -> Self {
+        Self {
+            source: AggregatedPrice::default(),
+            window: WeightedWindow::new(usize::from(cfg.window.0), cfg.deviation),
+        }
+    }
+
+    /// Sets the per-bar price used as the VWAP input (default:
+    /// [`AggregatedPrice::Hlc3`]).
+    #[must_use]
+    pub fn with_aggregated_price(self, source: AggregatedPrice) -> Self {
+        Self { source, ..self }
+    }
+}
+
+impl StreamingIndicator for StreamingRollingOhlcvVwap {
+    type Input = Ohlcv;
+    type Output<'a> = Option<VwapBands>;
+
+    fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
+        let price = current.aggregated_price(self.source);
+        self.window.push(price.0, current.volume.0);
+        self.window.stats().map(VwapBands::from)
+    }
+
+    fn reset(&mut self) {
+        self.window.clear();
+    }
+}
+
+/// A streaming Volume-Weighted Average Price over the last `window`
+/// [`TradeEvent`]s, together with the volume weighted deviation around it.
+///
+/// Same semantics as [`StreamingRollingOhlcvVwap`], but a trade carries a
+/// single execution price, so there is no [`AggregatedPrice`] to configure.
+/// The trade's `quantity` is the volume, and the spread measure is chosen via
+/// [`DeviationKind`](crate::indicator::config::DeviationKind).
+///
+/// The window counts trades, not time: it always spans the last `window`
+/// trades, however long ago they happened.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingRollingTradesVwap {
+    window: WeightedWindow,
+}
+
+impl StreamingRollingTradesVwap {
+    /// Creates a rolling VWAP over the last `cfg.window` trades.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `cfg.window` is zero.
+    #[must_use]
+    pub fn new(cfg: RollingVwapConfig) -> Self {
+        Self {
+            window: WeightedWindow::new(usize::from(cfg.window.0), cfg.deviation),
+        }
+    }
+}
+
+impl StreamingIndicator for StreamingRollingTradesVwap {
+    type Input = TradeEvent;
+    type Output<'a> = Option<VwapBands>;
+
+    fn update(&mut self, current: Self::Input) -> Self::Output<'_> {
+        self.window.push(current.price.0, current.quantity.0);
+        self.window.stats().map(VwapBands::from)
+    }
+
+    fn reset(&mut self) {
+        self.window.clear();
     }
 }
 
@@ -282,7 +374,10 @@ mod tests {
     use chrono::{DateTime, Utc};
 
     use super::*;
-    use crate::data::domain::Quantity;
+    use crate::{
+        data::domain::Quantity,
+        indicator::config::{DeviationKind, EwmSeed, VwapWindow},
+    };
 
     fn mock_candle(open: f64, high: f64, low: f64, close: f64, vol: f64) -> Ohlcv {
         Ohlcv {
@@ -360,9 +455,9 @@ mod tests {
     #[test]
     fn atr_constant_true_range_is_stable_for_all_smoothers() {
         for smoothing in [
-            AtrSmoothingType::Wilders,
+            AtrSmoothingType::Rma(EwmSeed::FirstValue),
             AtrSmoothingType::Sma,
-            AtrSmoothingType::Ema,
+            AtrSmoothingType::Ema(EwmSeed::FirstValue),
         ] {
             let mut atr = StreamingAtr::new(AtrConfig {
                 window: 3,
@@ -395,14 +490,6 @@ mod tests {
         // Without the reset, TR would be max(5, |25-12|, |20-12|) = 13.
         let after = atr.update(mock_candle(20., 25., 20., 24., 100.));
         assert_eq!(after, Some(5.0)); // 25 - 20, treated as a first bar
-    }
-
-    /// The documented default is a 14-period Wilder's ATR.
-    #[test]
-    fn atr_default_is_wilders_window_14() {
-        let atr = StreamingAtr::default();
-        assert_eq!(atr.window_size, 14);
-        assert!(matches!(atr.smoother, AtrSmoother::Wilders(_)));
     }
 
     // ============================================================================================
@@ -517,28 +604,27 @@ mod tests {
         assert_eq!(vwap.update(mock_trade(999.0, 0.0)), Some(100.0));
     }
 
-    /// The Kahan core recovers low-order bits that naive `f64` summation drops
-    /// when a long tail of tiny terms is added to a larger running sum. (This
-    /// really belongs beside `KahanSum` in the accumulators module; included
-    /// here as it underpins VWAP precision.)
     #[test]
-    fn kahan_sum_recovers_precision_lost_by_naive_summation() {
-        use crate::math::accumulators::KahanSum;
+    fn rolling_trades_vwap_bands_for_both_deviation_kinds() {
+        let mut mad = StreamingRollingTradesVwap::new(RollingVwapConfig::new(VwapWindow(2)));
+        assert_eq!(mad.update(mock_trade(10.0, 1.0)), None); // warming up
+        let bands = mad.update(mock_trade(20.0, 3.0));
+        assert_eq!(
+            bands,
+            Some(VwapBands {
+                basis: Price(17.5),
+                deviation: PriceDelta(3.75)
+            })
+        );
+        assert_eq!(bands.map(|b| b.upper(2.0)), Some(Price(25.0)));
+        assert_eq!(bands.map(|b| b.lower(2.0)), Some(Price(10.0)));
 
-        // A leading 1.0 followed by many terms below its ULP: naive addition
-        // drops each one, Kahan accumulates them.
-        let mut values = vec![1.0];
-        values.extend(std::iter::repeat_n(1e-16, 100));
-        let truth = 100.0_f64.mul_add(1e-16, 1.0);
-
-        let kahan = values
-            .iter()
-            .fold(KahanSum::default(), |acc, &v| acc.add(v))
-            .value();
-        let naive: f64 = values.iter().sum();
-
-        assert_f64_eq!(kahan, truth); // exact
-        assert_f64_eq!(naive, 1.0); // every tiny term lost
-        assert!((kahan - truth).abs() < (naive - truth).abs());
+        let mut std = StreamingRollingTradesVwap::new(
+            RollingVwapConfig::new(VwapWindow(2)).with_deviation(DeviationKind::StdDev),
+        );
+        std.update(mock_trade(10.0, 1.0));
+        let bands = std.update(mock_trade(20.0, 3.0));
+        // A missing value becomes NaN, which fails the comparison.
+        assert_f64_eq!(bands.map_or(f64::NAN, |b| b.deviation.0), 18.75_f64.sqrt());
     }
 }

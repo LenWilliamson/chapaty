@@ -323,9 +323,11 @@ impl Countdown {
         let high = candle.high.0;
 
         let qualifies = match self.direction {
-            // Buy Countdown: close at or below the low `COUNTDOWN_LOOKBACK` bars earlier.
+            // Buy Countdown: close at or below the low `COUNTDOWN_LOOKBACK`
+            // bars earlier.
             TdDirection::BullishReversal => matches!(low_n_back, Some(l) if close <= l),
-            // Sell Countdown: close at or above the high `COUNTDOWN_LOOKBACK` bars earlier.
+            // Sell Countdown: close at or above the high `COUNTDOWN_LOOKBACK`
+            // bars earlier.
             TdDirection::BearishReversal => matches!(high_n_back, Some(h) if close >= h),
         };
 

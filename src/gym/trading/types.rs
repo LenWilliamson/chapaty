@@ -68,7 +68,8 @@ impl TradeKind {
             // No prices: trivially valid
             (_, None, None, None) => Ok(()),
 
-            // Only one provided: trivially valid (explicit Nones ensure exclusivity)
+            // Only one provided: trivially valid (explicit Nones ensure
+            // exclusivity)
             (_, None, None, Some(_)) | (_, None, Some(_), None) | (_, Some(_), None, None) => {
                 Ok(())
             }

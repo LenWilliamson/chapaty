@@ -1,5 +1,6 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc, thread::JoinHandle};
 
+use crossbeam_channel::Receiver;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
@@ -8,7 +9,7 @@ use tracing::warn;
 
 use crate::{
     data::{common::RiskMetricsConfig, episode::Episode, view::MarketView},
-    error::{ChapatyError, ChapatyResult, EnvError},
+    error::{ChapatyError, ChapatyResult, EnvError, SystemError},
     gym::{
         EnvStatus, InvalidActionPenalty, Reward, StepOutcome,
         trading::{
@@ -17,7 +18,7 @@ use crate::{
             agent::Agent,
             config::ExecutionBias,
             context::{ActionCtx, ActionSummary, UpdateCtx},
-            ledger::Ledger,
+            ledger::{JournalSoA, Ledger},
             observation::Observation,
             state::States,
         },
@@ -27,7 +28,7 @@ use crate::{
         equity_curve::EquityCurveReport,
         journal::Journal,
         leaderboard::{AgentLeaderboard, Leaderboard, LeaderboardEntry},
-        portfolio_performance::{PortfolioPerformance, PortfolioPerformanceCol},
+        portfolio_performance::PortfolioPerformanceCol,
     },
     sim::{cursor_group::CursorGroup, data::SimulationData},
 };
@@ -109,6 +110,7 @@ impl Environment {
     /// steps.
     ///
     /// # Errors
+    ///
     /// Returns an error if serialization or storage I/O fails.
     pub async fn cache(&self, cfg: &IoConfig<'_>) -> ChapatyResult<()> {
         Arc::clone(&self.sim_data).write(cfg).await
@@ -117,6 +119,7 @@ impl Environment {
     /// Runs one full episode for `agent` and returns its trading journal.
     ///
     /// # Errors
+    ///
     /// Returns an error if reset, stepping, or report materialization fails.
     pub fn evaluate_agent<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<Journal> {
         self.reset()?;
@@ -156,6 +159,7 @@ impl Environment {
     /// 2 weeks instead of 2 hours.
     ///
     /// # Errors
+    ///
     /// Returns an error when any worker fails to evaluate, aggregate, or
     /// convert intermediate results into the final leaderboard.
     pub fn evaluate_agents<T>(
@@ -164,30 +168,42 @@ impl Environment {
         top_k: usize,
     ) -> ChapatyResult<Leaderboard>
     where
-        T: Agent + Send + Serialize,
+        T: Agent + Send + Serialize + 'static,
     {
         self.reset()?;
         let pb = progress_bar(agents.len() as u64)?;
         pb.set_message("Running evaluation...");
 
-        let agent_leaderboard = agents
+        let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(1024);
+        let join_handles = spawn_scorers(top_k, self.risk_metrics_cfg, rx)?;
+
+        agents
             .into_par_iter()
             .progress_with(pb.clone())
-            .try_fold(
-                || AgentLeaderboard::new(top_k),
-                |mut board, (uid, mut agent)| {
-                    let entries = self.worker(&mut agent, uid as u64)?;
-                    board.update(&entries, agent);
-                    Ok(board)
-                },
-            )
-            .try_reduce(
-                || AgentLeaderboard::new(top_k),
-                |a_board, b_board| Ok::<_, ChapatyError>(a_board.merge(b_board)),
-            )?;
+            .try_for_each(|(uid, mut agent)| -> ChapatyResult<()> {
+                let journal_soa = self.worker(&mut agent)?;
+                tx.send((uid as u64, agent, journal_soa)).map_err(|e| {
+                    SystemError::InvariantViolation(format!(
+                        "Evaluation consumers stopped before all agents were scored: {e}"
+                    ))
+                    .into()
+                })
+            })?;
+        drop(tx);
 
-        pb.finish_with_message("Evaluation complete.");
-        agent_leaderboard.try_into()
+        pb.finish_with_message("Evaluation complete. Finalizing leaderboard...");
+
+        join_handles
+            .into_iter()
+            .try_fold(AgentLeaderboard::new(top_k), |acc, handle| {
+                let board = handle.join().map_err(|_| {
+                    SystemError::Generic(
+                        "Worker thread paniced while processing grid search results.".to_string(),
+                    )
+                })??;
+                Ok::<_, ChapatyError>(acc.merge(board))
+            })?
+            .try_into()
     }
 
     #[must_use]
@@ -198,6 +214,7 @@ impl Environment {
     /// Returns cumulative `PnL` for the given episode.
     ///
     /// # Errors
+    ///
     /// Returns an error if the episode does not exist in the ledger.
     pub fn episode_pnl(&self, ep: &Episode) -> ChapatyResult<f64> {
         self.ledger.episode_pnl(ep)
@@ -211,6 +228,7 @@ impl Environment {
     /// Materializes the journal report for all completed and active trades.
     ///
     /// # Errors
+    ///
     /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
         let df = self.ledger.journal_df()?;
@@ -220,6 +238,7 @@ impl Environment {
     /// Materializes the equity-curve report from the ledger.
     ///
     /// # Errors
+    ///
     /// Returns an error if ledger extraction or report construction fails.
     pub fn equity_curve_report(&self) -> ChapatyResult<EquityCurveReport> {
         let df = self.ledger.equity_curve_df()?;
@@ -308,10 +327,6 @@ impl Env for Environment {
 }
 
 impl Environment {
-    fn portfolio_performance(&self) -> ChapatyResult<PortfolioPerformance> {
-        self.journal()?.portfolio_performance()
-    }
-
     fn restart(&mut self) {
         self.cursor.reset(&self.sim_data);
         self.ledger.clear();
@@ -342,7 +357,7 @@ impl Environment {
     }
 
     fn eval<T: Agent>(&mut self, agent: &mut T) -> ChapatyResult<()> {
-        while self.env_status != EnvStatus::Done {
+        while !self.env_status.is_done() {
             self.run_episode(agent)?;
         }
         Ok(())
@@ -360,31 +375,13 @@ impl Environment {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, agent), fields(agent_uid = %agent_uid))]
-    fn worker<T>(&self, agent: &mut T, agent_uid: u64) -> ChapatyResult<Vec<LeaderboardEntry>>
+    fn worker<T>(&self, agent: &mut T) -> ChapatyResult<JournalSoA>
     where
         T: Agent,
     {
         let mut thread_env = self.clone();
         thread_env.eval(agent)?;
-
-        let pp = thread_env.portfolio_performance()?;
-
-        let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
-
-        for metric in PortfolioPerformanceCol::iter() {
-            if let Some(value) = pp.first(metric) {
-                entries.push(LeaderboardEntry {
-                    agent_uid,
-                    metric,
-                    reward: metric.to_heap_score(value).into(),
-                });
-            } else {
-                warn!(?metric, "Metric produced null value");
-            }
-        }
-
-        Ok(entries)
+        thread_env.ledger.journal_soa()
     }
 
     fn states(&self, ep: &Episode) -> ChapatyResult<&States> {
@@ -447,6 +444,7 @@ impl Environment {
 // ================================================================================================
 // Building
 // ================================================================================================
+
 impl Environment {
     pub(super) fn new(
         cursor: CursorGroup,
@@ -471,6 +469,7 @@ impl Environment {
 // ================================================================================================
 // Helper Functions
 // ================================================================================================
+
 fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
     let bar = ProgressBar::new(capacity);
     bar.set_style(
@@ -479,4 +478,67 @@ fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
             .map_err(EnvError::ProgressBar)?
             .progress_chars("#>-"));
     Ok(bar)
+}
+
+/// Result produced by a single scorer thread.
+type ScorerResult<T> = Result<AgentLeaderboard<T>, ChapatyError>;
+
+/// Handle to a running scorer thread.
+type ScorerHandle<T> = JoinHandle<ScorerResult<T>>;
+
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "rx is taken by value on purpose: the original receiver is dropped when this function returns. Only the worker clones keep the channel alive. If all workers finish or die, `tx.send` fails instead of blocking forever on the bounded channel."
+)]
+#[tracing::instrument(skip_all)]
+fn spawn_scorers<T>(
+    top_k: usize,
+    risk_cfg: RiskMetricsConfig,
+    rx: Receiver<(u64, T, JournalSoA)>,
+) -> ChapatyResult<Vec<ScorerHandle<T>>>
+where
+    T: Send + 'static,
+{
+    let num_workers = std::thread::available_parallelism()
+        .map_err(|e| {
+            SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
+        })?
+        .get();
+
+    let mut join_handles = Vec::with_capacity(num_workers);
+    for i in 0..num_workers {
+        let rx_i = rx.clone();
+        let handler = std::thread::Builder::new()
+            .name(format!("scorer-{i}"))
+            .spawn(move || {
+                let mut board = AgentLeaderboard::new(top_k);
+
+                while let Ok((agent_uid, agent, journal_soa)) = rx_i.recv() {
+                    let df = journal_soa.try_into()?;
+                    let journal = Journal::new(&df, risk_cfg)?;
+                    let pp = journal.portfolio_performance()?;
+
+                    let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
+
+                    for metric in PortfolioPerformanceCol::iter() {
+                        if let Some(value) = pp.first(metric) {
+                            entries.push(LeaderboardEntry {
+                                agent_uid,
+                                metric,
+                                reward: metric.to_heap_score(value).into(),
+                            });
+                        } else {
+                            warn!(?agent_uid, ?metric, "Metric produced null value");
+                        }
+                    }
+
+                    board.update(&entries, agent);
+                }
+
+                Ok::<_, ChapatyError>(board)
+            })
+            .map_err(|e| SystemError::Generic(format!("Failed to spawn scorer thread {i}: {e}")))?;
+        join_handles.push(handler);
+    }
+    Ok(join_handles)
 }

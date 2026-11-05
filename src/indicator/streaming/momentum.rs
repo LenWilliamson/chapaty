@@ -41,8 +41,8 @@ impl HistoricalBuffer {
         // update loop.
         let capacity = match window {
             LookbackWindow::Bars(n) => n + 2,
-            // Convert time window to capacity in minutes, rounded up to nearest minute.
-            // Worst case for minute based OHLCV data.
+            // Convert time window to capacity in minutes, rounded up to nearest
+            // minute. Worst case for minute based OHLCV data.
             LookbackWindow::Time(d) => {
                 usize::try_from((d.num_seconds() / 60) + 1 + 2).map_err(DataError::from)?
             }
