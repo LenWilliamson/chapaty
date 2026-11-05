@@ -3,8 +3,8 @@ use std::sync::Arc;
 use polars::{
     lazy::dsl::max_horizontal,
     prelude::{
-        DataType, EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow,
-        Schema, SortMultipleOptions, col, lit, when,
+        EWMOptions, Expr, JoinArgs, JoinType, LazyFrame, NULL, RollingOptionsFixedWindow, Schema,
+        SortMultipleOptions, col, lit, when,
     },
     series::ops::NullBehavior,
 };
@@ -14,7 +14,10 @@ use crate::{
     data::domain::{AggregatedPrice, SessionWindow},
     error::{ChapatyResult, DataError},
     indicator::{
-        batch::{BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err},
+        batch::{
+            BatchCompute, IndicatorExprExt, LazyFrameIndicatorExt, convert_err,
+            point_in_time_micros,
+        },
         config::{
             AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, EwmSeed, LookbackWindow, RmaConfig,
             RmaWindow, RsiConfig, SmaWindow,
@@ -292,18 +295,12 @@ fn pre_compute_rate_of_change(window: LookbackWindow, lf: LazyFrame) -> ChapatyR
             })?;
 
             // 1. Calculate the target timestamp we want to find in the past
-            let ts_micros = col(CanonicalCol::PointInTime)
-                .ts_as_microseconds()
-                .cast(DataType::Int64);
-
-            let lookback_target = (ts_micros - lit(duration_us)).alias(TMP_LOOKBACK_TARGET_TS);
+            let lookback_target =
+                (point_in_time_micros() - lit(duration_us)).alias(TMP_LOOKBACK_TARGET_TS);
 
             // 2. Build the historical lookup table
             let history_lf = lf.clone().select([
-                col(CanonicalCol::PointInTime)
-                    .ts_as_microseconds()
-                    .cast(DataType::Int64)
-                    .alias(TMP_HISTORY_TS),
+                point_in_time_micros().alias(TMP_HISTORY_TS),
                 col(CanonicalCol::PointInTime).alias(TMP_HISTORY_WINDOW_START),
                 col(CanonicalCol::Close).alias(TMP_HISTORY_CLOSE),
             ]);

@@ -9,7 +9,7 @@ use crate::{
     },
     indicator::{
         config::{
-            AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, EwmSeed, RmaConfig, RmaWindow,
+            AtrConfig, AtrSmoothingType, EmaConfig, EmaWindow, RmaConfig, RmaWindow,
             RollingVwapConfig, SmaWindow,
         },
         streaming::{
@@ -60,11 +60,10 @@ pub struct StreamingAtr {
 }
 
 impl Default for StreamingAtr {
+    /// Creates a streaming ATR over 14 bars with the default smoothing of
+    /// [`AtrConfig::new`].
     fn default() -> Self {
-        Self::new(AtrConfig {
-            window: 14,
-            smoothing: AtrSmoothingType::Rma(EwmSeed::Sma),
-        })
+        Self::new(AtrConfig::new(14))
     }
 }
 
@@ -377,7 +376,7 @@ mod tests {
     use super::*;
     use crate::{
         data::domain::Quantity,
-        indicator::config::{DeviationKind, VwapWindow},
+        indicator::config::{DeviationKind, EwmSeed, VwapWindow},
     };
 
     fn mock_candle(open: f64, high: f64, low: f64, close: f64, vol: f64) -> Ohlcv {

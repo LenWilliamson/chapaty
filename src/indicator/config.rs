@@ -86,6 +86,7 @@ impl AtrConfig {
     /// * `window` - The window size for the ATR calculation.
     ///
     /// # Panics
+    ///
     /// Panics if `window == 0`.
     #[must_use]
     pub fn new(window: u16) -> Self {

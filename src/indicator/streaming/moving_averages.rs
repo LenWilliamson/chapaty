@@ -88,9 +88,19 @@ pub struct StreamingSma {
 }
 
 impl StreamingSma {
+    /// Creates a streaming SMA over the given window size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `window_size` is zero.
     #[must_use]
     pub fn new(window_size: SmaWindow) -> Self {
-        let size = window_size.0 as usize;
+        assert!(
+            window_size.0 > 0,
+            "SMA window size must be greater than zero"
+        );
+
+        let size = usize::from(window_size.0);
         Self {
             window_size: size,
             buffer: VecDeque::with_capacity(size + 1),
