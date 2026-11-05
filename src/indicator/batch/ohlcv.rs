@@ -335,7 +335,7 @@ mod tests {
         clippy::expect_used,
         clippy::print_stdout,
         clippy::similar_names,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
+        reason = "tests assert against known-valid fixtures. We use `unwrap()` and `expect()` to surface failures as panics to fail the test."
     )]
     use std::path::PathBuf;
 

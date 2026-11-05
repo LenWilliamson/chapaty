@@ -3,27 +3,13 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::indicator::{
-    config::{EmaWindow, RmaWindow, SmaWindow},
+    config::{EmaWindow, EwmSeed, RmaWindow, SmaWindow},
     streaming::StreamingIndicator,
 };
 
 // ================================================================================================
 // SHARED: Exponential Weighted Mean (Base Logic)
 // ================================================================================================
-
-/// How an exponentially weighted mean computes its first value.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
-)]
-pub enum EwmSeed {
-    /// The first output is the plain average of the first `window` inputs
-    /// (Wilder's original definition).
-    Sma,
-    /// Start from the first input. The first output appears after `window`
-    /// inputs.
-    #[default]
-    FirstValue,
-}
 
 /// Helper for EMA-like calculations (Standard EMA and Wilder's Smoothing).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

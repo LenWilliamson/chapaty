@@ -1,8 +1,47 @@
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 
-use crate::indicator::streaming::moving_averages::EwmSeed;
 pub use crate::math::deviation::DeviationKind;
+
+/// How an exponentially weighted mean computes its first value.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+pub enum EwmSeed {
+    /// The first output is the plain average of the first `window` inputs
+    /// (Wilder's original definition).
+    Sma,
+    /// Start from the first input. The first output appears after `window`
+    /// inputs.
+    #[default]
+    FirstValue,
+}
+
+/// Value of the RSI when the window contains no movement at all, i.e. both
+/// the average gain and the average loss are zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum RsiFlat {
+    /// Report the neutral value `50.0`.
+    #[default]
+    Neutral,
+    /// Report `0.0`.
+    Zero,
+    /// Report `100.0`.
+    Max,
+    /// Report no value (`None`) while the window is flat.
+    Undefined,
+}
+
+impl RsiFlat {
+    pub(super) const fn value(self) -> Option<f64> {
+        match self {
+            Self::Neutral => Some(50.0),
+            Self::Zero => Some(0.0),
+            Self::Max => Some(100.0),
+            Self::Undefined => None,
+        }
+    }
+}
 
 /// Defines the smoothing algorithm used to average the True Range.
 /// Traders often experiment with different smoothing types depending on their

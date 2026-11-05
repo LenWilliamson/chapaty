@@ -3,43 +3,14 @@ use serde::{Deserialize, Serialize};
 use crate::{
     data::{domain::Price, event::Ohlcv},
     indicator::{
-        config::{RmaWindow, RsiWindow},
-        streaming::{
-            StreamingIndicator,
-            moving_averages::{EwmSeed, StreamingRma},
-        },
+        config::{EwmSeed, RmaWindow, RsiFlat, RsiWindow},
+        streaming::{StreamingIndicator, moving_averages::StreamingRma},
     },
 };
 
 // ================================================================================================
 // RSI: Relative Strength Index
 // ================================================================================================
-
-/// Value of the RSI when the window contains no movement at all, i.e. both
-/// the average gain and the average loss are zero.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub enum RsiFlat {
-    /// Report the neutral value `50.0`.
-    #[default]
-    Neutral,
-    /// Report `0.0`.
-    Zero,
-    /// Report `100.0`.
-    Max,
-    /// Report no value (`None`) while the window is flat.
-    Undefined,
-}
-
-impl RsiFlat {
-    const fn value(self) -> Option<f64> {
-        match self {
-            Self::Neutral => Some(50.0),
-            Self::Zero => Some(0.0),
-            Self::Max => Some(100.0),
-            Self::Undefined => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamingRsi {

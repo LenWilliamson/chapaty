@@ -8,10 +8,12 @@ use crate::{
         event::{Ohlcv, TradeEvent},
     },
     indicator::{
-        config::{AtrConfig, AtrSmoothingType, EmaWindow, RmaWindow, SmaWindow, VwapWindow},
+        config::{
+            AtrConfig, AtrSmoothingType, EmaWindow, EwmSeed, RmaWindow, SmaWindow, VwapWindow,
+        },
         streaming::{
             StreamingIndicator,
-            moving_averages::{EwmSeed, StreamingEma, StreamingRma, StreamingSma},
+            moving_averages::{StreamingEma, StreamingRma, StreamingSma},
         },
     },
     math::{
