@@ -2,6 +2,7 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::indicator::streaming::moving_averages::EwmSeed;
+pub use crate::math::deviation::DeviationKind;
 
 /// Defines the smoothing algorithm used to average the True Range.
 /// Traders often experiment with different smoothing types depending on their

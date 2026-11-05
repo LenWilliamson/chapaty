@@ -604,15 +604,21 @@ mod tests {
     fn rolling_trades_vwap_bands_for_both_deviation_kinds() {
         let mut mad = StreamingRollingTradesVwap::new(VwapWindow(2), DeviationKind::MeanAbsolute);
         assert_eq!(mad.update(mock_trade(10.0, 1.0)), None); // warming up
-        let bands = mad.update(mock_trade(20.0, 3.0)).unwrap();
-        assert_eq!(bands.basis, Price(17.5));
-        assert_eq!(bands.deviation, PriceDelta(3.75));
-        assert_eq!(bands.upper(2.0), Price(25.0));
-        assert_eq!(bands.lower(2.0), Price(10.0));
+        let bands = mad.update(mock_trade(20.0, 3.0));
+        assert_eq!(
+            bands,
+            Some(VwapBands {
+                basis: Price(17.5),
+                deviation: PriceDelta(3.75)
+            })
+        );
+        assert_eq!(bands.map(|b| b.upper(2.0)), Some(Price(25.0)));
+        assert_eq!(bands.map(|b| b.lower(2.0)), Some(Price(10.0)));
 
         let mut std = StreamingRollingTradesVwap::new(VwapWindow(2), DeviationKind::StdDev);
         std.update(mock_trade(10.0, 1.0));
-        let bands = std.update(mock_trade(20.0, 3.0)).unwrap();
-        assert_f64_eq!(bands.deviation.0, 18.75_f64.sqrt());
+        let bands = std.update(mock_trade(20.0, 3.0));
+        // A missing value becomes NaN, which fails the comparison.
+        assert_f64_eq!(bands.map_or(f64::NAN, |b| b.deviation.0), 18.75_f64.sqrt());
     }
 }

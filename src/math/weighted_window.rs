@@ -32,7 +32,7 @@ impl WeightedMean {
 
     /// Total accepted weight so far.
     #[must_use]
-    pub fn total_weight(self) -> f64 {
+    pub const fn total_weight(self) -> f64 {
         self.sum_weight.value()
     }
 
@@ -172,13 +172,21 @@ mod tests {
             window.push(20.0, 3.0);
         }
 
-        let mad = mad.stats().unwrap();
-        assert_eq!(mad.mean, 17.5);
-        assert_eq!(mad.deviation, 3.75);
+        assert_eq!(
+            mad.stats(),
+            Some(WeightedStats {
+                mean: 17.5,
+                deviation: 3.75
+            })
+        );
 
-        let std = std.stats().unwrap();
-        assert_eq!(std.mean, 17.5);
-        assert_f64_eq!(std.deviation, 18.75_f64.sqrt());
+        let std = std.stats();
+        assert_eq!(std.map(|stats| stats.mean), Some(17.5));
+        // A missing value becomes NaN, which fails the comparison.
+        assert_f64_eq!(
+            std.map_or(f64::NAN, |stats| stats.deviation),
+            18.75_f64.sqrt()
+        );
     }
 
     #[test]
@@ -188,9 +196,13 @@ mod tests {
         window.push(f64::NAN, 5.0); // ignored, but fills a slot
         window.push(20.0, 3.0);
 
-        let stats = window.stats().unwrap();
-        assert_eq!(stats.mean, 17.5);
-        assert_eq!(stats.deviation, 3.75);
+        assert_eq!(
+            window.stats(),
+            Some(WeightedStats {
+                mean: 17.5,
+                deviation: 3.75
+            })
+        );
     }
 
     #[test]
