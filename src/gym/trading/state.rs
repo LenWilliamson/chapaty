@@ -689,8 +689,7 @@ impl States {
     pub fn get_live_trades(&self, market: &MarketId) -> &[State] {
         self.live
             .get(market)
-            .map(std::vec::Vec::as_slice)
-            .unwrap_or_default()
+            .map_or_default(std::vec::Vec::as_slice)
     }
 
     /// Retrieves a reference to a LIVE trade.
