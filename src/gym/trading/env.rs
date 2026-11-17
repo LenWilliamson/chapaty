@@ -127,13 +127,13 @@ impl Environment {
         self.journal()
     }
 
-    /// Evaluates a stream of agents in parallel, returning a leaderboard of the
+    /// Evaluates a batch of agents in parallel, returning a leaderboard of the
     /// top performers.
     ///
     /// This method uses `rayon` to distribute agent evaluation across all
     /// available CPU cores. It maintains a min-heap of the top `top_k`
     /// results to minimize memory usage, allowing for the evaluation of
-    /// massive datasets (e.g., 1M+ agents) with constant RAM overhead.
+    /// large batches (e.g., 1M+ agents) with constant RAM overhead.
     ///
     /// # Arguments
     ///
@@ -144,7 +144,7 @@ impl Environment {
     ///
     /// # Runtime Estimation
     ///
-    /// Before launching a massive grid search (e.g., 1M+ agents), it is
+    /// Before launching a grid search (e.g., 1M+ agents), it is
     /// recommended to benchmark a single representative agent first.
     ///
     /// You can use [`Environment::evaluate_agent`] to run one agent
