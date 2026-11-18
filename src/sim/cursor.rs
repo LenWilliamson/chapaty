@@ -221,7 +221,7 @@ where
                 events[range.end..]
                     .iter()
                     .find(|e| e.opened_at() >= ts)
-                    .map(super::super::data::event::MarketEvent::opened_at)
+                    .map(MarketEvent::opened_at)
             })
             .min()
     }
@@ -240,7 +240,7 @@ where
                 events[range.end..]
                     .iter()
                     .find(|e| e.point_in_time() >= ts)
-                    .map(super::super::data::event::MarketEvent::point_in_time)
+                    .map(MarketEvent::point_in_time)
             })
             .min()
     }
@@ -253,7 +253,7 @@ where
                 debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
                 events
                     .get(range.end)
-                    .map(super::super::data::event::MarketEvent::point_in_time)
+                    .map(MarketEvent::point_in_time)
             })
             .min()
     }
