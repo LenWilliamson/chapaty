@@ -251,9 +251,7 @@ where
             .zip(data.iter())
             .filter_map(|((cursor_id, range), (data_id, events))| {
                 debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
-                events
-                    .get(range.end)
-                    .map(MarketEvent::point_in_time)
+                events.get(range.end).map(MarketEvent::point_in_time)
             })
             .min()
     }
