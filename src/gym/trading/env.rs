@@ -286,7 +286,7 @@ impl Env for Environment {
         self.env_status = EnvStatus::Running;
 
         let obs = Observation {
-            market_view: MarketView::new(&self.sim_data, &self.cursor)?,
+            market_view: MarketView::new(&self.sim_data, &self.cursor),
             states: self.states(&self.ep)?,
         };
 
@@ -299,7 +299,7 @@ impl Env for Environment {
         let episode = self.episode();
 
         // 1. Snapshot S(t)
-        let market_before = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_before = MarketView::new(&self.sim_data, &self.cursor);
 
         // 2. Apply Actions A(t) -> S'(t)
         // (Validation & Execution at current prices)
@@ -316,7 +316,7 @@ impl Env for Environment {
         self.update_env_status(outcome);
 
         // 5. Observe S(t+1)
-        let market_final = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_final = MarketView::new(&self.sim_data, &self.cursor);
         let obs = Observation {
             market_view: market_final,
             states: self.states(&episode)?,
@@ -339,7 +339,7 @@ impl Environment {
         summary: ActionSummary,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
         self.advance_market();
-        let market_after = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_after = MarketView::new(&self.sim_data, &self.cursor);
 
         let update_ctx = UpdateCtx {
             market: &market_after,

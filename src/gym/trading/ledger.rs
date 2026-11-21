@@ -869,7 +869,7 @@ mod test {
         }
 
         fn view(&self) -> MarketView<'_> {
-            MarketView::new(&self.sim_data, &self.cursor).unwrap()
+            MarketView::new(&self.sim_data, &self.cursor)
         }
     }
 

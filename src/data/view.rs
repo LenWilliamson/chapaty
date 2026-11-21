@@ -1,5 +1,3 @@
-use std::{fmt::Debug, sync::Arc};
-
 use chrono::{DateTime, Utc};
 
 use crate::{
@@ -10,18 +8,17 @@ use crate::{
             PriceReachable, StreamId, SymbolProvider, TpoId, TradesId, VolumeProfileId,
         },
     },
-    error::{ChapatyError, ChapatyResult, DataError, SystemError},
+    error::{ChapatyError, ChapatyResult, DataError},
     gym::trading::types::TradeKind,
     indicator::batch::event::{
         AtrId, EmaId, OhlcvSessionId, OhlcvVwapId, RocId, RsiId, SmaId, TradesSessionId,
         TradesVwapId,
     },
     sim::{
-        cursor::{Cursor, StreamEntity},
+        cursor::Cursor,
         cursor_group::CursorGroup,
         data::{EventMap, SimulationData},
     },
-    sorted_vec_map::SortedVecMap,
 };
 
 // ================================================================================================
@@ -63,7 +60,7 @@ pub trait StreamView<'env> {
         &self,
         id: &Self::Id,
         since_ts: Option<DateTime<Utc>>,
-    ) -> Option<impl Iterator<Item = &'env Self::Event>> {
+    ) -> Option<impl Iterator<Item = &'env Self::Event> + use<'env, Self>> {
         let since = since_ts?;
         self.rev_iter(id)
             .map(|iter| iter.take_while(move |e| e.point_in_time() > since))
@@ -91,9 +88,10 @@ pub trait ClosePriceView {
 }
 
 /// A strictly typed view into a slice of simulation data.
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy)]
 pub struct View<'env, S: StreamId> {
-    data: SortedVecMap<S, &'env [S::Event]>,
+    data: &'env EventMap<S>,
+    cursor: &'env Cursor<S>,
 }
 
 pub type OhlcvView<'env> = View<'env, OhlcvId>;
@@ -111,12 +109,33 @@ pub type OhlcvSessionView<'env> = View<'env, OhlcvSessionId>;
 pub type AtrView<'env> = View<'env, AtrId>;
 pub type RocView<'env> = View<'env, RocId>;
 
+impl<'env, S: StreamId> View<'env, S> {
+    /// Each stream with the events visible at the current step.
+    ///
+    /// OPTIMIZATION: Lockstep Iteration (Zip)
+    /// We avoid looking up keys in `data` by relying on the construction
+    /// invariant that `Cursor` and `EventMap` have identical keys in identical
+    /// order.
+    fn visible_streams(&self) -> impl Iterator<Item = (&'env S, &'env [S::Event])> {
+        self.cursor
+            .0
+            .iter()
+            .zip(self.data.iter())
+            .map(|((id, range), (data_id, events))| {
+                debug_assert_eq!(id, data_id, "Cursor desynchronized from Storage!");
+                (id, &events[..range.end])
+            })
+    }
+}
+
 impl<'env, S: StreamId + 'env> StreamView<'env> for View<'env, S> {
     type Id = S;
     type Event = S::Event;
 
     fn get_slice(&self, id: &S) -> Option<&'env [S::Event]> {
-        self.data.get(id).copied()
+        self.visible_streams()
+            .find(|(stream_id, _)| *stream_id == id)
+            .map(|(_, events)| events)
     }
 }
 
@@ -136,8 +155,7 @@ where
             return false;
         };
         // Linear scan of all streams in this view is cheap (M < 100).
-        self.data
-            .iter()
+        self.visible_streams()
             .filter(|(id, _)| id.symbol() == target_symbol)
             .any(|(_, events)| {
                 // REVERSE ITERATION (Optimization):
@@ -159,8 +177,7 @@ where
     S::Event: ClosePriceProvider,
 {
     fn latest_price_for_symbol(&self, target_symbol: Symbol) -> Option<(DateTime<Utc>, Price)> {
-        self.data
-            .iter()
+        self.visible_streams()
             .filter(|(id, _)| id.symbol() == target_symbol)
             .filter_map(|(_, events)| events.last())
             .map(|e| (e.close_timestamp(), e.close_price()))
@@ -168,91 +185,116 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy)]
 pub struct MarketView<'env> {
-    ohlcv: OhlcvView<'env>,
-    trades: TradeView<'env>,
-    economic_calendar: EconomicCalendarView<'env>,
-    volume_profile: VolumeProfileView<'env>,
-    tpo: TpoView<'env>,
-    ema: EmaView<'env>,
-    sma: SmaView<'env>,
-    rsi: RsiView<'env>,
-    trades_vwap: TradesVwapView<'env>,
-    ohlcv_vwap: OhlcvVwapView<'env>,
-    trades_session: TradesSessionView<'env>,
-    ohlcv_session: OhlcvSessionView<'env>,
-    atr: AtrView<'env>,
-    roc: RocView<'env>,
-
-    // Tradable Markets
-    market_ids: Arc<[MarketId]>,
-
-    // Time State
-    previous_ts: Option<DateTime<Utc>>,
-    current_ts: DateTime<Utc>,
+    data: &'env SimulationData,
+    cursor: &'env CursorGroup,
 }
 
 impl<'env> MarketView<'env> {
     #[must_use]
-    pub const fn ohlcv(&self) -> &OhlcvView<'env> {
-        &self.ohlcv
+    pub const fn ohlcv(&self) -> OhlcvView<'env> {
+        View {
+            data: self.data.ohlcv(),
+            cursor: self.cursor.ohlcv(),
+        }
     }
     #[must_use]
-    pub const fn trades(&self) -> &TradeView<'env> {
-        &self.trades
+    pub const fn trades(&self) -> TradeView<'env> {
+        View {
+            data: self.data.trades(),
+            cursor: self.cursor.trades(),
+        }
     }
     #[must_use]
-    pub const fn economic_news(&self) -> &EconomicCalendarView<'env> {
-        &self.economic_calendar
+    pub const fn economic_calendar(&self) -> EconomicCalendarView<'env> {
+        View {
+            data: self.data.economic_cal(),
+            cursor: self.cursor.economic_cal(),
+        }
     }
     #[must_use]
-    pub const fn volume_profile(&self) -> &VolumeProfileView<'env> {
-        &self.volume_profile
+    pub const fn volume_profile(&self) -> VolumeProfileView<'env> {
+        View {
+            data: self.data.volume_profile(),
+            cursor: self.cursor.volume_profile(),
+        }
+    }
+    /// Time Price Opportunity (TPO)
+    #[must_use]
+    pub const fn tpo(&self) -> TpoView<'env> {
+        View {
+            data: self.data.tpo(),
+            cursor: self.cursor.tpo(),
+        }
     }
     #[must_use]
-    pub const fn tpo(&self) -> &TpoView<'env> {
-        &self.tpo
+    pub const fn ema(&self) -> EmaView<'env> {
+        View {
+            data: self.data.ema(),
+            cursor: self.cursor.ema(),
+        }
     }
     #[must_use]
-    pub const fn ema(&self) -> &EmaView<'env> {
-        &self.ema
+    pub const fn sma(&self) -> SmaView<'env> {
+        View {
+            data: self.data.sma(),
+            cursor: self.cursor.sma(),
+        }
     }
     #[must_use]
-    pub const fn sma(&self) -> &SmaView<'env> {
-        &self.sma
+    pub const fn rsi(&self) -> RsiView<'env> {
+        View {
+            data: self.data.rsi(),
+            cursor: self.cursor.rsi(),
+        }
     }
     #[must_use]
-    pub const fn rsi(&self) -> &RsiView<'env> {
-        &self.rsi
+    pub const fn trades_vwap(&self) -> TradesVwapView<'env> {
+        View {
+            data: self.data.trades_vwap(),
+            cursor: self.cursor.trades_vwap(),
+        }
     }
     #[must_use]
-    pub const fn trades_vwap(&self) -> &TradesVwapView<'env> {
-        &self.trades_vwap
+    pub const fn ohlcv_vwap(&self) -> OhlcvVwapView<'env> {
+        View {
+            data: self.data.ohlcv_vwap(),
+            cursor: self.cursor.ohlcv_vwap(),
+        }
     }
     #[must_use]
-    pub const fn ohlcv_vwap(&self) -> &OhlcvVwapView<'env> {
-        &self.ohlcv_vwap
+    pub const fn trades_session(&self) -> TradesSessionView<'env> {
+        View {
+            data: self.data.trades_session(),
+            cursor: self.cursor.trades_session(),
+        }
     }
     #[must_use]
-    pub const fn trades_session(&self) -> &TradesSessionView<'env> {
-        &self.trades_session
+    pub const fn ohlcv_session(&self) -> OhlcvSessionView<'env> {
+        View {
+            data: self.data.ohlcv_session(),
+            cursor: self.cursor.ohlcv_session(),
+        }
     }
     #[must_use]
-    pub const fn ohlcv_session(&self) -> &OhlcvSessionView<'env> {
-        &self.ohlcv_session
+    pub const fn atr(&self) -> AtrView<'env> {
+        View {
+            data: self.data.atr(),
+            cursor: self.cursor.atr(),
+        }
     }
+    /// Rate of Change (ROC)
     #[must_use]
-    pub const fn atr(&self) -> &AtrView<'env> {
-        &self.atr
-    }
-    #[must_use]
-    pub const fn roc(&self) -> &RocView<'env> {
-        &self.roc
+    pub const fn roc(&self) -> RocView<'env> {
+        View {
+            data: self.data.roc(),
+            cursor: self.cursor.roc(),
+        }
     }
     #[must_use]
     pub const fn current_timestamp(&self) -> DateTime<Utc> {
-        self.current_ts
+        self.cursor.current_ts()
     }
     /// Returns the timestamp of the previous step, or `None` on the first step
     /// of an episode where no previous step exists.
@@ -265,18 +307,18 @@ impl<'env> MarketView<'env> {
     /// whole history as if it had just arrived.
     #[must_use]
     pub const fn previous_timestamp(&self) -> Option<DateTime<Utc>> {
-        self.previous_ts
+        self.cursor.previous_ts()
     }
     #[must_use]
-    pub fn market_ids(&self) -> Arc<[MarketId]> {
-        Arc::clone(&self.market_ids)
+    pub fn market_ids(&self) -> &'env [MarketId] {
+        self.data.market_ids()
     }
 
     /// Finds the candle active at the specific timestamp (Search: Newest to
     /// Oldest).
     #[must_use]
     pub fn find_candle(&self, id: &OhlcvId, ts: DateTime<Utc>) -> Option<Ohlcv> {
-        self.ohlcv
+        self.ohlcv()
             .rev_iter(id)?
             .find(|e| e.open_timestamp <= ts && ts < e.close_timestamp)
             .copied()
@@ -289,9 +331,18 @@ impl<'env> MarketView<'env> {
     /// is empty and this returns `false`.
     #[must_use]
     pub fn reached_price(&self, price: Price, target_symbol: Symbol, direction: TradeKind) -> bool {
-        self.all_price_checkable_views()
-            .into_iter()
-            .any(|view| view.reached_price_since(target_symbol, price, direction, self.previous_ts))
+        let price_checkable_views: [&dyn PriceCheckableView; 7] = [
+            &self.ohlcv(),
+            &self.trades(),
+            &self.ema(),
+            &self.sma(),
+            &self.rsi(),
+            &self.trades_vwap(),
+            &self.ohlcv_vwap(),
+        ];
+        price_checkable_views.into_iter().any(|view| {
+            view.reached_price_since(target_symbol, price, direction, self.previous_timestamp())
+        })
     }
 
     /// Resolves the most recent, non-leaky close price.
@@ -301,8 +352,8 @@ impl<'env> MarketView<'env> {
     /// Returns an error when no close-price-capable stream has data for
     /// `target_symbol` at or before the current cursor timestamp.
     pub fn try_resolved_close_price(&self, target_symbol: Symbol) -> ChapatyResult<Price> {
-        let best_price = self
-            .close_price_views()
+        let close_price_views: [&dyn ClosePriceView; 2] = [&self.ohlcv(), &self.trades()];
+        let best_price = close_price_views
             .into_iter()
             .filter_map(|view| view.latest_price_for_symbol(target_symbol))
             .max_by_key(|(ts, _)| *ts)
@@ -317,90 +368,12 @@ impl<'env> MarketView<'env> {
 }
 
 impl<'env> MarketView<'env> {
-    pub(crate) fn new(sim_data: &'env SimulationData, cursor: &CursorGroup) -> ChapatyResult<Self> {
-        Ok(Self {
-            ohlcv: slice_map(sim_data.ohlcv(), cursor.ohlcv())?,
-            trades: slice_map(sim_data.trade(), cursor.trade())?,
-            economic_calendar: slice_map(sim_data.economic_cal(), cursor.economic_cal())?,
-            volume_profile: slice_map(sim_data.volume_profile(), cursor.vp())?,
-            tpo: slice_map(sim_data.tpo(), cursor.tpo())?,
-            ema: slice_map(sim_data.ema(), cursor.ema())?,
-            sma: slice_map(sim_data.sma(), cursor.sma())?,
-            rsi: slice_map(sim_data.rsi(), cursor.rsi())?,
-            trades_vwap: slice_map(sim_data.trades_vwap(), cursor.trades_vwap())?,
-            ohlcv_vwap: slice_map(sim_data.ohlcv_vwap(), cursor.ohlcv_vwap())?,
-            trades_session: slice_map(sim_data.trades_session(), cursor.trades_session())?,
-            ohlcv_session: slice_map(sim_data.ohlcv_session(), cursor.ohlcv_session())?,
-            atr: slice_map(sim_data.atr(), cursor.atr())?,
-            roc: slice_map(sim_data.roc(), cursor.roc())?,
-            previous_ts: cursor.previous_ts(),
-            current_ts: cursor.current_ts(),
-            market_ids: sim_data.market_ids(),
-        })
+    pub(crate) const fn new(sim_data: &'env SimulationData, cursor: &'env CursorGroup) -> Self {
+        Self {
+            data: sim_data,
+            cursor,
+        }
     }
-}
-
-impl MarketView<'_> {
-    /// Returns a stack-allocated array of all views that support price
-    /// checking.
-    fn all_price_checkable_views(&self) -> [&dyn PriceCheckableView; 7] {
-        [
-            &self.ohlcv,
-            &self.trades,
-            &self.ema,
-            &self.sma,
-            &self.rsi,
-            &self.trades_vwap,
-            &self.ohlcv_vwap,
-        ]
-    }
-
-    /// Returns a stack-allocated array of all views that provide a canonical
-    /// market "Close" price.
-    fn close_price_views(&self) -> [&dyn ClosePriceView; 2] {
-        [&self.ohlcv, &self.trades]
-    }
-}
-
-// ================================================================================================
-// Helper Functions
-// ================================================================================================
-
-/// Efficiently zips a Cursor with Data to produce a View.
-fn slice_map<'env, S>(data: &'env S::Storage, cursor: &Cursor<S>) -> ChapatyResult<View<'env, S>>
-where
-    S: StreamEntity<Storage = EventMap<S>>,
-{
-    // OPTIMIZATION: Lockstep Iteration (Zip)
-    // We avoid looking up keys in `data` by relying on the construction
-    // invariant that `Cursor` and `Data` have identical keys in identical
-    // order.
-    let sliced_data = cursor.0.iter().zip(data.iter()).try_fold(
-        SortedVecMap::with_capacity(cursor.0.len()),
-        |mut acc, pair| {
-            let ((cursor_id, range), (data_id, events)) = pair;
-            debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
-
-            if range.end > events.len() {
-                return Err(ChapatyError::System(SystemError::IndexOutOfBounds(
-                    format!(
-                        "Cursor {:?} out of bounds: range end {} > len {}",
-                        cursor_id,
-                        range.end,
-                        events.len()
-                    ),
-                )));
-            }
-
-            // Insert slice.
-            // Since we insert in sorted order, this is effectively an O(1)
-            // push.
-            acc.insert(*cursor_id, &events[0..range.end]);
-            Ok(acc)
-        },
-    )?;
-
-    Ok(View { data: sliced_data })
 }
 
 #[cfg(test)]
@@ -411,7 +384,12 @@ mod test {
     )]
 
     use super::*;
-    use crate::data::domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair};
+    use crate::{
+        data::domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair},
+        gym::trading::config::EnvConfig,
+        sim::data::{SimulationDataBuilder, Streams},
+        sorted_vec_map::SortedVecMap,
+    };
 
     // ============================================================================
     // Test Helpers
@@ -461,58 +439,36 @@ mod test {
         }
     }
 
-    /// Helper to create a `MarketView` with specified OHLCV data and time
-    /// state.
+    /// Owns the simulation data and cursor that a test `MarketView` borrows.
+    struct Fixture {
+        sim_data: SimulationData,
+        cursor: CursorGroup,
+    }
+
+    impl Fixture {
+        fn view(&self) -> MarketView<'_> {
+            MarketView::new(&self.sim_data, &self.cursor)
+        }
+    }
+
+    /// Builds a fixture from the given OHLCV data with the cursor advanced to
+    /// `current_ts`. Events with `point_in_time <= current_ts` are visible,
+    /// later events are stored but must stay hidden.
     fn market_view_with_ohlcv(
         ohlcv_data: SortedVecMap<OhlcvId, &[Ohlcv]>,
         previous_ts: Option<DateTime<Utc>>,
         current_ts: DateTime<Utc>,
-    ) -> MarketView<'_> {
-        MarketView {
-            ohlcv: OhlcvView { data: ohlcv_data },
-            trades: TradeView {
-                data: SortedVecMap::new(),
-            },
-            economic_calendar: EconomicCalendarView {
-                data: SortedVecMap::new(),
-            },
-            volume_profile: VolumeProfileView {
-                data: SortedVecMap::new(),
-            },
-            tpo: TpoView {
-                data: SortedVecMap::new(),
-            },
-            ema: EmaView {
-                data: SortedVecMap::new(),
-            },
-            sma: SmaView {
-                data: SortedVecMap::new(),
-            },
-            rsi: RsiView {
-                data: SortedVecMap::new(),
-            },
-            trades_vwap: TradesVwapView {
-                data: SortedVecMap::new(),
-            },
-            ohlcv_vwap: OhlcvVwapView {
-                data: SortedVecMap::new(),
-            },
-            trades_session: TradesSessionView {
-                data: SortedVecMap::new(),
-            },
-            ohlcv_session: OhlcvSessionView {
-                data: SortedVecMap::new(),
-            },
-            atr: AtrView {
-                data: SortedVecMap::new(),
-            },
-            roc: RocView {
-                data: SortedVecMap::new(),
-            },
-            previous_ts,
-            current_ts,
-            market_ids: Arc::new([]),
-        }
+    ) -> Fixture {
+        let ohlcv = ohlcv_data
+            .into_iter()
+            .map(|(id, events)| (id, events.to_vec().into_boxed_slice()))
+            .collect();
+        let streams = Streams::default().with_ohlcv(ohlcv);
+        let sim_data = SimulationDataBuilder::new(streams)
+            .build(&EnvConfig::default())
+            .unwrap();
+        let cursor = CursorGroup::at(&sim_data, previous_ts, current_ts);
+        Fixture { sim_data, cursor }
     }
 
     // ============================================================================
@@ -549,11 +505,12 @@ mod test {
 
         // previous_ts = 00:00:00, current_ts = 00:03:00
         // The candle point_in_time (00:03) > previous_ts (00:00), so it's "new"
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-01-01T00:00:00Z")),
             ts("2025-01-01T00:03:00Z"),
         );
+        let market_view = fixture.view();
 
         assert!(
             market_view.reached_price(Price(110.0), symbol, TradeKind::Long),
@@ -612,11 +569,12 @@ mod test {
         // previous_ts = 00:03:00, current_ts = 00:06:00
         // Only the second candle (point_in_time 00:06) is "new" (00:06 > 00:03)
         // The first candle (point_in_time 00:03) is "old" (00:03 <= 00:03)
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-02-01T00:03:00Z")),
             ts("2025-02-01T00:06:00Z"),
         );
+        let market_view = fixture.view();
 
         assert!(
             !market_view.reached_price(Price(150.0), symbol, TradeKind::Long),
@@ -681,11 +639,12 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-03-01T08:59:00Z")),
             ts("2025-03-01T10:00:00Z"), // current_ts at 10:00:00 to include 5m candle
         );
+        let market_view = fixture.view();
 
         // Both candles are "new" (point_in_time > previous_ts), so both should
         // be checked
@@ -737,11 +696,12 @@ mod test {
         // Candle 1: point_in_time (00:03:00) > previous_ts (00:03:00)? NO ->
         // excluded Candle 2: point_in_time (00:03:01) > previous_ts
         // (00:03:00)? YES -> included
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-04-01T00:03:00Z")),
             ts("2025-04-01T00:04:00Z"),
         );
+        let market_view = fixture.view();
 
         assert!(
             !market_view.reached_price(Price(111.0), symbol, TradeKind::Long),
@@ -791,11 +751,12 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-05-01T08:59:00Z")),
             ts("2025-05-01T09:59:00Z"),
         );
+        let market_view = fixture.view();
 
         let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
@@ -849,11 +810,12 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             view_data,
             Some(ts("2025-06-01T09:50:00Z")),
             ts("2025-06-01T09:59:00Z"),
         );
+        let market_view = fixture.view();
 
         let price = market_view.try_resolved_close_price(symbol).unwrap();
         assert_eq!(
@@ -868,11 +830,12 @@ mod test {
         // Test error when no data available for the symbol
         let symbol = Symbol::Spot(SpotPair::SolUsdt); // No data for this symbol
 
-        let market_view = market_view_with_ohlcv(
+        let fixture = market_view_with_ohlcv(
             SortedVecMap::new(), // empty data
             Some(ts("2025-07-01T00:00:00Z")),
             ts("2025-07-01T00:10:00Z"),
         );
+        let market_view = fixture.view();
 
         assert!(
             market_view.try_resolved_close_price(symbol).is_err(),
@@ -920,7 +883,8 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2025-09-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-09-01T00:09:00Z"));
+        let market_view = fixture.view();
 
         // Timestamp at open should find the candle
         let candle = market_view
@@ -980,7 +944,8 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2025-10-01T00:06:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-10-01T00:06:00Z"));
+        let market_view = fixture.view();
 
         // Query before any candle
         let result = market_view.find_candle(&id, ts("2025-10-01T00:00:00Z"));
@@ -1014,9 +979,10 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2025-11-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-11-01T00:09:00Z"));
+        let market_view = fixture.view();
 
-        let last = market_view.ohlcv.last_event(&id).unwrap();
+        let last = market_view.ohlcv().last_event(&id).unwrap();
         assert_eq!(
             last.close,
             Price(999.0),
@@ -1058,10 +1024,11 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2025-12-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-12-01T00:09:00Z"));
+        let market_view = fixture.view();
 
         let close_prices: Vec<f64> = market_view
-            .ohlcv
+            .ohlcv()
             .rev_iter(&id)
             .unwrap()
             .map(|e| e.close.0)
@@ -1111,11 +1078,12 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2026-01-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2026-01-01T00:09:00Z"));
+        let market_view = fixture.view();
 
         // Query events since 00:03:00 (should exclude the first candle)
         let new_events: Vec<f64> = market_view
-            .ohlcv
+            .ohlcv()
             .new_events_since(&id, Some(ts("2026-01-01T00:03:00Z")))
             .unwrap()
             .map(|e| e.close.0)
@@ -1161,7 +1129,8 @@ mod test {
 
         // previous_ts = None is exactly what the cursor leaves behind on a new
         // episode.
-        let market_view = market_view_with_ohlcv(view_data, None, ts("2026-02-01T00:06:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, None, ts("2026-02-01T00:06:00Z"));
+        let market_view = fixture.view();
 
         assert_eq!(
             market_view.previous_timestamp(),
@@ -1173,7 +1142,7 @@ mod test {
         // than receiving the full history back.
         let new_events = market_view
             .previous_timestamp()
-            .and_then(|prev| market_view.ohlcv.new_events_since(&id, Some(prev)))
+            .and_then(|prev| market_view.ohlcv().new_events_since(&id, Some(prev)))
             .map_or(0, Iterator::count);
 
         assert_eq!(
@@ -1185,20 +1154,114 @@ mod test {
         // returned.
         let mut stepped_data = SortedVecMap::new();
         stepped_data.insert(id, events.as_slice());
-        let stepped = market_view_with_ohlcv(
+        let stepped_fixture = market_view_with_ohlcv(
             stepped_data,
             Some(ts("2026-02-01T00:03:00Z")),
             ts("2026-02-01T00:06:00Z"),
         );
+        let stepped = stepped_fixture.view();
 
         let stepped_events = stepped
             .previous_timestamp()
-            .and_then(|prev| stepped.ohlcv.new_events_since(&id, Some(prev)))
+            .and_then(|prev| stepped.ohlcv().new_events_since(&id, Some(prev)))
             .map_or(0, Iterator::count);
 
         assert_eq!(
             stepped_events, 1,
             "With a previous step only the events after it are new"
+        );
+    }
+
+    // ============================================================================
+    // Test: No look-ahead
+    // The data holds more events than the cursor has reached. The view must
+    // only show events up to the current time, never later ones.
+    // ============================================================================
+
+    /// Three 3m candles. The cursor stands at the close of the second candle,
+    /// so the third candle lies in the future.
+    fn look_ahead_fixture() -> (OhlcvId, Fixture) {
+        let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
+        let events = vec![
+            ohlcv(
+                ts("2026-03-01T00:00:00Z"),
+                ts("2026-03-01T00:03:00Z"),
+                100.0,
+                101.0,
+                99.0,
+                100.0,
+            ),
+            ohlcv(
+                ts("2026-03-01T00:03:00Z"),
+                ts("2026-03-01T00:06:00Z"),
+                100.0,
+                102.0,
+                98.0,
+                101.0,
+            ),
+            // Future candle: must stay hidden.
+            ohlcv(
+                ts("2026-03-01T00:06:00Z"),
+                ts("2026-03-01T00:09:00Z"),
+                101.0,
+                150.0,
+                50.0,
+                140.0,
+            ),
+        ];
+        let mut view_data = SortedVecMap::new();
+        view_data.insert(id, events.as_slice());
+        let fixture = market_view_with_ohlcv(
+            view_data,
+            Some(ts("2026-03-01T00:03:00Z")),
+            ts("2026-03-01T00:06:00Z"),
+        );
+        (id, fixture)
+    }
+
+    #[test]
+    fn test_get_slice_hides_future_events() {
+        let (id, fixture) = look_ahead_fixture();
+        let market_view = fixture.view();
+
+        assert_eq!(market_view.ohlcv().len(&id), 2);
+        assert_eq!(
+            market_view.ohlcv().last_event(&id).unwrap().close,
+            Price(101.0),
+            "The last visible candle is the second one"
+        );
+    }
+
+    #[test]
+    fn test_try_resolved_close_price_ignores_future_events() {
+        let (_, fixture) = look_ahead_fixture();
+        let market_view = fixture.view();
+        let symbol = Symbol::Spot(SpotPair::BtcUsdt);
+
+        assert_eq!(
+            market_view.try_resolved_close_price(symbol).unwrap(),
+            Price(101.0),
+            "Must use the latest visible close, not the future one (140.0)"
+        );
+    }
+
+    #[test]
+    fn test_reached_price_ignores_future_events() {
+        let (_, fixture) = look_ahead_fixture();
+        let market_view = fixture.view();
+        let symbol = Symbol::Spot(SpotPair::BtcUsdt);
+
+        assert!(
+            market_view.reached_price(Price(102.0), symbol, TradeKind::Long),
+            "The visible new candle reaches 102.0"
+        );
+        assert!(
+            !market_view.reached_price(Price(150.0), symbol, TradeKind::Long),
+            "Only the future candle reaches 150.0"
+        );
+        assert!(
+            !market_view.reached_price(Price(50.0), symbol, TradeKind::Long),
+            "Only the future candle reaches 50.0"
         );
     }
 }

@@ -18,9 +18,9 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct CursorGroup {
     ohlcv: OhlcvCursor,
-    trade: TradeCursor,
+    trades: TradeCursor,
     economic_cal: EconomicCalendarCursor,
-    vp: VolumeProfileCursor,
+    volume_profile: VolumeProfileCursor,
     tpo: TpoCursor,
     ema: EmaCursor,
     sma: SmaCursor,
@@ -45,9 +45,9 @@ pub struct CursorGroup {
 macro_rules! for_each_cursor {
     ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {{
         $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
-        $self.trade.$method($sim_data.trade() $(, $args)*);
+        $self.trades.$method($sim_data.trades() $(, $args)*);
         $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
-        $self.vp.$method($sim_data.volume_profile() $(, $args)*);
+        $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*);
         $self.tpo.$method($sim_data.tpo() $(, $args)*);
         $self.ema.$method($sim_data.ema() $(, $args)*);
         $self.sma.$method($sim_data.sma() $(, $args)*);
@@ -67,9 +67,9 @@ macro_rules! map_cursors {
     ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {
         [
             $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*),
-            $self.trade.$method($sim_data.trade() $(, $args)*),
+            $self.trades.$method($sim_data.trades() $(, $args)*),
             $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*),
-            $self.vp.$method($sim_data.volume_profile() $(, $args)*),
+            $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*),
             $self.tpo.$method($sim_data.tpo() $(, $args)*),
             $self.ema.$method($sim_data.ema() $(, $args)*),
             $self.sma.$method($sim_data.sma() $(, $args)*),
@@ -92,9 +92,9 @@ impl CursorGroup {
 
         let mut group = Self {
             ohlcv: OhlcvCursor::new(sim_data.ohlcv()),
-            trade: TradeCursor::new(sim_data.trade()),
+            trades: TradeCursor::new(sim_data.trades()),
             economic_cal: EconomicCalendarCursor::new(sim_data.economic_cal()),
-            vp: VolumeProfileCursor::new(sim_data.volume_profile()),
+            volume_profile: VolumeProfileCursor::new(sim_data.volume_profile()),
             tpo: TpoCursor::new(sim_data.tpo()),
             ema: EmaCursor::new(sim_data.ema()),
             sma: SmaCursor::new(sim_data.sma()),
@@ -112,6 +112,22 @@ impl CursorGroup {
         group
     }
 
+    /// Test helper: a cursor advanced to `current_ts` with the given time
+    /// state, so exactly the events with `point_in_time <= current_ts` are
+    /// visible.
+    #[cfg(test)]
+    pub(crate) fn at(
+        sim_data: &SimulationData,
+        previous_ts: Option<DateTime<Utc>>,
+        current_ts: DateTime<Utc>,
+    ) -> Self {
+        let mut group = Self::new(sim_data);
+        group.advance_all(sim_data, current_ts);
+        group.previous_ts = previous_ts;
+        group.current_ts = current_ts;
+        group
+    }
+
     pub const fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
@@ -124,16 +140,16 @@ impl CursorGroup {
         &self.ohlcv
     }
 
-    pub const fn trade(&self) -> &TradeCursor {
-        &self.trade
+    pub const fn trades(&self) -> &TradeCursor {
+        &self.trades
     }
 
     pub const fn economic_cal(&self) -> &EconomicCalendarCursor {
         &self.economic_cal
     }
 
-    pub const fn vp(&self) -> &VolumeProfileCursor {
-        &self.vp
+    pub const fn volume_profile(&self) -> &VolumeProfileCursor {
+        &self.volume_profile
     }
 
     pub const fn tpo(&self) -> &TpoCursor {
@@ -302,9 +318,9 @@ impl CursorGroup {
 
     fn rewind(&mut self) {
         self.ohlcv.rewind();
-        self.trade.rewind();
+        self.trades.rewind();
         self.economic_cal.rewind();
-        self.vp.rewind();
+        self.volume_profile.rewind();
         self.tpo.rewind();
         self.ema.rewind();
         self.sma.rewind();
@@ -504,7 +520,7 @@ mod test {
         );
         // Trade cursor consumed first event, OHLCV cursor still empty (00:05 >
         // 00:02)
-        assert_eq!(cursor_group.trade.0.get(&tid).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&tid).unwrap(), &(0..1));
         assert_eq!(cursor_group.ohlcv.0.get(&oid).unwrap(), &(0..0));
 
         // STEP 1: Next event is OHLCV at 00:05
@@ -517,7 +533,7 @@ mod test {
             "Step 1: OHLCV cursor should have consumed first candle"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..1),
             "Step 1: Trade cursor should remain at 1 (no new trades)"
         );
@@ -526,7 +542,7 @@ mod test {
         cursor_group.step(&sim_data, ep);
         assert_eq!(cursor_group.current_ts, ts("2025-03-01T00:07:00Z"));
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..2),
             "Step 2: Trade cursor should now have consumed both trades"
         );
@@ -545,7 +561,7 @@ mod test {
             "Step 3: OHLCV cursor should have consumed both candles"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..2),
             "Step 3: Trade cursor should remain at 2"
         );
@@ -614,7 +630,7 @@ mod test {
 
         // Verify cursors have advanced
         assert!(cursor_group.ohlcv.0.get(&oid).unwrap().end > 0);
-        assert!(cursor_group.trade.0.get(&tid).unwrap().end > 0);
+        assert!(cursor_group.trades.0.get(&tid).unwrap().end > 0);
 
         // Rewind
         cursor_group.rewind();
@@ -626,7 +642,7 @@ mod test {
             "OHLCV cursor should be reset to 0..0"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..0),
             "Trade cursor should be reset to 0..0"
         );
@@ -891,7 +907,7 @@ mod test {
             "OHLCV should have consumed its event"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..1),
             "Trade should have consumed its event"
         );
@@ -996,15 +1012,15 @@ mod test {
 
         // 1. Init -> 10:00 (BTC)
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:00:00Z"));
-        assert_eq!(cursor_group.trade.0.get(&btc_id).unwrap(), &(0..1));
-        assert_eq!(cursor_group.trade.0.get(&eth_id).unwrap(), &(0..0));
+        assert_eq!(cursor_group.trades.0.get(&btc_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&eth_id).unwrap(), &(0..0));
 
         // 2. Step -> 10:01 (ETH)
         cursor_group.step(&sim_data, ep);
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:01:00Z"));
 
         // Both consumed
-        assert_eq!(cursor_group.trade.0.get(&btc_id).unwrap(), &(0..1));
-        assert_eq!(cursor_group.trade.0.get(&eth_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&btc_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&eth_id).unwrap(), &(0..1));
     }
 }

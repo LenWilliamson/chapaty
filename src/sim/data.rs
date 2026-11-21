@@ -37,7 +37,7 @@ pub type RocEventMap = EventMap<RocId>;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Streams {
     ohlcv: OhlcvEventMap,
-    trade: TradeEventMap,
+    trades: TradeEventMap,
     economic_cal: EconomicCalEventMap,
     volume_profile: VolumeProfileEventMap,
     tpo: TpoEventMap,
@@ -56,7 +56,7 @@ impl Default for Streams {
     fn default() -> Self {
         Self {
             ohlcv: OhlcvEventMap::new(),
-            trade: TradeEventMap::new(),
+            trades: TradeEventMap::new(),
             economic_cal: EconomicCalEventMap::new(),
             volume_profile: VolumeProfileEventMap::new(),
             tpo: TpoEventMap::new(),
@@ -79,7 +79,10 @@ impl Streams {
     }
 
     pub(crate) fn with_trade(self, trade: TradeEventMap) -> Self {
-        Self { trade, ..self }
+        Self {
+            trades: trade,
+            ..self
+        }
     }
 
     pub(crate) fn with_economic_news(self, economic_cal: EconomicCalEventMap) -> Self {
@@ -153,7 +156,7 @@ impl Streams {
     fn as_array(&self) -> [&dyn StreamTimeInfo; 14] {
         [
             &self.ohlcv,
-            &self.trade,
+            &self.trades,
             &self.economic_cal,
             &self.volume_profile,
             &self.tpo,
@@ -173,7 +176,7 @@ impl Streams {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SimulationData {
     streams: Streams,
-    market_ids: Arc<[MarketId]>,
+    market_ids: Box<[MarketId]>,
     global_availability_start: DateTime<Utc>,
     global_open_start: DateTime<Utc>,
     hash: String,
@@ -184,8 +187,8 @@ impl SimulationData {
         &self.streams.ohlcv
     }
 
-    pub const fn trade(&self) -> &TradeEventMap {
-        &self.streams.trade
+    pub const fn trades(&self) -> &TradeEventMap {
+        &self.streams.trades
     }
 
     pub const fn economic_cal(&self) -> &EconomicCalEventMap {
@@ -236,8 +239,8 @@ impl SimulationData {
         &self.streams.roc
     }
 
-    pub fn market_ids(&self) -> Arc<[MarketId]> {
-        Arc::clone(&self.market_ids)
+    pub fn market_ids(&self) -> &[MarketId] {
+        &self.market_ids
     }
 
     /// Returns the absolute earliest moment any data becomes available.
@@ -528,7 +531,7 @@ impl SimulationDataBuilder {
         for id in self.streams.ohlcv.keys() {
             unique_markets.insert(MarketId::from(id));
         }
-        for id in self.streams.trade.keys() {
+        for id in self.streams.trades.keys() {
             unique_markets.insert(MarketId::from(id));
         }
 
