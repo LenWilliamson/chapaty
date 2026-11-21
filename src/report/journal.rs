@@ -58,6 +58,8 @@ pub enum JournalCol {
     TradeState,
     /// Identifier for the agent executing the trade.
     AgentId,
+    /// Unique id of the agent within a grid search. `0` for a single run.
+    AgentUid,
 
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
@@ -121,6 +123,7 @@ impl TryFrom<JournalCol> for GroupCol {
             JournalCol::EpisodeId => Ok(Self::EpisodeId),
             JournalCol::TradeState => Ok(Self::TradeState),
             JournalCol::AgentId => Ok(Self::AgentId),
+            JournalCol::AgentUid => Ok(Self::AgentUid),
             // === Market spec ===
             JournalCol::DataBroker => Ok(Self::DataBroker),
             JournalCol::Exchange => Ok(Self::Exchange),
@@ -284,6 +287,8 @@ impl ToSchema for Journal {
             .map(|col| {
                 let dtype = match col {
                     JournalCol::RowId | JournalCol::EpisodeId => DataType::UInt32,
+
+                    JournalCol::AgentUid => DataType::UInt64,
 
                     JournalCol::TradeState
                     | JournalCol::AgentId

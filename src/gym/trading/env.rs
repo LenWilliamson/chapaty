@@ -181,8 +181,13 @@ impl Environment {
             .into_par_iter()
             .progress_with(pb.clone())
             .try_for_each(|(uid, mut agent)| -> ChapatyResult<()> {
-                let journal_soa = self.worker(&mut agent)?;
-                tx.send((uid as u64, agent, journal_soa)).map_err(|e| {
+                let uid = u64::try_from(uid).map_err(|e| {
+                    SystemError::InvariantViolation(format!(
+                        "Agent uid {uid} does not fit u64: {e}"
+                    ))
+                })?;
+                let journal_soa = self.worker(&mut agent, uid)?;
+                tx.send((uid, agent, journal_soa)).map_err(|e| {
                     SystemError::InvariantViolation(format!(
                         "Evaluation consumers stopped before all agents were scored: {e}"
                     ))
@@ -231,7 +236,7 @@ impl Environment {
     ///
     /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
-        let df = self.ledger.journal_df()?;
+        let df = self.ledger.journal_df(None)?;
         Journal::new(&df, self.risk_metrics_cfg)
     }
 
@@ -375,13 +380,13 @@ impl Environment {
         Ok(())
     }
 
-    fn worker<T>(&self, agent: &mut T) -> ChapatyResult<JournalSoA>
+    fn worker<T>(&self, agent: &mut T, uid: u64) -> ChapatyResult<JournalSoA>
     where
         T: Agent,
     {
         let mut thread_env = self.clone();
         thread_env.eval(agent)?;
-        thread_env.ledger.journal_soa()
+        thread_env.ledger.journal_soa(Some(uid))
     }
 
     fn states(&self, ep: &Episode) -> ChapatyResult<&States> {
@@ -503,7 +508,8 @@ where
         .map_err(|e| {
             SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
         })?
-        .get();
+        .get()
+        .div_ceil(4);
 
     let mut join_handles = Vec::with_capacity(num_workers);
     for i in 0..num_workers {

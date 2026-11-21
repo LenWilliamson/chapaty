@@ -117,6 +117,8 @@ pub enum GroupCol {
     TradeState,
     /// Identifier for the agent executing the trade.
     AgentId,
+    /// Unique id of the agent within a grid search. `0` for a single run.
+    AgentUid,
 
     // === Market spec ===
     /// The market data broker (e.g., `binance`).
@@ -159,6 +161,7 @@ impl From<GroupCol> for JournalCol {
             GroupCol::EpisodeId => Self::EpisodeId,
             GroupCol::TradeState => Self::TradeState,
             GroupCol::AgentId => Self::AgentId,
+            GroupCol::AgentUid => Self::AgentUid,
 
             // === Market spec ===
             GroupCol::DataBroker => Self::DataBroker,
@@ -213,6 +216,7 @@ impl GroupCol {
             Self::EpisodeId
             | Self::TradeState
             | Self::AgentId
+            | Self::AgentUid
             | Self::DataBroker
             | Self::Exchange
             | Self::Symbol
