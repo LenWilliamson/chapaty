@@ -385,7 +385,10 @@ mod test {
 
     use super::*;
     use crate::{
-        data::domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair},
+        data::{
+            domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair},
+            episode::{Episode, EpisodeBuilder, EpisodeLength},
+        },
         gym::trading::config::EnvConfig,
         sim::data::{SimulationDataBuilder, Streams},
         sorted_vec_map::SortedVecMap,
@@ -451,13 +454,40 @@ mod test {
         }
     }
 
-    /// Builds a fixture from the given OHLCV data with the cursor advanced to
-    /// `current_ts`. Events with `point_in_time <= current_ts` are visible,
-    /// later events are stored but must stay hidden.
+    impl Fixture {
+        /// The first daily episode of the data.
+        fn first_episode(&self) -> Episode {
+            EpisodeBuilder::new()
+                .with_start(self.sim_data.global_open_start())
+                .with_length(EpisodeLength::Day)
+                .build()
+                .unwrap()
+        }
+
+        /// Steps the cursor through the real API. Panics if a step does not
+        /// move the cursor, because then the test asks for a state the
+        /// simulation can never reach.
+        fn step(&mut self, ep: Episode, steps: usize) {
+            for _ in 0..steps {
+                let before = self.cursor.current_ts();
+                self.cursor.step(&self.sim_data, ep);
+                assert!(
+                    self.cursor.current_ts() > before,
+                    "Test setup error: the cursor cannot step any further"
+                );
+            }
+        }
+    }
+
+    /// Builds a fixture from the given OHLCV data, then takes `steps` real
+    /// cursor steps within the first episode.
+    ///
+    /// After `new` the cursor stands at the first event with no previous
+    /// step. Each step moves it to the next event time and makes the old
+    /// current time the previous one.
     fn market_view_with_ohlcv(
         ohlcv_data: SortedVecMap<OhlcvId, &[Ohlcv]>,
-        previous_ts: Option<DateTime<Utc>>,
-        current_ts: DateTime<Utc>,
+        steps: usize,
     ) -> Fixture {
         let ohlcv = ohlcv_data
             .into_iter()
@@ -467,8 +497,13 @@ mod test {
         let sim_data = SimulationDataBuilder::new(streams)
             .build(&EnvConfig::default())
             .unwrap();
-        let cursor = CursorGroup::at(&sim_data, previous_ts, current_ts);
-        Fixture { sim_data, cursor }
+        let cursor = CursorGroup::new(&sim_data);
+        let mut fixture = Fixture { sim_data, cursor };
+        if steps > 0 {
+            let ep = fixture.first_episode();
+            fixture.step(ep, steps);
+        }
+        fixture
     }
 
     // ============================================================================
@@ -489,27 +524,34 @@ mod test {
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
-        // Candle: opens 2025-01-01 00:00, closes 00:03 (available at 00:03)
-        // Range: [90, 110]
-        let events = vec![ohlcv(
-            ts("2025-01-01T00:00:00Z"),
-            ts("2025-01-01T00:03:00Z"),
-            100.0,
-            110.0,
-            90.0,
-            105.0,
-        )];
+        let events = vec![
+            // Older candle, closes at 00:03. Gives the cursor a previous step.
+            ohlcv(
+                ts("2025-01-01T00:00:00Z"),
+                ts("2025-01-01T00:03:00Z"),
+                200.0,
+                201.0,
+                199.0,
+                200.0,
+            ),
+            // Candle: opens 2025-01-01 00:03, closes 00:06 (available at 00:06)
+            // Range: [90, 110]
+            ohlcv(
+                ts("2025-01-01T00:03:00Z"),
+                ts("2025-01-01T00:06:00Z"),
+                100.0,
+                110.0,
+                90.0,
+                105.0,
+            ),
+        ];
 
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        // previous_ts = 00:00:00, current_ts = 00:03:00
-        // The candle point_in_time (00:03) > previous_ts (00:00), so it's "new"
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-01-01T00:00:00Z")),
-            ts("2025-01-01T00:03:00Z"),
-        );
+        // previous_ts = 00:03:00, current_ts = 00:06:00 (after one step)
+        // The candle point_in_time (00:06) > previous_ts (00:03), so it's "new"
+        let fixture = market_view_with_ohlcv(view_data, 1);
         let market_view = fixture.view();
 
         assert!(
@@ -569,11 +611,7 @@ mod test {
         // previous_ts = 00:03:00, current_ts = 00:06:00
         // Only the second candle (point_in_time 00:06) is "new" (00:06 > 00:03)
         // The first candle (point_in_time 00:03) is "old" (00:03 <= 00:03)
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-02-01T00:03:00Z")),
-            ts("2025-02-01T00:06:00Z"),
-        );
+        let fixture = market_view_with_ohlcv(view_data, 1);
         let market_view = fixture.view();
 
         assert!(
@@ -589,42 +627,56 @@ mod test {
     #[test]
     fn test_reached_price_overlapping_candles_3m_vs_5m() {
         // Test: Multiple Timeframe Candles (3m vs 5m) Both Valid
-        // Scenario: current_ts is 10:00. Previous was 08:59.
+        // Scenario: current_ts is 10:00. Previous was 09:57.
         //
-        // 3m Candle: opens 09:00, closes 09:03 (available at 09:03)
-        //            Since 09:03 > 08:59:00 (previous_ts), this candle IS new.
+        // 3m Candle: opens 09:57, closes 10:00 (available at 10:00)
+        //            Since 10:00 > 09:57:00 (previous_ts), this candle IS new.
         //            Contains price 500.
         //
         // 5m Candle: opens 09:55, closes 10:00 (available at 10:00)
-        //            Since 10:00 > 08:59:00 (previous_ts), this candle IS new.
+        //            Since 10:00 > 09:57:00 (previous_ts), this candle IS new.
         //            Contains price 200.
         //
         // Both candles have point_in_time <= current_ts, so both are visible.
         // Both candles have point_in_time > previous_ts, so both are "new".
         //
+        // The cursor stops at every event time, so both candles are only new
+        // in the same step if they close at the same time. An older 3m candle
+        // (closes 09:57) gives the cursor its previous step.
+        //
         // NOTE: Future data prevention is tested separately in
-        // `test_view_contract_no_future_data_in_slice`.
-
+        // `test_get_slice_hides_future_events`.
         let id_3m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
         let id_5m = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(5));
         let symbol = Symbol::Spot(SpotPair::BtcUsdt);
 
-        // 3m candle: [09:00:00, 09:03:00) - half-open interval, 3 minute
-        // duration point_in_time = close_timestamp = 09:03:00
-        // Since previous_ts = 08:59 and point_in_time = 09:03:00 > 08:59, it IS
-        // new Contains price 500
-        let events_3m = vec![ohlcv(
-            ts("2025-03-01T09:00:00Z"),
-            ts("2025-03-01T09:03:00Z"),
-            100.0,
-            500.0, // high = 500
-            90.0,
-            105.0,
-        )];
+        let events_3m = vec![
+            // Older 3m candle: closes at 09:57, prices around 100 only
+            ohlcv(
+                ts("2025-03-01T09:54:00Z"),
+                ts("2025-03-01T09:57:00Z"),
+                100.0,
+                101.0,
+                99.0,
+                100.0,
+            ),
+            // 3m candle: [09:57:00, 10:00:00) - half-open interval, 3 minute
+            // duration point_in_time = close_timestamp = 10:00:00
+            // Since previous_ts = 09:57 and point_in_time = 10:00:00 > 09:57,
+            // it IS new Contains price 500
+            ohlcv(
+                ts("2025-03-01T09:57:00Z"),
+                ts("2025-03-01T10:00:00Z"),
+                100.0,
+                500.0, // high = 500
+                90.0,
+                105.0,
+            ),
+        ];
 
         // 5m candle: [09:55:00, 10:00:00) - half-open interval, 5 minute
         // duration point_in_time = close_timestamp = 10:00:00
-        // Since previous_ts = 08:59 and point_in_time = 10:00:00 > 08:59, it IS
+        // Since previous_ts = 09:57 and point_in_time = 10:00:00 > 09:57, it IS
         // new Contains price 200
         let events_5m = vec![ohlcv(
             ts("2025-03-01T09:55:00Z"),
@@ -639,11 +691,9 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-03-01T08:59:00Z")),
-            ts("2025-03-01T10:00:00Z"), // current_ts at 10:00:00 to include 5m candle
-        );
+        // One step: previous_ts = 09:57, current_ts = 10:00 to include both
+        // candles
+        let fixture = market_view_with_ohlcv(view_data, 1);
         let market_view = fixture.view();
 
         // Both candles are "new" (point_in_time > previous_ts), so both should
@@ -692,15 +742,11 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        // previous_ts = 00:03:00
+        // previous_ts = 00:03:00, current_ts = 00:03:01 (after one step)
         // Candle 1: point_in_time (00:03:00) > previous_ts (00:03:00)? NO ->
         // excluded Candle 2: point_in_time (00:03:01) > previous_ts
         // (00:03:00)? YES -> included
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-04-01T00:03:00Z")),
-            ts("2025-04-01T00:04:00Z"),
-        );
+        let fixture = market_view_with_ohlcv(view_data, 1);
         let market_view = fixture.view();
 
         assert!(
@@ -751,11 +797,7 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-05-01T08:59:00Z")),
-            ts("2025-05-01T09:59:00Z"),
-        );
+        let fixture = market_view_with_ohlcv(view_data, 1);
         let market_view = fixture.view();
 
         let price = market_view.try_resolved_close_price(symbol).unwrap();
@@ -810,11 +852,8 @@ mod test {
         view_data.insert(id_3m, events_3m.as_slice());
         view_data.insert(id_5m, events_5m.as_slice());
 
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2025-06-01T09:50:00Z")),
-            ts("2025-06-01T09:59:00Z"),
-        );
+        // Two steps: 09:55 -> 09:57 -> 09:59, so all three candles are visible.
+        let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
         let price = market_view.try_resolved_close_price(symbol).unwrap();
@@ -830,11 +869,7 @@ mod test {
         // Test error when no data available for the symbol
         let symbol = Symbol::Spot(SpotPair::SolUsdt); // No data for this symbol
 
-        let fixture = market_view_with_ohlcv(
-            SortedVecMap::new(), // empty data
-            Some(ts("2025-07-01T00:00:00Z")),
-            ts("2025-07-01T00:10:00Z"),
-        );
+        let fixture = market_view_with_ohlcv(SortedVecMap::new(), 0);
         let market_view = fixture.view();
 
         assert!(
@@ -883,7 +918,7 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-09-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
         // Timestamp at open should find the candle
@@ -944,7 +979,7 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-10-01T00:06:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, 0);
         let market_view = fixture.view();
 
         // Query before any candle
@@ -979,7 +1014,7 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-11-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
         let last = market_view.ohlcv().last_event(&id).unwrap();
@@ -1024,7 +1059,7 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2025-12-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
         let close_prices: Vec<f64> = market_view
@@ -1078,7 +1113,7 @@ mod test {
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2026-01-01T00:09:00Z"));
+        let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
         // Query events since 00:03:00 (should exclude the first candle)
@@ -1106,6 +1141,7 @@ mod test {
         let id = ohlcv_id(SpotPair::BtcUsdt, Period::Minute(3));
 
         let events = vec![
+            // Day 1: the first episode
             ohlcv(
                 ts("2026-02-01T00:00:00Z"),
                 ts("2026-02-01T00:03:00Z"),
@@ -1122,16 +1158,45 @@ mod test {
                 90.0,
                 222.0,
             ),
+            // Day 2: the second episode
+            ohlcv(
+                ts("2026-02-02T00:00:00Z"),
+                ts("2026-02-02T00:03:00Z"),
+                100.0,
+                110.0,
+                90.0,
+                333.0,
+            ),
+            ohlcv(
+                ts("2026-02-02T00:03:00Z"),
+                ts("2026-02-02T00:06:00Z"),
+                100.0,
+                110.0,
+                90.0,
+                444.0,
+            ),
         ];
 
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
 
+        // Walk through day 1, then start the episode of day 2.
         // previous_ts = None is exactly what the cursor leaves behind on a new
         // episode.
-        let fixture = market_view_with_ohlcv(view_data, None, ts("2026-02-01T00:06:00Z"));
-        let market_view = fixture.view();
+        let mut fixture = market_view_with_ohlcv(view_data, 1);
+        let first_ep = fixture.first_episode();
+        let second_ep = fixture
+            .cursor
+            .advance_to_next_episode(&fixture.sim_data, first_ep)
+            .unwrap()
+            .unwrap();
 
+        let market_view = fixture.view();
+        assert_eq!(
+            market_view.ohlcv().len(&id),
+            3,
+            "The history of day 1 stays visible in the new episode"
+        );
         assert_eq!(
             market_view.previous_timestamp(),
             None,
@@ -1152,14 +1217,8 @@ mod test {
 
         // Once a previous step exists, only the genuinely newer event is
         // returned.
-        let mut stepped_data = SortedVecMap::new();
-        stepped_data.insert(id, events.as_slice());
-        let stepped_fixture = market_view_with_ohlcv(
-            stepped_data,
-            Some(ts("2026-02-01T00:03:00Z")),
-            ts("2026-02-01T00:06:00Z"),
-        );
-        let stepped = stepped_fixture.view();
+        fixture.step(second_ep, 1);
+        let stepped = fixture.view();
 
         let stepped_events = stepped
             .previous_timestamp()
@@ -1211,11 +1270,8 @@ mod test {
         ];
         let mut view_data = SortedVecMap::new();
         view_data.insert(id, events.as_slice());
-        let fixture = market_view_with_ohlcv(
-            view_data,
-            Some(ts("2026-03-01T00:03:00Z")),
-            ts("2026-03-01T00:06:00Z"),
-        );
+        // One step: the cursor stands at 00:06, the third candle is ahead.
+        let fixture = market_view_with_ohlcv(view_data, 1);
         (id, fixture)
     }
 

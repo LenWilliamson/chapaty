@@ -112,22 +112,6 @@ impl CursorGroup {
         group
     }
 
-    /// Test helper: a cursor advanced to `current_ts` with the given time
-    /// state, so exactly the events with `point_in_time <= current_ts` are
-    /// visible.
-    #[cfg(test)]
-    pub(crate) fn at(
-        sim_data: &SimulationData,
-        previous_ts: Option<DateTime<Utc>>,
-        current_ts: DateTime<Utc>,
-    ) -> Self {
-        let mut group = Self::new(sim_data);
-        group.advance_all(sim_data, current_ts);
-        group.previous_ts = previous_ts;
-        group.current_ts = current_ts;
-        group
-    }
-
     pub const fn current_ts(&self) -> DateTime<Utc> {
         self.current_ts
     }
