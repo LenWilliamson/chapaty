@@ -3,17 +3,15 @@ use std::sync::Arc;
 use polars::{
     frame::DataFrame,
     prelude::{
-        DataType, Expr, Field, IntoLazy, PlSmallStr, QuantileMethod, Schema, SchemaRef,
-        SortMultipleOptions, UnionArgs, col, lit,
+        DataType, Expr, Field, IntoLazy, PlSmallStr, QuantileMethod, Schema, SchemaRef, col, lit,
     },
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumCount, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 use crate::{
     data::common::RiskMetricsConfig,
-    error::{ChapatyError, ChapatyResult, DataError},
+    error::{ChapatyError, ChapatyResult},
     report::{
         cumulative_returns::{
             cumulative_realized_return_usd_expr, peak_cumulative_return_usd_expr,
@@ -152,41 +150,9 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
         }
 
         let cfg = gj.source().risk_metrics_config();
-        let (partitions, keys) = gj.to_partitions()?;
+        let df = gj.lazy().agg(exprs(cfg)).collect().map_err(convert_err)?;
 
-        let lazy_computations = partitions
-            .into_par_iter()
-            .map(|df| {
-                let mut selection = Vec::with_capacity(keys.len() + PortfolioPerformanceCol::COUNT);
-                for k in &keys {
-                    selection.push(col(k).first());
-                }
-                selection.extend(exprs(cfg));
-
-                let lf = df
-                    .lazy()
-                    .sort(
-                        [JournalCol::EntryTimestamp.as_str()],
-                        SortMultipleOptions::default(),
-                    )
-                    .select(selection);
-                Ok(lf)
-            })
-            .collect::<Result<Vec<_>, ChapatyError>>();
-
-        let merged = polars::prelude::concat(
-            lazy_computations?,
-            UnionArgs {
-                parallel: true,
-                rechunk: true,
-                ..Default::default()
-            },
-        )
-        .map_err(|e| DataError::DataFrame(format!("Merge plan failed: {e}")))?
-        .collect()
-        .map_err(|e| DataError::DataFrame(format!("Execution failed: {e}")))?;
-
-        Ok(Self { df: merged })
+        Ok(Self { df })
     }
 }
 

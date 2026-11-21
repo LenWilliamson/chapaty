@@ -3,16 +3,15 @@ use std::{convert::TryFrom, sync::Arc};
 use polars::{
     frame::DataFrame,
     prelude::{
-        DataType, Expr, Field, FillNullStrategy, IntoLazy, Null, PlSmallStr, Schema, SchemaRef,
-        SortMultipleOptions, TimeUnit, TimeZone, UnionArgs, col, lit, when,
+        DataType, ExplodeOptions, Expr, Field, FillNullStrategy, IntoLazy, Null, PlSmallStr,
+        Schema, SchemaRef, TimeUnit, TimeZone, col, cols, lit, when,
     },
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumCount, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 use crate::{
-    error::{ChapatyError, ChapatyResult, DataError},
+    error::{ChapatyError, ChapatyResult},
     report::{
         grouped::GroupedJournal,
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
@@ -117,42 +116,29 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
         }
 
         let init_val = gj.source().risk_metrics_config().initial_portfolio_value();
-        let (partitions, keys) = gj.to_partitions()?;
+        let report_cols = CumulativeReturnCol::iter().map(|c| c.as_str());
 
-        let lazy_computations = partitions
-            .into_par_iter()
-            .map(|df| {
-                let mut selection = Vec::with_capacity(keys.len() + CumulativeReturnCol::COUNT);
-                for k in &keys {
-                    selection.push(col(k));
-                }
-                selection.extend(exprs(init_val));
+        // One query for all groups. The aggregation keeps one list of rows per
+        // group, and explode turns those lists back into one row per trade.
+        let df = gj
+            .source()
+            .as_df()
+            .clone()
+            .lazy()
+            .filter(col(JournalCol::TradeState).trade_executed())
+            .group_by_stable(gj.key_exprs())
+            .agg(exprs(init_val))
+            .explode(
+                cols(report_cols),
+                ExplodeOptions {
+                    empty_as_null: true,
+                    keep_nulls: true,
+                },
+            )
+            .collect()
+            .map_err(convert_err)?;
 
-                let lf = df
-                    .lazy()
-                    .filter(col(JournalCol::TradeState).trade_executed())
-                    .sort(
-                        [JournalCol::EntryTimestamp.as_str()],
-                        SortMultipleOptions::default(),
-                    )
-                    .select(selection);
-                Ok(lf)
-            })
-            .collect::<Result<Vec<_>, ChapatyError>>();
-
-        let merged = polars::prelude::concat(
-            lazy_computations?,
-            UnionArgs {
-                parallel: true,
-                rechunk: true,
-                ..Default::default()
-            },
-        )
-        .map_err(|e| DataError::DataFrame(format!("Merge plan failed: {e}")))?
-        .collect()
-        .map_err(|e| DataError::DataFrame(format!("Execution failed: {e}")))?;
-
-        Ok(Self { df: merged })
+        Ok(Self { df })
     }
 }
 
