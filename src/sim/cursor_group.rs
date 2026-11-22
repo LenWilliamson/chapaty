@@ -42,46 +42,134 @@ pub struct CursorGroup {
 // ================================================================================================
 
 /// Calls a void method on every cursor that requires simulation storage.
+///
+/// Stream kinds without any data are skipped. Most environments use only a few
+/// of the kinds, and this runs on every step.
 macro_rules! for_each_cursor {
     ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {{
-        $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
-        $self.trades.$method($sim_data.trades() $(, $args)*);
-        $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
-        $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*);
-        $self.tpo.$method($sim_data.tpo() $(, $args)*);
-        $self.ema.$method($sim_data.ema() $(, $args)*);
-        $self.sma.$method($sim_data.sma() $(, $args)*);
-        $self.rsi.$method($sim_data.rsi() $(, $args)*);
-        $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*);
-        $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*);
-        $self.trades_session.$method($sim_data.trades_session() $(, $args)*);
-        $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*);
-        $self.atr.$method($sim_data.atr() $(, $args)*);
-        $self.roc.$method($sim_data.roc() $(, $args)*);
+        if !$sim_data.ohlcv().is_empty() {
+            $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
+        }
+        if !$sim_data.trades().is_empty() {
+            $self.trades.$method($sim_data.trades() $(, $args)*);
+        }
+        if !$sim_data.economic_cal().is_empty() {
+            $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
+        }
+        if !$sim_data.volume_profile().is_empty() {
+            $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*);
+        }
+        if !$sim_data.tpo().is_empty() {
+            $self.tpo.$method($sim_data.tpo() $(, $args)*);
+        }
+        if !$sim_data.ema().is_empty() {
+            $self.ema.$method($sim_data.ema() $(, $args)*);
+        }
+        if !$sim_data.sma().is_empty() {
+            $self.sma.$method($sim_data.sma() $(, $args)*);
+        }
+        if !$sim_data.rsi().is_empty() {
+            $self.rsi.$method($sim_data.rsi() $(, $args)*);
+        }
+        if !$sim_data.trades_vwap().is_empty() {
+            $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*);
+        }
+        if !$sim_data.ohlcv_vwap().is_empty() {
+            $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*);
+        }
+        if !$sim_data.trades_session().is_empty() {
+            $self.trades_session.$method($sim_data.trades_session() $(, $args)*);
+        }
+        if !$sim_data.ohlcv_session().is_empty() {
+            $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*);
+        }
+        if !$sim_data.atr().is_empty() {
+            $self.atr.$method($sim_data.atr() $(, $args)*);
+        }
+        if !$sim_data.roc().is_empty() {
+            $self.roc.$method($sim_data.roc() $(, $args)*);
+        }
     }};
 }
 
 /// Calls a method on every cursor that requires simulation storage and collects
 /// results.
+///
+/// Stream kinds without any data are skipped and yield `$empty` instead. Most
+/// environments use only a few of the kinds, and this runs on every step.
 macro_rules! map_cursors {
-    ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {
+    ($self:expr, $sim_data:expr, empty: $empty:expr, $method:ident $(, $args:expr)*) => {
         [
-            $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*),
-            $self.trades.$method($sim_data.trades() $(, $args)*),
-            $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*),
-            $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*),
-            $self.tpo.$method($sim_data.tpo() $(, $args)*),
-            $self.ema.$method($sim_data.ema() $(, $args)*),
-            $self.sma.$method($sim_data.sma() $(, $args)*),
-            $self.rsi.$method($sim_data.rsi() $(, $args)*),
-            $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*),
-            $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*),
-            $self.trades_session
-                .$method($sim_data.trades_session() $(, $args)*),
-            $self.ohlcv_session
-                .$method($sim_data.ohlcv_session() $(, $args)*),
-            $self.atr.$method($sim_data.atr() $(, $args)*),
-            $self.roc.$method($sim_data.roc() $(, $args)*),
+            if $sim_data.ohlcv().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*)
+            },
+            if $sim_data.trades().is_empty() {
+                $empty
+            } else {
+                $self.trades.$method($sim_data.trades() $(, $args)*)
+            },
+            if $sim_data.economic_cal().is_empty() {
+                $empty
+            } else {
+                $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*)
+            },
+            if $sim_data.volume_profile().is_empty() {
+                $empty
+            } else {
+                $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*)
+            },
+            if $sim_data.tpo().is_empty() {
+                $empty
+            } else {
+                $self.tpo.$method($sim_data.tpo() $(, $args)*)
+            },
+            if $sim_data.ema().is_empty() {
+                $empty
+            } else {
+                $self.ema.$method($sim_data.ema() $(, $args)*)
+            },
+            if $sim_data.sma().is_empty() {
+                $empty
+            } else {
+                $self.sma.$method($sim_data.sma() $(, $args)*)
+            },
+            if $sim_data.rsi().is_empty() {
+                $empty
+            } else {
+                $self.rsi.$method($sim_data.rsi() $(, $args)*)
+            },
+            if $sim_data.trades_vwap().is_empty() {
+                $empty
+            } else {
+                $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*)
+            },
+            if $sim_data.ohlcv_vwap().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*)
+            },
+            if $sim_data.trades_session().is_empty() {
+                $empty
+            } else {
+                $self.trades_session.$method($sim_data.trades_session() $(, $args)*)
+            },
+            if $sim_data.ohlcv_session().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*)
+            },
+            if $sim_data.atr().is_empty() {
+                $empty
+            } else {
+                $self.atr.$method($sim_data.atr() $(, $args)*)
+            },
+            if $sim_data.roc().is_empty() {
+                $empty
+            } else {
+                $self.roc.$method($sim_data.roc() $(, $args)*)
+            },
         ]
     };
 }
@@ -177,7 +265,7 @@ impl CursorGroup {
     }
 
     pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
-        map_cursors!(self, sim_data, next_point_in_time)
+        map_cursors!(self, sim_data, empty: None, next_point_in_time)
             .into_iter()
             .flatten()
             .min()
@@ -224,10 +312,11 @@ impl CursorGroup {
         let current_ep_end = ep.end();
 
         // 1. Try to find the next episode start
-        let next_start = map_cursors!(self, sim_data, find_first_open_at_or_after, current_ep_end)
-            .into_iter()
-            .flatten()
-            .min();
+        let next_start =
+            map_cursors!(self, sim_data, empty: None, find_first_open_at_or_after, current_ep_end)
+                .into_iter()
+                .flatten()
+                .min();
 
         let Some(next_start) = next_start else {
             // If no future episode exists, explicitly mark all streams as
@@ -240,6 +329,7 @@ impl CursorGroup {
         let start_availability_candidate = map_cursors!(
             self,
             sim_data,
+            empty: None,
             find_first_point_in_time_at_or_after,
             next_start
         )
@@ -289,7 +379,7 @@ impl CursorGroup {
     /// corresponding event array in `SimulationData`.
     /// `false` if there is any data left to be processed in any stream.
     pub fn is_end_of_data(&self, sim_data: &SimulationData) -> bool {
-        map_cursors!(self, sim_data, is_done)
+        map_cursors!(self, sim_data, empty: true, is_done)
             .into_iter()
             .all(|is_done| is_done)
     }
