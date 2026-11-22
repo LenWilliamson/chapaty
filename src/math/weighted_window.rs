@@ -21,7 +21,7 @@ impl WeightedMean {
     /// Folds one observation into the running totals.
     #[must_use]
     pub fn add(self, value: f64, weight: f64) -> Self {
-        if !value.is_finite() || !weight.is_finite() || weight <= 0.0 {
+        if !is_valid_observation(value, weight) {
             return self;
         }
         Self {
@@ -127,6 +127,16 @@ impl WeightedWindow {
     pub fn clear(&mut self) {
         self.window.clear();
     }
+}
+
+// ================================================================================================
+// Helper Functions
+// ================================================================================================
+
+/// Whether an observation counts: a finite value with a finite, positive
+/// weight. Everything else is skipped, see [`WeightedMean`].
+fn is_valid_observation(value: f64, weight: f64) -> bool {
+    value.is_finite() && weight.is_finite() && weight > 0.0
 }
 
 #[cfg(test)]
