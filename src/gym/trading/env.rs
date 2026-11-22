@@ -424,9 +424,7 @@ impl Environment {
     }
 
     fn evaluate_outcome(&self, ep: &Episode) -> ChapatyResult<StepOutcome> {
-        if self.ep.is_episode_end(self.cursor.current_ts())
-            || self.cursor.is_end_of_data(&self.sim_data)
-        {
+        if self.ep.is_episode_end(self.cursor.current_ts()) || self.cursor.is_end_of_data() {
             if self.ledger.is_terminal(ep)? {
                 Ok(StepOutcome::Terminated)
             } else {
@@ -437,9 +435,9 @@ impl Environment {
         }
     }
 
-    fn update_env_status(&mut self, outcome: StepOutcome) {
+    const fn update_env_status(&mut self, outcome: StepOutcome) {
         if outcome.is_terminal() {
-            self.env_status = if self.cursor.is_end_of_data(&self.sim_data) {
+            self.env_status = if self.cursor.is_end_of_data() {
                 EnvStatus::Done
             } else {
                 EnvStatus::EpisodeDone

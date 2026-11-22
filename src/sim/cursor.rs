@@ -91,7 +91,10 @@ pub trait StreamCursor {
     /// Moves the cursor forward to `ts`.
     /// Handles both small steps (t -> t+1) and large jumps (Episode -> Episode)
     /// efficiently.
-    fn advance(&mut self, data: &Self::Storage, ts: DateTime<Utc>);
+    ///
+    /// Returns the earliest point in time of the events that are still ahead,
+    /// or `None` when every stream is exhausted.
+    fn advance(&mut self, data: &Self::Storage, ts: DateTime<Utc>) -> Option<DateTime<Utc>>;
 
     /// Resets all indices to 0.
     fn rewind(&mut self);
@@ -118,9 +121,6 @@ pub trait StreamCursor {
         data: &Self::Storage,
         ts: DateTime<Utc>,
     ) -> Option<DateTime<Utc>>;
-
-    fn is_done(&self, data: &Self::Storage) -> bool;
-    fn next_point_in_time(&self, data: &Self::Storage) -> Option<DateTime<Utc>>;
 }
 #[derive(Debug, Clone)]
 pub struct Cursor<S: StreamId>(pub SortedVecMap<S, Range<usize>>);
@@ -156,7 +156,7 @@ where
         Self(data.iter().map(|(id, _)| (*id, 0..0)).collect())
     }
 
-    fn advance(&mut self, data: &EventMap<S>, ts: DateTime<Utc>) {
+    fn advance(&mut self, data: &EventMap<S>, ts: DateTime<Utc>) -> Option<DateTime<Utc>> {
         // OPTIMIZATION: Lockstep Iteration (Zip).
         // Since Cursor is created from Data, and Data is structurally immutable
         // during simulation, the memory layout of keys is identical.
@@ -169,7 +169,7 @@ where
         self.0
             .iter_mut()
             .zip(data.iter())
-            .for_each(|((cursor_id, range), (data_id, events))| {
+            .filter_map(|((cursor_id, range), (data_id, events))| {
                 // SAFETY: Low-cost assertion in debug builds to ensure our
                 // invariant holds. Since StreamId is copy, this
                 // check is essentially free.
@@ -191,7 +191,11 @@ where
 
                     range.end += advance_by;
                 }
-            });
+
+                // The first event that is still ahead, if any.
+                events.get(range.end).map(MarketEvent::point_in_time)
+            })
+            .min()
     }
 
     fn rewind(&mut self) {
@@ -243,27 +247,6 @@ where
                     .map(MarketEvent::point_in_time)
             })
             .min()
-    }
-
-    fn next_point_in_time(&self, data: &EventMap<S>) -> Option<DateTime<Utc>> {
-        self.0
-            .iter()
-            .zip(data.iter())
-            .filter_map(|((cursor_id, range), (data_id, events))| {
-                debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
-                events.get(range.end).map(MarketEvent::point_in_time)
-            })
-            .min()
-    }
-
-    fn is_done(&self, data: &EventMap<S>) -> bool {
-        self.0
-            .iter()
-            .zip(data.iter())
-            .all(|((cursor_id, range), (data_id, events))| {
-                debug_assert_eq!(cursor_id, data_id, "Cursor desynchronized from Storage!");
-                range.end >= events.len()
-            })
     }
 }
 
@@ -655,7 +638,7 @@ mod test {
     }
 
     #[test]
-    fn test_cursor_is_done() {
+    fn test_cursor_is_exhausted() {
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![ohlcv(
             ts("2025-09-01T00:00:00Z"),
@@ -667,13 +650,12 @@ mod test {
 
         let mut cursor = OhlcvCursor::new(&data);
 
-        assert!(!cursor.is_done(&data), "Should not be done at start");
+        // Advancing to a time before the only event leaves it ahead.
+        let next = cursor.advance(&data, ts("2025-09-01T00:00:00Z"));
+        assert!(next.is_some(), "Should not be done at start");
 
-        cursor.advance(&data, ts("2025-09-01T00:03:00Z"));
-        assert!(
-            cursor.is_done(&data),
-            "Should be done after consuming all events"
-        );
+        let next = cursor.advance(&data, ts("2025-09-01T00:03:00Z"));
+        assert!(next.is_none(), "Should be done after consuming all events");
     }
 
     #[test]
@@ -723,7 +705,7 @@ mod test {
     }
 
     #[test]
-    fn test_cursor_next_point_in_time() {
+    fn test_cursor_advance_returns_next_point_in_time() {
         let id = ohlcv_id(Period::Minute(3));
         let events = vec![
             ohlcv(ts("2025-12-01T00:00:00Z"), ts("2025-12-01T00:03:00Z")),
@@ -733,12 +715,17 @@ mod test {
         let mut data = SortedVecMap::new();
         data.insert(id, events.into_boxed_slice());
 
-        let cursor = OhlcvCursor::new(&data);
+        let mut cursor = OhlcvCursor::new(&data);
 
         assert_eq!(
-            cursor.next_point_in_time(&data),
+            cursor.advance(&data, ts("2025-12-01T00:00:00Z")),
             Some(ts("2025-12-01T00:03:00Z")),
             "Should return the first unconsumed event's availability"
+        );
+        assert_eq!(
+            cursor.advance(&data, ts("2025-12-01T00:03:00Z")),
+            Some(ts("2025-12-01T00:06:00Z")),
+            "After consuming the first event, the second one is next"
         );
     }
 
