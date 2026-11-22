@@ -143,23 +143,6 @@ pub struct FairValueGap<S: FairValueGapState> {
     state: S,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum FairValueGapStatus {
-    Open(FairValueGap<OpenState>),
-    Closed(FairValueGap<ClosedState>),
-    Expired(FairValueGap<ExpiredState>),
-}
-
-impl MarketEvent for FairValueGapStatus {
-    fn point_in_time(&self) -> DateTime<Utc> {
-        match self {
-            Self::Open(gap) => gap.point_in_time(),
-            Self::Closed(gap) => gap.point_in_time(),
-            Self::Expired(gap) => gap.point_in_time(),
-        }
-    }
-}
-
 impl<S: FairValueGapState> MarketEvent for FairValueGap<S> {
     fn point_in_time(&self) -> DateTime<Utc> {
         self.creation_time
@@ -346,23 +329,33 @@ impl<S: FairValueGapState> FairValueGap<S> {
     }
 }
 
+/// What happened to an open gap on a new candle.
+enum GapOutcome {
+    /// Still open. A touch has already been recorded in place.
+    StillOpen,
+    /// Completely filled at the given time.
+    Filled(DateTime<Utc>),
+    /// Its time to live ran out at the given time.
+    Expired(DateTime<Utc>),
+}
+
 impl FairValueGap<OpenState> {
     /// Evaluates the incoming indexed candle against the open gap, considering
     /// TTL.
-    fn process_candle(
-        self,
+    fn advance(
+        &mut self,
         indexed_candle: &IndexedOhlcv,
         ttl: TtlPolicy,
         price_source: PriceSource,
-    ) -> FairValueGapStatus {
+    ) -> GapOutcome {
         let candle = &indexed_candle.candle;
 
         // 1. Evaluate Price Action First via the interaction helper
-        let updated_gap = match self.evaluate_interaction(candle, price_source) {
+        match self.evaluate_interaction(candle, price_source) {
             GapInteraction::Fill => {
                 // Early return: If it fully fills, it closes immediately before
                 // TTL checks.
-                return FairValueGapStatus::Closed(self.into_closed(candle.point_in_time()));
+                return GapOutcome::Filled(candle.point_in_time());
             }
             GapInteraction::Touch => {
                 let gap_size = self.gap_size();
@@ -370,41 +363,36 @@ impl FairValueGap<OpenState> {
                     FairValueGapDirection::Bullish => (self.top.0 - candle.low.0) / gap_size,
                     FairValueGapDirection::Bearish => (candle.high.0 - self.bottom.0) / gap_size,
                 };
-                self.with_partial_fill(current_fill_pct)
+                self.record_partial_fill(current_fill_pct);
             }
-            GapInteraction::Miss => self, // pass-through
-        };
+            GapInteraction::Miss => {}
+        }
 
         // 2. Evaluate TTL Expiration
         let is_expired = match ttl {
             TtlPolicy::Bars(limit) => {
-                indexed_candle
-                    .index
-                    .saturating_sub(updated_gap.creation_index())
-                    >= limit
+                indexed_candle.index.saturating_sub(self.creation_index()) >= limit
             }
             TtlPolicy::Time(limit) => {
                 candle
                     .close_timestamp
-                    .signed_duration_since(updated_gap.creation_time())
+                    .signed_duration_since(self.creation_time())
                     >= limit
             }
             TtlPolicy::Filled => false,
         };
 
         if is_expired {
-            FairValueGapStatus::Expired(updated_gap.into_expired(candle.close_timestamp))
+            GapOutcome::Expired(candle.close_timestamp)
         } else {
-            FairValueGapStatus::Open(updated_gap)
+            GapOutcome::StillOpen
         }
     }
 
-    fn with_partial_fill(self, fill_pct: f64) -> Self {
-        let max_fill_percentage = self.state.max_fill_percentage.max(fill_pct.clamp(0.0, 1.0));
-        self.map(|s| OpenState {
-            max_fill_percentage,
-            touch_count: s.touch_count + 1,
-        })
+    const fn record_partial_fill(&mut self, fill_pct: f64) {
+        self.state.max_fill_percentage =
+            self.state.max_fill_percentage.max(fill_pct.clamp(0.0, 1.0));
+        self.state.touch_count += 1;
     }
 
     fn into_closed(self, closed_time: DateTime<Utc>) -> FairValueGap<ClosedState> {
@@ -545,18 +533,15 @@ impl StreamingIndicator for StreamingFairValueGap {
         let expired_gaps = &mut self.expired_gaps;
         let price_source = self.price_source;
 
-        self.active_gaps.retain_mut(|gap_ref| {
-            match gap_ref.process_candle(&indexed_candle, ttl, price_source) {
-                FairValueGapStatus::Open(updated_gap) => {
-                    *gap_ref = updated_gap;
-                    true // Keep in active
-                }
-                FairValueGapStatus::Closed(closed_gap) => {
-                    closed_gaps.push(closed_gap);
+        self.active_gaps.retain_mut(|gap| {
+            match gap.advance(&indexed_candle, ttl, price_source) {
+                GapOutcome::StillOpen => true, // Keep in active
+                GapOutcome::Filled(closed_time) => {
+                    closed_gaps.push(gap.into_closed(closed_time));
                     false // Remove from active
                 }
-                FairValueGapStatus::Expired(expired_gap) => {
-                    expired_gaps.push(expired_gap);
+                GapOutcome::Expired(expired_time) => {
+                    expired_gaps.push(gap.into_expired(expired_time));
                     false // Remove from active
                 }
             }
@@ -829,7 +814,7 @@ mod tests {
         assert_f64_eq!(initial_gap.bottom().0, 10.0);
 
         // Send a candle that wicks to EXACTLY 15.0
-        // Because process_candle uses `candle.low < self.top`, this evaluates
+        // Because advance uses `candle.low < self.top`, this evaluates
         // to false. It is mathematically defined as a Miss, NOT a
         // touch/partial fill.
         indicator.update(candle(4, "2026-05-26T10:04:00Z", 20., 20., 15.0, 20.));
