@@ -1415,9 +1415,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 dependencies = [
  "allocator-api2",
  "equivalent",
@@ -1800,7 +1800,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "serde",
  "serde_core",
 ]
@@ -2502,7 +2502,7 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.4.3",
  "half",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "itoa",
  "lz4",
  "num-traits",
@@ -2573,7 +2573,7 @@ dependencies = [
  "chrono",
  "either",
  "fast-float2",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "itoa",
  "num-traits",
  "polars-arrow",
@@ -2612,7 +2612,7 @@ dependencies = [
  "comfy-table",
  "either",
  "getrandom 0.4.3",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "indexmap",
  "itoa",
  "num-traits",
@@ -2646,7 +2646,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "768f9d1f996eebc7f9b0d7686d9147cf4b4f217fd907c4b90f4448dcee01ea05"
 dependencies = [
  "boxcar",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "polars-arrow",
  "polars-error",
  "polars-utils",
@@ -2676,7 +2676,7 @@ checksum = "b59262210ac41f3b30f49f46855501206eba27baaa6bd919545703bc706dd617"
 dependencies = [
  "bitflags",
  "chrono-tz",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "num-traits",
  "polars-arrow",
  "polars-buffer",
@@ -2714,7 +2714,7 @@ dependencies = [
  "fs4",
  "futures",
  "glob",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "home",
  "itoa",
  "memchr",
@@ -2755,7 +2755,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "fallible-streaming-iterator",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "indexmap",
  "itoa",
  "num-traits",
@@ -2854,7 +2854,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "either",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "hex",
  "indexmap",
  "jsonpath_lib_polars_vendor",
@@ -2892,7 +2892,7 @@ dependencies = [
  "ethnum",
  "flate2",
  "futures",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "lz4",
  "num-traits",
  "polars-arrow",
@@ -2935,7 +2935,7 @@ dependencies = [
  "digest-io",
  "either",
  "futures",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "hex",
  "indexmap",
  "memmap2",
@@ -3095,7 +3095,7 @@ dependencies = [
  "foldhash 0.2.0",
  "futures",
  "half",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "indexmap",
  "libc",
  "memmap2",
