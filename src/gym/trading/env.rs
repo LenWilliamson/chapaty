@@ -505,6 +505,60 @@ type ScorerResult<T> = Result<AgentLeaderboard<T>, ChapatyError>;
 /// Handle to a running scorer thread.
 type ScorerHandle<T> = JoinHandle<ScorerResult<T>>;
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "rx is taken by value on purpose: the original receiver is dropped when this function returns. Only the worker clones keep the channel alive. If all workers finish or die, `tx.send` fails instead of blocking forever on the bounded channel."
+)]
+#[tracing::instrument(skip_all)]
+fn spawn_scorers<T>(
+    top_k: usize,
+    risk_cfg: RiskMetricsConfig,
+    rx: Receiver<(u64, T, JournalSoA)>,
+) -> ChapatyResult<Vec<ScorerHandle<T>>>
+where
+    T: Send + 'static,
+{
+    let num_workers = std::thread::available_parallelism()
+        .map_err(|e| {
+            SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
+        })?
+        .get()
+        .div_ceil(4);
+
+    let mut join_handles = Vec::with_capacity(num_workers);
+    for i in 0..num_workers {
+        let rx_i = rx.clone();
+        let handler = std::thread::Builder::new()
+            .name(format!("scorer-{i}"))
+            .spawn(move || {
+                let mut board = AgentLeaderboard::new(top_k);
+
+                let mut batch = Vec::new();
+                let mut rows = 0;
+
+                // Collect journals until the batch holds enough rows, then
+                // grade them together. When the channel closes, grade what is
+                // left.
+                while let Ok(item) = rx_i.recv() {
+                    rows += item.2.len();
+                    batch.push(item);
+                    if rows >= SCORING_ROW_BUDGET {
+                        score_batch(&mut board, std::mem::take(&mut batch), risk_cfg)?;
+                        rows = 0;
+                    }
+                }
+                if !batch.is_empty() {
+                    score_batch(&mut board, batch, risk_cfg)?;
+                }
+
+                Ok::<_, ChapatyError>(board)
+            })
+            .map_err(|e| SystemError::Generic(format!("Failed to spawn scorer thread {i}: {e}")))?;
+        join_handles.push(handler);
+    }
+    Ok(join_handles)
+}
+
 /// Grades a batch of agents with one grouped polars query and feeds the results
 /// into the leaderboard.
 ///
@@ -568,60 +622,6 @@ fn score_batch<T>(
     }
 
     Ok(())
-}
-
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rx is taken by value on purpose: the original receiver is dropped when this function returns. Only the worker clones keep the channel alive. If all workers finish or die, `tx.send` fails instead of blocking forever on the bounded channel."
-)]
-#[tracing::instrument(skip_all)]
-fn spawn_scorers<T>(
-    top_k: usize,
-    risk_cfg: RiskMetricsConfig,
-    rx: Receiver<(u64, T, JournalSoA)>,
-) -> ChapatyResult<Vec<ScorerHandle<T>>>
-where
-    T: Send + 'static,
-{
-    let num_workers = std::thread::available_parallelism()
-        .map_err(|e| {
-            SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
-        })?
-        .get()
-        .div_ceil(4);
-
-    let mut join_handles = Vec::with_capacity(num_workers);
-    for i in 0..num_workers {
-        let rx_i = rx.clone();
-        let handler = std::thread::Builder::new()
-            .name(format!("scorer-{i}"))
-            .spawn(move || {
-                let mut board = AgentLeaderboard::new(top_k);
-
-                let mut batch = Vec::new();
-                let mut rows = 0;
-
-                // Collect journals until the batch holds enough rows, then
-                // grade them together. When the channel closes, grade what is
-                // left.
-                while let Ok(item) = rx_i.recv() {
-                    rows += item.2.len();
-                    batch.push(item);
-                    if rows >= SCORING_ROW_BUDGET {
-                        score_batch(&mut board, std::mem::take(&mut batch), risk_cfg)?;
-                        rows = 0;
-                    }
-                }
-                if !batch.is_empty() {
-                    score_batch(&mut board, batch, risk_cfg)?;
-                }
-
-                Ok::<_, ChapatyError>(board)
-            })
-            .map_err(|e| SystemError::Generic(format!("Failed to spawn scorer thread {i}: {e}")))?;
-        join_handles.push(handler);
-    }
-    Ok(join_handles)
 }
 
 #[cfg(test)]
