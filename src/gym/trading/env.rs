@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc, thread::JoinHandle};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, thread::JoinHandle};
 
 use crossbeam_channel::Receiver;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
@@ -26,6 +26,8 @@ use crate::{
     io::IoConfig,
     report::{
         equity_curve::EquityCurveReport,
+        grouped::GroupCol,
+        io::Report,
         journal::Journal,
         leaderboard::{AgentLeaderboard, Leaderboard, LeaderboardEntry},
         portfolio_performance::PortfolioPerformanceCol,
@@ -138,7 +140,7 @@ impl Environment {
     /// # Arguments
     ///
     /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as the
-    ///   unique **Agent UID**. This is typically created by calling
+    ///   **unique Agent UID**. This is typically created by calling
     ///   `.enumerate()` on your configuration of the agent grid.
     /// * `top_k` - The maximum number of agents to retain in the leaderboard.
     ///
@@ -174,7 +176,7 @@ impl Environment {
         let pb = progress_bar(agents.len() as u64)?;
         pb.set_message("Running evaluation...");
 
-        let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(1024);
+        let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(SCORING_CHANNEL_CAPACITY);
         let join_handles = spawn_scorers(top_k, self.risk_metrics_cfg, rx)?;
 
         agents
@@ -485,11 +487,88 @@ fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
     Ok(bar)
 }
 
+/// How many finished agents may wait between the workers and the scorers.
+const SCORING_CHANNEL_CAPACITY: usize = 64;
+
+/// A scorer stacks journals until they hold at least this many trade rows,
+/// then grades them in one polars query.
+///
+/// Agents with few trades share one query, which saves the per-query planning
+/// cost. Agents with many trades end up in small batches, which bounds memory.
+/// This is a soft limit: the journal that crosses it is still added, so a batch
+/// holds at most this many rows plus one journal.
+const SCORING_ROW_BUDGET: usize = 1_000_000;
+
 /// Result produced by a single scorer thread.
 type ScorerResult<T> = Result<AgentLeaderboard<T>, ChapatyError>;
 
 /// Handle to a running scorer thread.
 type ScorerHandle<T> = JoinHandle<ScorerResult<T>>;
+
+/// Grades a batch of agents with one grouped polars query and feeds the results
+/// into the leaderboard.
+///
+/// Agents without trades have no result row. The leaderboard ignores agents
+/// without metrics anyway, so they are simply dropped.
+fn score_batch<T>(
+    board: &mut AgentLeaderboard<T>,
+    batch: Vec<(u64, T, JournalSoA)>,
+    risk_cfg: RiskMetricsConfig,
+) -> ChapatyResult<()> {
+    let mut agents = HashMap::with_capacity(batch.len());
+    let mut stacked = JournalSoA::default();
+    for (agent_uid, agent, journal_soa) in batch {
+        if agents.insert(agent_uid, agent).is_some() {
+            return Err(SystemError::InvariantViolation(format!(
+                "Agent uid {agent_uid} is not unique, every agent needs its own uid"
+            ))
+            .into());
+        }
+        stacked.extend([journal_soa]);
+    }
+
+    let df = stacked.try_into()?;
+    let journal = Journal::new(&df, risk_cfg)?;
+    let pp = journal
+        .group_by([GroupCol::AgentUid])
+        .portfolio_performance()?;
+
+    let uids = pp
+        .as_df()
+        .column(GroupCol::AgentUid.as_str())
+        .and_then(|c| c.u64())
+        .map_err(|e| SystemError::InvariantViolation(format!("Missing agent uid column: {e}")))?;
+
+    for (row, agent_uid) in uids.iter().enumerate() {
+        let agent_uid = agent_uid.ok_or_else(|| {
+            SystemError::InvariantViolation(format!(
+                "Agent uid is null in result row {row}, every journal row has a uid"
+            ))
+        })?;
+        let agent = agents.remove(&agent_uid).ok_or_else(|| {
+            SystemError::InvariantViolation(format!(
+                "Result row for agent uid {agent_uid} has no agent in this batch"
+            ))
+        })?;
+
+        let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
+        for metric in PortfolioPerformanceCol::iter() {
+            if let Some(value) = pp.get(metric, row) {
+                entries.push(LeaderboardEntry {
+                    agent_uid,
+                    metric,
+                    reward: metric.to_heap_score(value).into(),
+                });
+            } else {
+                warn!(?agent_uid, ?metric, "Metric produced null value");
+            }
+        }
+
+        board.update(&entries, agent);
+    }
+
+    Ok(())
+}
 
 #[expect(
     clippy::needless_pass_by_value,
@@ -519,26 +598,22 @@ where
             .spawn(move || {
                 let mut board = AgentLeaderboard::new(top_k);
 
-                while let Ok((agent_uid, agent, journal_soa)) = rx_i.recv() {
-                    let df = journal_soa.try_into()?;
-                    let journal = Journal::new(&df, risk_cfg)?;
-                    let pp = journal.portfolio_performance()?;
+                let mut batch = Vec::new();
+                let mut rows = 0;
 
-                    let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
-
-                    for metric in PortfolioPerformanceCol::iter() {
-                        if let Some(value) = pp.first(metric) {
-                            entries.push(LeaderboardEntry {
-                                agent_uid,
-                                metric,
-                                reward: metric.to_heap_score(value).into(),
-                            });
-                        } else {
-                            warn!(?agent_uid, ?metric, "Metric produced null value");
-                        }
+                // Collect journals until the batch holds enough rows, then
+                // grade them together. When the channel closes, grade what is
+                // left.
+                while let Ok(item) = rx_i.recv() {
+                    rows += item.2.len();
+                    batch.push(item);
+                    if rows >= SCORING_ROW_BUDGET {
+                        score_batch(&mut board, std::mem::take(&mut batch), risk_cfg)?;
+                        rows = 0;
                     }
-
-                    board.update(&entries, agent);
+                }
+                if !batch.is_empty() {
+                    score_batch(&mut board, batch, risk_cfg)?;
                 }
 
                 Ok::<_, ChapatyError>(board)
@@ -547,4 +622,25 @@ where
         join_handles.push(handler);
     }
     Ok(join_handles)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_score_batch_accepts_agents_without_trades() {
+        // If no agent in a batch traded (e.g. an agent that never trades, as in
+        // the quickstart), the stacked journal is empty and scoring must still
+        // succeed.
+        let mut board = AgentLeaderboard::new(5);
+        let batch = vec![
+            (0, (), JournalSoA::default()),
+            (1, (), JournalSoA::default()),
+        ];
+
+        let result = score_batch(&mut board, batch, RiskMetricsConfig::default());
+
+        assert!(result.is_ok(), "Scoring failed: {result:?}");
+    }
 }

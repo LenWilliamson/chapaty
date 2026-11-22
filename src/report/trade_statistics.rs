@@ -118,10 +118,6 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().height() == 0 {
-            return Ok(Self::default());
-        }
-
         let df = gj.lazy().agg(exprs()).collect().map_err(convert_err)?;
 
         Ok(Self { df })

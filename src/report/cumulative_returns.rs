@@ -57,6 +57,8 @@ impl ToSchema for CumulativeReturns {
                     | CumulativeReturnCol::EpisodeId
                     | CumulativeReturnCol::TradeId => DataType::UInt32,
 
+                    CumulativeReturnCol::AgentUid => DataType::UInt64,
+
                     CumulativeReturnCol::AgentId
                     | CumulativeReturnCol::DataBroker
                     | CumulativeReturnCol::Symbol
@@ -111,10 +113,6 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().height() == 0 {
-            return Ok(Self::default());
-        }
-
         let init_val = gj.source().risk_metrics_config().initial_portfolio_value();
         let report_cols = CumulativeReturnCol::iter().map(|c| c.as_str());
 
@@ -149,6 +147,7 @@ fn exprs(init_val: u32) -> Vec<Expr> {
         col(JournalCol::EpisodeId).define_as(CumulativeReturnCol::EpisodeId, DataType::UInt32),
         col(JournalCol::TradeId).define_as(CumulativeReturnCol::TradeId, DataType::UInt32),
         col(JournalCol::AgentId).define_as(CumulativeReturnCol::AgentId, DataType::String),
+        col(JournalCol::AgentUid).define_as(CumulativeReturnCol::AgentUid, DataType::UInt64),
         // === Market spec ===
         col(JournalCol::DataBroker).define_as(CumulativeReturnCol::DataBroker, DataType::String),
         col(JournalCol::Exchange).define_as(CumulativeReturnCol::Exchange, DataType::String),
@@ -282,6 +281,8 @@ pub enum CumulativeReturnCol {
     TradeId,
     /// Identifier for the agent executing the trade.
     AgentId,
+    /// Unique id of the agent within a grid search. `0` for a single run.
+    AgentUid,
 
     // === Market spec ===
     /// The market data broker (e.g., `binance`).

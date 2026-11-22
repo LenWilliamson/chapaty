@@ -145,10 +145,6 @@ impl TryFrom<&GroupedJournal<'_>> for PortfolioPerformance {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().height() == 0 {
-            return Ok(Self::default());
-        }
-
         let cfg = gj.source().risk_metrics_config();
         let df = gj.lazy().agg(exprs(cfg)).collect().map_err(convert_err)?;
 

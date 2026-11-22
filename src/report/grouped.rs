@@ -572,6 +572,47 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_grouped_reports_of_empty_journal_keep_their_columns() {
+        // An empty journal must give an empty report with the same columns and
+        // types as a non-empty one, group keys included.
+        let empty = Journal::default();
+        let filled = synthetic_journal(50);
+
+        for keys in parity_key_sets() {
+            let empty_grouped = empty.group_by(keys.clone());
+            let filled_grouped = filled.group_by(keys.clone());
+
+            let pairs = [
+                (
+                    empty_grouped
+                        .portfolio_performance()
+                        .unwrap()
+                        .as_df()
+                        .clone(),
+                    filled_grouped
+                        .portfolio_performance()
+                        .unwrap()
+                        .as_df()
+                        .clone(),
+                ),
+                (
+                    empty_grouped.trade_stats().unwrap().as_df().clone(),
+                    filled_grouped.trade_stats().unwrap().as_df().clone(),
+                ),
+                (
+                    empty_grouped.cumulative_returns().unwrap().as_df().clone(),
+                    filled_grouped.cumulative_returns().unwrap().as_df().clone(),
+                ),
+            ];
+
+            for (empty_df, filled_df) in pairs {
+                assert_eq!(empty_df.height(), 0, "keys {keys:?}");
+                assert_eq!(empty_df.schema(), filled_df.schema(), "keys {keys:?}");
+            }
+        }
+    }
+
     /// Splits the journal into one journal per group, in order of first
     /// appearance, together with the group's key values.
     fn journal_per_group(journal: &Journal, keys: &[GroupCol]) -> Vec<(DataFrame, Journal)> {

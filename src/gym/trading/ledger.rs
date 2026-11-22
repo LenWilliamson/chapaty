@@ -400,6 +400,76 @@ pub(super) struct JournalSoA {
     realized_return_dollars: Vec<f64>,
 }
 
+/// Appends the rows of other journals, e.g. to score many agents in one batch.
+impl Extend<Self> for JournalSoA {
+    fn extend<I: IntoIterator<Item = Self>>(&mut self, journals: I) {
+        for other in journals {
+            let Self {
+                episode_id,
+                trade_id,
+                trade_state,
+                agent_id,
+                agent_uid,
+                data_broker,
+                exchange,
+                symbol,
+                market_kind,
+                trade_kind,
+                entry_price,
+                stop_loss,
+                take_profit,
+                quantity,
+                expected_loss_in_ticks,
+                expected_profit_in_ticks,
+                expected_loss_usd,
+                expected_profit_usd,
+                risk_reward_ratio,
+                entry_timestamp,
+                exit_timestamp,
+                exit_price,
+                exit_reason,
+                realized_return_in_ticks,
+                realized_return_dollars,
+            } = other;
+
+            self.episode_id.extend(episode_id);
+            self.trade_id.extend(trade_id);
+            self.trade_state.extend(trade_state);
+            self.agent_id.extend(agent_id);
+            self.agent_uid.extend(agent_uid);
+            self.data_broker.extend(data_broker);
+            self.exchange.extend(exchange);
+            self.symbol.extend(symbol);
+            self.market_kind.extend(market_kind);
+            self.trade_kind.extend(trade_kind);
+            self.entry_price.extend(entry_price);
+            self.stop_loss.extend(stop_loss);
+            self.take_profit.extend(take_profit);
+            self.quantity.extend(quantity);
+            self.expected_loss_in_ticks.extend(expected_loss_in_ticks);
+            self.expected_profit_in_ticks
+                .extend(expected_profit_in_ticks);
+            self.expected_loss_usd.extend(expected_loss_usd);
+            self.expected_profit_usd.extend(expected_profit_usd);
+            self.risk_reward_ratio.extend(risk_reward_ratio);
+            self.entry_timestamp.extend(entry_timestamp);
+            self.exit_timestamp.extend(exit_timestamp);
+            self.exit_price.extend(exit_price);
+            self.exit_reason.extend(exit_reason);
+            self.realized_return_in_ticks
+                .extend(realized_return_in_ticks);
+            self.realized_return_dollars.extend(realized_return_dollars);
+        }
+    }
+}
+
+impl JournalSoA {
+    /// Number of trade rows in this journal.
+    pub(super) const fn len(&self) -> usize {
+        self.trade_id.len()
+    }
+}
+
 impl JournalSoA {
     fn episode_ids(&mut self) -> ChapatyResult<Vec<u32>> {
         mem::take(&mut self.episode_id)
@@ -1793,6 +1863,36 @@ mod test {
         assert_eq!(uids.len(), 2);
         assert_eq!(uids.get(0), Some(7));
         assert_eq!(uids.get(1), Some(7));
+    }
+
+    #[test]
+    fn test_journal_soa_extend_keeps_rows_and_uids() {
+        let first = vec![
+            Ok(sample_journal_entry(0, 1, StateKind::Closed, 500.0)),
+            Ok(sample_journal_entry(1, 2, StateKind::Closed, -200.0)),
+        ];
+        let second = vec![Ok(sample_journal_entry(0, 1, StateKind::Active, 50.0))];
+
+        let mut soa = first
+            .into_iter()
+            .try_collect_soa(3)
+            .expect("Should collect");
+        soa.extend([second
+            .into_iter()
+            .try_collect_soa(9)
+            .expect("Should collect")]);
+
+        let df: DataFrame = soa.try_into().expect("Conversion failed");
+        assert_eq!(df.height(), 3);
+
+        let uids = df
+            .column(JournalCol::AgentUid.as_str())
+            .unwrap()
+            .u64()
+            .unwrap();
+        let mut uids: Vec<u64> = (0..uids.len()).filter_map(|i| uids.get(i)).collect();
+        uids.sort_unstable();
+        assert_eq!(uids, vec![3, 3, 9], "Every row keeps the uid of its agent");
     }
 
     #[test]
