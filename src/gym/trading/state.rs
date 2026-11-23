@@ -15,7 +15,7 @@ use crate::{
     gym::{
         AgentIdentifier, Reward,
         trading::{
-            action::{CancelCmd, MarketCloseCmd, ModifyCmd, OpenCmd},
+            action::{ACTIONS_INLINE_MARKETS, CancelCmd, MarketCloseCmd, ModifyCmd, OpenCmd},
             context::UpdateCtx,
             state::active::CloseOutcome,
             types::{RiskRewardRatio, StateKind, TerminationReason, TradeKind},
@@ -587,18 +587,15 @@ impl From<State> for StateKind {
 // Repository (States)
 // ================================================================================================
 
-/// Markets that `States` keeps inline without a heap allocation.
-const LIVE_INLINE_MARKETS: usize = 8;
-
 #[derive(Debug, Clone)]
 pub struct States {
     /// **HOT PATH:** Only Active and Pending trades.
     /// Contiguous memory. Fast iteration.
-    live: SortedVecMap<MarketId, Vec<State>, LIVE_INLINE_MARKETS>,
+    live: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>,
 
     /// **COLD PATH:** Closed and Canceled trades.
     /// We never iterate this during updates.
-    archive: SortedVecMap<MarketId, Vec<State>>,
+    archive: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>,
 
     /// Secondary Index: `TradeId` -> idx
     /// Allows O(1) lookup of any trade in live.
@@ -616,8 +613,8 @@ pub struct States {
 impl Default for States {
     fn default() -> Self {
         Self {
-            live: SortedVecMap::new(),
-            archive: SortedVecMap::new(),
+            live: SortedVecMap::new_inline(),
+            archive: SortedVecMap::new_inline(),
             live_index: HashMap::default(),
             step_reward: 0.0,
             cumulative_pnl: 0.0,
@@ -767,7 +764,7 @@ impl States {
         let markets = self
             .markets()
             .copied()
-            .collect::<SmallVec<[MarketId; LIVE_INLINE_MARKETS]>>();
+            .collect::<SmallVec<[MarketId; ACTIONS_INLINE_MARKETS]>>();
         for market_id in markets {
             self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))?;
         }
@@ -781,14 +778,14 @@ impl States {
     /// never trigger a `malloc` or `memcpy` during the hot loop of the episode.
     pub(super) fn with_capacity(markets: &[MarketId], trade_hint_per_market: usize) -> Self {
         // 1. Pre-allocate Hot Storage (Active/Pending)
-        let live: SortedVecMap<MarketId, Vec<State>, LIVE_INLINE_MARKETS> = markets
+        let live: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = markets
             .iter()
             .map(|id| (*id, Vec::with_capacity(trade_hint_per_market)))
             .collect();
 
         // 2. Pre-allocate Cold Storage (Closed/Canceled)
         // We assume roughly same volume, or you could tune this separately.
-        let archive: SortedVecMap<MarketId, Vec<State>> = markets
+        let archive: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = markets
             .iter()
             .map(|id| (*id, Vec::with_capacity(trade_hint_per_market)))
             .collect();
@@ -813,13 +810,13 @@ impl States {
     /// episode inherits the exact memory footprint reserved in the original
     /// prototype.
     pub(super) fn clone_with_capacity(&self) -> Self {
-        let live: SortedVecMap<MarketId, Vec<State>> = self
+        let live: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = self
             .live
             .iter()
             .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))
             .collect();
 
-        let archive: SortedVecMap<MarketId, Vec<State>> = self
+        let archive: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = self
             .archive
             .iter()
             .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))

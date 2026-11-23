@@ -260,11 +260,11 @@ impl Command for CancelCmd {
 ///
 /// `Actions` is moved several times on every step, even when it is empty, and
 /// every move copies all inline slots.
-pub const ACTIONS_INLINE_MARKETS: usize = 2;
+pub(super) const ACTIONS_INLINE_MARKETS: usize = 2;
 
 /// A batch of trading actions to be applied to the environment.
 ///
-/// Holds up to [`ACTIONS_INLINE_MARKETS`] markets without a heap allocation.
+/// Holds up to two markets without a heap allocation.
 #[derive(Debug, Clone)]
 pub struct Actions(pub SortedVecMap<MarketId, Vec<Action>, ACTIONS_INLINE_MARKETS>);
 
