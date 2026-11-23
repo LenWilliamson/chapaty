@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use tracing::warn;
 
 use crate::{
@@ -586,11 +587,14 @@ impl From<State> for StateKind {
 // Repository (States)
 // ================================================================================================
 
+/// Markets that `States` keeps inline without a heap allocation.
+const LIVE_INLINE_MARKETS: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct States {
     /// **HOT PATH:** Only Active and Pending trades.
     /// Contiguous memory. Fast iteration.
-    live: SortedVecMap<MarketId, Vec<State>>,
+    live: SortedVecMap<MarketId, Vec<State>, LIVE_INLINE_MARKETS>,
 
     /// **COLD PATH:** Closed and Canceled trades.
     /// We never iterate this during updates.
@@ -757,7 +761,13 @@ impl States {
     where
         F: FnMut(MarketId, ChapatyResult<Option<TerminationReason>>) -> ChapatyResult<()>,
     {
-        let markets = self.markets().copied().collect::<Vec<_>>();
+        if self.live_index.is_empty() {
+            return Ok(());
+        }
+        let markets = self
+            .markets()
+            .copied()
+            .collect::<SmallVec<[MarketId; LIVE_INLINE_MARKETS]>>();
         for market_id in markets {
             self.update_live_trades_scan(market_id, ctx, |result| on_update(market_id, result))?;
         }
@@ -771,7 +781,7 @@ impl States {
     /// never trigger a `malloc` or `memcpy` during the hot loop of the episode.
     pub(super) fn with_capacity(markets: &[MarketId], trade_hint_per_market: usize) -> Self {
         // 1. Pre-allocate Hot Storage (Active/Pending)
-        let live: SortedVecMap<MarketId, Vec<State>> = markets
+        let live: SortedVecMap<MarketId, Vec<State>, LIVE_INLINE_MARKETS> = markets
             .iter()
             .map(|id| (*id, Vec::with_capacity(trade_hint_per_market)))
             .collect();

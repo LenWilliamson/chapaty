@@ -81,6 +81,9 @@ impl Ledger {
     #[tracing::instrument(skip(self, ctx), fields(ep_id = %ep.id().0, ts = %ctx.market.current_timestamp()))]
     pub fn apply_actions(&mut self, ep: &Episode, ctx: ActionCtx) -> ChapatyResult<ActionSummary> {
         let mut report = ActionSummary::default();
+        if ctx.actions.0.is_empty() {
+            return Ok(report);
+        }
         let market_view = ctx.market;
 
         let states = self.states_mut(ep)?;
