@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc, thread::JoinHandle};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, thread::JoinHandle};
 
 use crossbeam_channel::Receiver;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
@@ -26,6 +26,8 @@ use crate::{
     io::IoConfig,
     report::{
         equity_curve::EquityCurveReport,
+        grouped::GroupCol,
+        io::Report,
         journal::Journal,
         leaderboard::{AgentLeaderboard, Leaderboard, LeaderboardEntry},
         portfolio_performance::PortfolioPerformanceCol,
@@ -127,24 +129,24 @@ impl Environment {
         self.journal()
     }
 
-    /// Evaluates a stream of agents in parallel, returning a leaderboard of the
+    /// Evaluates a batch of agents in parallel, returning a leaderboard of the
     /// top performers.
     ///
     /// This method uses `rayon` to distribute agent evaluation across all
     /// available CPU cores. It maintains a min-heap of the top `top_k`
     /// results to minimize memory usage, allowing for the evaluation of
-    /// massive datasets (e.g., 1M+ agents) with constant RAM overhead.
+    /// large batches (e.g., 1M+ agents) with constant RAM overhead.
     ///
     /// # Arguments
     ///
     /// * `agents` - A vector of `(usize, Agent)`. The `usize` is treated as the
-    ///   unique **Agent UID**. This is typically created by calling
+    ///   **unique Agent UID**. This is typically created by calling
     ///   `.enumerate()` on your configuration of the agent grid.
     /// * `top_k` - The maximum number of agents to retain in the leaderboard.
     ///
     /// # Runtime Estimation
     ///
-    /// Before launching a massive grid search (e.g., 1M+ agents), it is
+    /// Before launching a grid search (e.g., 1M+ agents), it is
     /// recommended to benchmark a single representative agent first.
     ///
     /// You can use [`Environment::evaluate_agent`] to run one agent
@@ -174,15 +176,20 @@ impl Environment {
         let pb = progress_bar(agents.len() as u64)?;
         pb.set_message("Running evaluation...");
 
-        let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(1024);
+        let (tx, rx) = crossbeam_channel::bounded::<(u64, T, JournalSoA)>(SCORING_CHANNEL_CAPACITY);
         let join_handles = spawn_scorers(top_k, self.risk_metrics_cfg, rx)?;
 
         agents
             .into_par_iter()
             .progress_with(pb.clone())
             .try_for_each(|(uid, mut agent)| -> ChapatyResult<()> {
-                let journal_soa = self.worker(&mut agent)?;
-                tx.send((uid as u64, agent, journal_soa)).map_err(|e| {
+                let uid = u64::try_from(uid).map_err(|e| {
+                    SystemError::InvariantViolation(format!(
+                        "Agent uid {uid} does not fit u64: {e}"
+                    ))
+                })?;
+                let journal_soa = self.worker(&mut agent, uid)?;
+                tx.send((uid, agent, journal_soa)).map_err(|e| {
                     SystemError::InvariantViolation(format!(
                         "Evaluation consumers stopped before all agents were scored: {e}"
                     ))
@@ -231,7 +238,7 @@ impl Environment {
     ///
     /// Returns an error if ledger extraction or journal construction fails.
     pub fn journal(&self) -> ChapatyResult<Journal> {
-        let df = self.ledger.journal_df()?;
+        let df = self.ledger.journal_df(None)?;
         Journal::new(&df, self.risk_metrics_cfg)
     }
 
@@ -286,7 +293,7 @@ impl Env for Environment {
         self.env_status = EnvStatus::Running;
 
         let obs = Observation {
-            market_view: MarketView::new(&self.sim_data, &self.cursor)?,
+            market_view: MarketView::new(&self.sim_data, &self.cursor),
             states: self.states(&self.ep)?,
         };
 
@@ -299,7 +306,7 @@ impl Env for Environment {
         let episode = self.episode();
 
         // 1. Snapshot S(t)
-        let market_before = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_before = MarketView::new(&self.sim_data, &self.cursor);
 
         // 2. Apply Actions A(t) -> S'(t)
         // (Validation & Execution at current prices)
@@ -316,7 +323,7 @@ impl Env for Environment {
         self.update_env_status(outcome);
 
         // 5. Observe S(t+1)
-        let market_final = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_final = MarketView::new(&self.sim_data, &self.cursor);
         let obs = Observation {
             market_view: market_final,
             states: self.states(&episode)?,
@@ -339,7 +346,7 @@ impl Environment {
         summary: ActionSummary,
     ) -> ChapatyResult<(StepOutcome, Reward)> {
         self.advance_market();
-        let market_after = MarketView::new(&self.sim_data, &self.cursor)?;
+        let market_after = MarketView::new(&self.sim_data, &self.cursor);
 
         let update_ctx = UpdateCtx {
             market: &market_after,
@@ -375,13 +382,13 @@ impl Environment {
         Ok(())
     }
 
-    fn worker<T>(&self, agent: &mut T) -> ChapatyResult<JournalSoA>
+    fn worker<T>(&self, agent: &mut T, uid: u64) -> ChapatyResult<JournalSoA>
     where
         T: Agent,
     {
         let mut thread_env = self.clone();
         thread_env.eval(agent)?;
-        thread_env.ledger.journal_soa()
+        thread_env.ledger.journal_soa(Some(uid))
     }
 
     fn states(&self, ep: &Episode) -> ChapatyResult<&States> {
@@ -417,9 +424,7 @@ impl Environment {
     }
 
     fn evaluate_outcome(&self, ep: &Episode) -> ChapatyResult<StepOutcome> {
-        if self.ep.is_episode_end(self.cursor.current_ts())
-            || self.cursor.is_end_of_data(&self.sim_data)
-        {
+        if self.ep.is_episode_end(self.cursor.current_ts()) || self.cursor.is_end_of_data() {
             if self.ledger.is_terminal(ep)? {
                 Ok(StepOutcome::Terminated)
             } else {
@@ -430,9 +435,9 @@ impl Environment {
         }
     }
 
-    fn update_env_status(&mut self, outcome: StepOutcome) {
+    const fn update_env_status(&mut self, outcome: StepOutcome) {
         if outcome.is_terminal() {
-            self.env_status = if self.cursor.is_end_of_data(&self.sim_data) {
+            self.env_status = if self.cursor.is_end_of_data() {
                 EnvStatus::Done
             } else {
                 EnvStatus::EpisodeDone
@@ -480,6 +485,18 @@ fn progress_bar(capacity: u64) -> ChapatyResult<ProgressBar> {
     Ok(bar)
 }
 
+/// How many finished agents may wait between the workers and the scorers.
+const SCORING_CHANNEL_CAPACITY: usize = 64;
+
+/// A scorer stacks journals until they hold at least this many trade rows,
+/// then grades them in one polars query.
+///
+/// Agents with few trades share one query, which saves the per-query planning
+/// cost. Agents with many trades end up in small batches, which bounds memory.
+/// This is a soft limit: the journal that crosses it is still added, so a batch
+/// holds at most this many rows plus one journal.
+const SCORING_ROW_BUDGET: usize = 1_000_000;
+
 /// Result produced by a single scorer thread.
 type ScorerResult<T> = Result<AgentLeaderboard<T>, ChapatyError>;
 
@@ -503,7 +520,8 @@ where
         .map_err(|e| {
             SystemError::Generic(format!("Failed to fetch cpu cores to build scorers: {e}"))
         })?
-        .get();
+        .get()
+        .div_ceil(4);
 
     let mut join_handles = Vec::with_capacity(num_workers);
     for i in 0..num_workers {
@@ -513,26 +531,22 @@ where
             .spawn(move || {
                 let mut board = AgentLeaderboard::new(top_k);
 
-                while let Ok((agent_uid, agent, journal_soa)) = rx_i.recv() {
-                    let df = journal_soa.try_into()?;
-                    let journal = Journal::new(&df, risk_cfg)?;
-                    let pp = journal.portfolio_performance()?;
+                let mut batch = Vec::new();
+                let mut rows = 0;
 
-                    let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
-
-                    for metric in PortfolioPerformanceCol::iter() {
-                        if let Some(value) = pp.first(metric) {
-                            entries.push(LeaderboardEntry {
-                                agent_uid,
-                                metric,
-                                reward: metric.to_heap_score(value).into(),
-                            });
-                        } else {
-                            warn!(?agent_uid, ?metric, "Metric produced null value");
-                        }
+                // Collect journals until the batch holds enough rows, then
+                // grade them together. When the channel closes, grade what is
+                // left.
+                while let Ok(item) = rx_i.recv() {
+                    rows += item.2.len();
+                    batch.push(item);
+                    if rows >= SCORING_ROW_BUDGET {
+                        score_batch(&mut board, std::mem::take(&mut batch), risk_cfg)?;
+                        rows = 0;
                     }
-
-                    board.update(&entries, agent);
+                }
+                if !batch.is_empty() {
+                    score_batch(&mut board, batch, risk_cfg)?;
                 }
 
                 Ok::<_, ChapatyError>(board)
@@ -541,4 +555,90 @@ where
         join_handles.push(handler);
     }
     Ok(join_handles)
+}
+
+/// Grades a batch of agents with one grouped polars query and feeds the results
+/// into the leaderboard.
+///
+/// Agents without trades have no result row. The leaderboard ignores agents
+/// without metrics anyway, so they are simply dropped.
+fn score_batch<T>(
+    board: &mut AgentLeaderboard<T>,
+    batch: Vec<(u64, T, JournalSoA)>,
+    risk_cfg: RiskMetricsConfig,
+) -> ChapatyResult<()> {
+    let mut agents = HashMap::with_capacity(batch.len());
+    let mut stacked = JournalSoA::default();
+    for (agent_uid, agent, journal_soa) in batch {
+        if agents.insert(agent_uid, agent).is_some() {
+            return Err(SystemError::InvariantViolation(format!(
+                "Agent uid {agent_uid} is not unique, every agent needs its own uid"
+            ))
+            .into());
+        }
+        stacked.extend([journal_soa]);
+    }
+
+    let df = stacked.try_into()?;
+    let journal = Journal::new(&df, risk_cfg)?;
+    let pp = journal
+        .group_by([GroupCol::AgentUid])
+        .portfolio_performance()?;
+
+    let uids = pp
+        .as_df()
+        .column(GroupCol::AgentUid.as_str())
+        .and_then(|c| c.u64())
+        .map_err(|e| SystemError::InvariantViolation(format!("Missing agent uid column: {e}")))?;
+
+    for (row, agent_uid) in uids.iter().enumerate() {
+        let agent_uid = agent_uid.ok_or_else(|| {
+            SystemError::InvariantViolation(format!(
+                "Agent uid is null in result row {row}, every journal row has a uid"
+            ))
+        })?;
+        let agent = agents.remove(&agent_uid).ok_or_else(|| {
+            SystemError::InvariantViolation(format!(
+                "Result row for agent uid {agent_uid} has no agent in this batch"
+            ))
+        })?;
+
+        let mut entries = Vec::with_capacity(PortfolioPerformanceCol::COUNT);
+        for metric in PortfolioPerformanceCol::iter() {
+            if let Some(value) = pp.get(metric, row) {
+                entries.push(LeaderboardEntry {
+                    agent_uid,
+                    metric,
+                    reward: metric.to_heap_score(value).into(),
+                });
+            } else {
+                warn!(?agent_uid, ?metric, "Metric produced null value");
+            }
+        }
+
+        board.update(&entries, agent);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_score_batch_accepts_agents_without_trades() {
+        // If no agent in a batch traded (e.g. an agent that never trades, as in
+        // the quickstart), the stacked journal is empty and scoring must still
+        // succeed.
+        let mut board = AgentLeaderboard::new(5);
+        let batch = vec![
+            (0, (), JournalSoA::default()),
+            (1, (), JournalSoA::default()),
+        ];
+
+        let result = score_batch(&mut board, batch, RiskMetricsConfig::default());
+
+        assert!(result.is_ok(), "Scoring failed: {result:?}");
+    }
 }

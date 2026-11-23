@@ -21,7 +21,7 @@ impl WeightedMean {
     /// Folds one observation into the running totals.
     #[must_use]
     pub fn add(self, value: f64, weight: f64) -> Self {
-        if !value.is_finite() || !weight.is_finite() || weight <= 0.0 {
+        if !is_valid_observation(value, weight) {
             return self;
         }
         Self {
@@ -93,7 +93,14 @@ impl WeightedWindow {
 
     /// Adds one observation. Once the window is full, the oldest one leaves.
     pub fn push(&mut self, value: f64, weight: f64) {
-        self.window.push((value, weight));
+        // An invalid observation keeps its slot but must not count. A weight of
+        // 0 contributes nothing to any weighted sum, so store it as (0, 0).
+        let observation = if is_valid_observation(value, weight) {
+            (value, weight)
+        } else {
+            (0.0, 0.0)
+        };
+        self.window.push(observation);
     }
 
     /// Weighted mean and deviation of the window, or `None` while the window
@@ -104,29 +111,42 @@ impl WeightedWindow {
             return None;
         }
 
-        let mean = self
+        // Plain sums: each covers one window (tens to hundreds of values) and
+        // is recomputed from scratch, so rounding stays negligible without
+        // Kahan.
+        let (sum_weight, sum_weighted) = self
             .window
             .iter()
-            .fold(WeightedMean::default(), |acc, &(x, w)| acc.add(x, w))
-            .value()?;
+            .fold((0.0, 0.0), |(sw, swx), &(x, w)| (sw + w, w.mul_add(x, swx)));
 
-        let average = self
-            .window
-            .iter()
-            .fold(WeightedMean::default(), |acc, &(x, w)| {
-                acc.add(self.kind.transform(x - mean), w)
-            })
-            .value()?;
+        if sum_weight <= 0.0 {
+            return None;
+        }
+        let mean = sum_weighted / sum_weight;
+
+        let sum_distance = self.window.iter().fold(0.0, |acc, &(x, w)| {
+            w.mul_add(self.kind.transform(x - mean), acc)
+        });
 
         Some(WeightedStats {
             mean,
-            deviation: self.kind.finalize(average),
+            deviation: self.kind.finalize(sum_distance / sum_weight),
         })
     }
 
     pub fn clear(&mut self) {
         self.window.clear();
     }
+}
+
+// ================================================================================================
+// Helper Functions
+// ================================================================================================
+
+/// Whether an observation counts: a finite value with a finite, positive
+/// weight. Everything else is skipped, see [`WeightedMean`].
+fn is_valid_observation(value: f64, weight: f64) -> bool {
+    value.is_finite() && weight.is_finite() && weight > 0.0
 }
 
 #[cfg(test)]

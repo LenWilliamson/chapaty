@@ -18,9 +18,9 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct CursorGroup {
     ohlcv: OhlcvCursor,
-    trade: TradeCursor,
+    trades: TradeCursor,
     economic_cal: EconomicCalendarCursor,
-    vp: VolumeProfileCursor,
+    volume_profile: VolumeProfileCursor,
     tpo: TpoCursor,
     ema: EmaCursor,
     sma: SmaCursor,
@@ -35,6 +35,10 @@ pub struct CursorGroup {
     // === Time State ===
     previous_ts: Option<DateTime<Utc>>,
     current_ts: DateTime<Utc>,
+    /// Earliest event time not yet visible in any stream, or `None` at the end
+    /// of the data. Set by `advance_all` and `advance_all_to_end`, so every
+    /// method that moves the cursor keeps it up to date.
+    next_ts: Option<DateTime<Utc>>,
 }
 
 // ================================================================================================
@@ -42,46 +46,134 @@ pub struct CursorGroup {
 // ================================================================================================
 
 /// Calls a void method on every cursor that requires simulation storage.
+///
+/// Stream kinds without any data are skipped. Most environments use only a few
+/// of the kinds, and this runs on every step.
 macro_rules! for_each_cursor {
     ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {{
-        $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
-        $self.trade.$method($sim_data.trade() $(, $args)*);
-        $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
-        $self.vp.$method($sim_data.volume_profile() $(, $args)*);
-        $self.tpo.$method($sim_data.tpo() $(, $args)*);
-        $self.ema.$method($sim_data.ema() $(, $args)*);
-        $self.sma.$method($sim_data.sma() $(, $args)*);
-        $self.rsi.$method($sim_data.rsi() $(, $args)*);
-        $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*);
-        $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*);
-        $self.trades_session.$method($sim_data.trades_session() $(, $args)*);
-        $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*);
-        $self.atr.$method($sim_data.atr() $(, $args)*);
-        $self.roc.$method($sim_data.roc() $(, $args)*);
+        if !$sim_data.ohlcv().is_empty() {
+            $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*);
+        }
+        if !$sim_data.trades().is_empty() {
+            $self.trades.$method($sim_data.trades() $(, $args)*);
+        }
+        if !$sim_data.economic_cal().is_empty() {
+            $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*);
+        }
+        if !$sim_data.volume_profile().is_empty() {
+            $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*);
+        }
+        if !$sim_data.tpo().is_empty() {
+            $self.tpo.$method($sim_data.tpo() $(, $args)*);
+        }
+        if !$sim_data.ema().is_empty() {
+            $self.ema.$method($sim_data.ema() $(, $args)*);
+        }
+        if !$sim_data.sma().is_empty() {
+            $self.sma.$method($sim_data.sma() $(, $args)*);
+        }
+        if !$sim_data.rsi().is_empty() {
+            $self.rsi.$method($sim_data.rsi() $(, $args)*);
+        }
+        if !$sim_data.trades_vwap().is_empty() {
+            $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*);
+        }
+        if !$sim_data.ohlcv_vwap().is_empty() {
+            $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*);
+        }
+        if !$sim_data.trades_session().is_empty() {
+            $self.trades_session.$method($sim_data.trades_session() $(, $args)*);
+        }
+        if !$sim_data.ohlcv_session().is_empty() {
+            $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*);
+        }
+        if !$sim_data.atr().is_empty() {
+            $self.atr.$method($sim_data.atr() $(, $args)*);
+        }
+        if !$sim_data.roc().is_empty() {
+            $self.roc.$method($sim_data.roc() $(, $args)*);
+        }
     }};
 }
 
 /// Calls a method on every cursor that requires simulation storage and collects
 /// results.
+///
+/// Stream kinds without any data are skipped and yield `$empty` instead. Most
+/// environments use only a few of the kinds, and this runs on every step.
 macro_rules! map_cursors {
-    ($self:expr, $sim_data:expr, $method:ident $(, $args:expr)*) => {
+    ($self:expr, $sim_data:expr, empty: $empty:expr, $method:ident $(, $args:expr)*) => {
         [
-            $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*),
-            $self.trade.$method($sim_data.trade() $(, $args)*),
-            $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*),
-            $self.vp.$method($sim_data.volume_profile() $(, $args)*),
-            $self.tpo.$method($sim_data.tpo() $(, $args)*),
-            $self.ema.$method($sim_data.ema() $(, $args)*),
-            $self.sma.$method($sim_data.sma() $(, $args)*),
-            $self.rsi.$method($sim_data.rsi() $(, $args)*),
-            $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*),
-            $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*),
-            $self.trades_session
-                .$method($sim_data.trades_session() $(, $args)*),
-            $self.ohlcv_session
-                .$method($sim_data.ohlcv_session() $(, $args)*),
-            $self.atr.$method($sim_data.atr() $(, $args)*),
-            $self.roc.$method($sim_data.roc() $(, $args)*),
+            if $sim_data.ohlcv().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv.$method($sim_data.ohlcv() $(, $args)*)
+            },
+            if $sim_data.trades().is_empty() {
+                $empty
+            } else {
+                $self.trades.$method($sim_data.trades() $(, $args)*)
+            },
+            if $sim_data.economic_cal().is_empty() {
+                $empty
+            } else {
+                $self.economic_cal.$method($sim_data.economic_cal() $(, $args)*)
+            },
+            if $sim_data.volume_profile().is_empty() {
+                $empty
+            } else {
+                $self.volume_profile.$method($sim_data.volume_profile() $(, $args)*)
+            },
+            if $sim_data.tpo().is_empty() {
+                $empty
+            } else {
+                $self.tpo.$method($sim_data.tpo() $(, $args)*)
+            },
+            if $sim_data.ema().is_empty() {
+                $empty
+            } else {
+                $self.ema.$method($sim_data.ema() $(, $args)*)
+            },
+            if $sim_data.sma().is_empty() {
+                $empty
+            } else {
+                $self.sma.$method($sim_data.sma() $(, $args)*)
+            },
+            if $sim_data.rsi().is_empty() {
+                $empty
+            } else {
+                $self.rsi.$method($sim_data.rsi() $(, $args)*)
+            },
+            if $sim_data.trades_vwap().is_empty() {
+                $empty
+            } else {
+                $self.trades_vwap.$method($sim_data.trades_vwap() $(, $args)*)
+            },
+            if $sim_data.ohlcv_vwap().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv_vwap.$method($sim_data.ohlcv_vwap() $(, $args)*)
+            },
+            if $sim_data.trades_session().is_empty() {
+                $empty
+            } else {
+                $self.trades_session.$method($sim_data.trades_session() $(, $args)*)
+            },
+            if $sim_data.ohlcv_session().is_empty() {
+                $empty
+            } else {
+                $self.ohlcv_session.$method($sim_data.ohlcv_session() $(, $args)*)
+            },
+            if $sim_data.atr().is_empty() {
+                $empty
+            } else {
+                $self.atr.$method($sim_data.atr() $(, $args)*)
+            },
+            if $sim_data.roc().is_empty() {
+                $empty
+            } else {
+                $self.roc.$method($sim_data.roc() $(, $args)*)
+            },
         ]
     };
 }
@@ -92,9 +184,9 @@ impl CursorGroup {
 
         let mut group = Self {
             ohlcv: OhlcvCursor::new(sim_data.ohlcv()),
-            trade: TradeCursor::new(sim_data.trade()),
+            trades: TradeCursor::new(sim_data.trades()),
             economic_cal: EconomicCalendarCursor::new(sim_data.economic_cal()),
-            vp: VolumeProfileCursor::new(sim_data.volume_profile()),
+            volume_profile: VolumeProfileCursor::new(sim_data.volume_profile()),
             tpo: TpoCursor::new(sim_data.tpo()),
             ema: EmaCursor::new(sim_data.ema()),
             sma: SmaCursor::new(sim_data.sma()),
@@ -107,6 +199,7 @@ impl CursorGroup {
             roc: RocCursor::new(sim_data.roc()),
             previous_ts: None,
             current_ts: start_ts,
+            next_ts: None,
         };
         group.advance_all(sim_data, start_ts);
         group
@@ -124,16 +217,16 @@ impl CursorGroup {
         &self.ohlcv
     }
 
-    pub const fn trade(&self) -> &TradeCursor {
-        &self.trade
+    pub const fn trades(&self) -> &TradeCursor {
+        &self.trades
     }
 
     pub const fn economic_cal(&self) -> &EconomicCalendarCursor {
         &self.economic_cal
     }
 
-    pub const fn vp(&self) -> &VolumeProfileCursor {
-        &self.vp
+    pub const fn volume_profile(&self) -> &VolumeProfileCursor {
+        &self.volume_profile
     }
 
     pub const fn tpo(&self) -> &TpoCursor {
@@ -176,11 +269,10 @@ impl CursorGroup {
         &self.roc
     }
 
-    pub fn peek(&self, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
-        map_cursors!(self, sim_data, next_point_in_time)
-            .into_iter()
-            .flatten()
-            .min()
+    /// The time of the next event in any stream, or `None` at the end of the
+    /// data.
+    pub const fn peek(&self) -> Option<DateTime<Utc>> {
+        self.next_ts
     }
 
     /// Advances the cursor to the next chronological available event in the
@@ -195,7 +287,7 @@ impl CursorGroup {
     /// - When at the episode's end, further calls will not advance beyond the
     ///   episode boundary.
     pub fn step(&mut self, sim_data: &SimulationData, ep: Episode) {
-        let Some(mut next_ts) = self.peek(sim_data) else {
+        let Some(mut next_ts) = self.peek() else {
             return;
         };
 
@@ -224,10 +316,11 @@ impl CursorGroup {
         let current_ep_end = ep.end();
 
         // 1. Try to find the next episode start
-        let next_start = map_cursors!(self, sim_data, find_first_open_at_or_after, current_ep_end)
-            .into_iter()
-            .flatten()
-            .min();
+        let next_start =
+            map_cursors!(self, sim_data, empty: None, find_first_open_at_or_after, current_ep_end)
+                .into_iter()
+                .flatten()
+                .min();
 
         let Some(next_start) = next_start else {
             // If no future episode exists, explicitly mark all streams as
@@ -240,6 +333,7 @@ impl CursorGroup {
         let start_availability_candidate = map_cursors!(
             self,
             sim_data,
+            empty: None,
             find_first_point_in_time_at_or_after,
             next_start
         )
@@ -274,7 +368,21 @@ impl CursorGroup {
     /// This encapsulates the logic of rewinding streams and re-aligning
     /// the timestamp to the global start.
     pub fn reset(&mut self, sim_data: &SimulationData) {
-        self.rewind();
+        self.ohlcv.rewind();
+        self.trades.rewind();
+        self.economic_cal.rewind();
+        self.volume_profile.rewind();
+        self.tpo.rewind();
+        self.ema.rewind();
+        self.sma.rewind();
+        self.rsi.rewind();
+        self.trades_vwap.rewind();
+        self.ohlcv_vwap.rewind();
+        self.trades_session.rewind();
+        self.ohlcv_session.rewind();
+        self.atr.rewind();
+        self.roc.rewind();
+
         let start_ts = sim_data.global_availability_start();
         self.advance_all(sim_data, start_ts);
         self.current_ts = start_ts;
@@ -288,37 +396,24 @@ impl CursorGroup {
     /// `true` if every cursor for every data type has reached the end of its
     /// corresponding event array in `SimulationData`.
     /// `false` if there is any data left to be processed in any stream.
-    pub fn is_end_of_data(&self, sim_data: &SimulationData) -> bool {
-        map_cursors!(self, sim_data, is_done)
-            .into_iter()
-            .all(|is_done| is_done)
+    pub const fn is_end_of_data(&self) -> bool {
+        self.next_ts.is_none()
     }
 }
 
 impl CursorGroup {
     fn advance_all_to_end(&mut self, sim_data: &SimulationData) {
         for_each_cursor!(self, sim_data, to_end);
+        self.next_ts = None;
     }
 
-    fn rewind(&mut self) {
-        self.ohlcv.rewind();
-        self.trade.rewind();
-        self.economic_cal.rewind();
-        self.vp.rewind();
-        self.tpo.rewind();
-        self.ema.rewind();
-        self.sma.rewind();
-        self.rsi.rewind();
-        self.trades_vwap.rewind();
-        self.ohlcv_vwap.rewind();
-        self.trades_session.rewind();
-        self.ohlcv_session.rewind();
-        self.atr.rewind();
-        self.roc.rewind();
-    }
-
+    /// Advances every stream to `ts` and remembers the next event time, in one
+    /// pass over the streams.
     fn advance_all(&mut self, sim_data: &SimulationData, ts: DateTime<Utc>) {
-        for_each_cursor!(self, sim_data, advance, ts);
+        self.next_ts = map_cursors!(self, sim_data, empty: None, advance, ts)
+            .into_iter()
+            .flatten()
+            .min();
     }
 }
 
@@ -333,10 +428,13 @@ mod test {
         data::{
             domain::{DataBroker, Exchange, Period, Price, Quantity, SpotPair, Symbol},
             episode::{EpisodeBuilder, EpisodeLength},
-            event::{Ohlcv, OhlcvId, TradeEvent, TradesId},
+            event::{MarketEvent, Ohlcv, OhlcvId, StreamId, TradeEvent, TradesId},
         },
         gym::trading::config::EnvConfig,
-        sim::data::{SimulationDataBuilder, Streams},
+        sim::{
+            cursor::Cursor,
+            data::{EventMap, SimulationDataBuilder, Streams},
+        },
         sorted_vec_map::SortedVecMap,
     };
 
@@ -504,7 +602,7 @@ mod test {
         );
         // Trade cursor consumed first event, OHLCV cursor still empty (00:05 >
         // 00:02)
-        assert_eq!(cursor_group.trade.0.get(&tid).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&tid).unwrap(), &(0..1));
         assert_eq!(cursor_group.ohlcv.0.get(&oid).unwrap(), &(0..0));
 
         // STEP 1: Next event is OHLCV at 00:05
@@ -517,7 +615,7 @@ mod test {
             "Step 1: OHLCV cursor should have consumed first candle"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..1),
             "Step 1: Trade cursor should remain at 1 (no new trades)"
         );
@@ -526,7 +624,7 @@ mod test {
         cursor_group.step(&sim_data, ep);
         assert_eq!(cursor_group.current_ts, ts("2025-03-01T00:07:00Z"));
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..2),
             "Step 2: Trade cursor should now have consumed both trades"
         );
@@ -545,13 +643,13 @@ mod test {
             "Step 3: OHLCV cursor should have consumed both candles"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..2),
             "Step 3: Trade cursor should remain at 2"
         );
 
         // Both streams exhausted
-        assert!(cursor_group.is_end_of_data(&sim_data));
+        assert!(cursor_group.is_end_of_data());
     }
 
     #[test]
@@ -589,8 +687,9 @@ mod test {
     }
 
     #[test]
-    fn test_cursor_group_rewind_resets_all_cursors() {
-        // Verify that rewind() resets ALL cursor types to zero, not just one.
+    fn test_cursor_group_reset_rewinds_all_cursors() {
+        // Verify that reset() rewinds ALL cursor types, not just one, and then
+        // advances them to the global start again.
         let oid = ohlcv_id(Period::Minute(3));
         let tid = trade_id();
 
@@ -614,22 +713,25 @@ mod test {
 
         // Verify cursors have advanced
         assert!(cursor_group.ohlcv.0.get(&oid).unwrap().end > 0);
-        assert!(cursor_group.trade.0.get(&tid).unwrap().end > 0);
+        assert!(cursor_group.trades.0.get(&tid).unwrap().end > 0);
 
-        // Rewind
-        cursor_group.rewind();
+        // Reset
+        cursor_group.reset(&sim_data);
 
-        // ALL cursors should be reset
+        // ALL cursors should be back at the global start (the trade at 00:02)
         assert_eq!(
             cursor_group.ohlcv.0.get(&oid).unwrap(),
             &(0..0),
-            "OHLCV cursor should be reset to 0..0"
+            "OHLCV cursor should be reset to 0..0, its first event closes at 00:03"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
-            &(0..0),
-            "Trade cursor should be reset to 0..0"
+            cursor_group.trades.0.get(&tid).unwrap(),
+            &(0..1),
+            "Trade cursor should be reset to its first event at 00:02"
         );
+        assert_eq!(cursor_group.current_ts, ts("2025-05-01T00:02:00Z"));
+        assert_eq!(cursor_group.previous_ts, None);
+        assert_eq!(cursor_group.peek(), Some(ts("2025-05-01T00:03:00Z")));
     }
 
     #[test]
@@ -654,7 +756,7 @@ mod test {
 
         // Initial: at 00:03 (OHLCV first)
         assert!(
-            !cursor_group.is_end_of_data(&sim_data),
+            !cursor_group.is_end_of_data(),
             "Should NOT be at end initially"
         );
 
@@ -665,7 +767,7 @@ mod test {
         // Now OHLCV is exhausted but trade was just consumed
         // Both should be exhausted now
         assert!(
-            cursor_group.is_end_of_data(&sim_data),
+            cursor_group.is_end_of_data(),
             "Should be at end when ALL streams are exhausted"
         );
     }
@@ -783,7 +885,7 @@ mod test {
             "Should return None when no more data exists"
         );
         assert!(
-            cursor_group.is_end_of_data(&sim_data),
+            cursor_group.is_end_of_data(),
             "All cursors should be exhausted"
         );
     }
@@ -891,13 +993,13 @@ mod test {
             "OHLCV should have consumed its event"
         );
         assert_eq!(
-            cursor_group.trade.0.get(&tid).unwrap(),
+            cursor_group.trades.0.get(&tid).unwrap(),
             &(0..1),
             "Trade should have consumed its event"
         );
 
         // Both streams should be exhausted
-        assert!(cursor_group.is_end_of_data(&sim_data));
+        assert!(cursor_group.is_end_of_data());
     }
 
     #[test]
@@ -961,7 +1063,7 @@ mod test {
             .advance_to_next_episode(&sim_data, ep2)
             .unwrap();
         assert!(ep3.is_none());
-        assert!(cursor_group.is_end_of_data(&sim_data));
+        assert!(cursor_group.is_end_of_data());
     }
 
     #[test]
@@ -996,15 +1098,117 @@ mod test {
 
         // 1. Init -> 10:00 (BTC)
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:00:00Z"));
-        assert_eq!(cursor_group.trade.0.get(&btc_id).unwrap(), &(0..1));
-        assert_eq!(cursor_group.trade.0.get(&eth_id).unwrap(), &(0..0));
+        assert_eq!(cursor_group.trades.0.get(&btc_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&eth_id).unwrap(), &(0..0));
 
         // 2. Step -> 10:01 (ETH)
         cursor_group.step(&sim_data, ep);
         assert_eq!(cursor_group.current_ts, ts("2025-01-01T10:01:00Z"));
 
         // Both consumed
-        assert_eq!(cursor_group.trade.0.get(&btc_id).unwrap(), &(0..1));
-        assert_eq!(cursor_group.trade.0.get(&eth_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&btc_id).unwrap(), &(0..1));
+        assert_eq!(cursor_group.trades.0.get(&eth_id).unwrap(), &(0..1));
+    }
+
+    // ============================================================================
+    // Invariant: the stored next event time is always up to date
+    // ============================================================================
+
+    /// The next event time of one cursor, computed from scratch.
+    fn next_ts_of<S: StreamId>(cursor: &Cursor<S>, data: &EventMap<S>) -> Option<DateTime<Utc>> {
+        cursor
+            .0
+            .iter()
+            .zip(data.iter())
+            .filter_map(|((_, range), (_, events))| events.get(range.end))
+            .map(MarketEvent::point_in_time)
+            .min()
+    }
+
+    /// The next event time of the whole group, computed from scratch over
+    /// every stream kind.
+    fn expected_next_ts(group: &CursorGroup, sim_data: &SimulationData) -> Option<DateTime<Utc>> {
+        [
+            next_ts_of(&group.ohlcv, sim_data.ohlcv()),
+            next_ts_of(&group.trades, sim_data.trades()),
+            next_ts_of(&group.economic_cal, sim_data.economic_cal()),
+            next_ts_of(&group.volume_profile, sim_data.volume_profile()),
+            next_ts_of(&group.tpo, sim_data.tpo()),
+            next_ts_of(&group.ema, sim_data.ema()),
+            next_ts_of(&group.sma, sim_data.sma()),
+            next_ts_of(&group.rsi, sim_data.rsi()),
+            next_ts_of(&group.trades_vwap, sim_data.trades_vwap()),
+            next_ts_of(&group.ohlcv_vwap, sim_data.ohlcv_vwap()),
+            next_ts_of(&group.trades_session, sim_data.trades_session()),
+            next_ts_of(&group.ohlcv_session, sim_data.ohlcv_session()),
+            next_ts_of(&group.atr, sim_data.atr()),
+            next_ts_of(&group.roc, sim_data.roc()),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+    }
+
+    #[test]
+    fn test_cursor_group_next_ts_stays_up_to_date() {
+        // Every method that moves the cursor must leave the stored next event
+        // time equal to a fresh computation over all streams.
+        let oid = ohlcv_id(Period::Minute(5));
+        let tid = trade_id();
+
+        let ohlcv_events = vec![
+            ohlcv(ts("2026-02-05T00:00:00Z"), ts("2026-02-05T00:05:00Z")),
+            ohlcv(ts("2026-02-05T00:05:00Z"), ts("2026-02-05T00:10:00Z")),
+            ohlcv(ts("2026-02-06T00:00:00Z"), ts("2026-02-06T00:05:00Z")),
+        ];
+        let trade_events = vec![
+            trade(ts("2026-02-05T00:03:00Z")),
+            trade(ts("2026-02-05T00:08:00Z")),
+            trade(ts("2026-02-06T00:02:00Z")),
+        ];
+
+        let sim_data = sim_data_multi_stream(oid, ohlcv_events, tid, trade_events);
+        let ep1 = episode(ts("2026-02-05T00:00:00Z"), EpisodeLength::Day);
+
+        let check = |group: &CursorGroup, after: &str| {
+            assert_eq!(
+                group.peek(),
+                expected_next_ts(group, &sim_data),
+                "Stale next event time after {after}"
+            );
+            assert_eq!(
+                group.is_end_of_data(),
+                expected_next_ts(group, &sim_data).is_none(),
+                "Wrong end of data after {after}"
+            );
+        };
+
+        let mut group = CursorGroup::new(&sim_data);
+        check(&group, "new");
+
+        // Step through episode 1, including steps at the episode end.
+        for i in 0..5 {
+            group.step(&sim_data, ep1);
+            check(&group, &format!("step {i}"));
+        }
+
+        let ep2 = group
+            .advance_to_next_episode(&sim_data, ep1)
+            .unwrap()
+            .unwrap();
+        check(&group, "advance_to_next_episode");
+
+        group.step(&sim_data, ep2);
+        check(&group, "step in episode 2");
+
+        group.reset(&sim_data);
+        check(&group, "reset");
+
+        // Walk to the last episode, then run out of episodes.
+        group.advance_to_next_episode(&sim_data, ep1).unwrap();
+        let none = group.advance_to_next_episode(&sim_data, ep2).unwrap();
+        assert!(none.is_none());
+        check(&group, "advance_to_next_episode without a next episode");
+        assert!(group.is_end_of_data());
     }
 }

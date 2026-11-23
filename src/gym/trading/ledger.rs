@@ -183,17 +183,17 @@ impl Ledger {
         self.states(episode).map(States::pnl)
     }
 
-    pub fn journal_soa(&self) -> ChapatyResult<JournalSoA> {
+    /// Collects the journal of this ledger. Every row gets `uid` as its agent
+    /// uid, or `0` when `uid` is `None` (a single run).
+    pub fn journal_soa(&self, uid: Option<u64>) -> ChapatyResult<JournalSoA> {
         self.flattened_states()
             .try_map_ledger_entry_to_journal_entry()
-            .try_collect_soa()
+            .try_collect_soa(uid.unwrap_or_default())
     }
 
-    pub fn journal_df(&self) -> ChapatyResult<DataFrame> {
-        self.flattened_states()
-            .try_map_ledger_entry_to_journal_entry()
-            .try_collect_soa()?
-            .try_into()
+    /// Like [`Self::journal_soa`], converted to a `DataFrame`.
+    pub fn journal_df(&self, uid: Option<u64>) -> ChapatyResult<DataFrame> {
+        self.journal_soa(uid)?.try_into()
     }
 
     pub fn equity_curve_df(&self) -> ChapatyResult<DataFrame> {
@@ -377,6 +377,7 @@ pub(super) struct JournalSoA {
     trade_id: Vec<TradeId>,
     trade_state: Vec<StateKind>,
     agent_id: Vec<AgentIdentifier>,
+    agent_uid: Vec<u64>,
     data_broker: Vec<DataBroker>,
     exchange: Vec<Exchange>,
     symbol: Vec<Symbol>,
@@ -397,6 +398,76 @@ pub(super) struct JournalSoA {
     exit_reason: Vec<Option<TerminationReason>>,
     realized_return_in_ticks: Vec<Tick>,
     realized_return_dollars: Vec<f64>,
+}
+
+/// Appends the rows of other journals, e.g. to score many agents in one batch.
+impl Extend<Self> for JournalSoA {
+    fn extend<I: IntoIterator<Item = Self>>(&mut self, journals: I) {
+        for other in journals {
+            let Self {
+                episode_id,
+                trade_id,
+                trade_state,
+                agent_id,
+                agent_uid,
+                data_broker,
+                exchange,
+                symbol,
+                market_kind,
+                trade_kind,
+                entry_price,
+                stop_loss,
+                take_profit,
+                quantity,
+                expected_loss_in_ticks,
+                expected_profit_in_ticks,
+                expected_loss_usd,
+                expected_profit_usd,
+                risk_reward_ratio,
+                entry_timestamp,
+                exit_timestamp,
+                exit_price,
+                exit_reason,
+                realized_return_in_ticks,
+                realized_return_dollars,
+            } = other;
+
+            self.episode_id.extend(episode_id);
+            self.trade_id.extend(trade_id);
+            self.trade_state.extend(trade_state);
+            self.agent_id.extend(agent_id);
+            self.agent_uid.extend(agent_uid);
+            self.data_broker.extend(data_broker);
+            self.exchange.extend(exchange);
+            self.symbol.extend(symbol);
+            self.market_kind.extend(market_kind);
+            self.trade_kind.extend(trade_kind);
+            self.entry_price.extend(entry_price);
+            self.stop_loss.extend(stop_loss);
+            self.take_profit.extend(take_profit);
+            self.quantity.extend(quantity);
+            self.expected_loss_in_ticks.extend(expected_loss_in_ticks);
+            self.expected_profit_in_ticks
+                .extend(expected_profit_in_ticks);
+            self.expected_loss_usd.extend(expected_loss_usd);
+            self.expected_profit_usd.extend(expected_profit_usd);
+            self.risk_reward_ratio.extend(risk_reward_ratio);
+            self.entry_timestamp.extend(entry_timestamp);
+            self.exit_timestamp.extend(exit_timestamp);
+            self.exit_price.extend(exit_price);
+            self.exit_reason.extend(exit_reason);
+            self.realized_return_in_ticks
+                .extend(realized_return_in_ticks);
+            self.realized_return_dollars.extend(realized_return_dollars);
+        }
+    }
+}
+
+impl JournalSoA {
+    /// Number of trade rows in this journal.
+    pub(super) const fn len(&self) -> usize {
+        self.trade_id.len()
+    }
 }
 
 impl JournalSoA {
@@ -430,6 +501,10 @@ impl JournalSoA {
             .into_iter()
             .map(|a| a.to_string())
             .collect()
+    }
+
+    fn agent_uids(&mut self) -> Vec<u64> {
+        mem::take(&mut self.agent_uid)
     }
 
     fn data_brokers(&mut self) -> Vec<String> {
@@ -579,7 +654,7 @@ trait LogEntryTryMapExt<'a>: Iterator<Item = LedgerEntry<'a>> + Sized {
 impl<'a, I: Iterator<Item = LedgerEntry<'a>>> LogEntryTryMapExt<'a> for I {}
 
 trait TryCollectJournalSoA: Iterator<Item = ChapatyResult<JournalEntry>> + Sized {
-    fn try_collect_soa(self) -> ChapatyResult<JournalSoA> {
+    fn try_collect_soa(self, uid: u64) -> ChapatyResult<JournalSoA> {
         let mut soa = JournalSoA::default();
 
         for result in self {
@@ -614,6 +689,7 @@ trait TryCollectJournalSoA: Iterator<Item = ChapatyResult<JournalEntry>> + Sized
             soa.trade_id.push(trade_id);
             soa.trade_state.push(trade_state);
             soa.agent_id.push(agent_id);
+            soa.agent_uid.push(uid);
             soa.data_broker.push(data_broker);
             soa.exchange.push(exchange);
             soa.symbol.push(symbol);
@@ -714,6 +790,7 @@ impl TryFrom<JournalSoA> for DataFrame {
             JournalCol::TradeId.to_string()                 => soa.trade_ids(),
             JournalCol::TradeState.to_string()              => soa.trade_states(),
             JournalCol::AgentId.to_string()                 => soa.agent_ids(),
+            JournalCol::AgentUid.to_string()                => soa.agent_uids(),
 
             // === Market spec ===
             JournalCol::DataBroker.to_string()              => soa.data_brokers(),
@@ -869,7 +946,7 @@ mod test {
         }
 
         fn view(&self) -> MarketView<'_> {
-            MarketView::new(&self.sim_data, &self.cursor).unwrap()
+            MarketView::new(&self.sim_data, &self.cursor)
         }
     }
 
@@ -932,6 +1009,7 @@ mod test {
         soa.trade_id.push(entry.trade_id);
         soa.trade_state.push(entry.trade_state);
         soa.agent_id.push(entry.agent_id);
+        soa.agent_uid.push(0);
         soa.data_broker.push(entry.data_broker);
         soa.exchange.push(entry.exchange);
         soa.symbol.push(entry.symbol);
@@ -1571,7 +1649,7 @@ mod test {
         let ledger = Ledger::default();
 
         let df = ledger
-            .journal_df()
+            .journal_df(None)
             .expect("Empty ledger should produce valid DataFrame");
 
         assert_eq!(df.height(), 0);
@@ -1591,7 +1669,7 @@ mod test {
         });
 
         let df = ledger
-            .journal_df()
+            .journal_df(None)
             .expect("Ledger with empty States should work");
 
         assert_eq!(df.height(), 0, "No trades means 0 rows");
@@ -1716,7 +1794,7 @@ mod test {
             equity_curve_length: 0,
         });
 
-        let result = ledger.journal_df();
+        let result = ledger.journal_df(None);
 
         assert!(result.is_ok(), "as_df should succeed for valid ledger");
 
@@ -1738,7 +1816,7 @@ mod test {
         let empty_iter = std::iter::empty::<ChapatyResult<JournalEntry>>();
 
         let soa = empty_iter
-            .try_collect_soa()
+            .try_collect_soa(0)
             .expect("Empty iterator should work");
 
         assert_eq!(soa.episode_id, [] as [EpisodeId; 0]);
@@ -1755,12 +1833,66 @@ mod test {
 
         let soa = entries
             .into_iter()
-            .try_collect_soa()
+            .try_collect_soa(0)
             .expect("Should collect");
 
         assert_eq!(soa.episode_id.len(), 3);
         assert_eq!(soa.trade_id.len(), 3);
         assert_eq!(soa.trade_state.len(), 3);
+    }
+
+    #[test]
+    fn test_try_collect_soa_sets_agent_uid_on_every_row() {
+        let entries = vec![
+            Ok(sample_journal_entry(0, 1, StateKind::Closed, 500.0)),
+            Ok(sample_journal_entry(1, 2, StateKind::Closed, -200.0)),
+        ];
+
+        let df: DataFrame = entries
+            .into_iter()
+            .try_collect_soa(7)
+            .expect("Should collect")
+            .try_into()
+            .expect("Conversion failed");
+
+        let uids = df
+            .column(JournalCol::AgentUid.as_str())
+            .unwrap()
+            .u64()
+            .unwrap();
+        assert_eq!(uids.len(), 2);
+        assert_eq!(uids.get(0), Some(7));
+        assert_eq!(uids.get(1), Some(7));
+    }
+
+    #[test]
+    fn test_journal_soa_extend_keeps_rows_and_uids() {
+        let first = vec![
+            Ok(sample_journal_entry(0, 1, StateKind::Closed, 500.0)),
+            Ok(sample_journal_entry(1, 2, StateKind::Closed, -200.0)),
+        ];
+        let second = vec![Ok(sample_journal_entry(0, 1, StateKind::Active, 50.0))];
+
+        let mut soa = first
+            .into_iter()
+            .try_collect_soa(3)
+            .expect("Should collect");
+        soa.extend([second
+            .into_iter()
+            .try_collect_soa(9)
+            .expect("Should collect")]);
+
+        let df: DataFrame = soa.try_into().expect("Conversion failed");
+        assert_eq!(df.height(), 3);
+
+        let uids = df
+            .column(JournalCol::AgentUid.as_str())
+            .unwrap()
+            .u64()
+            .unwrap();
+        let mut uids: Vec<u64> = (0..uids.len()).filter_map(|i| uids.get(i)).collect();
+        uids.sort_unstable();
+        assert_eq!(uids, vec![3, 3, 9], "Every row keeps the uid of its agent");
     }
 
     #[test]
@@ -1773,7 +1905,7 @@ mod test {
             Ok(sample_journal_entry(0, 2, StateKind::Active, 0.0)),
         ];
 
-        let result = entries.into_iter().try_collect_soa();
+        let result = entries.into_iter().try_collect_soa(0);
         assert!(result.is_err(), "Should propagate error");
     }
 

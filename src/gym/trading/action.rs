@@ -256,9 +256,17 @@ impl Command for CancelCmd {
 // Action Sorting & Batching Logic
 // ================================================================================================
 
+/// How many markets an [`Actions`] batch stores inline.
+///
+/// `Actions` is moved several times on every step, even when it is empty, and
+/// every move copies all inline slots.
+pub const ACTIONS_INLINE_MARKETS: usize = 2;
+
 /// A batch of trading actions to be applied to the environment.
+///
+/// Holds up to [`ACTIONS_INLINE_MARKETS`] markets without a heap allocation.
 #[derive(Debug, Clone)]
-pub struct Actions(pub SortedVecMap<MarketId, Vec<Action>>);
+pub struct Actions(pub SortedVecMap<MarketId, Vec<Action>, ACTIONS_INLINE_MARKETS>);
 
 impl Default for Actions {
     fn default() -> Self {
@@ -270,7 +278,7 @@ impl Actions {
     /// Returns an [`Actions`] instance that represents **no operations**.
     #[must_use]
     pub const fn no_op() -> Self {
-        Self(SortedVecMap::new())
+        Self(SortedVecMap::new_inline())
     }
 
     #[must_use]

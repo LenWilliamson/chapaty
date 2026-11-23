@@ -111,7 +111,7 @@ pub async fn load(
     };
 
     let trade_hint = env_cfg.trade_hint();
-    let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
+    let initial_states = States::with_capacity(sim_data.market_ids(), trade_hint);
 
     let ep_len = env_cfg.episode_length();
     let start_time = sim_data.global_open_start();
@@ -788,7 +788,7 @@ impl BuildCtx {
             .with_roc(roc_res?);
 
         let sim_data = Arc::new(SimulationDataBuilder::new(streams).build(&self.env_cfg)?);
-        let initial_states = States::with_capacity(&sim_data.market_ids(), trade_hint);
+        let initial_states = States::with_capacity(sim_data.market_ids(), trade_hint);
 
         info!("SimulationData built successfully");
 

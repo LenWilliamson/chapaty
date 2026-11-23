@@ -39,7 +39,7 @@ impl<'env> ActionSpace<'env> {
     pub fn sample(&mut self) -> ChapatyResult<Actions> {
         let mut action_list = Vec::new();
 
-        for market_id in &*self.view.market_ids() {
+        for market_id in self.view.market_ids() {
             let market_trade = self.states.get_live_trades(market_id).first();
 
             if let Some(state) = market_trade {
@@ -301,7 +301,7 @@ mod tests {
 
         // 1. Setup Real Market Data (Price = 50,000)
         let (sim_data, cursor) = create_fixture(oid, 50_000.0);
-        let view = MarketView::new(&sim_data, &cursor).unwrap();
+        let view = MarketView::new(&sim_data, &cursor);
 
         let states = States::default();
         let mut space = ActionSpace::new(&states, view);
@@ -352,7 +352,7 @@ mod tests {
         // 1. Setup Data & View (Price = 50,000)
         let (sim_data, cursor) = create_fixture(oid, 50_000.0);
         let mut states = States::default();
-        let view = MarketView::new(&sim_data, &cursor).unwrap();
+        let view = MarketView::new(&sim_data, &cursor);
 
         // Use the simplified helper
         inject_active_trade(&mut states, &view, market_id, 123, 1.0);
@@ -395,7 +395,7 @@ mod tests {
     fn test_futures_sizing_logic() {
         // Setup View with Price = 1.10
         let (sim_data, cursor) = create_fixture(future_id(), 1.10);
-        let view = MarketView::new(&sim_data, &cursor).unwrap();
+        let view = MarketView::new(&sim_data, &cursor);
 
         let states = States::default();
         let mut space = ActionSpace::new(&states, view);

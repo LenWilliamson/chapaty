@@ -78,9 +78,10 @@ pub struct SortedVecMap<K, V, const N: usize = 8> {
     inner: SmallVec<[(K, V); N]>,
 }
 
-// Core implementation
 impl<K: Ord, V> SortedVecMap<K, V> {
-    /// Creates an empty `SortedVecMap`.
+    /// Creates an empty `SortedVecMap` with the default inline size of 8.
+    ///
+    /// Use [`new_inline`](Self::new_inline) for a different inline size.
     ///
     /// # Examples
     ///
@@ -91,9 +92,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// ```
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            inner: SmallVec::new_const(),
-        }
+        Self::new_inline()
     }
 
     /// Creates a `SortedVecMap` with a specified capacity.
@@ -112,6 +111,28 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: SmallVec::with_capacity(capacity),
+        }
+    }
+}
+
+impl<K: Ord, V, const N: usize> SortedVecMap<K, V, N> {
+    /// Creates an empty `SortedVecMap` that stores up to `N` entries inline,
+    /// without a heap allocation.
+    ///
+    /// Choose a small `N` for maps that are moved often and hold few entries,
+    /// because every move copies all `N` inline slots.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use chapaty::sorted_vec_map::SortedVecMap;
+    /// let map: SortedVecMap<i32, String, 2> = SortedVecMap::new_inline();
+    /// assert!(map.is_empty());
+    /// ```
+    #[must_use]
+    pub const fn new_inline() -> Self {
+        Self {
+            inner: SmallVec::new_const(),
         }
     }
 
@@ -345,7 +366,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
     /// assert_eq!(letters[&'u'], 1);
     /// assert_eq!(letters.get(&'y'), None);
     /// ```
-    pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, N> {
         if let Some(pos) = self.inner.iter().position(|(k, _)| *k == key) {
             Entry::Occupied(OccupiedEntry {
                 map: self,
@@ -515,7 +536,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 }
 
 // Parallel iteration support (requires rayon)
-impl<K: Ord + Sync, V: Sync> SortedVecMap<K, V> {
+impl<K: Ord + Sync, V: Sync, const N: usize> SortedVecMap<K, V, N> {
     /// Returns a parallel iterator over the key-value pairs.
     ///
     /// Requires the `rayon` feature to be enabled.
@@ -528,22 +549,22 @@ impl<K: Ord + Sync, V: Sync> SortedVecMap<K, V> {
 // Entry API
 // ================================================================================================
 
-pub enum Entry<'a, K, V> {
-    Occupied(OccupiedEntry<'a, K, V>),
-    Vacant(VacantEntry<'a, K, V>),
+pub enum Entry<'a, K, V, const N: usize = 8> {
+    Occupied(OccupiedEntry<'a, K, V, N>),
+    Vacant(VacantEntry<'a, K, V, N>),
 }
 
-pub struct OccupiedEntry<'a, K, V> {
-    map: &'a mut SortedVecMap<K, V>,
+pub struct OccupiedEntry<'a, K, V, const N: usize = 8> {
+    map: &'a mut SortedVecMap<K, V, N>,
     position: usize,
 }
 
-pub struct VacantEntry<'a, K, V> {
+pub struct VacantEntry<'a, K, V, const N: usize = 8> {
     key: K,
-    map: &'a mut SortedVecMap<K, V>,
+    map: &'a mut SortedVecMap<K, V, N>,
 }
 
-impl<'a, K: Ord, V> Entry<'a, K, V> {
+impl<'a, K: Ord, V, const N: usize> Entry<'a, K, V, N> {
     /// Ensures a value is in the entry by inserting the default if empty.
     ///
     /// # Examples
@@ -637,7 +658,7 @@ impl<'a, K: Ord, V> Entry<'a, K, V> {
     }
 }
 
-impl<'a, K: Ord, V: Default> Entry<'a, K, V> {
+impl<'a, K: Ord, V: Default, const N: usize> Entry<'a, K, V, N> {
     /// Ensures a value is in the entry by inserting the default value if empty.
     ///
     /// # Examples
@@ -653,7 +674,7 @@ impl<'a, K: Ord, V: Default> Entry<'a, K, V> {
     }
 }
 
-impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
+impl<'a, K: Ord, V, const N: usize> VacantEntry<'a, K, V, N> {
     /// Gets a reference to the key that would be used when inserting a value
     /// through the `VacantEntry`.
     ///
@@ -715,7 +736,7 @@ impl<'a, K: Ord, V> VacantEntry<'a, K, V> {
     }
 }
 
-impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
+impl<'a, K: Ord, V, const N: usize> OccupiedEntry<'a, K, V, N> {
     /// Gets a reference to the key in the entry.
     ///
     /// # Examples
@@ -853,7 +874,7 @@ impl<'a, K: Ord, V> OccupiedEntry<'a, K, V> {
 // ================================================================================================
 // Standard trait implementations
 // ================================================================================================
-impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> Extend<(K, V)> for SortedVecMap<K, V, N> {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.inner.extend(iter);
         self.sort_and_dedup();
@@ -869,7 +890,7 @@ impl<K, V, const N: usize> IntoIterator for SortedVecMap<K, V, N> {
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a SortedVecMap<K, V> {
+impl<'a, K, V, const N: usize> IntoIterator for &'a SortedVecMap<K, V, N> {
     type Item = (&'a K, &'a V);
     type IntoIter = std::iter::Map<std::slice::Iter<'a, (K, V)>, fn(&'a (K, V)) -> (&'a K, &'a V)>;
 
@@ -878,7 +899,7 @@ impl<'a, K, V> IntoIterator for &'a SortedVecMap<K, V> {
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a mut SortedVecMap<K, V> {
+impl<'a, K, V, const N: usize> IntoIterator for &'a mut SortedVecMap<K, V, N> {
     type Item = (&'a K, &'a mut V);
     type IntoIter =
         std::iter::Map<std::slice::IterMut<'a, (K, V)>, fn(&'a mut (K, V)) -> (&'a K, &'a mut V)>;
@@ -888,7 +909,7 @@ impl<'a, K, V> IntoIterator for &'a mut SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> FromIterator<(K, V)> for SortedVecMap<K, V, N> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
         let mut map = Self {
             inner: iter.into_iter().collect(),
@@ -898,7 +919,7 @@ impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> From<HashMap<K, V>> for SortedVecMap<K, V, N> {
     fn from(hash_map: HashMap<K, V>) -> Self {
         let mut map = Self {
             inner: hash_map.into_iter().collect(),
@@ -908,15 +929,15 @@ impl<K: Ord, V> From<HashMap<K, V>> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: PartialEq, V: PartialEq> PartialEq for SortedVecMap<K, V> {
+impl<K: PartialEq, V: PartialEq, const N: usize> PartialEq for SortedVecMap<K, V, N> {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
 
-impl<K: Eq, V: Eq> Eq for SortedVecMap<K, V> {}
+impl<K: Eq, V: Eq, const N: usize> Eq for SortedVecMap<K, V, N> {}
 
-impl<K: Ord, V> From<(K, V)> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> From<(K, V)> for SortedVecMap<K, V, N> {
     fn from(tuple: (K, V)) -> Self {
         let mut inner = SmallVec::new();
         inner.push(tuple);
@@ -924,26 +945,26 @@ impl<K: Ord, V> From<(K, V)> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V: PartialOrd> PartialOrd for SortedVecMap<K, V> {
+impl<K: Ord, V: PartialOrd, const N: usize> PartialOrd for SortedVecMap<K, V, N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.inner.partial_cmp(&other.inner)
     }
 }
 
-impl<K: Ord, V: Ord> Ord for SortedVecMap<K, V> {
+impl<K: Ord, V: Ord, const N: usize> Ord for SortedVecMap<K, V, N> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.inner.cmp(&other.inner)
     }
 }
 
-impl<K: Hash, V: Hash> Hash for SortedVecMap<K, V> {
+impl<K: Hash, V: Hash, const N: usize> Hash for SortedVecMap<K, V, N> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
     }
 }
 
-impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V> {
-    fn from(arr: [(K, V); N]) -> Self {
+impl<K: Ord, V, const M: usize, const N: usize> From<[(K, V); M]> for SortedVecMap<K, V, N> {
+    fn from(arr: [(K, V); M]) -> Self {
         let mut map = Self {
             inner: SmallVec::from_iter(arr),
         };
@@ -952,7 +973,7 @@ impl<K: Ord, V, const N: usize> From<[(K, V); N]> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> From<Vec<(K, V)>> for SortedVecMap<K, V, N> {
     fn from(vec: Vec<(K, V)>) -> Self {
         let mut map = Self {
             inner: SmallVec::from_vec(vec),
@@ -962,7 +983,7 @@ impl<K: Ord, V> From<Vec<(K, V)>> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> Index<&K> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> Index<&K> for SortedVecMap<K, V, N> {
     type Output = V;
 
     #[expect(
@@ -974,7 +995,7 @@ impl<K: Ord, V> Index<&K> for SortedVecMap<K, V> {
     }
 }
 
-impl<K: Ord, V> IndexMut<&K> for SortedVecMap<K, V> {
+impl<K: Ord, V, const N: usize> IndexMut<&K> for SortedVecMap<K, V, N> {
     #[expect(
         clippy::expect_used,
         reason = "IndexMut panics on a missing key by contract, mirroring the standard library map types"
@@ -984,14 +1005,14 @@ impl<K: Ord, V> IndexMut<&K> for SortedVecMap<K, V> {
     }
 }
 
-impl<K, V> Index<Range<usize>> for SortedVecMap<K, V> {
+impl<K, V, const N: usize> Index<Range<usize>> for SortedVecMap<K, V, N> {
     type Output = [(K, V)];
     fn index(&self, index: Range<usize>) -> &Self::Output {
         &self.inner[index]
     }
 }
 
-impl<K, V> IndexMut<Range<usize>> for SortedVecMap<K, V> {
+impl<K, V, const N: usize> IndexMut<Range<usize>> for SortedVecMap<K, V, N> {
     fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
         &mut self.inner[index]
     }

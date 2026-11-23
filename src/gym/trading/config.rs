@@ -331,7 +331,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -342,7 +342,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -386,7 +386,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -429,7 +429,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -440,7 +440,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(5),
@@ -597,7 +597,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     period: Period::Minute(1),
@@ -608,7 +608,7 @@ pub enum EnvPreset {
     ///     exchange: Exchange::Cme,
     ///     symbol: Symbol::Future(FutureContract {
     ///         root: FutureRoot::EurUsd,
-    ///         month: ContractMonth::September,
+    ///         month: ContractMonth::December,
     ///         year: ContractYear::Y6,
     ///     }),
     ///     aggregation: ProfileAggregation {
@@ -777,7 +777,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -789,7 +789,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -822,7 +822,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -855,7 +855,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -867,7 +867,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -1000,7 +1000,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),
@@ -1012,7 +1012,7 @@ impl From<EnvPreset> for EnvConfig {
                     broker: DataBroker::NinjaTrader,
                     symbol: Symbol::Future(FutureContract {
                         root: FutureRoot::EurUsd,
-                        month: ContractMonth::September,
+                        month: ContractMonth::December,
                         year: ContractYear::Y6,
                     }),
                     exchange: Some(Exchange::Cme),

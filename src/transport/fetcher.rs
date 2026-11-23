@@ -71,8 +71,7 @@ impl Fetchable for OhlcvSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
             period: self.period.to_string(),
@@ -109,8 +108,7 @@ impl Fetchable for OhlcvFutureQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
             period: self.period.to_string(),
@@ -147,8 +145,7 @@ impl Fetchable for TradesSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
         })
@@ -184,8 +181,7 @@ impl Fetchable for TpoSpotQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(std::string::ToString::to_string)
-                        .unwrap_or_default(),
+                        .map_or_default(std::string::ToString::to_string),
                     price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
@@ -199,8 +195,7 @@ impl Fetchable for TpoSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
             aggregation,
@@ -237,8 +232,7 @@ impl Fetchable for TpoFutureQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(std::string::ToString::to_string)
-                        .unwrap_or_default(),
+                        .map_or_default(std::string::ToString::to_string),
                     price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
@@ -252,8 +246,7 @@ impl Fetchable for TpoFutureQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
             aggregation,
@@ -290,8 +283,7 @@ impl Fetchable for VolumeProfileSpotQuery {
                     time_frame: agg
                         .time_frame
                         .as_ref()
-                        .map(std::string::ToString::to_string)
-                        .unwrap_or_default(),
+                        .map_or_default(std::string::ToString::to_string),
                     price_bin: agg.actual_price_bin_string(&self.symbol)?,
                 })
             })
@@ -305,8 +297,7 @@ impl Fetchable for VolumeProfileSpotQuery {
                 exchange: self
                     .exchange
                     .as_ref()
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_default(),
+                    .map_or_default(std::string::ToString::to_string),
                 batch_size: self.batch_size,
             }),
             aggregation,

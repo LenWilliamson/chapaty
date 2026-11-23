@@ -3,16 +3,15 @@ use std::sync::Arc;
 use polars::{
     frame::DataFrame,
     prelude::{
-        DataType, Expr, Field, IntoLazy, PlSmallStr, QuantileMethod, Schema, SchemaRef,
-        SortMultipleOptions, TimeUnit, UnionArgs, col, len, lit, when,
+        DataType, Expr, Field, FillNullStrategy, IntoLazy, Null, PlSmallStr, QuantileMethod,
+        Schema, SchemaRef, TimeUnit, col, lit, when,
     },
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumCount, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 use crate::{
-    error::{ChapatyError, ChapatyResult, DataError},
+    error::{ChapatyError, ChapatyResult},
     gym::trading::types::{StateKind, TradeKind},
     report::{
         grouped::GroupedJournal,
@@ -107,7 +106,7 @@ impl TryFrom<&Journal> for TradeStatistics {
             .as_df()
             .clone()
             .lazy()
-            .select(exprs()?)
+            .select(exprs())
             .collect()
             .map_err(convert_err)?;
 
@@ -119,53 +118,18 @@ impl TryFrom<&GroupedJournal<'_>> for TradeStatistics {
     type Error = ChapatyError;
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
-        if gj.source().as_df().height() == 0 {
-            return Ok(Self::default());
-        }
+        let df = gj.lazy().agg(exprs()).collect().map_err(convert_err)?;
 
-        let (partitions, keys) = gj.to_partitions()?;
-        let lazy_computations = partitions
-            .into_par_iter()
-            .map(|df| {
-                let mut selection = Vec::with_capacity(keys.len() + TradeStatCol::COUNT);
-                for k in &keys {
-                    selection.push(col(k).first());
-                }
-                selection.extend(exprs()?);
-
-                let lf = df
-                    .lazy()
-                    .sort(
-                        [JournalCol::EntryTimestamp.as_str()],
-                        SortMultipleOptions::default(),
-                    )
-                    .select(selection);
-                Ok(lf)
-            })
-            .collect::<Result<Vec<_>, ChapatyError>>();
-
-        let merged = polars::prelude::concat(
-            lazy_computations?,
-            UnionArgs {
-                parallel: true,
-                rechunk: true,
-                ..Default::default()
-            },
-        )
-        .map_err(|e| DataError::DataFrame(format!("Merge plan failed: {e}")))?
-        .collect()
-        .map_err(|e| DataError::DataFrame(format!("Execution failed: {e}")))?;
-
-        Ok(Self { df: merged })
+        Ok(Self { df })
     }
 }
 
-fn exprs() -> ChapatyResult<Vec<Expr>> {
+fn exprs() -> Vec<Expr> {
     let return_col = JournalCol::RealizedReturnInTicks;
     let trade_state_col = JournalCol::TradeState;
     let trade_kind_col = JournalCol::TradeKind;
 
-    let exprs = vec![
+    vec![
         // === Trade counts ===
         winning_trade_count_expr(return_col, trade_state_col)
             .define_as(TradeStatCol::WinningTradeCount, DataType::UInt32),
@@ -174,13 +138,13 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
         executed_trade_count_expr(trade_state_col)
             .define_as(TradeStatCol::TotalTradeCount, DataType::UInt32),
         // === Trade streaks ===
-        max_consecutive_wins_expr(return_col, trade_state_col)?
+        max_consecutive_wins_expr(return_col, trade_state_col)
             .define_as(TradeStatCol::MaxConsecutiveWins, DataType::UInt32),
-        max_consecutive_losses_expr(return_col, trade_state_col)?
+        max_consecutive_losses_expr(return_col, trade_state_col)
             .define_as(TradeStatCol::MaxConsecutiveLosses, DataType::UInt32),
-        max_consecutive_unrealized_wins_expr(trade_state_col, return_col)?
+        max_consecutive_unrealized_wins_expr(trade_state_col, return_col)
             .define_as(TradeStatCol::MaxConsecutiveUnrealizedWins, DataType::UInt32),
-        max_consecutive_unrealized_losses_expr(trade_state_col, return_col)?.define_as(
+        max_consecutive_unrealized_losses_expr(trade_state_col, return_col).define_as(
             TradeStatCol::MaxConsecutiveUnrealizedLosses,
             DataType::UInt32,
         ),
@@ -251,14 +215,13 @@ fn exprs() -> ChapatyResult<Vec<Expr>> {
             .define_as(TradeStatCol::UnrealizedTradeCount, DataType::UInt32),
         // === Entry quality ===
         pending_count_expr(trade_state_col).define_as(TradeStatCol::PendingCount, DataType::UInt32),
-        longest_pending_streak_expr(trade_state_col)?
+        longest_pending_streak_expr(trade_state_col)
             .define_as(TradeStatCol::LongestPendingStreak, DataType::UInt32),
         long_trade_count_expr(trade_kind_col, trade_state_col)
             .define_as(TradeStatCol::LongTradeCount, DataType::UInt32),
         short_trade_count_expr(trade_kind_col, trade_state_col)
             .define_as(TradeStatCol::ShortTradeCount, DataType::UInt32),
-    ];
-    Ok(exprs)
+    ]
 }
 
 // ================================================================================================
@@ -286,20 +249,14 @@ pub(super) fn executed_trade_count_expr(trade_state_col: JournalCol) -> Expr {
 // === Trade streaks ===
 // ================================================================================================
 
-fn max_consecutive_wins_expr(
-    return_col: JournalCol,
-    trade_state_col: JournalCol,
-) -> ChapatyResult<Expr> {
+fn max_consecutive_wins_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     let predicate = col(trade_state_col)
         .trade_executed()
         .and(col(return_col).gt(lit(0)));
     max_consecutive_streak_expr(predicate)
 }
 
-fn max_consecutive_losses_expr(
-    return_col: JournalCol,
-    trade_state_col: JournalCol,
-) -> ChapatyResult<Expr> {
+fn max_consecutive_losses_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     let predicate = col(trade_state_col)
         .trade_executed()
         .and(col(return_col).lt_eq(lit(0)));
@@ -309,7 +266,7 @@ fn max_consecutive_losses_expr(
 fn max_consecutive_unrealized_wins_expr(
     trade_state_col: JournalCol,
     return_col: JournalCol,
-) -> ChapatyResult<Expr> {
+) -> Expr {
     let predicate = col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).gt(lit(0)));
@@ -320,7 +277,7 @@ fn max_consecutive_unrealized_wins_expr(
 fn max_consecutive_unrealized_losses_expr(
     trade_state_col: JournalCol,
     return_col: JournalCol,
-) -> ChapatyResult<Expr> {
+) -> Expr {
     let predicate = col(trade_state_col)
         .eq(lit(StateKind::Active.as_str()))
         .and(col(return_col).lt_eq(lit(0)));
@@ -456,7 +413,7 @@ fn pending_count_expr(trade_state_col: JournalCol) -> Expr {
         .count_true()
 }
 
-fn longest_pending_streak_expr(trade_state_col: JournalCol) -> ChapatyResult<Expr> {
+fn longest_pending_streak_expr(trade_state_col: JournalCol) -> Expr {
     let predicate = col(trade_state_col).eq(lit(StateKind::Pending.as_str()));
     max_consecutive_streak_expr(predicate)
 }
@@ -482,13 +439,20 @@ fn short_trade_count_expr(trade_kind_col: JournalCol, trade_state_col: JournalCo
 /// values in a boolean predicate expression, often used to identify streaks in
 /// a column.
 ///
-/// Reference: <https://stackoverflow.com/a/75405310>
-fn max_consecutive_streak_expr(predicate: Expr) -> ChapatyResult<Expr> {
-    let rle = predicate.clone().rle_id();
-    len()
-        .over([rle])
-        .map(|streak_len| when(predicate).then(streak_len).otherwise(lit(0)).max())
-        .map_err(convert_err)
+/// `run_total` counts the `true` values so far. At every `false` it remembers
+/// that count, and the current streak is the count since the last `false`.
+/// It uses only running sums and a forward fill, so it works both on a whole
+/// journal and per group inside `group_by().agg()`, where window functions
+/// are not allowed.
+fn max_consecutive_streak_expr(predicate: Expr) -> Expr {
+    let run_total = predicate.clone().cast(DataType::UInt32).cum_sum(false);
+    let total_at_last_break = when(predicate.not())
+        .then(run_total.clone())
+        .otherwise(lit(Null {}))
+        .fill_null_with_strategy(FillNullStrategy::Forward(None))
+        .fill_null(lit(0));
+
+    (run_total - total_at_last_break).max()
 }
 
 /// Returns the trade duration as a Polars `Duration(Microseconds)` column.
@@ -808,6 +772,38 @@ mod tests {
     // ========================================================================
     // Test: Consecutive Win/Loss Streaks
     // ========================================================================
+
+    #[test]
+    fn test_max_consecutive_streak_expr_matches_hand_count() {
+        // (pattern, longest run of `true`)
+        let cases: [(&[bool], u32); 7] = [
+            (
+                &[true, true, false, true, true, true, false, false, true],
+                3,
+            ),
+            (&[false, false, false], 0),
+            (&[true, true, true, true], 4),
+            (&[true], 1),
+            (&[false], 0),
+            (&[true, false, true, false, true], 1),
+            (&[false, true, true, false, true, true, true], 3),
+        ];
+
+        for (pattern, expected) in cases {
+            let df = polars::prelude::df!["p" => pattern].unwrap();
+            let longest = df
+                .lazy()
+                .select([max_consecutive_streak_expr(col("p")).cast(DataType::UInt32)])
+                .collect()
+                .unwrap()
+                .column("p")
+                .unwrap()
+                .u32()
+                .unwrap()
+                .get(0);
+            assert_eq!(longest, Some(expected), "pattern {pattern:?}");
+        }
+    }
 
     #[test]
     fn test_consecutive_streaks() {
