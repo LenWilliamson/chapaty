@@ -168,11 +168,6 @@ pub fn compute_profile_stats<T: ProfileBinStats>(
 
 #[cfg(test)]
 mod test {
-    #![expect(
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
-    )]
-
     use super::*;
 
     // ============================================================================
@@ -397,8 +392,8 @@ mod test {
         // Symmetric takes BOTH. Current = 60 + 10 + 30 = 100. Range [100, 104].
         // Stop.
 
-        let prices: Vec<f64> = vec![100.0, 101.0, 102.0, 103.0, 104.0];
-        let vols: Vec<f64> = vec![10.0, 10.0, 40.0, 10.0, 30.0];
+        let prices = vec![100.0, 101.0, 102.0, 103.0, 104.0];
+        let vols = vec![10.0, 10.0, 40.0, 10.0, 30.0];
         let bins = make_bins(&prices, &vols);
 
         let res = compute_profile_stats(&bins, 0.7, PocRule::LowestPrice, ValueAreaRule::Symmetric)
@@ -468,8 +463,8 @@ mod test {
         // Current = 70. Stop.
         // Result: Low=100, High=102. (Did not touch 103).
 
-        let prices: Vec<f64> = vec![100.0, 101.0, 102.0, 103.0, 104.0];
-        let vols: Vec<f64> = vec![10.0, 10.0, 50.0, 10.0, 10.0];
+        let prices = vec![100.0, 101.0, 102.0, 103.0, 104.0];
+        let vols = vec![10.0, 10.0, 50.0, 10.0, 10.0];
         let bins = make_bins(&prices, &vols);
 
         let res = compute_profile_stats(

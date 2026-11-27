@@ -65,7 +65,7 @@ use smallvec::SmallVec;
 /// map.insert("mango", 2);
 ///
 /// // Iteration is in sorted key order
-/// let keys: Vec<_> = map.keys().copied().collect();
+/// let keys = map.keys().copied().collect::<Vec<_>>();
 /// assert_eq!(keys, vec!["apple", "mango", "zebra"]);
 ///
 /// // Lookup operations
@@ -443,7 +443,7 @@ impl<K: Ord, V, const N: usize> SortedVecMap<K, V, N> {
     /// map.insert(2, "b");
     /// map.insert(1, "a");
     ///
-    /// let keys: Vec<_> = map.keys().copied().collect();
+    /// let keys = map.keys().copied().collect::<Vec<_>>();
     /// assert_eq!(keys, vec![1, 2]);
     /// ```
     pub fn keys(&self) -> impl Iterator<Item = &K> {
@@ -460,7 +460,7 @@ impl<K: Ord, V, const N: usize> SortedVecMap<K, V, N> {
     /// map.insert(2, "b");
     /// map.insert(1, "a");
     ///
-    /// let values: Vec<_> = map.values().copied().collect();
+    /// let values = map.values().copied().collect::<Vec<_>>();
     /// assert_eq!(values, vec!["a", "b"]);
     /// ```
     pub fn values(&self) -> impl Iterator<Item = &V> {

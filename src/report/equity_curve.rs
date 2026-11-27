@@ -12,7 +12,10 @@ use strum::{Display, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 use crate::{
     error::{ChapatyError, ChapatyResult, DataError},
-    report::io::{Report, ReportName, ToSchema},
+    report::{
+        drawdown::Drawdowns,
+        io::{Report, ReportName, ToSchema},
+    },
 };
 
 #[derive(
@@ -73,6 +76,25 @@ pub struct EquityCurveReport {
 }
 
 impl EquityCurveReport {
+    /// Every drawdown of the equity curve, open positions included.
+    ///
+    /// Rows are sorted by [`DrawdownCol::DepthPct`], largest first.
+    /// [`DrawdownCol::DepthUsd`] is not sorted, so its largest value can be in
+    /// a later row.
+    ///
+    /// `starting_capital` is added to the portfolio value, so the percentages
+    /// use the same base as the journal. Pass
+    /// `journal.risk_metrics_config().initial_portfolio_value()`.
+    ///
+    /// [`DrawdownCol::DepthPct`]: crate::report::drawdown::DrawdownCol::DepthPct
+    /// [`DrawdownCol::DepthUsd`]: crate::report::drawdown::DrawdownCol::DepthUsd
+    ///
+    /// # Errors
+    /// Returns an error if the curve cannot be read.
+    pub fn drawdowns(&self, starting_capital: u32) -> ChapatyResult<Drawdowns> {
+        Drawdowns::from_equity_curve(self, starting_capital)
+    }
+
     /// Downsamples the equity curve to End-Of-Day (EOD) resolution.
     ///
     /// This reduces memory and file size by retaining only the final
@@ -195,11 +217,6 @@ impl ToSchema for EquityCurveReport {
 
 #[cfg(test)]
 mod test {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
     use std::path::PathBuf;
 
     use chrono::{DateTime, Utc};

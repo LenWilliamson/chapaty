@@ -379,11 +379,9 @@ fn pre_compute_overnight_range(cfg: SessionCfg, lf: LazyFrame) -> LazyFrame {
 #[cfg(test)]
 mod tests {
     #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
         clippy::print_stdout,
         clippy::similar_names,
-        reason = "tests assert against known-valid fixtures. We use `unwrap()` and `expect()` to surface failures as panics to fail the test."
+        reason = "tests print diagnostics and use closely related names for fixtures"
     )]
     use std::path::PathBuf;
 

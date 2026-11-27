@@ -778,17 +778,17 @@ impl States {
     /// never trigger a `malloc` or `memcpy` during the hot loop of the episode.
     pub(super) fn with_capacity(markets: &[MarketId], trade_hint_per_market: usize) -> Self {
         // 1. Pre-allocate Hot Storage (Active/Pending)
-        let live: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = markets
+        let live = markets
             .iter()
             .map(|id| (*id, Vec::with_capacity(trade_hint_per_market)))
-            .collect();
+            .collect::<SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>>();
 
         // 2. Pre-allocate Cold Storage (Closed/Canceled)
         // We assume roughly same volume, or you could tune this separately.
-        let archive: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = markets
+        let archive = markets
             .iter()
             .map(|id| (*id, Vec::with_capacity(trade_hint_per_market)))
-            .collect();
+            .collect::<SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>>();
 
         // 3. Estimate Index Load
         let total_capacity_hint = live.len() * trade_hint_per_market;
@@ -810,17 +810,17 @@ impl States {
     /// episode inherits the exact memory footprint reserved in the original
     /// prototype.
     pub(super) fn clone_with_capacity(&self) -> Self {
-        let live: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = self
+        let live = self
             .live
             .iter()
             .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))
-            .collect();
+            .collect::<SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>>();
 
-        let archive: SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS> = self
+        let archive = self
             .archive
             .iter()
             .map(|(id, vec)| (*id, Vec::with_capacity(vec.capacity())))
-            .collect();
+            .collect::<SortedVecMap<MarketId, Vec<State>, ACTIONS_INLINE_MARKETS>>();
 
         let live_index = HashMap::with_capacity(self.live_index.capacity());
 
@@ -1290,11 +1290,6 @@ struct Transition<T> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
     use std::panic::{self, AssertUnwindSafe};
 
     use chrono::Duration;
@@ -2373,7 +2368,7 @@ mod tests {
         };
 
         // 4. Action: Update Loop
-        let mut seen_markets: Vec<MarketId> = Vec::new();
+        let mut seen_markets = Vec::new();
         let _ignored = states.update_all_live_trades(&ctx, |market_id, _result| {
             seen_markets.push(market_id);
             Ok(())

@@ -403,19 +403,12 @@ pub(crate) fn generate_dynamic_base_name(df: &DataFrame, base_name: &str) -> Str
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; expect surfaces failures as panics that fail the test"
-    )]
     use std::path::PathBuf;
 
-    use polars::{
-        df,
-        prelude::{LazyCsvReader, LazyFileListReader},
-    };
+    use polars::df;
 
     use super::*;
-    use crate::{data::common::RiskMetricsConfig, report::journal::Journal};
+    use crate::report::test_support::load_journal_fixture;
 
     #[test]
     fn test_generate_dynamic_base_name() {
@@ -454,25 +447,7 @@ mod tests {
     #[test]
     fn test_to_json_rows() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let pb = PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-        let path = PlRefPath::new(
-            pb.as_os_str()
-                .to_str()
-                .expect("failed to convert input file path to string"),
-        );
-
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(path)
-            .with_has_header(true)
-            .with_schema(Some(schema))
-            .with_try_parse_dates(true)
-            .finish()
-            .expect("failed to create LazyFrame from CSV")
-            .collect()
-            .expect("failed to collect DataFrame from LazyFrame");
-
-        let journal = Journal::new(&df, RiskMetricsConfig::default())
-            .expect("failed to create Journal from DataFrame");
+        let journal = load_journal_fixture();
 
         let have = journal
             .to_json()

@@ -15,10 +15,14 @@ use crate::{
     error::{ChapatyError, ChapatyResult, DataError},
     gym::trading::StateKind,
     report::{
+        calendar_returns::{DailyReturns, MonthlyReturns},
         cumulative_returns::CumulativeReturns,
+        drawdown::Drawdowns,
         grouped::{GroupCol, GroupedJournal},
         io::{Report, ReportName, ToSchema, generate_dynamic_base_name},
         portfolio_performance::PortfolioPerformance,
+        return_histogram::ReturnHistogram,
+        trade_list::Trades,
         trade_statistics::TradeStatistics,
     },
 };
@@ -232,6 +236,86 @@ impl Journal {
         self.try_into()
     }
 
+    /// Selects trades of this journal, such as the latest or the best ones.
+    ///
+    /// Nothing is computed until you call a method of [`Trades`]. Each of them
+    /// returns a [`TradeList`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chapaty::prelude::*;
+    ///
+    /// # fn main() -> ChapatyResult<()> {
+    /// // Usually the result of `env.evaluate_agent(&mut agent)`.
+    /// let journal = Journal::default();
+    ///
+    /// // Open trades first, then closed ones, newest first.
+    /// let latest = journal.trades().latest(100)?;
+    /// // Closed winners, the biggest profit first.
+    /// let best = journal.trades().best(15)?;
+    /// // Closed losers, the biggest loss first.
+    /// let worst = journal.trades().worst(15)?;
+    ///
+    /// // Every selection is a report with the columns of the journal.
+    /// assert_eq!(best.base_name(), "best_trades");
+    /// assert_eq!(best.as_df().width(), journal.as_df().width());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`TradeList`]: crate::report::trade_list::TradeList
+    #[must_use]
+    pub fn trades(&self) -> Trades<'_> {
+        self.into()
+    }
+
+    /// Realized profit and trade count per exit day.
+    ///
+    /// # Errors
+    /// Returns an error if the trades cannot be aggregated.
+    pub fn daily_returns(&self) -> ChapatyResult<DailyReturns> {
+        self.try_into()
+    }
+
+    /// Realized profit and trade count per exit month.
+    ///
+    /// # Errors
+    /// Returns an error if the trades cannot be aggregated.
+    pub fn monthly_returns(&self) -> ChapatyResult<MonthlyReturns> {
+        self.try_into()
+    }
+
+    /// A histogram of the realized profit of the closed trades.
+    ///
+    /// # Errors
+    /// Returns an error if the returns cannot be read or binned.
+    pub fn return_histogram(&self) -> ChapatyResult<ReturnHistogram> {
+        self.try_into()
+    }
+
+    /// Every drawdown of the trade by trade portfolio value.
+    ///
+    /// Rows are sorted by [`DrawdownCol::DepthPct`], largest first.
+    /// [`DrawdownCol::DepthUsd`] is not sorted, so its largest value can be in
+    /// a later row.
+    ///
+    /// The largest values of these two columns equal
+    /// [`PortfolioPerformanceCol::MaxRealizedDrawdownPct`] and
+    /// [`PortfolioPerformanceCol::MaxRealizedDrawdownUsd`] of
+    /// [`Journal::portfolio_performance`].
+    ///
+    /// [`DrawdownCol::DepthPct`]: crate::report::drawdown::DrawdownCol::DepthPct
+    /// [`DrawdownCol::DepthUsd`]: crate::report::drawdown::DrawdownCol::DepthUsd
+    /// [`PortfolioPerformanceCol::MaxRealizedDrawdownPct`]: crate::report::portfolio_performance::PortfolioPerformanceCol::MaxRealizedDrawdownPct
+    /// [`PortfolioPerformanceCol::MaxRealizedDrawdownUsd`]: crate::report::portfolio_performance::PortfolioPerformanceCol::MaxRealizedDrawdownUsd
+    ///
+    /// # Errors
+    /// Returns an error if the portfolio values cannot be computed.
+    pub fn drawdowns(&self) -> ChapatyResult<Drawdowns> {
+        self.try_into()
+    }
+
     pub const fn risk_metrics_config(&self) -> RiskMetricsConfig {
         self.risk_metrics_config
     }
@@ -365,44 +449,10 @@ impl JournalExprExt for Expr {
 
 #[cfg(test)]
 mod test {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
-    use std::path::PathBuf;
-
-    use polars::prelude::{IntoLazy, LazyCsvReader, LazyFileListReader, PlRefPath, col};
+    use polars::prelude::{IntoLazy, col};
 
     use super::*;
-
-    fn load_journal_fixture() -> Journal {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let fixture_path =
-            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-
-        assert!(
-            fixture_path.exists(),
-            "Test fixture missing: {}",
-            fixture_path.display()
-        );
-
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlRefPath::new(
-            fixture_path
-                .to_str()
-                .expect("Invalid UTF-8 in fixture path"),
-        ))
-        .with_has_header(true)
-        .with_schema(Some(schema))
-        .with_try_parse_dates(true)
-        .finish()
-        .expect("Failed to create LazyFrame")
-        .collect()
-        .expect("Failed to collect DataFrame");
-
-        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
-    }
+    use crate::report::test_support::load_journal_fixture;
 
     #[test]
     fn test_journal_creation_and_schema_validation() {

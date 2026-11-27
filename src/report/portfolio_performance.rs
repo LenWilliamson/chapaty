@@ -295,13 +295,16 @@ fn net_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr 
         .sum()
 }
 
-pub fn avg_trade_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+pub(crate) fn avg_trade_profit_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(return_col)
         .filter(col(trade_state_col).trade_executed())
         .mean()
 }
 
-pub fn expected_value_per_trade_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+pub(crate) fn expected_value_per_trade_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
     col(return_col)
         .filter(col(trade_state_col).trade_executed())
         .mean()
@@ -542,7 +545,10 @@ fn lower_quantile_trade_return_expr(return_col: JournalCol, trade_state_col: Jou
     quantile_return_expr_by_subset(return_col, trade_state_col, 0.25, TradeSubset::All)
 }
 
-pub fn median_trade_return_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+pub(crate) fn median_trade_return_expr(
+    return_col: JournalCol,
+    trade_state_col: JournalCol,
+) -> Expr {
     quantile_return_expr_by_subset(return_col, trade_state_col, 0.5, TradeSubset::All)
 }
 
@@ -622,6 +628,7 @@ fn largest_loss_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Exp
 // ================================================================================================
 // === Unrealized ===
 // ================================================================================================
+
 fn unrealized_win_profit_expr(
     exit_reason_col: JournalCol,
     return_col: JournalCol,
@@ -1074,48 +1081,12 @@ impl PortfolioPerformanceCol {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
-    use std::{collections::HashSet, path::PathBuf};
+    use std::collections::HashSet;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
+    use polars::prelude::SchemaExt;
 
     use super::*;
-
-    // ========================================================================
-    // Helper: Load Journal Fixture
-    // ========================================================================
-
-    fn load_journal_fixture() -> Journal {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let fixture_path =
-            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-
-        assert!(
-            fixture_path.exists(),
-            "Test fixture missing: {}",
-            fixture_path.display()
-        );
-
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlRefPath::new(
-            fixture_path
-                .to_str()
-                .expect("Invalid UTF-8 in fixture path"),
-        ))
-        .with_has_header(true)
-        .with_schema(Some(schema))
-        .with_try_parse_dates(true)
-        .finish()
-        .expect("Failed to create LazyFrame")
-        .collect()
-        .expect("Failed to collect DataFrame");
-
-        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
-    }
+    use crate::report::test_support::load_journal_fixture;
 
     // ========================================================================
     // Test: Journal to PortfolioPerformance Conversion
@@ -1153,7 +1124,7 @@ mod tests {
         let perf = PortfolioPerformance::try_from(&journal).expect("Conversion failed");
         let df = perf.as_df();
 
-        let expected_columns: Vec<_> = PortfolioPerformanceCol::iter().collect();
+        let expected_columns = PortfolioPerformanceCol::iter().collect::<Vec<_>>();
 
         for col in &expected_columns {
             assert!(
@@ -1178,8 +1149,8 @@ mod tests {
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
-                let missing: Vec<_> = expected.difference(&actual).cloned().collect();
-                let extra: Vec<_> = actual.difference(&expected).cloned().collect();
+                let missing = expected.difference(&actual).cloned().collect::<Vec<_>>();
+                let extra = actual.difference(&expected).cloned().collect::<Vec<_>>();
                 (missing, extra)
             }
         );
@@ -1413,13 +1384,14 @@ mod tests {
             .expect("Missing value");
 
         // With cumulative returns [9000, 8500, 8500, 10500, 11000, 12000],
-        // peak at each step: [9000, 9000, 9000, 10500, 11000, 12000]
-        // drawdowns: [0, 500, 500, 0, 0, 0]
-        // Max drawdown: 500
+        // and an initial capital of 10000,
+        // peak at each step: [10000, 10000, 10000, 10500, 11000, 12000]
+        // drawdowns: [1000, 1500, 1500, 0, 0, 0]
+        // Max drawdown: 1500
         assert_f64_eq!(
             max_dd_usd,
-            500.0,
-            "Max drawdown USD should be 500 (peak 9000, trough 8500)"
+            1500.0,
+            "Max drawdown USD should be 1500 (peak 10000, trough 8500)"
         );
 
         let max_dd_pct = df
@@ -1430,10 +1402,10 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        // Max drawdown %: 500 / 9000 = 0.0555...
+        // Max drawdown %: 1500 / 10000 = 0.15
         assert!(
-            (max_dd_pct - 0.0556).abs() < 0.001,
-            "Max drawdown % should be ~5.56%, got {max_dd_pct}"
+            (max_dd_pct - 0.15).abs() < 0.001,
+            "Max drawdown % should be 15%, got {max_dd_pct}"
         );
     }
 
@@ -1704,11 +1676,11 @@ mod tests {
             .get(0)
             .expect("Missing value");
 
-        // Recovery factor = net_profit / max_drawdown = 2000 / 500 = 4.0
+        // Recovery factor = net_profit / max_drawdown = 2000 / 1500
         assert_f64_eq!(
             recovery,
-            4.0,
-            "Recovery factor should be 4.0 (2000 profit / 500 drawdown)"
+            2000.0 / 1500.0,
+            "Recovery factor should be 2000 profit / 1500 drawdown"
         );
     }
 }

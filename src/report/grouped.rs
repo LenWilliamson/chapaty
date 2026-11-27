@@ -216,26 +216,17 @@ impl GroupCol {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
-    use std::path::PathBuf;
-
     use chrono::DateTime;
-    use polars::prelude::{
-        DataFrame, DataType, LazyCsvReader, LazyFileListReader, PlRefPath, StrptimeOptions,
-        TimeUnit, TimeZone, df, len, lit,
-    };
+    use polars::prelude::{DataFrame, DataType, StrptimeOptions, TimeUnit, TimeZone, df, len, lit};
     use strum::IntoEnumIterator;
 
     use super::*;
     use crate::{
         data::common::RiskMetricsConfig,
         report::{
-            cumulative_returns::CumulativeReturnCol, io::ToSchema, journal::JournalExprExt,
-            portfolio_performance::PortfolioPerformanceCol, trade_statistics::TradeStatCol,
+            cumulative_returns::CumulativeReturnCol, journal::JournalExprExt,
+            portfolio_performance::PortfolioPerformanceCol, test_support::load_journal_fixture,
+            trade_statistics::TradeStatCol,
         },
     };
 
@@ -343,33 +334,7 @@ mod tests {
         // ========================================================================
         // 1. Load Test Data
         // ========================================================================
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let fixture_path =
-            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-
-        assert!(
-            fixture_path.exists(),
-            "Test fixture missing: {}",
-            fixture_path.display()
-        );
-
-        // Load with strict schema enforcement
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlRefPath::new(
-            fixture_path
-                .to_str()
-                .expect("Invalid UTF-8 in fixture path"),
-        ))
-        .with_has_header(true)
-        .with_schema(Some(schema))
-        .with_try_parse_dates(true)
-        .finish()
-        .expect("Failed to create LazyFrame")
-        .collect()
-        .expect("Failed to collect DataFrame");
-
-        let journal =
-            Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal");
+        let journal = load_journal_fixture();
 
         // ========================================================================
         // 2. Group by Symbol + Entry Year
@@ -507,9 +472,9 @@ mod tests {
                 .group_by(keys.clone())
                 .portfolio_performance()
                 .unwrap();
-            let metrics: Vec<&str> = PortfolioPerformanceCol::iter()
+            let metrics = PortfolioPerformanceCol::iter()
                 .map(|c| c.as_str())
-                .collect();
+                .collect::<Vec<_>>();
 
             let groups = journal_per_group(&journal, &keys);
             assert_eq!(grouped.as_df().height(), groups.len(), "keys {keys:?}");
@@ -528,7 +493,9 @@ mod tests {
         let journal = synthetic_journal(400);
         for keys in parity_key_sets() {
             let grouped = journal.group_by(keys.clone()).trade_stats().unwrap();
-            let metrics: Vec<&str> = TradeStatCol::iter().map(|c| c.as_str()).collect();
+            let metrics = TradeStatCol::iter()
+                .map(TradeStatCol::as_str)
+                .collect::<Vec<_>>();
 
             let groups = journal_per_group(&journal, &keys);
             assert_eq!(grouped.as_df().height(), groups.len(), "keys {keys:?}");
@@ -547,7 +514,9 @@ mod tests {
         let journal = synthetic_journal(400);
         for keys in parity_key_sets() {
             let grouped = journal.group_by(keys.clone()).cumulative_returns().unwrap();
-            let columns: Vec<&str> = CumulativeReturnCol::iter().map(|c| c.as_str()).collect();
+            let columns = CumulativeReturnCol::iter()
+                .map(CumulativeReturnCol::as_str)
+                .collect::<Vec<_>>();
 
             // Cumulative returns only cover executed trades. Groups appear in
             // the order of their first executed trade, and groups without
@@ -616,7 +585,7 @@ mod tests {
     /// Splits the journal into one journal per group, in order of first
     /// appearance, together with the group's key values.
     fn journal_per_group(journal: &Journal, keys: &[GroupCol]) -> Vec<(DataFrame, Journal)> {
-        let key_names: Vec<&str> = keys.iter().map(GroupCol::as_str).collect();
+        let key_names = keys.iter().map(GroupCol::as_str).collect::<Vec<_>>();
         let enriched = journal
             .as_df()
             .clone()
@@ -639,7 +608,7 @@ mod tests {
     }
 
     fn assert_same_keys(actual: &DataFrame, key_row: &DataFrame, keys: &[GroupCol]) {
-        let names: Vec<&str> = keys.iter().map(GroupCol::as_str).collect();
+        let names = keys.iter().map(GroupCol::as_str).collect::<Vec<_>>();
         let actual_keys = actual.select(names).unwrap();
         assert!(
             actual_keys.equals_missing(key_row),
@@ -741,9 +710,9 @@ mod tests {
         let mut entry_price = Vec::new();
         let mut quantity = Vec::new();
         let mut entry_ts = Vec::new();
-        let mut exit_ts: Vec<Option<i64>> = Vec::new();
-        let mut exit_price: Vec<Option<f64>> = Vec::new();
-        let mut exit_reason: Vec<Option<&str>> = Vec::new();
+        let mut exit_ts = Vec::new();
+        let mut exit_price = Vec::new();
+        let mut exit_reason = Vec::new();
         let mut return_ticks = Vec::new();
         let mut return_usd = Vec::new();
 

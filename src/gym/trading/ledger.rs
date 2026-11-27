@@ -865,11 +865,6 @@ fn ep_not_found_err(episode: &Episode) -> ChapatyError {
 
 #[cfg(test)]
 mod test {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
     use std::collections::HashSet;
 
     use polars::prelude::SchemaExt;
@@ -1057,8 +1052,14 @@ mod test {
             .expect("Failed to convert JournalSoA to DataFrame");
 
         // Verify all columns present
-        let expected_cols: HashSet<_> = JournalCol::iter().map(|c| c.as_str()).collect();
-        let actual_cols: HashSet<_> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let expected_cols = JournalCol::iter()
+            .map(|c| c.as_str())
+            .collect::<HashSet<_>>();
+        let actual_cols = df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<HashSet<_>>();
         assert_eq!(expected_cols, actual_cols, "Schema mismatch");
 
         // Verify row count
@@ -1361,8 +1362,14 @@ mod test {
         assert_eq!(df.height(), 0);
 
         // All columns should still be present
-        let expected_cols: HashSet<_> = JournalCol::iter().map(|c| c.as_str()).collect();
-        let actual_cols: HashSet<_> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let expected_cols = JournalCol::iter()
+            .map(|c| c.as_str())
+            .collect::<HashSet<_>>();
+        let actual_cols = df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<HashSet<_>>();
         assert_eq!(expected_cols, actual_cols);
     }
 
@@ -1658,8 +1665,14 @@ mod test {
         assert_eq!(df.height(), 0);
 
         // Should still have all columns
-        let expected_cols: HashSet<_> = JournalCol::iter().map(|c| c.as_str()).collect();
-        let actual_cols: HashSet<_> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let expected_cols = JournalCol::iter()
+            .map(|c| c.as_str())
+            .collect::<HashSet<_>>();
+        let actual_cols = df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<HashSet<_>>();
         assert_eq!(expected_cols, actual_cols);
     }
 
@@ -1893,14 +1906,16 @@ mod test {
             .unwrap()
             .u64()
             .unwrap();
-        let mut uids: Vec<u64> = (0..uids.len()).filter_map(|i| uids.get(i)).collect();
+        let mut uids = (0..uids.len())
+            .filter_map(|i| uids.get(i))
+            .collect::<Vec<_>>();
         uids.sort_unstable();
         assert_eq!(uids, vec![3, 3, 9], "Every row keeps the uid of its agent");
     }
 
     #[test]
     fn test_try_collect_soa_propagates_error() {
-        let entries: Vec<ChapatyResult<JournalEntry>> = vec![
+        let entries = vec![
             Ok(sample_journal_entry(0, 1, StateKind::Closed, 500.0)),
             Err(ChapatyError::Data(DataError::DataFrame(
                 "Test error".to_string(),

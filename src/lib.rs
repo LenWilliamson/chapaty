@@ -27,6 +27,7 @@ pub use crate::transport::source::{
 };
 
 // === Convenience ===
+#[rustfmt::skip] // Hand-ordered by topic
 pub mod prelude;
 pub mod ring_buffer;
 pub mod sorted_vec_map;

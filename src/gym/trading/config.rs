@@ -1351,7 +1351,7 @@ impl EnvConfig {
             .as_ref()
             .and_then(|c| c.allowed_years.as_ref())
         {
-            let mut y: Vec<u16> = years_set.iter().copied().collect();
+            let mut y = years_set.iter().copied().collect::<Vec<_>>();
             y.sort_unstable();
             return y;
         }

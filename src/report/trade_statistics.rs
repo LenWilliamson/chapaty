@@ -57,6 +57,8 @@ impl ToSchema for TradeStatistics {
                     TradeStatCol::WinningTradeCount
                     | TradeStatCol::LosingTradeCount
                     | TradeStatCol::TotalTradeCount
+                    | TradeStatCol::CleanWinningTradeCount
+                    | TradeStatCol::CleanLosingTradeCount
                     | TradeStatCol::MaxConsecutiveWins
                     | TradeStatCol::MaxConsecutiveLosses
                     | TradeStatCol::MaxConsecutiveUnrealizedWins
@@ -137,6 +139,10 @@ fn exprs() -> Vec<Expr> {
             .define_as(TradeStatCol::LosingTradeCount, DataType::UInt32),
         executed_trade_count_expr(trade_state_col)
             .define_as(TradeStatCol::TotalTradeCount, DataType::UInt32),
+        clean_winning_trade_count_expr(return_col, trade_state_col)
+            .define_as(TradeStatCol::CleanWinningTradeCount, DataType::UInt32),
+        clean_losing_trade_count_expr(return_col, trade_state_col)
+            .define_as(TradeStatCol::CleanLosingTradeCount, DataType::UInt32),
         // === Trade streaks ===
         max_consecutive_wins_expr(return_col, trade_state_col)
             .define_as(TradeStatCol::MaxConsecutiveWins, DataType::UInt32),
@@ -237,6 +243,20 @@ fn winning_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol)
 fn losing_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
     col(trade_state_col)
         .trade_executed()
+        .and(col(return_col).lt_eq(lit(0)))
+        .count_true()
+}
+
+fn clean_winning_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(trade_state_col)
+        .eq(lit(StateKind::Closed.as_str()))
+        .and(col(return_col).gt(lit(0)))
+        .count_true()
+}
+
+fn clean_losing_trade_count_expr(return_col: JournalCol, trade_state_col: JournalCol) -> Expr {
+    col(trade_state_col)
+        .eq(lit(StateKind::Closed.as_str()))
         .and(col(return_col).lt_eq(lit(0)))
         .count_true()
 }
@@ -517,6 +537,11 @@ pub enum TradeStatCol {
     LosingTradeCount,
     /// Total number of trades executed.
     TotalTradeCount,
+    /// Winning trades that are closed, so without unrealized ones.
+    CleanWinningTradeCount,
+    /// Losing trades that are closed, so without unrealized ones. A closed
+    /// trade that broke even counts as losing.
+    CleanLosingTradeCount,
 
     // === Trade streaks ===
     /// Maximum number of consecutive winning trades.
@@ -572,61 +597,24 @@ impl From<TradeStatCol> for PlSmallStr {
 
 impl TradeStatCol {
     #[must_use]
-    pub fn name(&self) -> PlSmallStr {
-        (*self).into()
+    pub fn name(self) -> PlSmallStr {
+        self.into()
     }
 
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         self.into()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
-    use std::{collections::HashSet, path::PathBuf};
+    use std::collections::HashSet;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
+    use polars::prelude::SchemaExt;
 
     use super::*;
-    use crate::data::common::RiskMetricsConfig;
-
-    // ========================================================================
-    // Helper: Load Journal Fixture
-    // ========================================================================
-
-    fn load_journal_fixture() -> Journal {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let fixture_path =
-            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-
-        assert!(
-            fixture_path.exists(),
-            "Test fixture missing: {}",
-            fixture_path.display()
-        );
-
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlRefPath::new(
-            fixture_path
-                .to_str()
-                .expect("Invalid UTF-8 in fixture path"),
-        ))
-        .with_has_header(true)
-        .with_schema(Some(schema))
-        .with_try_parse_dates(true)
-        .finish()
-        .expect("Failed to create LazyFrame")
-        .collect()
-        .expect("Failed to collect DataFrame");
-
-        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
-    }
+    use crate::{data::common::RiskMetricsConfig, report::test_support::load_journal_fixture};
 
     // ========================================================================
     // Test: Journal to TradeStatistics Conversion
@@ -664,7 +652,7 @@ mod tests {
         let stats = TradeStatistics::try_from(&journal).expect("Conversion failed");
         let df = stats.as_df();
 
-        let expected_columns: Vec<_> = TradeStatCol::iter().collect();
+        let expected_columns = TradeStatCol::iter().collect::<Vec<_>>();
 
         for col in &expected_columns {
             assert!(
@@ -725,6 +713,36 @@ mod tests {
     // ========================================================================
     // Test: Trade Counts
     // ========================================================================
+
+    #[test]
+    fn test_clean_trade_counts_leave_open_trades_out() {
+        let journal = load_journal_fixture();
+        let stats = TradeStatistics::try_from(&journal).expect("Conversion failed");
+        let count = |column: TradeStatCol| {
+            stats
+                .as_df()
+                .column(column.as_str())
+                .expect("Missing count column")
+                .u32()
+                .expect("Column is not u32")
+                .get(0)
+                .expect("Missing value")
+        };
+
+        // Closed returns: -1000, -500, 0, 2000, 500. One open trade wins.
+        assert_eq!(count(TradeStatCol::CleanWinningTradeCount), 2);
+        assert_eq!(count(TradeStatCol::CleanLosingTradeCount), 3);
+        assert_eq!(
+            count(TradeStatCol::CleanWinningTradeCount)
+                + count(TradeStatCol::CleanLosingTradeCount)
+                + count(TradeStatCol::UnrealizedTradeCount),
+            count(TradeStatCol::TotalTradeCount)
+        );
+        assert_eq!(
+            count(TradeStatCol::CleanWinningTradeCount) + count(TradeStatCol::UnrealizedWinCount),
+            count(TradeStatCol::WinningTradeCount)
+        );
+    }
 
     #[test]
     fn test_trade_counts() {

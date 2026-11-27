@@ -378,11 +378,6 @@ impl<'env> MarketView<'env> {
 
 #[cfg(test)]
 mod test {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests assert against known-valid fixtures; unwrap surfaces failures as panics that fail the test"
-    )]
-
     use super::*;
     use crate::{
         data::{
@@ -1062,12 +1057,12 @@ mod test {
         let fixture = market_view_with_ohlcv(view_data, 2);
         let market_view = fixture.view();
 
-        let close_prices: Vec<f64> = market_view
+        let close_prices = market_view
             .ohlcv()
             .rev_iter(&id)
             .unwrap()
             .map(|e| e.close.0)
-            .collect();
+            .collect::<Vec<f64>>();
 
         assert_eq!(
             close_prices,
@@ -1117,12 +1112,12 @@ mod test {
         let market_view = fixture.view();
 
         // Query events since 00:03:00 (should exclude the first candle)
-        let new_events: Vec<f64> = market_view
+        let new_events = market_view
             .ohlcv()
             .new_events_since(&id, Some(ts("2026-01-01T00:03:00Z")))
             .unwrap()
             .map(|e| e.close.0)
-            .collect();
+            .collect::<Vec<_>>();
 
         assert_eq!(
             new_events,

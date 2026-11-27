@@ -114,7 +114,7 @@ impl TryFrom<&GroupedJournal<'_>> for CumulativeReturns {
 
     fn try_from(gj: &GroupedJournal) -> ChapatyResult<Self> {
         let init_val = gj.source().risk_metrics_config().initial_portfolio_value();
-        let report_cols = CumulativeReturnCol::iter().map(|c| c.as_str());
+        let report_cols = CumulativeReturnCol::iter().map(CumulativeReturnCol::as_str);
 
         // One query for all groups. The aggregation keeps one list of rows per
         // group, and explode turns those lists back into one row per trade.
@@ -203,15 +203,28 @@ fn last_peak_timestamp_expr(initial_value: u32) -> Expr {
         .then(exit_ts)
         .otherwise(polars::prelude::lit(Null {}));
 
-    // Forward fill to propagate the last peak timestamp
-    peak_ts.fill_null_with_strategy(FillNullStrategy::Forward(None))
+    // Forward fill to propagate the last peak timestamp. Until the first new
+    // high, the high is the initial capital, held since the first entry.
+    peak_ts
+        .fill_null_with_strategy(FillNullStrategy::Forward(None))
+        .fill_null(col(JournalCol::EntryTimestamp).first())
 }
 
 // ================================================================================================
 // === Equity curve metrics ===
 // ================================================================================================
+
+/// The high water mark: the highest portfolio value reached so far.
+///
+/// The initial capital is the first high. Without it, a series that starts
+/// with a loss would treat the value after that loss as its high and report no
+/// drawdown for it.
 pub(super) fn peak_cumulative_return_usd_expr(initial_value: u32) -> Expr {
-    cumulative_realized_return_usd_expr(initial_value).cum_max(false)
+    let initial = lit(initial_value).cast(DataType::Float64);
+    let highest = cumulative_realized_return_usd_expr(initial_value).cum_max(false);
+    when(highest.clone().gt(initial.clone()))
+        .then(highest)
+        .otherwise(initial)
 }
 
 fn drawdown_from_peak_usd_expr(initial_value: u32) -> Expr {
@@ -335,62 +348,25 @@ impl From<CumulativeReturnCol> for PlSmallStr {
 
 impl CumulativeReturnCol {
     #[must_use]
-    pub fn name(&self) -> PlSmallStr {
-        (*self).into()
+    pub fn name(self) -> PlSmallStr {
+        self.into()
     }
 
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         self.into()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
-    use std::{collections::HashSet, path::PathBuf};
+    use std::collections::HashSet;
 
-    use polars::prelude::{LazyCsvReader, LazyFileListReader, PlRefPath, SchemaExt};
+    use polars::prelude::SchemaExt;
     use strum::IntoEnumIterator;
 
     use super::*;
-    use crate::data::common::RiskMetricsConfig;
-
-    // ========================================================================
-    // Helper: Load Journal Fixture
-    // ========================================================================
-
-    fn load_journal_fixture() -> Journal {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let fixture_path =
-            PathBuf::from(manifest_dir).join("tests/fixtures/report/input/journal.csv");
-
-        assert!(
-            fixture_path.exists(),
-            "Test fixture missing: {}",
-            fixture_path.display()
-        );
-
-        let schema = Journal::to_schema();
-        let df = LazyCsvReader::new(PlRefPath::new(
-            fixture_path
-                .to_str()
-                .expect("Invalid UTF-8 in fixture path"),
-        ))
-        .with_has_header(true)
-        .with_schema(Some(schema))
-        .with_try_parse_dates(true)
-        .finish()
-        .expect("Failed to create LazyFrame")
-        .collect()
-        .expect("Failed to collect DataFrame");
-
-        Journal::new(&df, RiskMetricsConfig::default()).expect("Failed to create Journal")
-    }
+    use crate::{data::common::RiskMetricsConfig, report::test_support::load_journal_fixture};
 
     // ========================================================================
     // Test: Journal to CumulativeReturns Conversion
@@ -428,7 +404,7 @@ mod tests {
         let cum_ret = CumulativeReturns::try_from(&journal).expect("Conversion failed");
         let df = cum_ret.as_df();
 
-        let expected_columns: Vec<_> = CumulativeReturnCol::iter().collect();
+        let expected_columns = CumulativeReturnCol::iter().collect::<Vec<_>>();
 
         for col in &expected_columns {
             assert!(
@@ -453,8 +429,8 @@ mod tests {
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect::<HashSet<_>>();
-                let missing: Vec<_> = expected.difference(&actual).cloned().collect();
-                let extra: Vec<_> = actual.difference(&expected).cloned().collect();
+                let missing = expected.difference(&actual).cloned().collect::<Vec<_>>();
+                let extra = actual.difference(&expected).cloned().collect::<Vec<_>>();
                 (missing, extra)
             }
         );
@@ -533,9 +509,9 @@ mod tests {
             .f64()
             .expect("Column is not f64");
 
-        // Peaks should be monotonically non-decreasing
-        // Expected: 9000, 9000, 9000, 10500, 11000, 12000
-        let expected = [9000.0, 9000.0, 9000.0, 10500.0, 11000.0, 12000.0];
+        // Peaks should be monotonically non-decreasing and never below the
+        // initial capital of 10000.
+        let expected = [10000.0, 10000.0, 10000.0, 10500.0, 11000.0, 12000.0];
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = peaks.get(i).expect("Missing value");
@@ -564,8 +540,8 @@ mod tests {
             .expect("Column is not f64");
 
         // Drawdown = Peak - Current
-        // Expected: 0, 500, 500, 0, 0, 0
-        let expected = [0.0, 500.0, 500.0, 0.0, 0.0, 0.0];
+        // The first trade loses 1000 against the initial capital.
+        let expected = [1000.0, 1500.0, 1500.0, 0.0, 0.0, 0.0];
 
         for (i, expected_val) in expected.iter().enumerate() {
             let actual = drawdowns.get(i).expect("Missing value");
@@ -618,8 +594,8 @@ mod tests {
             "Peak timestamp should not contain nulls"
         );
 
-        // First peak should be at row 0 (2025-01-04)
-        // Stays same for rows 1-2 (drawdown period)
+        // Rows 0-2 stay below the initial capital, whose time is the first
+        // entry (2025-01-04 12:00)
         // New peak at row 3 (2026-01-10)
         // New peak at row 4 (2026-02-20)
         // New peak at row 5 (2026-05-02)
@@ -629,22 +605,30 @@ mod tests {
             .datetime()
             .expect("Not datetime");
 
-        // Row 0 is first peak
-        let first_peak = exit_timestamps
+        let first_entry = journal
+            .as_df()
+            .column(JournalCol::EntryTimestamp.as_str())
+            .expect("Missing entry timestamp")
+            .datetime()
+            .expect("Not datetime")
             .physical()
             .get(0)
             .expect("Missing timestamp");
-        // Rows 0, 1, 2 should all reference first peak
         for i in 0..3 {
             let peak_ts = peak_timestamps
                 .physical()
                 .get(i)
                 .expect("Missing peak timestamp");
             assert_eq!(
-                peak_ts, first_peak,
-                "Rows 0-2 should reference first peak timestamp"
+                peak_ts, first_entry,
+                "Rows 0-2 should reference the first entry"
             );
         }
+        // Row 3 is a new high, at its own exit.
+        assert_eq!(
+            peak_timestamps.physical().get(3),
+            exit_timestamps.physical().get(3),
+        );
     }
 
     // ========================================================================
@@ -664,16 +648,16 @@ mod tests {
             .expect("Column is not f64");
 
         // Recovery factor = cumulative_return / drawdown
-        // Row 0: 9000 / 0 = inf
-        // Row 1: 8500 / 500 = 17.0
-        // Row 2: 8500 / 500 = 17.0
+        // Row 0: 9000 / 1000 = 9.0
+        // Row 1: 8500 / 1500
+        // Row 2: 8500 / 1500
         // Row 3+: All at new peaks, so inf
 
         let val_0 = recovery_factors.get(0).expect("Missing value");
-        assert!(val_0.is_infinite(), "Row 0 should be inf (no drawdown)");
+        assert_f64_eq!(val_0, 9.0, "Row 0 recovery factor mismatch");
 
         let val_1 = recovery_factors.get(1).expect("Missing value");
-        assert_f64_eq!(val_1, 17.0, "Row 1 recovery factor mismatch");
+        assert_f64_eq!(val_1, 8500.0 / 1500.0, "Row 1 recovery factor mismatch");
 
         let val_3 = recovery_factors.get(3).expect("Missing value");
         assert!(val_3.is_infinite(), "Row 3 should be inf (at peak)");

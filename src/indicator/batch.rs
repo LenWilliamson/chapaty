@@ -185,11 +185,6 @@ fn convert_err(e: polars::error::PolarsError) -> ChapatyError {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests assert against known-valid fixtures; unwrap and expect surface failures as panics that fail the test"
-    )]
     use chrono::{TimeZone, Utc};
     use polars::prelude::{IntoLazy, NamedFrom, Series};
 
